@@ -1,37 +1,51 @@
-/** Apps Script – Minimal-JSON-API für eure Vereinsdaten **/
+const url = "https://docs.google.com/spreadsheets/d/1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04/";
+const spreadsheet = SpreadsheetApp.openByUrl(url);
+const sheet = spreadsheet.getSheetByName("players");
 
-function doGet(e) {
-  try {
-    const action = (e.parameter.action || '').toLowerCase();
-    if (action === 'players') return jsonOk_(readSheet_('players'));
-    // Health/Ping
-    return jsonOk_({ msg: 'API alive', actions: ['players'] });
-  } catch (err) {
-    return jsonErr_(String(err));
-  }
-}
 
-// ---- Lesen ----
-function readSheet_(name) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(name);
-  if (!sh) return [];
-  const values = sh.getDataRange().getValues();
-  if (!values || values.length < 2) return [];
-  const head = values[0];
-  return values.slice(1).map(r => {
-    const o = {};
-    head.forEach((h,i) => o[h] = r[i]);
-    return o;
+function arrayToJson(arr) {
+  const [headers, ...rows] = arr;
+  return rows.map(row => {
+    const obj = {};
+    headers.forEach((header, i) => (obj[header] = row[i]));
+    return obj;
   });
 }
 
 
-// ---- JSON Helpers ----
-function jsonOk_(data) {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, data }))
-    .setMimeType(ContentService.MimeType.JSON);
+function getAllPlayers() {
+  const data = sheet.getDataRange().getValues(); // Holt alle Daten (2D-Array)
+  const players = arrayToJson(data);             // Wandelt in Objekte um
+  return players;
 }
-function jsonErr_(message, code) {
-  return ContentService.createTextOutput(JSON.stringify({ ok: false, error: message, code: code || 500 }))
-    .setMimeType(ContentService.MimeType.JSON);
+
+
+function getAllPlayerNames() {
+  const lastRow = sheet.getLastRow();
+  const data = sheet.getRange(2, 2, lastRow - 1, 2).getValues(); // Spalten B & C (Vorname + Nachname)
+  
+  const names = data
+    .filter(row => row[0] && row[1]) // Leere Zeilen ignorieren
+    .map(row => `${row[0]} ${row[1]}`);
+  
+  return names.join(", ");
+}
+
+
+function doGet(e) {
+  const players = getAllPlayers();
+  return ContentService
+    .createTextOutput(JSON.stringify(players))
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeader("Access-Control-Allow-Origin", "*");
+}
+
+
+function callAllFunctions() {
+  const players = getAllPlayers();
+  const names = getAllPlayerNames();
+
+  console.log("Alle Spieler (als Objekte):", players);
+  console.log(players[1].id);
+  console.log("Spielernamen (String):", names);
 }

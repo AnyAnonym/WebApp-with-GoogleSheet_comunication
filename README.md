@@ -5,7 +5,7 @@ to publish our webseite we use firebase
 in public are all our scripts
 
 --------------------------------------------------------
-since we use firebase only I deploy the webseite. -> so please write me under kilian.pimminger8@gmail.com
+since we use firebase only I can deploy the webseite. -> so please write me under kilian.pimminger8@gmail.com
 the URL is: https://web-with-sheet-70c93.web.app/
 
 we also have an AppScript for Google Sheets (Google Sheet is also connected wich my Account).

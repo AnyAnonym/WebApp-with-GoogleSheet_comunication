@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Spieler – ASKÖ Piberbach</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/styles.css">
+
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <a class="logo" href="index.html">ASKÖ Piberbach</a>
+
+    <nav class="nav">
+      <a href="index.html">Index</a>
+      <a href="players.html">Spieler</a>
+    </nav>
+  </header>
+
+
+  <div class="container">
+    <h1>Spieler</h1>
+    <table class="table" id="tbl">
+      <thead><tr><th>ID</th><th>Name</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    © ASKÖ Piberbach – Tennis
+  </footer>
+  
+<!--
+  <script type="module">
+    import { getPlayers } from './assets/api.js';
+    import { formatName } from './assets/ui.js';
+
+    async function main() {
+      const data = await getPlayers();
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      data.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.id || ''}</td>
+          <td>${formatName(p)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    main().catch(e => { console.error(e); alert('Fehler beim Laden der Spieler.'); });
+	
+  </script>
+  -->
+  
+  
+  <script>
+    async function main() {
+      // 🔹 Statische Testdaten
+      const data = [
+        { id: 1, firstName: 'Max', lastName: 'Mustermann' },
+        { id: 2, firstName: 'Sophie', lastName: 'Musterfrau' },
+        { id: 3, firstName: 'Lukas', lastName: 'Leitner' },
+        { id: 4, firstName: 'Julia', lastName: 'Huber' },
+      ];
+
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+
+      data.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.id}</td>
+          <td>${p.firstName} ${p.lastName}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    main().catch(e => {
+      console.error(e);
+      alert('Fehler beim Anzeigen der Spieler.');
+    });
+  </script>
+  
+</body>
+</html>

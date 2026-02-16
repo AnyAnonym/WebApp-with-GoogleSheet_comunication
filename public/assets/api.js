@@ -1,5 +1,5 @@
 // assets/api.js
-const API_BASE = 'https://script.google.com/macros/s/AKfycbwv0p6-pwtG0cUTN2oMvOJvFMieaFO4NJDRXF2xUm_7S7MiwHbpkRPLaIRSexSEUvmQ/exec';
+const API_BASE = 'https://script.google.com/macros/s/AKfycbzxaRpxt54plDvJvklYLKeX54hZL5p-QDLEyKKS_SZQM1tRbXYMS90LNZNzD4Ylwy43/exec';
 
 async function apiGet(action, params = {}) {
   const url = new URL(API_BASE);

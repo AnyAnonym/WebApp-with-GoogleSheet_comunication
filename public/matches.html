@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Matches – ASKÖ Piberbach</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- CSS – relativer Pfad stimmt -->
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <!-- HEADER -->
+  <header class="header">
+    <a class="logo" href="index.html">ASKÖ Piberbach</a>
+
+    <nav class="nav">
+      <a href="index.html">Index</a>
+      <a href="players.html">Spieler</a>
+      <a href="matches.html" class="active">Matches</a>
+    </nav>
+  </header>
+
+  <!-- CONTENT -->
+  <div class="container">
+    <h1>Matchübersicht</h1>
+
+    <p class="note">
+      Hier siehst du alle aktuellen Begegnungen aus der Google‑Tabelle
+      <strong>„matches“</strong>.
+    </p>
+
+    <table id="tbl" class="table" border="1">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Spieler A</th>
+          <th>Spieler B</th>
+          <th>Satz 1</th>
+          <th>Satz 2</th>
+          <th>Datum</th>
+          <th>Platz</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- wird dynamisch per JavaScript gefüllt -->
+      </tbody>
+    </table>
+
+    <p id="loading" style="display:none;">Lade Daten …</p>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    © ASKÖ Piberbach – Tennis
+  </footer>
+
+  <!-- JavaScript zum Laden der Matches -->
+  <script src="matchesList.js"></script>
+</body>
+</html>

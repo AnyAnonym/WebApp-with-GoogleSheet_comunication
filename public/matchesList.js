@@ -19,7 +19,6 @@ async function main() {
       const tr = document.createElement("tr");
 
       tr.innerHTML = `
-        <td>${i + 1}</td>
         <td>${match["Spieler A"] || ""}</td>
         <td>${match["Spieler B"] || ""}</td>
         <td>${match["Satz 1"] || ""}</td>

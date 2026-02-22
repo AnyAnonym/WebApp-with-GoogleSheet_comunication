@@ -5,7 +5,7 @@ const SHEET_URL = `https://opensheet.elk.sh/${SHEET_ID}/${TAB_NAME}`;
 
 // 🔹 Hauptfunktion
 async function main() {
- try {
+  try {
     // 1️⃣ Daten vom Sheet abrufen
     const response = await fetch(SHEET_URL);
     if (!response.ok) {

@@ -9,7 +9,7 @@ document.querySelector(".call").addEventListener("click", async () => {
 });
 
 document.querySelector(".call2").addEventListener("click", async () => {
-  const testFn = httpsCallable(functions, "testFunctionJunction");
+  const testFn = httpsCallable(functions, "readPlayersList");
   const result = await testFn();
   console.log(result.data);
 });

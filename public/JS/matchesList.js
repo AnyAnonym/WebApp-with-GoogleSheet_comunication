@@ -1,38 +1,57 @@
-const SHEET_ID = "1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04";
-const TAB_NAME = "matches";
-const SHEET_URL = `https://opensheet.elk.sh/${SHEET_ID}/${TAB_NAME}`;
+// matchesList.js
+import { functions } from "./SDK.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-functions.js";
 
-// 🔹 Hauptfunktion
 async function main() {
   try {
-    // 1️⃣ Daten vom Sheet abrufen
-    const response = await fetch(SHEET_URL);
-    if (!response.ok) throw new Error(`HTTP Fehler: ${response.status}`);
-    const data = await response.json();
-    console.log("Empfangene Matches:", data);
+    console.log("⏳ Lade Matches‑Daten über Cloud Function ...");
+
+    // 1️⃣ Backend‑Function aufrufen
+    const readMatchesFn = httpsCallable(functions, "readMatchesList");
+    const result = await readMatchesFn();
+
+    if (!result.data?.values) {
+      throw new Error("Backend lieferte keine gültigen Daten!");
+    }
+
+    const data = result.data.values;
+    console.log("✅ Empfangene Matches vom Backend:", data);
 
     // 2️⃣ Tabelle befüllen
     const tbody = document.querySelector("#tbl tbody");
     tbody.innerHTML = "";
 
-    data.forEach((match, i) => {
+    // Falls erste Zeile Header enthält („Spieler A“, …)
+    const startIndex =
+      data[0][0]?.toLowerCase().includes("spieler") ||
+      data[0][1]?.toLowerCase().includes("spieler")
+        ? 1
+        : 0;
+
+    for (let i = startIndex; i < data.length; i++) {
+      const [
+        spielerA,
+        spielerB,
+        satz1,
+        satz2,
+        datum,
+        platz
+      ] = data[i];
+
       const tr = document.createElement("tr");
-
       tr.innerHTML = `
-        <td>${match["Spieler A"] || ""}</td>
-        <td>${match["Spieler B"] || ""}</td>
-        <td>${match["Satz 1"] || ""}</td>
-        <td>${match["Satz 2"] || ""}</td>
-        <td>${match["Datum"] || ""}</td>
-        <td>${match["Platz"] || ""}</td>
+        <td>${spielerA || ""}</td>
+        <td>${spielerB || ""}</td>
+        <td>${satz1 || ""}</td>
+        <td>${satz2 || ""}</td>
+        <td>${datum || ""}</td>
+        <td>${platz || ""}</td>
       `;
-
       tbody.appendChild(tr);
-    });
-
-  } catch (error) {
-    console.error("Fehler beim Laden der Matches:", error);
-    alert("Fehler beim Laden oder Anzeigen der Matches.");
+    }
+  } catch (err) {
+    console.error("❌ Fehler beim Laden der Matches‑Liste:", err);
+    alert("Fehler beim Laden oder Anzeigen der Matches. Details siehe Konsole.");
   }
 }
 

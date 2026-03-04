@@ -1,4 +1,3 @@
-// playerList.js
 import { functions } from "./SDK.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-functions.js";
 
@@ -42,3 +41,4 @@ async function main() {
 
 // Seite erst laden, dann Daten holen
 window.addEventListener("load", main);
+

@@ -2,17 +2,17 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>Matches – ASKÖ Piberbach</title>
+  <title>Matches – ASKÖ Piberbach</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- CSS – relativer Pfad stimmt -->
-  <link rel="stylesheet" href="CSS/styles.css">
+  <!-- CSS -->
+  <link rel="stylesheet" href="CSS/styles.css" />
 </head>
 
 <body>
   <!-- HEADER -->
   <header class="header">
-    <a class="logo" href="index.html">ASKÖ Piberbach</a>
+    <a class="logo" href="index.html">ASKÖ Piberbach</a>
 
     <nav class="nav">
       <a href="players.html">Spieler</a>
@@ -21,7 +21,7 @@
   </header>
 
   <!-- CONTENT -->
-  <div class="container">
+  <main class="container">
     <h1>Matchübersicht</h1>
 
     <p class="note">
@@ -29,6 +29,7 @@
       <strong>„matches“</strong>.
     </p>
 
+    <!-- Matches‑Tabelle -->
     <table id="tbl" class="table">
       <thead>
         <tr>
@@ -41,19 +42,43 @@
         </tr>
       </thead>
       <tbody>
-        <!-- wird dynamisch per JavaScript gefüllt -->
+        <!-- wird dynamisch per JavaScript befüllt -->
       </tbody>
     </table>
 
-    <p id="loading" style="display:none;">Lade Daten …</p>
-  </div>
+    <!-- Neues Match hinzufügen -->
+    <section class="add-section">
+      <h2>Neues Match hinzufügen</h2>
+
+      <form id="addForm" class="add-form" onsubmit="return false;" autocomplete="off">
+        <div class="form-row">
+          <input name="spielerA" placeholder="Spieler A" required />
+          <input name="spielerB" placeholder="Spieler B" required />
+        </div>
+
+        <div class="form-row">
+          <input name="satz1" placeholder="Satz 1" />
+          <input name="satz2" placeholder="Satz 2" />
+        </div>
+
+        <div class="form-row">
+          <input name="datum" placeholder="Datum" />
+          <input name="platz" placeholder="Platz" />
+        </div>
+
+        <button type="submit" class="btn">Hinzufügen</button>
+      </form>
+    </section>
+
+    <p id="loading" style="display: none;">Lade Daten …</p>
+  </main>
 
   <!-- FOOTER -->
   <footer class="footer">
     © ASKÖ Piberbach – Tennis
   </footer>
 
-  <!-- JavaScript zum Laden der Matches -->
+  <!-- JavaScript -->
   <script type="module" src="JS/SDK.js"></script>
   <script type="module" src="JS/matchesList.js"></script>
 </body>

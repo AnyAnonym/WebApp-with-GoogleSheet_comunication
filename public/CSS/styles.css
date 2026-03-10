@@ -33,3 +33,45 @@ h1 { font-size: 1.4rem; margin: 0 0 16px; }
 select, input[type="date"] {
   padding:8px 10px; border:1px solid #ddd; border-radius:6px; font:inherit; color:inherit;
 }
+
+/* --- Ergänzungen für die interaktive Pyramide --- */
+
+.pyramid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  margin-top: 32px;
+  margin-bottom: 40px;
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.box {
+  width: 120px;
+  height: 60px;
+  border: 3px solid var(--table-border);
+  border-radius: 15px;
+  background: #f7f7f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  cursor: grab;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.box:hover {
+  background: #eaf1fb;
+}
+
+.dragging {
+  opacity: 0.5;
+  background: #dce4f5;
+  cursor: grabbing;
+}

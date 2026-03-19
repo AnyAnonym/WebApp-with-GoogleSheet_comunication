@@ -12,5 +12,11 @@ document.querySelector(".call2").addEventListener("click", async () => {
   const testFn = httpsCallable(functions, "readPlayersList");
   const result = await testFn();
   console.log(result.data);
+  //-----------------------
+  const readRankedPlayers = httpsCallable(functions, "readRankedPlayers");
+
+  const r = await readRankedPlayers();
+
+  console.log(r.data.rankedList);
 });
 

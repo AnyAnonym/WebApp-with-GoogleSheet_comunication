@@ -1,52 +1,41 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASKÖ Piberbach – Rangliste</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- CSS – relativer Pfad stimmt -->
   <link rel="stylesheet" href="CSS/styles.css">
-  
 </head>
-
 <body>
 
-  <!-- HEADER -->
-  <header class="header">
-    <a class="logo" href="index.html">ASKÖ Piberbach</a>
-
-    <nav class="nav">
-      <a href="players.html">Spieler</a>
-      <a href="matches.html">Matches</a>
-      <a href="rangliste.html", class="active">Rangliste</a>
+  <!-- Kopfbereich -->
+  <header>
+    <div class="logo">ASKÖ Piberbach</div>
+    <nav>
+      <a href="./index.html">Dashboard</a>
+      <a href="./players.html">Spieler</a>
+      <a href="./matches.html">Matches</a>
+      <a href="./rangliste.html" class="active">Rangliste</a>
     </nav>
   </header>
 
-  <!-- CONTENT -->
-  <main class="container">
-    <h1>Rangliste – Interaktive Pyramide</h1>
-    <p class="note">Ziehe ein Feld auf ein anderes, um die Positionen zu tauschen.</p>
+  <!-- Hauptlayout -->
+  <main>
+    <!-- Hauptbereich -->
+    <section id="rankingSection">
+      <h2>Rangliste – Interaktive Pyramide</h2>
+      <p>Ziehe ein Feld auf ein anderes, um die Positionen zu tauschen.</p>
 
-    <div class="pyramid">
-      <div class="row">
-        <div class="box" draggable="true">1</div>
-      </div>
-      <div class="row">
-        <div class="box" draggable="true">2A</div>
-        <div class="box" draggable="true">2B</div>
-      </div>
-      <div class="row">
-        <div class="box" draggable="true">3A</div>
-        <div class="box" draggable="true">3B</div>
-        <div class="box" draggable="true">3C</div>
-      </div>
-      <div class="row">
-        <div class="box" draggable="true">4A</div>
-        <div class="box" draggable="true">4B</div>
-        <div class="box" draggable="true">4C</div>
-        <div class="box" draggable="true">4D</div>
-      </div>
+      <!-- 🔹 Dynamisch erzeugte Pyramide -->
+      <div id="rankingContainer" class="pyramid"></div>
+    </section>
+
+    <!-- Rechte Sidebar -->
+    <div class="sidebar">
+      <h2>Bewerbe & Herausforderungen</h2>
+      <p class="note">
+        Hier könnte später der Verlauf oder Informationen zu Ranglistenänderungen erscheinen.
+      </p>
     </div>
   </main>
 
@@ -57,6 +46,12 @@
 
   <!-- SKRIPT -->
   <script type="module" src="JS/SDK.js"></script>
-  <script type="module" src="JS/rangliste.js"></script>
+  <script type="module" src="./JS/rangliste.js"></script>
+  <script type="module">
+    import { renderRanking } from "./JS/rangliste.js";
+    renderRanking();
+  </script>
+
 </body>
 </html>
+

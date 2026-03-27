@@ -171,3 +171,129 @@ export const readRankedPlayers = onCall(async () => {
   }
 });
 
+/**
+ * Vergleicht einen Passwort-Hash aus dem Frontend mit dem gespeicherten Hash im Google Sheet
+ * Suchkriterium: E-Mail
+ * Tabelle: "users" mit Spalten [email, passwordHash]
+ */
+export const verifyUserLogin = onCall(async (request) => {
+  try {
+    const {email, passwordHash} = request.data;
+    if (!email || !passwordHash) {
+      throw new Error("E-Mail oder Passwort-Hash fehlt.");
+    }
+
+    console.log("🔍 Login-Überprüfung gestartet für:", email);
+
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({version: "v4", auth});
+
+    // Daten aus TAB "users" oder alternativ "players"
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "players", // ⚠️ ändere ggf. auf "players", wenn du dort E-Mail & Hash speicherst
+    });
+
+    const rows = res.data.values || [];
+    if (rows.length < 2) {
+      throw new Error("❌ Tabelle enthält keine Benutzerdaten.");
+    }
+
+    // Header analysieren
+    const headers = rows[0].map((h) => h.trim().toLowerCase());
+    const emailIndex = headers.indexOf("email");
+    const hashIndex = headers.indexOf("passwdhash"); // ← angepasst
+
+    if (emailIndex === -1 || hashIndex === -1) {
+      return res.status(500).json({
+        success: false,
+        message: "Spalten 'email' oder 'passwdHash' fehlen.",
+      });
+    }
+
+    // Benutzerzeile suchen
+    const userRow = rows.find(
+        (row, i) =>
+          i > 0 &&
+        row[emailIndex] &&
+        row[emailIndex].trim().toLowerCase() === email.trim().toLowerCase(),
+    );
+
+    if (!userRow) {
+      console.warn("⚠️ Keine E-Mail gefunden:", email);
+      return {success: false, message: "E-Mail nicht gefunden."};
+    }
+
+    const storedHash =
+      userRow && userRow[hashIndex] ? userRow[hashIndex].trim() : "";
+    const match = storedHash === passwordHash;
+
+    console.log(match ? "✅ Hash passt!" : "❌ Hash stimmt nicht überein.");
+    return {success: true, valid: match};
+  } catch (err) {
+    console.error("❌ Fehler in verifyUserLogin:", err);
+    return {success: false, error: err.message};
+  }
+});
+
+/**
+ * Liest aus der "players"-Tabelle: Voller Name, E-Mail, Geburtsdatum
+ */
+export const readPlayerDetails = onCall(async () => {
+  try {
+    console.log("🔄 Lade Spieler-Details...");
+
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({version: "v4", auth});
+
+    // Google Sheet abrufen
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "players",
+    });
+
+    const values = res.data.values || [];
+    if (values.length < 2) {
+      throw new Error("❌ Keine Spielerdaten gefunden.");
+    }
+
+    // --- Header verarbeiten ---
+    const header = values[0].map((h) => h.trim().toLowerCase());
+    const firstNameIndex = header.indexOf("firstname");
+    const lastNameIndex = header.indexOf("lastname");
+    const emailIndex = header.indexOf("email");
+    const birthIndex = header.indexOf("geburtsdatum");
+
+    if (
+      firstNameIndex === -1 ||
+      lastNameIndex === -1 ||
+      emailIndex === -1 ||
+      birthIndex === -1
+    ) {
+      throw new Error(
+          "❌ Eine oder mehrere Spalten fehlen (firstname, lastname, email, GeburtsDatum)",
+      );
+    }
+
+    // --- Spieler durchgehen ---
+    const players = values.slice(1).map((row) => {
+      const first = row[firstNameIndex] || "";
+      const last = row[lastNameIndex] || "";
+      const fullName = `${first.trim()} ${last.trim()}`.trim();
+      const email = row[emailIndex] || "";
+      const birthDate = row[birthIndex] || "";
+
+      return {fullName, email, birthDate};
+    });
+
+    console.log(`✅ ${players.length} Spieler geladen.`);
+    return {success: true, players};
+  } catch (err) {
+    console.error("❌ Fehler in readPlayerDetails:", err);
+    return {success: false, error: err.message};
+  }
+});

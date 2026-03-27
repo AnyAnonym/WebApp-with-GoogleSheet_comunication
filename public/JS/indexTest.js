@@ -1,4 +1,3 @@
-// indexTest.js
 import { functions } from "./SDK.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-functions.js";
 
@@ -19,4 +18,5 @@ document.querySelector(".call2").addEventListener("click", async () => {
 
   console.log(r.data.rankedList);
 });
+
 

@@ -32,10 +32,21 @@
 
     <!-- Rechte Sidebar -->
     <div class="sidebar">
-      <h2>Bewerbe & Herausforderungen</h2>
-      <p class="note">
-        Hier könnte später der Verlauf oder Informationen zu Ranglistenänderungen erscheinen.
-      </p>
+      <h2>Top 10 Rangliste</h2>
+  
+      <!-- Zugriffspunkt fürs JS -->
+      <ol id="ranking-list" class="ranking-list">
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+        <li><span class="player-name">–</span></li>
+      </ol>
     </div>
   </main>
 
@@ -51,6 +62,7 @@
     import { renderRanking } from "./JS/rangliste.js";
     renderRanking();
   </script>
+  <script type="module" src="JS/rankingSidebar.js"></script>
 
 </body>
 </html>

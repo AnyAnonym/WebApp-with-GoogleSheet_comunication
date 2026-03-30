@@ -8,15 +8,33 @@
 </head>
 <body>
 
-  <!-- Kopfbereich -->
+  <!-- HEADER -->
   <header>
-    <div class="logo">ASKÖ Piberbach</div>
-    <nav>
-      <a href="./index.html">Dashboard</a>
-      <a href="./players.html" class="active">Spieler</a>
-      <a href="./matches.html">Matches</a>
-      <a href="./rangliste.html">Rangliste</a>
-    </nav>
+    <div class="header-bar"
+      style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px;">
+      <!-- NAVIGATION LINKS LINKS -->
+      <nav class="main-nav" style="display: flex; gap: 20px;">
+        <a href="index.html">Dashboard</a>
+        <a href="players.html" class="active">Spieler</a>
+        <a href="matches.html">Matches</a>
+        <a href="rangliste.html">Rangliste</a>
+      </nav>
+
+      <!-- LOGO ZENTRIERT -->
+      <div class="logo" style="flex: 1; text-align: center; font-size: 1.4rem; font-weight: 600;">
+        ASKÖ Piberbach
+      </div>
+
+      <!-- AUTH NAV RECHTS -->
+      <div class="auth-buttons" style="display: flex; gap: 10px; align-items: center;">
+        <nav class="auth-nav" style="display: flex; gap: 20px;">
+          <a href="#" id="openLogin" class="loggedOut">Sign In</a>
+          <a href="#" id="openSignup" class="loggedOut">Sign Up</a>
+          <a href="#" id="profileButton" class="loggedIn">Profil</a>
+          <a href="#" id="signOutButton" class="loggedIn">Sign Out</a>
+        </nav>
+      </div>
+    </div>
   </header>
 
   <!-- Hauptbereich -->
@@ -60,6 +78,55 @@
     </div>
   </main>
 
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>Login</h2>
+      <form id="loginForm">
+        <label for="email">E-Mail:</label>
+        <input type="email" id="email" required>
+
+        <label for="password">Passwort:</label>
+        <input type="password" id="password" required>
+
+        <button type="submit" class="btn-login">Anmelden</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sign Up Modal -->
+  <div id="signupModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>Registrieren</h2>
+      <form id="signupForm">
+        <label for="signupFirstName">Vorname:</label>
+        <input type="text" id="signupFirstName" required>
+
+        <label for="signupLastName">Nachname:</label>
+        <input type="text" id="signupLastName" required>
+
+        <label for="signupEmail">E-Mail:</label>
+        <input type="email" id="signupEmail" required>
+
+        <label for="signupPassword">Passwort:</label>
+        <input type="password" id="signupPassword" required>
+
+        <button type="submit" class="btn-login">Registrieren</button>
+      </form>
+    </div>
+  </div>
+
+  <!--  PROFILE MODAL -->
+  <div class="modal hidden" id="profileModal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="profileName">Profil</h2>
+      <p id="profileText">Lade Profildaten...</p>
+    </div>
+  </div>
+
   <!-- Fußbereich -->
   <footer class="footer">
     © ASKÖ Piberbach – Tennis
@@ -67,6 +134,7 @@
 
   <!-- SKRIPT -->
   <script type="module" src="JS/SDK.js"></script>
+  <script type="module" src="JS/modals.js"></script>
   <script type="module" src="JS/playerList.js"></script>
   <script type="module" src="JS/rankingSidebar.js"></script>
 

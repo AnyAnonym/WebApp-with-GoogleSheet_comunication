@@ -324,6 +324,16 @@ input[type="date"] {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
+.box.selected {
+  border-color: #0b57d0;
+  background: #eaf1fb;
+}
+
+.box.challengeable {
+  border-color: #2ecc71;
+  background: #e6f9e8;
+}
+
 /* -------------------------------------------------- */
 /*  RESPONSIVES LAYOUT                                */
 /* -------------------------------------------------- */

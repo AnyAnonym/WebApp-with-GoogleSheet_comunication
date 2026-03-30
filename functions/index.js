@@ -3,6 +3,9 @@
 // Hinweis: funktioniert nur, weil in package.json =>  "type": "module"
 import {onCall} from "firebase-functions/v2/https";
 import {google} from "googleapis";
+// import fs from "fs";
+
+// const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
 const SHEET_ID = "1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04";
 
@@ -88,11 +91,102 @@ export const addMatch = onCall(async (request) => {
 });
 
 /**
+ * Fügt einen neuen Spieler in die "players"-Tabelle ein,
+ * verhindert doppelte Registrierung anhand der E-Mail.
+ * Erwartet in req.data:
+ * {
+ *   firstName: "Kilian",
+ *   lastName: "Pimminger",
+ *   email: "kilian@example.com",
+ *   hash: "abc123..."
+ * }
+ */
+export const upsertData = onCall(async (req) => {
+  try {
+    const {firstName, lastName, email, hash} = req.data;
+
+    if (!firstName || !lastName || !email || !hash) {
+      throw new Error("❌ firstName, lastName, email oder hash fehlen in req.data");
+    }
+
+    console.log("🧩 upsertData gestartet:", {firstName, lastName, email});
+
+    // 🔹 Google Sheets Auth (Compute Service‑Account)
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    const authClient = await auth.getClient();
+    const sheets = google.sheets({version: "v4", auth: authClient});
+
+    // 1️⃣ Alle Spieler holen (für E-Mail‑Prüfung)
+    const getRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "players!A:E",
+    });
+
+    const rows = getRes.data.values || [];
+    if (rows.length < 2) {
+      console.warn("⚠️ Tabelle enthält keine Daten außer Header.");
+    }
+
+    // Header finden
+    const header = rows[0].map((h) => h.trim().toLowerCase());
+    const emailIndex = header.indexOf("email");
+    const idIndex = header.indexOf("id");
+
+    if (emailIndex === -1 || idIndex === -1) {
+      throw new Error("❌ Spalten 'id' oder 'email' fehlen im Sheet‑Header");
+    }
+
+    // 2️⃣ Prüfen, ob E‑Mail schon existiert
+    const emailExists = rows.some(
+        (row, i) =>
+          i > 0 &&
+        row[emailIndex] &&
+        row[emailIndex].trim().toLowerCase() === email.trim().toLowerCase(),
+    );
+
+    if (emailExists) {
+      console.warn(`⚠️ E‑Mail ${email} ist bereits registriert.`);
+      return {
+        success: false,
+        error: "Diese E‑Mail ist bereits registriert.",
+      };
+    }
+
+    // 3️⃣ Neue ID bestimmen (nur numerische IDs)
+    const numericIds = rows
+        .slice(1)
+        .map((r) => parseInt(r[idIndex], 10))
+        .filter((n) => !isNaN(n) && n > 0);
+
+    const lastId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
+    const newId = lastId + 1;
+
+    // 4️⃣ Neue Zeile erstellen
+    const newRow = [newId, firstName, lastName, email, hash];
+
+    // 5️⃣ Anhängen
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: "players!A1:E",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {values: [newRow]},
+    });
+
+    console.log(`✅ Spieler gespeichert: ID ${newId} (${email})`);
+    return {success: true, inserted: newRow};
+  } catch (err) {
+    console.error("❌ Fehler in upsertData:", err);
+    return {success: false, error: err.message};
+  }
+});
+
+/**
  * Baut die Rangliste aus den Tabs "rankedPlayers" und "players" zusammen.
  * - "rankedPlayers" enthält Spalten: Rang | PlayerID
  * - "players" enthält Spalten: id | firstName | lastName
  */
-
 export const readRankedPlayers = onCall(async () => {
   console.log("✅ readRankedPlayers gestartet...");
 

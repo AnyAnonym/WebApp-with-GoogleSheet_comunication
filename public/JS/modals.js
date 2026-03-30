@@ -1,8 +1,9 @@
 import { functions } from "./SDK.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-functions.js";
 
-// ------------------------------------------------------- Passwort-Hash-Funktion
-
+//------------------------------------------------------- 
+// Passwort-Hash-Funktion
+//-------------------------------------------------------
 async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -12,7 +13,9 @@ async function hashPassword(password) {
   return hashHex;
 }
 
-//-------------------------------------------------------Login Modal
+//-------------------------------------------------------
+// Login Modal
+//-------------------------------------------------------
 const modal = document.getElementById("loginModal");
 const openBtn = document.getElementById("openLogin");
 const closeBtn = modal.querySelector(".close");
@@ -67,7 +70,9 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   modal.classList.add("hidden");
 });
 
-//-------------------------------------------------------Sign Up Modal
+//-------------------------------------------------------
+// Sign Up Modal
+//-------------------------------------------------------
 const signupModal = document.getElementById("signupModal");
 const openSignup = document.getElementById("openSignup");
 const closeSignup = signupModal.querySelector(".close");
@@ -87,20 +92,31 @@ window.addEventListener("click", (e) => {
 
 document.getElementById("signupForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const name = e.target.signupName.value;
-  const email = e.target.signupEmail.value;
+
+  const firstName = e.target.signupFirstName.value.trim();
+  const lastName = e.target.signupLastName.value.trim();
+  const email = e.target.signupEmail.value.trim();
   const password = e.target.signupPassword.value;
+  const hash = await hashPassword(password);
 
-  // Passwort in Hash umwandeln (SHA‑256)
-  const passwordHash = await hashPassword(password);
-  console.log("Sign‑Up attempt:", { name, email, passwordHash });
+  console.log("📝 Sign‑Up‑Attempt:", { firstName, lastName, email, hash });
 
-  // → hier später API Call mit {name, email, passwordHash}
+  const upsertFn = httpsCallable(functions, "upsertData");
+  const result = await upsertFn({ firstName, lastName, email, hash });
+  const { success, error } = result.data;
+
+  if (success) {
+    alert("✅ Registrierung erfolgreich gespeichert!");
+  } else {
+    alert("❌ Fehler beim Speichern: " + error);
+  }
 
   signupModal.classList.add("hidden");
 });
 
-// ------------------------------------------------------- Sign Out Button Logic
+//------------------------------------------------------- 
+// Sign Out Button Logic
+//-------------------------------------------------------
 document.getElementById("signOutButton").addEventListener("click", (e) => {
   e.preventDefault();
 
@@ -119,7 +135,9 @@ document.getElementById("signOutButton").addEventListener("click", (e) => {
   alert("👋 Abgemeldet.");
 });
 
-//------------------------------------------------------- Profil Modal Logic
+//------------------------------------------------------- 
+// Profil Modal Logic
+//-------------------------------------------------------
 const profileModal = document.getElementById("profileModal");
 const openProfile = document.getElementById("profileButton");
 const closeProfile = profileModal.querySelector(".close");

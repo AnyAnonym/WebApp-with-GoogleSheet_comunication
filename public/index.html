@@ -32,8 +32,8 @@
         <nav class="auth-nav" style="display: flex; gap: 20px;">
           <a href="#" id="openLogin" class="loggedOut">Sign In</a>
           <a href="#" id="openSignup" class="loggedOut">Sign Up</a>
-          <a href="#" id="signOutButton" class="loggedIn">Sign Out</a>
           <a href="#" id="profileButton" class="loggedIn">Profil</a>
+          <a href="#" id="signOutButton" class="loggedIn">Sign Out</a>
         </nav>
       </div>
     </div>
@@ -90,8 +90,11 @@
       <span class="close">&times;</span>
       <h2>Registrieren</h2>
       <form id="signupForm">
-        <label for="signupName">Name:</label>
-        <input type="text" id="signupName" required>
+        <label for="signupFirstName">Vorname:</label>
+        <input type="text" id="signupFirstName" required>
+
+        <label for="signupLastName">Nachname:</label>
+        <input type="text" id="signupLastName" required>
 
         <label for="signupEmail">E-Mail:</label>
         <input type="email" id="signupEmail" required>
@@ -104,14 +107,14 @@
     </div>
   </div>
 
-<!--  PROFILE MODAL -->
-<div class="modal hidden" id="profileModal">
-  <div class="modal-content">
-    <span class="close">&times;</span>
-    <h2 id="profileName">Profil</h2>
-    <p id="profileText">Lade Profildaten...</p>
+  <!--  PROFILE MODAL -->
+  <div class="modal hidden" id="profileModal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2 id="profileName">Profil</h2>
+      <p id="profileText">Lade Profildaten...</p>
+    </div>
   </div>
-</div>
 
   <!-- FOOTER -->
   <footer class="footer">

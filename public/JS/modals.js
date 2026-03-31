@@ -29,10 +29,6 @@ closeBtn.addEventListener("click", () => {
   modal.classList.add("hidden");
 });
 
-window.addEventListener("click", (e) => {
-  if (e.target === modal) modal.classList.add("hidden");
-});
-
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = e.target.email.value.trim();
@@ -86,10 +82,6 @@ closeSignup.addEventListener("click", () => {
   signupModal.classList.add("hidden");
 });
 
-window.addEventListener("click", (e) => {
-  if (e.target === signupModal) signupModal.classList.add("hidden");
-});
-
 document.getElementById("signupForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -123,6 +115,7 @@ document.getElementById("signOutButton").addEventListener("click", (e) => {
   // Lösche eingeloggte Infos
   localStorage.removeItem("loggedInEmail");
   localStorage.removeItem("isLoggedIn");
+  localStorage.removeItem("currentUserName");
 
   // UI zurücksetzen
   document.querySelectorAll(".loggedIn").forEach((element) => {
@@ -179,6 +172,7 @@ openProfile.addEventListener("click", async (e) => {
     if (!player) {
       profileName.textContent = "Unbekanntes Profil";
       profileText.textContent = "Keine Daten gefunden.";
+      localStorage.removeItem("currentUserName");
       return;
     }
 
@@ -188,6 +182,9 @@ openProfile.addEventListener("click", async (e) => {
       <strong>E-Mail:</strong> ${player.email || "-"}<br>
       <strong>Geburtsdatum:</strong> ${player.birthDate || "-"}
     `;
+
+    // 🚀 Aktuellen Namen als Vorbelegung speichern
+    localStorage.setItem("currentUserName", player.fullName || "");
   } catch (err) {
     console.error("❌ Fehler beim Laden des Profils:", err);
     profileName.textContent = "Fehler beim Laden!";
@@ -198,11 +195,6 @@ openProfile.addEventListener("click", async (e) => {
 // Schließen (X-Button)
 closeProfile.addEventListener("click", () => {
   profileModal.classList.add("hidden");
-});
-
-// Schließen bei Klick auf Hintergrund
-window.addEventListener("click", (e) => {
-  if (e.target === profileModal) profileModal.classList.add("hidden");
 });
 
 // Beim Laden prüfen, ob der User eingeloggt ist
@@ -217,3 +209,87 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+//----------------------------------------------------
+// Match-Anfrage Modal Logik
+//----------------------------------------------------
+
+const matchModal = document.getElementById("matchModal");
+const closeMatch = matchModal.querySelector(".close");
+const matchForm = document.getElementById("matchForm");
+
+const player1Input = document.getElementById("player1");
+const player1IdInput = document.getElementById("player1Id");
+const player2Input = null; // nicht benötigt
+const player2IdInput = null;
+const player3Input = document.getElementById("player3");
+const player3IdInput = document.getElementById("player3Id");
+const player4Input = null;
+const player4IdInput = null;
+const player1Display = document.getElementById("player1Display");
+const player3Display = document.getElementById("player3Display");
+const datumInput = document.getElementById("matchDate");
+const platzInput = document.getElementById("platz");
+
+closeMatch.addEventListener("click", () => {
+  matchModal.classList.add("hidden");
+});
+
+matchForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const matchData = {
+    player1: player1Input.value.trim(),
+    player1Id: player1IdInput.value.trim(),
+    player3: player3Input.value.trim(),
+    player3Id: player3IdInput.value.trim(),
+    datum: datumInput.value,
+    platz: platzInput.value.trim(),
+  };
+
+  console.log("🎾 Matchanfrage gesendet:", matchData);
+
+  try {
+    const addMatchFn = httpsCallable(functions, "addMatch");
+    const result = await addMatchFn(matchData);
+    const data = result.data;
+
+    if (data?.success) {
+      alert("✅ Match erfolgreich gespeichert!");
+    } else {
+      throw new Error(data?.error || "Unbekannter Fehler beim Speichern");
+    }
+  } catch (err) {
+    console.error("❌ Fehler beim Speichern des Matches:", err);
+    alert("❌ Speichern fehlgeschlagen: " + (err.message || err));
+  }
+
+  matchModal.classList.add("hidden");
+});
+
+window.openMatchModal = ({
+  player1 = "",
+  player1Id = "",
+  player3 = "",
+  player3Id = "",
+  datum = "",
+  platz = "",
+} = {}) => {
+  player1Input.value = player1;
+  player1IdInput.value = player1Id;
+  player1Display.textContent = player1;
+
+  player3Input.value = player3 || localStorage.getItem("currentUserName") || "";
+  player3IdInput.value = player3Id || localStorage.getItem("currentUserId") || "";
+  player3Display.textContent = player3Input.value;
+
+  datumInput.value = datum;
+  platzInput.value = platz;
+
+  matchModal.classList.remove("hidden");
+};
+
+window.closeMatchModal = () => {
+  matchModal.classList.add("hidden");
+};
+

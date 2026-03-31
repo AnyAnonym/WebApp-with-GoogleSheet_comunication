@@ -68,7 +68,21 @@ export async function renderRanking() {
       box.textContent = `${player.rank} – ${player.name}`;
       row.appendChild(box);
 
-      rowBoxes.push({ rank: player.rank, name: player.name, box });
+      // Klick auf grüne Challengeable-Box öffnet das Match-Modal
+      box.addEventListener("click", () => {
+        if (!box.classList.contains("challengeable")) return;
+
+        window.openMatchModal({
+          player1: player.name || "",
+          player1Id: player.playerId || "",
+          player3: localStorage.getItem("currentUserName") || "",
+          player3Id: localStorage.getItem("currentUserId") || "",
+          datum: "",
+          platz: "",
+        });
+      });
+
+      rowBoxes.push({ rank: player.rank, playerId: player.playerId, name: player.name, box });
     }
 
     // visuelle Balance
@@ -182,6 +196,11 @@ export async function renderRanking() {
       if (!myEntry) {
         console.warn(`⚠ Kein Rang gefunden für ${myFullName}`);
         return;
+      }
+
+      // Speichere eigene User-ID zur Verwendung im Matchmodal
+      if (myEntry.playerId) {
+        localStorage.setItem("currentUserId", myEntry.playerId);
       }
 
       const myRank = myEntry.rank;

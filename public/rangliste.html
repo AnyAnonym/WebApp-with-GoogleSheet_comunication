@@ -119,6 +119,31 @@
     </div>
   </div>
 
+  <!-- MATCHANFORDERUNG MODAL -->
+  <div class="modal hidden" id="matchModal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>Matchanfrage erstellen</h2>
+      <form id="matchForm">
+        <p>Spieler 1: <span id="player1Display" class="name-display"></span></p>
+        <input type="hidden" id="player1" name="player1">
+        <input type="hidden" id="player1Id" name="player1Id">
+
+        <p>Spieler 3: <span id="player3Display" class="name-display"></span></p>
+        <input type="hidden" id="player3" name="player3">
+        <input type="hidden" id="player3Id" name="player3Id">
+
+        <label for="matchDate">Datum:</label>
+        <input type="date" id="matchDate" name="matchDate" required>
+
+        <label for="platz">Platz:</label>
+        <input type="text" id="platz" name="platz" required>
+
+        <button type="submit" class="btn-login">Speichern</button>
+      </form>
+    </div>
+  </div>
+
   <!-- FOOTER -->
   <footer class="footer">
     © ASKÖ Piberbach – Tennis

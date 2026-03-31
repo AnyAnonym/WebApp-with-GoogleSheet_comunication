@@ -61,32 +61,164 @@ export const readMatchesList = onCall(async () => {
 });
 
 /**
+ * Kombiniert Matches (mit Spieler‑IDs) und Players‑Tab zu vollständigen Match‑Objekten.
+ * Unterstützt jetzt 3 Sätze!
+ */
+export const readFullMatches = onCall(async () => {
+  try {
+    console.log("✅ readFullMatches gestartet (3‑Satz‑Version)…");
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({version: "v4", auth});
+
+    // --- Tabellen abrufen ---
+    const [matchesRes, playersRes] = await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "matches",
+      }),
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "players",
+      }),
+    ]);
+
+    const matchesValues = matchesRes.data.values || [];
+    const playersValues = playersRes.data.values || [];
+    if (matchesValues.length < 2 || playersValues.length < 2) {
+      throw new Error("Leere Tabellen (matches oder players).");
+    }
+
+    // --- Header finden ---
+    const header = matchesValues[0].map((h) => h.trim().toLowerCase());
+    const playerHeader = playersValues[0].map((h) => h.trim().toLowerCase());
+
+    const idIndex = playerHeader.indexOf("id");
+    const fnIndex = playerHeader.indexOf("firstname");
+    const lnIndex = playerHeader.indexOf("lastname");
+
+    // --- ID → Name Map ---
+    const playerMap = new Map();
+    playersValues.slice(1).forEach((r) => {
+      const id = r[idIndex];
+      const name = `${r[fnIndex] || ""} ${r[lnIndex] || ""}`.trim();
+      playerMap.set(id, name);
+    });
+
+    // --- Spaltenindizes dynamisch ermitteln ---
+    const idx = (label) => header.findIndex((v) => v.includes(label));
+
+    const i1 = idx("spieler id 1");
+    const i2 = idx("spieler id 2");
+    const i3 = idx("spieler id 3");
+    const i4 = idx("spieler id 4");
+    const s1 = idx("satz 1");
+    const s2 = idx("satz 2");
+    const s3 = idx("satz 3");
+    const d = idx("datum");
+    const p = idx("platz");
+
+    // --- Matches mappen ---
+    const startRow = header[0].toLowerCase().includes("spieler") ? 1 : 0;
+    const allMatches = matchesValues.slice(startRow).map((row) => {
+      const sets = [row[s1], row[s2], row[s3]].filter(Boolean);
+
+      return {
+        date: row[d] || "---",
+        players: [
+          playerMap.get(row[i1]) || "---",
+          playerMap.get(row[i2]) || "---",
+          playerMap.get(row[i3]) || "---",
+          playerMap.get(row[i4]) || "---",
+        ],
+        sets,
+        platz: row[p] || "",
+      };
+    });
+
+    console.log(`🏁 ${allMatches.length} Matches verarbeitet.`);
+    return {success: true, matches: allMatches};
+  } catch (err) {
+    console.error("❌ Fehler in readFullMatches (3‑Satz‑Version):", err);
+    return {success: false, error: err.message};
+  }
+});
+
+/**
  * Fügt ein Match in die "matches"-Tabelle ein.
  */
 export const addMatch = onCall(async (request) => {
   try {
-    const {spielerA, spielerB, satz1, satz2, datum, platz} = request.data;
+    const {
+      player1Id,
+      player2Id = "",
+      player3Id,
+      player4Id = "",
+      datum,
+      platz,
+    } = request.data || {};
 
-    // Sheets-Client mit Schreibrechten
+    if (!player1Id || !player3Id || !datum || !platz) {
+      return {
+        success: false,
+        error: "Mindestens player1Id, player3Id, datum und platz müssen gesetzt sein",
+      };
+    }
+
     const auth = new google.auth.GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
     const sheets = google.sheets({version: "v4", auth});
 
+    // optional: IDs existieren in players
+    const playersRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "players",
+    });
+
+    const players = playersRes.data.values || [];
+    if (players.length < 2) {
+      return {success: false, error: "Keine Spieler in players-Tabelle gefunden."};
+    }
+
+    const header = players[0].map((h) => (h || "").trim().toLowerCase());
+    const idIdx = header.indexOf("id");
+    if (idIdx === -1) {
+      return {success: false, error: "players-Tabelle muss Spalte id enthalten."};
+    }
+
+    const validIds = new Set(players.slice(1).map((r) => (r[idIdx] || "").toString().trim()));
+
+    const missingIds = [];
+    if (!validIds.has(player1Id.toString().trim())) missingIds.push(`player1Id '${player1Id}'`);
+    if (!validIds.has(player3Id.toString().trim())) missingIds.push(`player3Id '${player3Id}'`);
+    if (player2Id && !validIds.has(player2Id.toString().trim())) missingIds.push(`player2Id '${player2Id}'`);
+    if (player4Id && !validIds.has(player4Id.toString().trim())) missingIds.push(`player4Id '${player4Id}'`);
+
+    if (missingIds.length > 0) {
+      return {success: false, error: `ID(s) nicht gefunden: ${missingIds.join(", ")}`};
+    }
+
+    const p1id = player1Id.toString().trim();
+    const p2id = player2Id.toString().trim();
+    const p3id = player3Id.toString().trim();
+    const p4id = player4Id.toString().trim();
+    // Daten in preMatches schreiben
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: "matches!A:F",
+      range: "preMatches!A:F",
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[spielerA, spielerB, satz1, satz2, datum, platz]],
+        values: [[p1id, p2id, p3id, p4id, datum, platz]],
       },
     });
 
-    console.log("✅ Match gespeichert:", res.data.updates);
+    console.log("✅ preMatch gespeichert:", res.data.updates);
     return {success: true, updates: res.data.updates};
   } catch (err) {
     console.error("❌ Google Sheets Schreibfehler:", err);
-    throw new Error(`Sheets API Fehler: ${err.message}`);
+    return {success: false, error: err.message};
   }
 });
 
@@ -250,7 +382,7 @@ export const readRankedPlayers = onCall(async () => {
       const rank = Number(row[rankIndex]);
       const playerId = row[playerIdIndex];
       const name = playerMap.get(playerId) || "Unbekannt";
-      return {rank, name};
+      return {rank, playerId, name};
     });
 
     // optional: nach Rang sortieren

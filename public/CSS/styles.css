@@ -78,6 +78,12 @@ body {
   margin: 6px 0 12px 0;
 }
 
+.name-display.demanded {
+  font-size: 1.2rem;
+  padding: 6px 14px;
+  font-weight: 800;
+}
+
 .modal-content .btn-login {
   width: 100%;
   margin-top: 16px;
@@ -452,4 +458,79 @@ input[type="date"] {
   .sidebar {
     order: 2;
   }
+}
+
+/* -------------------------------------------------- */
+/*  NOTIFICATION BELL                                 */
+/* -------------------------------------------------- */
+
+.notification-bell {
+  color: white;
+  font-size: 1.2rem;
+}
+
+.notification-bell:hover {
+  opacity: 0.8;
+}
+
+#notificationBadge {
+  display: none;
+}
+
+/* -------------------------------------------------- */
+/*  CHALLENGE LIST IN NOTIFICATION MODAL              */
+/* -------------------------------------------------- */
+
+#challengeList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.challenge-item {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.challenge-item p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.challenger-name {
+  font-weight: 800;
+  color: #d9534f;
+}
+
+.challenge-item input[type="date"],
+.challenge-item input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.challenge-item .set-date-btn {
+  margin-top: 4px;
+  padding: 8px;
+  background: #0b57d0;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.challenge-item .set-date-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.challenge-item .set-date-btn:hover:not(:disabled) {
+  opacity: 0.85;
 }

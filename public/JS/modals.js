@@ -88,24 +88,26 @@ if (isRanglistePage) {
   matchModal = createModal("matchModal", `
     <h2>Matchanfrage erstellen</h2>
     <form id="matchForm">
-      <p>Spieler 1: <span id="player1Display" class="name-display"></span></p>
+      <p>Geforderter: <span id="player1Display" class="name-display demanded"></span></p>
       <input type="hidden" id="player1" name="player1">
       <input type="hidden" id="player1Id" name="player1Id">
 
-      <p>Spieler 3: <span id="player3Display" class="name-display"></span></p>
+      <p>Herausforderer: <span id="player3Display" class="name-display"></span></p>
       <input type="hidden" id="player3" name="player3">
       <input type="hidden" id="player3Id" name="player3Id">
 
-      <label for="matchDate">Datum:</label>
-      <input type="date" id="matchDate" name="matchDate" required>
-
-      <label for="platz">Platz:</label>
-      <input type="text" id="platz" name="platz" required>
-
-      <button type="submit" class="btn-login">Speichern</button>
+      <button type="submit" class="btn-login">Herausforderung senden</button>
     </form>
   `);
 }
+
+// --- Notification Modal ---
+const notificationModal = createModal("notificationModal", `
+  <h2>Herausforderungen</h2>
+  <div id="challengeList">
+    <p>Lade...</p>
+  </div>
+`);
 
 //-------------------------------------------------------
 // Cloud Function Referenzen
@@ -127,15 +129,19 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   const email = e.target.email.value.trim();
   const password = e.target.password.value;
   const passwordHash = await hashPassword(password);
+  const submitBtn = e.target.querySelector('button[type="submit"]');
 
   console.log("Login attempt (hashed):", { email, passwordHash });
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Anmelden...";
 
   const verifyFn = httpsCallable(functions, "verifyUserLogin");
   const result = await verifyFn({ email, passwordHash });
   const res = result.data;
 
   if (res.success && res.valid) {
-    alert("Login erfolgreich!");
+    submitBtn.textContent = "Erfolgreich!";
 
     localStorage.setItem("loggedInEmail", email);
     localStorage.setItem("currentUserEmail", email);
@@ -155,15 +161,17 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
       console.warn("Profil-Daten nach Login nicht geladen:", err);
     }
 
-    window.location.reload();
+    setTimeout(() => window.location.reload(), 500);
 
   } else if (res.success && !res.valid) {
     alert("Falsches Passwort!");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Anmelden";
   } else {
     alert("Fehler: " + (res.error ?? res.message));
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Anmelden";
   }
-
-  modal.classList.add("hidden");
 });
 
 //-------------------------------------------------------
@@ -184,27 +192,31 @@ document.getElementById("signupForm").addEventListener("submit", async (e) => {
   const email = e.target.signupEmail.value.trim();
   const password = e.target.signupPassword.value;
   const hash = await hashPassword(password);
+  const submitBtn = e.target.querySelector('button[type="submit"]');
 
   console.log("Sign-Up-Attempt:", { firstName, lastName, email, hash });
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Registrieren...";
 
   const upsertFn = httpsCallable(functions, "upsertData");
   const result = await upsertFn({ firstName, lastName, email, hash });
   const { success, error } = result.data;
 
   if (success) {
-    alert("Registrierung erfolgreich! Du bist jetzt eingeloggt.");
+    submitBtn.textContent = "Erfolgreich!";
 
     localStorage.setItem("loggedInEmail", email);
     localStorage.setItem("isLoggedIn", "true");
     localStorage.setItem("currentUserEmail", email);
 
-    window.location.reload();
+    setTimeout(() => window.location.reload(), 500);
 
   } else {
     alert("Fehler beim Speichern: " + error);
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Registrieren";
   }
-
-  signupModal.classList.add("hidden");
 });
 
 //-------------------------------------------------------
@@ -218,6 +230,8 @@ document.getElementById("signOutButton").addEventListener("click", (e) => {
   localStorage.removeItem("currentUserId");
   localStorage.removeItem("currentUserName");
   localStorage.removeItem("isLoggedIn");
+
+  updateNotificationBadge(0);
 
   window.location.reload();
 });
@@ -300,8 +314,6 @@ if (isRanglistePage && matchModal) {
   const player3IdInput = document.getElementById("player3Id");
   const player1Display = document.getElementById("player1Display");
   const player3Display = document.getElementById("player3Display");
-  const datumInput = document.getElementById("matchDate");
-  const platzInput = document.getElementById("platz");
 
   document.getElementById("matchForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -311,9 +323,11 @@ if (isRanglistePage && matchModal) {
       player1Id: player1IdInput.value.trim(),
       player3: player3Input.value.trim(),
       player3Id: player3IdInput.value.trim(),
-      datum: datumInput.value,
-      platz: platzInput.value.trim(),
     };
+
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Senden...";
 
     console.log("Matchanfrage gesendet:", matchData);
 
@@ -323,13 +337,16 @@ if (isRanglistePage && matchModal) {
       const data = result.data;
 
       if (data?.success) {
-        alert("Match erfolgreich gespeichert!");
+        submitBtn.textContent = "Gesendet!";
+        alert("Herausforderung erfolgreich gesendet!");
       } else {
         throw new Error(data?.error || "Unbekannter Fehler beim Speichern");
       }
     } catch (err) {
       console.error("Fehler beim Speichern des Matches:", err);
       alert("Speichern fehlgeschlagen: " + (err.message || err));
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Herausforderung senden";
     }
 
     matchModal.classList.add("hidden");
@@ -340,8 +357,6 @@ if (isRanglistePage && matchModal) {
     player1Id = "",
     player3 = "",
     player3Id = "",
-    datum = "",
-    platz = "",
   } = {}) => {
     player1Input.value = player1;
     player1IdInput.value = player1Id;
@@ -351,9 +366,6 @@ if (isRanglistePage && matchModal) {
     player3IdInput.value = player3Id || localStorage.getItem("currentUserId") || "";
     player3Display.textContent = player3Input.value;
 
-    datumInput.value = datum;
-    platzInput.value = platz;
-
     matchModal.classList.remove("hidden");
   };
 
@@ -361,3 +373,135 @@ if (isRanglistePage && matchModal) {
     matchModal.classList.add("hidden");
   };
 }
+
+//-------------------------------------------------------
+// Notification Bell - offene Herausforderungen
+//-------------------------------------------------------
+const getMyChallenges = httpsCallable(functions, "getMyChallenges");
+const setMatchDateFn = httpsCallable(functions, "setMatchDate");
+
+let notificationBadge = null;
+
+function updateNotificationBadge(count) {
+  if (!notificationBadge) {
+    notificationBadge = document.getElementById("notificationBadge");
+  }
+  if (notificationBadge) {
+    notificationBadge.textContent = count > 0 ? count : "";
+    notificationBadge.style.display = count > 0 ? "block" : "none";
+  }
+}
+
+async function loadChallenges() {
+  const userId = localStorage.getItem("currentUserId");
+  if (!userId) return;
+
+  try {
+    const result = await getMyChallenges({ userId });
+    const { success, challenges = [] } = result.data || {};
+    if (success) {
+      updateNotificationBadge(challenges.length);
+    }
+  } catch (err) {
+    console.error("Fehler beim Laden der Herausforderungen:", err);
+  }
+}
+
+window.openNotificationModal = async () => {
+  const userId = localStorage.getItem("currentUserId");
+  if (!userId) {
+    alert("Bitte einloggen!");
+    return;
+  }
+
+  notificationModal.classList.remove("hidden");
+  const listEl = document.getElementById("challengeList");
+  listEl.innerHTML = "<p>Lade...</p>";
+
+  try {
+    const result = await getMyChallenges({ userId });
+    const { success, challenges = [] } = result.data || {};
+
+    if (!success) throw new Error("Fehler beim Laden");
+
+    if (challenges.length === 0) {
+      listEl.innerHTML = "<p>Keine offenen Herausforderungen.</p>";
+      return;
+    }
+
+    listEl.innerHTML = challenges
+      .map(
+        (c, i) => `
+      <div class="challenge-item">
+        <p><strong>${i + 1}.</strong> <span class="challenger-name">${c.player3}</span> fordert dich heraus!</p>
+        <label for="date-${c.row}">Datum:</label>
+        <input type="date" id="date-${c.row}" required>
+        <label for="platz-${c.row}">Platz:</label>
+        <input type="text" id="platz-${c.row}" placeholder="Platz">
+        <button class="btn-login set-date-btn" data-row="${c.row}">Datum setzen</button>
+      </div>
+    `
+      )
+      .join("");
+
+    listEl.querySelectorAll(".set-date-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const row = btn.dataset.row;
+        const dateInput = document.getElementById(`date-${row}`);
+        const platzInput = document.getElementById(`platz-${row}`);
+
+        if (!dateInput.value) {
+          alert("Bitte ein Datum auswählen!");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Speichern...";
+
+        try {
+          const result = await setMatchDateFn({
+            row: parseInt(row),
+            datum: dateInput.value,
+            platz: platzInput.value.trim(),
+          });
+
+          if (result.data?.success) {
+            btn.textContent = "Gespeichert!";
+            dateInput.disabled = true;
+            platzInput.disabled = true;
+            loadChallenges();
+          } else {
+            throw new Error(result.data?.error || "Fehler");
+          }
+        } catch (err) {
+          console.error("Fehler beim Setzen des Datums:", err);
+          alert("Fehler: " + err.message);
+          btn.disabled = false;
+          btn.textContent = "Datum setzen";
+        }
+      });
+    });
+  } catch (err) {
+    console.error("Fehler beim Laden:", err);
+    listEl.innerHTML = "<p>Fehler beim Laden.</p>";
+  }
+};
+
+window.closeNotificationModal = () => {
+  notificationModal.classList.add("hidden");
+};
+
+const notificationBell = document.getElementById("notificationBell");
+if (notificationBell) {
+  notificationBell.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.openNotificationModal();
+  });
+}
+
+window.addEventListener("load", () => {
+  const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+  if (isLoggedIn) {
+    loadChallenges();
+  }
+});

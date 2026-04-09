@@ -155,14 +155,12 @@ export const addMatch = onCall(async (request) => {
       player2Id = "",
       player3Id,
       player4Id = "",
-      datum,
-      platz,
     } = request.data || {};
 
-    if (!player1Id || !player3Id || !datum || !platz) {
+    if (!player1Id || !player3Id) {
       return {
         success: false,
-        error: "Mindestens player1Id, player3Id, datum und platz müssen gesetzt sein",
+        error: "player1Id und player3Id müssen gesetzt sein",
       };
     }
 
@@ -204,13 +202,13 @@ export const addMatch = onCall(async (request) => {
     const p2id = player2Id.toString().trim();
     const p3id = player3Id.toString().trim();
     const p4id = player4Id.toString().trim();
-    // Daten in preMatches schreiben
+    // Daten in preMatches schreiben (leere datum/platz = offen)
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
       range: "preMatches!A:F",
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[p1id, p2id, p3id, p4id, datum, platz]],
+        values: [[p1id, p2id, p3id, p4id, "", ""]],
       },
     });
 
@@ -466,7 +464,149 @@ export const verifyUserLogin = onCall(async (request) => {
 
 /**
  * Liest aus der "players"-Tabelle: Voller Name, E-Mail, Geburtsdatum
+ * Liest offene Herausforderungen für einen Spieler aus preMatches.
+ * Nur der GEFORDERTE (Spieler 1) bekommt die Notification.
  */
+export const getMyChallenges = onCall(async (request) => {
+  try {
+    const {userId} = request.data || {};
+    if (!userId) {
+      return {success: false, error: "userId fehlt"};
+    }
+
+    console.log("🔔 Lade Herausforderungen für User:", userId);
+
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({version: "v4", auth});
+
+    const [preMatchesRes, playersRes] = await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "preMatches",
+      }),
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "players",
+      }),
+    ]);
+
+    const preRows = preMatchesRes.data.values || [];
+    const playerRows = playersRes.data.values || [];
+
+    if (preRows.length < 2) {
+      return {success: true, challenges: []};
+    }
+
+    const playerHeader = playerRows[0].map((h) => h.trim().toLowerCase());
+    const pIdIdx = playerHeader.indexOf("id");
+    const pFnIdx = playerHeader.indexOf("firstname");
+    const pLnIdx = playerHeader.indexOf("lastname");
+
+    const playerMap = new Map();
+    playerRows.slice(1).forEach((r) => {
+      const id = r[pIdIdx];
+      const name = `${r[pFnIdx] || ""} ${r[pLnIdx] || ""}`.trim();
+      playerMap.set(id, name);
+    });
+
+    const preHeader = preRows[0].map((h) => h.trim().toLowerCase());
+    const i1 = preHeader.indexOf("spieler id 1");
+    const i2 = preHeader.indexOf("spieler id 2");
+    const i3 = preHeader.indexOf("spieler id 3");
+    const d = preHeader.indexOf("datum");
+
+    const challenges = [];
+    preRows.slice(1).forEach((row, rowIndex) => {
+      const rowNum = rowIndex + 2;
+      const p1 = row[i1] || "";
+      const p2 = row[i2] || "";
+      const p3 = row[i3] || "";
+      const datum = row[d] || "";
+
+      const isForMe = p1 === userId;
+      const isOpen = !datum;
+
+      if (isForMe && isOpen) {
+        challenges.push({
+          row: rowNum,
+          player1: playerMap.get(p1) || p1,
+          player2: playerMap.get(p2) || p2,
+          player3: playerMap.get(p3) || p3,
+        });
+      }
+    });
+
+    console.log(`✅ ${challenges.length} offene Herausforderungen gefunden.`);
+    return {success: true, challenges};
+  } catch (err) {
+    console.error("❌ Fehler in getMyChallenges:", err);
+    return {success: false, error: err.message};
+  }
+});
+
+/**
+ * Trägt Datum (und optional Platz) in eine preMatches-Zeile ein.
+ */
+export const setMatchDate = onCall(async (request) => {
+  try {
+    const {row, datum, platz} = request.data || {};
+    if (!row || !datum) {
+      return {success: false, error: "row und datum sind erforderlich"};
+    }
+
+    console.log("📅 Setze Datum in preMatches Zeile", row, ":", datum);
+
+    const auth = new google.auth.GoogleAuth({
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    const sheets = google.sheets({version: "v4", auth});
+
+    const preRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: "preMatches",
+    });
+    const preRows = preRes.data.values || [];
+    if (preRows.length < 2) {
+      return {success: false, error: "preMatches ist leer"};
+    }
+
+    const header = preRows[0].map((h) => h.trim().toLowerCase());
+    // const dIdx = header.indexOf("datum");
+    const pIdx = header.indexOf("platz");
+
+    const rowInSheet = row;
+    const cellE = `preMatches!E${rowInSheet}`;
+    const updates = [];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: cellE,
+      valueInputOption: "USER_ENTERED",
+      requestBody: {values: [[datum]]},
+    });
+    updates.push(`datum=${datum}`);
+
+    if (platz && pIdx !== -1) {
+      const cellF = `preMatches!F${rowInSheet}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: cellF,
+        valueInputOption: "USER_ENTERED",
+        requestBody: {values: [[platz]]},
+      });
+      updates.push(`platz=${platz}`);
+    }
+
+    console.log("✅ Datum gesetzt:", updates.join(", "));
+    return {success: true};
+  } catch (err) {
+    console.error("❌ Fehler in setMatchDate:", err);
+    return {success: false, error: err.message};
+  }
+});
+
 export const readPlayerDetails = onCall(async () => {
   try {
     console.log("🔄 Lade Spieler-Details...");

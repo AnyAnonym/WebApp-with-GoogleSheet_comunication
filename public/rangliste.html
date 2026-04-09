@@ -29,6 +29,10 @@
 
       <!-- AUTH NAV RECHTS -->
       <div class="auth-buttons" style="display: flex; gap: 10px; align-items: center;">
+        <a href="#" id="notificationBell" class="loggedIn notification-bell" style="position: relative; text-decoration: none;">
+          🔔
+          <span id="notificationBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; display: flex; align-items: center; justify-content: center;"></span>
+        </a>
         <nav class="auth-nav" style="display: flex; gap: 20px;">
           <a href="#" id="openLogin" class="loggedOut">Sign In</a>
           <a href="#" id="openSignup" class="loggedOut">Sign Up</a>
@@ -44,7 +48,7 @@
     <!-- Hauptbereich -->
     <section id="rankingSection">
       <h2>Rangliste – Interaktive Pyramide</h2>
-      <p>Klicke auf einen Spieler, um diesen herauszufordern.</p>
+      <p>Klicke auf einen grünen Spieler, um diesen herauszufordern.</p>
 
       <!-- 🔹 Dynamisch erzeugte Pyramide -->
       <div id="rankingContainer" class="pyramid"></div>

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ASKÖ Piberbach – Dashboard</title>
+  <title>Pre-Matches – ASKÖ Piberbach</title>
   <link rel="stylesheet" href="./CSS/styles.css" />
 </head>
 
@@ -16,13 +16,13 @@
       style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px;">
       <!-- NAVIGATION LINKS LINKS -->
       <nav class="main-nav" style="display: flex; gap: 20px;">
-        <a href="index.html" class="active">Dashboard</a>
+        <a href="index.html">Dashboard</a>
         <a href="players.html">Spieler</a>
         <div class="dropdown">
           <a href="matches.html" class="dropbtn">Matches ▾</a>
           <div class="dropdown-content">
             <a href="matches.html" onclick="event.stopPropagation()">Matches</a>
-            <a href="preMatches.html" onclick="event.stopPropagation()">Pre-Matches</a>
+            <a href="preMatches.html" class="active" onclick="event.stopPropagation()">Pre-Matches</a>
           </div>
         </div>
         <a href="rangliste.html">Rangliste</a>
@@ -49,15 +49,22 @@
     </div>
   </header>
 
+  <!-- Hauptbereich -->
   <main>
+    <!-- Hauptinhalt -->
     <section>
-      <h2>Willkommen!</h2>
-      <p>Hier erscheinen später dynamische Inhalte wie Spielerlisten oder Ranglistenpyramiden.</p>
-      <p>Diese Startseite kann später „Letzte Ergebnisse“, „Aktive Bewerbe“ oder „Statistiken“ anzeigen.</p>
-      <button class="call" id="testButton">Test</button>
-      <button class="call2" id="testButton2">Test2</button>
+      <h2>Offene Forderungen</h2>
+      <p class="note">
+        Hier siehst du alle ausstehenden Match-Anforderungen.
+      </p>
+
+      <!-- PreMatches Container -->
+      <div id="preMatches-container" class="matches-container">
+        <p class="loading-text">Lade Forderungen...</p>
+      </div>
     </section>
 
+    <!-- Rechte Sidebar -->
     <div class="sidebar">
       <h2>Top 10 Rangliste</h2>
 
@@ -82,10 +89,10 @@
     © ASKÖ Piberbach – Tennis
   </footer>
 
-  <!-- SKRIPT -->
+  <!-- SCRIPT -->
   <script type="module" src="JS/SDK.js"></script>
-  <script type="module" src="JS/indexTest.js"></script>
   <script type="module" src="JS/modals.js"></script>
+  <script type="module" src="JS/preMatchesList.js"></script>
   <script type="module" src="JS/rankingSidebar.js"></script>
 
 </body>

@@ -16,7 +16,13 @@
       <nav class="main-nav" style="display: flex; gap: 20px;">
         <a href="index.html">Dashboard</a>
         <a href="players.html" class="active">Spieler</a>
-        <a href="matches.html">Matches</a>
+        <div class="dropdown">
+          <a href="matches.html" class="dropbtn">Matches ▾</a>
+          <div class="dropdown-content">
+            <a href="matches.html" onclick="event.stopPropagation()">Matches</a>
+            <a href="preMatches.html" onclick="event.stopPropagation()">Pre-Matches</a>
+          </div>
+        </div>
         <a href="rangliste.html">Rangliste</a>
       </nav>
 

@@ -132,7 +132,6 @@ async function loadPreMatches() {
       const team2 = [match.player3, match.player4].filter(Boolean).join(" / ") || "---";
       const statusBadge = getStatusBadge(match.status, match.ergebnis);
       const actionButton = getActionButton(match, userId);
-      const isDu = match.isForMe ? " (Du)" : "";
 
       return `
         <div class="match-card ${match.status === 'offen' ? 'status-offen' : match.status === 'bestaetigt' ? 'status-bestaetigt' : ''}">
@@ -140,7 +139,7 @@ async function loadPreMatches() {
           <div class="match-date">${match.datum || "Datum nicht festgelegt"} - ${match.platz || "Platz nicht festgelegt"}</div>
           <div class="match-content">
             <div class="team">
-              <div class="player main">${team1}${isDu}</div>
+              <div class="player main">${team1}</div>
             </div>
             <div class="vs">vs.</div>
             <div class="team">

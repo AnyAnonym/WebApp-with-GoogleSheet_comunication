@@ -1,0 +1,457 @@
+================================================================================
+PROTOKOLL - ASKÖ Piberbach Tennis Ranglisten-WebApp
+================================================================================
+Erstellt: 16.04.2026
+Letzte Änderung: 16.04.2026
+
+================================================================================
+1. PROJEKTÜBERSICHT
+================================================================================
+
+Projektname: ASKÖ Piberbach Tennis Dashboard
+Beschreibung: Web-Anwendung zur Verwaltung einer Tennis-Rangliste mit 
+              Herausforderungssystem und Match-Verwaltung
+Live-URL: https://web-with-sheet-70c93.web.app/
+
+Technologie-Stack:
+- Frontend: Vanilla JavaScript (ES6 Modules), HTML, CSS
+- Backend: Firebase Cloud Functions (Node.js 20)
+- Datenbank: Google Sheets API
+- Hosting: Firebase Hosting
+- Authentifizierung: Custom (SHA-256 Hash in Google Sheets)
+
+
+================================================================================
+2. PROJEKTSTRUKTUR
+================================================================================
+
+WebApp-with-GoogleSheet_comunication/
+├── public/                          # Frontend (Static Hosting)
+│   ├── index.html                  # Dashboard/Homepage
+│   ├── players.html                # Spieler-Liste
+│   ├── matches.html                # Abgeschlossene Matches
+│   ├── preMatches.html             # Offene Forderungen
+│   ├── rangliste.html              # Interaktive Ranglisten-Pyramide
+│   ├── CSS/
+│   │   └── styles.css             # Globale Styles
+│   └── JS/
+│       ├── SDK.js                  # Firebase Initialisierung
+│       ├── modals.js               # Login/Signup/Profile Modals
+│       ├── playerList.js           # Spieler-Liste Rendering
+│       ├── matchesList.js          # Match-Cards Rendering
+│       ├── preMatchesList.js        # PreMatch-Liste Rendering
+│       ├── rankingSidebar.js       # Sidebar Top-10
+│       └── rangliste.js            # Ranglisten-Pyramide Logik
+│
+├── functions/                       # Firebase Cloud Functions (Backend)
+│   ├── index.js                    # Alle Cloud Functions
+│   ├── package.json                # Node.js Dependencies
+│   └── service-account.json        # Google Service Account (SENSITIVE!)
+│
+├── OneNote_Notizen/               # Projektnotizen
+│   └── Rangliste-Regeln.png        # Bild der Projektnotizen
+│
+├── firebase.json                   # Firebase Konfiguration
+├── firestore.rules                 # Firestore Security Rules
+├── firestore.indexes.json          # Firestore Indexes
+├── .firebaserc                    # Firebase Project Reference
+├── package.json                    # Root Dependencies
+└── README.md                       # Projekt-Dokumentation
+
+
+================================================================================
+3. GOOGLE SHEETS TABELLENSTRUKTUR
+================================================================================
+
+3.1 players
+-----------
+| Spalte | Name       | Beschreibung                    |
+|--------|------------|---------------------------------|
+| A      | ID         | Fortlaufende Nummer            |
+| B      | FirstName  | Vorname                        |
+| C      | LastName   | Nachname                       |
+| D      | Email      | E-Mail                         |
+| E      | PasswdHash | SHA-256 Passwort-Hash          |
+
+3.2 rankedPlayers
+-----------------
+| Spalte | Name     | Beschreibung            |
+|--------|----------|-------------------------|
+| A      | Rang     | Ranglistenposition       |
+| B      | PlayerID | Verweis auf Spieler-ID  |
+
+3.3 preMatches
+-------------
+| Spalte | Name           | Beschreibung                         |
+|--------|----------------|--------------------------------------|
+| A      | Spieler ID 1   | Geforderter                          |
+| B      | Spieler ID 2   | Team Geforderter (optional)          |
+| C      | Spieler ID 3   | Herausforderer                       |
+| D      | Spieler ID 4   | Team Herausforderer (optional)       |
+| E      | Datum          | Spieltermin                          |
+| F      | Platz          | Spielort                             |
+| G      | Status         | offen, bestaetigt, gespielt         |
+| H      | ForderungAm    | Datum der Forderung                  |
+| I      | Ergebnis       | Satz1,Satz2,Satz3 Format            |
+| J      | BestaetigtVon  | Wer bestätigt hat                    |
+
+3.4 matches
+----------
+| Spalte | Name           | Beschreibung              |
+|--------|----------------|---------------------------|
+| A      | Spieler ID 1   | Geforderter               |
+| B      | Spieler ID 2   | Team Geforderter          |
+| C      | Spieler ID 3   | Herausforderer            |
+| D      | Spieler ID 4   | Team Herausforderer       |
+| E      | Satz 1         | z.B. "6:4"               |
+| F      | Satz 2         | z.B. "3:6"               |
+| G      | Satz 3         | z.B. "7:5"               |
+| H      | Datum          | Spieltermin               |
+| I      | Platz          | Spielort                  |
+| J      | Gewinner       | ID des Gewinners          |
+
+
+================================================================================
+4. CLOUD FUNCTIONS (Backend)
+================================================================================
+
+4.1 readRankedPlayers
+---------------------
+Liest Rangliste aus rankedPlayers + players Tabellen.
+Gibt sortierte Liste mit {rank, playerId, name} zurück.
+
+4.2 readFullMatches
+-------------------
+Liest alle Matches mit Spieler-Namen statt IDs.
+Kombiniert matches + players Tabellen.
+
+4.3 readPlayersList
+-------------------
+Gibt alle Spieler aus players-Tabelle zurück.
+
+4.4 readMatchesList
+-------------------
+Gibt rohe Match-Daten aus matches-Tabelle zurück.
+
+4.5 upsertData
+--------------
+Erstellt neuen Spieler oder aktualisiert bestehenden.
+Prüft auf doppelte E-Mail.
+Generiert neue ID automatisch.
+
+4.6 verifyUserLogin
+------------------
+Überprüft Login-Credentials gegen players-Tabelle.
+Vergleicht SHA-256 Hash.
+
+4.7 readPlayerDetails
+---------------------
+Liest Spieler-Details (Name, Email, Geburtsdatum).
+
+4.8 readPreMatches
+-----------------
+Liest alle PreMatches (ohne User-Filter).
+Gibt personalisierte Daten mit Spieler-Namen zurück.
+Konvertiert alle IDs zu Strings (Typen-Match-Fix).
+
+4.9 setPreMatchResult
+---------------------
+Trägt Match-Ergebnis (3 Sätze) ein.
+Berechnet Gewinner aus Sätzen.
+Verschiebt abgeschlossenes Match in matches-Tabelle.
+Leert die preMatches-Zeile.
+
+4.10 addMatch
+-------------
+Erstellt neue Forderung in preMatches.
+Ohne Datum und Platz (diese werden später vom Geforderten gesetzt).
+
+4.11 getMyChallenges
+--------------------
+Liest offene Herausforderungen für einen bestimmten User.
+Nur der Geforderte (Spieler ID 1) bekommt Notification.
+
+4.12 setMatchDate
+-----------------
+Trägt Datum und Platz in preMatches-Zeile ein.
+Setzt Status auf "bestaetigt".
+
+
+================================================================================
+5. FRONTEND-SEITEN
+================================================================================
+
+5.1 index.html (Dashboard)
+--------------------------
+- Willkommensnachricht
+- Sidebar mit Top-10 Rangliste
+- Navigation mit Dropdown für Matches
+
+5.2 players.html (Spieler)
+--------------------------
+- Liste aller registrierten Spieler
+- Sidebar mit Top-10 Rangliste
+
+5.3 matches.html (Abgeschlossene Matches)
+----------------------------------------
+- Anzeige aller abgeschlossenen Matches
+- Match-Cards mit Spielern, Datum, Sätzen
+- Sidebar mit Top-10 Rangliste
+
+5.4 preMatches.html (Offene Forderungen)
+----------------------------------------
+- Anzeige aller offenen/bestätigten Forderungen
+- Status-Badges (Offen, Bestätigt, Gespielt)
+- Ergebnis-eintragen Button für eingeloggte User
+- Modal für Satzeingabe
+- Sidebar mit Top-10 Rangliste
+
+5.5 rangliste.html (Interaktive Pyramide)
+------------------------------------------
+- Ranglisten-Pyramide mit Click-to-Challenge
+- Grüne Boxen = forderbar
+- Blaue Box = eigener Rang
+- Öffnet Match-Anfrage-Modal
+
+
+================================================================================
+6. RANKLISTENREGELN
+================================================================================
+
+Siehe OneNote_Notizen/Rangliste-Regeln-Zusammengefasst.png
+
+Kurzfassung:
+- Neueinsteiger: Beliebige Position
+- Gelistete Spieler: Gleiche Zeile links ODER darüber rechts
+- Ausnahme: Rang 3 darf auch 2 und 1 fordern
+- Schutzzeit: 7 Tage nach Sieg (darf nicht gefordert werden)
+- Sperrzeit: 7 Tage nach Niederlage (darf nicht fordern)
+- Offene Forderungen verhindern neue Forderungen
+
+
+================================================================================
+7. FEATURES & FUNKTIONALITÄTEN
+================================================================================
+
+7.1 Authentifizierung
+----------------------
+- Login mit E-Mail + Passwort
+- Registration mit Vorname, Nachname, E-Mail, Passwort
+- Passwort wird als SHA-256 Hash gespeichert
+- Session in localStorage (isLoggedIn, currentUserEmail, currentUserId, currentUserName)
+
+7.2 Notification System
+----------------------
+- Glocken-Icon 🔔 im Header
+- Badge zeigt Anzahl offener Herausforderungen
+- Klick öffnet Modal mit Herausforderungen
+- Datum/Platz setzen für Forderungen
+
+7.3 Dropdown Navigation
+------------------------
+- Hover öffnet Dropdown bei "Matches"
+- Links zu Matches und Pre-Matches
+
+7.4 PreMatch Workflow
+--------------------
+1. Herausforderer fordert über Ranglisten-Pyramide
+2. Geforderter sieht Notification
+3. Geforderter setzt Datum/Platz
+4. Beide können Ergebnis eintragen
+5. Nach Eintragung → preMatches wird geleert, Match in matches geschrieben
+
+
+================================================================================
+8. BEKANNTE ISSUES & FIXES
+================================================================================
+
+8.1 Typen-Mismatch bei IDs
+---------------------------
+Problem: Google Sheets gibt Zahlen als Number zurück, localStorage als String.
+Lösung: Alle IDs werden in Cloud Functions mit String() konvertiert.
+
+8.2 ESLint Object-Curly-Spacing
+--------------------------------
+Problem: ESLint erwartet keine Leerzeichen in {variable}.
+Lösung: Optional chaining (?.) vermieden, String() verwendet.
+
+8.3 Dropdown funktioniert nicht auf matches.html
+-------------------------------------------------
+Problem: Link klickte Seite bevor Hover-Event ausgelöst wurde.
+Lösung: onclick="event.stopPropagation()" auf Button.
+
+8.4 Falsche Zellen beim Herausfordern (21.04.2026)
+---------------------------------------------------
+Problem: IDs wurden in falsche Zellen geschrieben, wenn leere Zeilen in 
+         preMatches existierten. Grund: Google Sheets API append() mit 
+         range "A:F" oder "A1:F" funktioniert nicht wie erwartet.
+Lösung: Range geändert zu nur Sheet-Name "preMatches" (ohne Spaltenangabe).
+        append() findet jetzt automatisch die nächste leere Zeile.
+
+8.5 Mehrfaches Herausfordern unterstützen (21.04.2026)
+-------------------------------------------------------
+Problem: Nach erfolgreichem Versand blieb der "Senden"-Button im Modal 
+         disabled und Form wurde nicht geleert.
+Lösung: Button nach erfolgreichem Versand re-enablen, Text zurücksetzen,
+        Form mit reset() leeren, und nur dann Modal schließen.
+        Frontend-Bug in modals.js behoben.
+
+8.6 Herausforderungs-Validierungen nach Ranglisten-Regeln (21.04.2026)
+-----------------------------------------------------------------------
+Problem: Keine Prüfung auf 7-Tage-Sperrzeit und Schutzzeit.
+         Kein Check auf offene Forderungen.
+
+Implementierte Validierungen in addMatch():
+- Offene Forderung prüfen: Keine neue Forderung wenn Spieler bereits in
+  offener Forderung steckt (ohne Datum)
+- Geforderte-Schutzzeit: Der Geforderte (Spieler ID 3) darf 7 Tage nach
+  Sieg nicht gefordert werden
+- Forderer-Sperrzeit: Der Forderer (Spieler ID 1) darf 7 Tage nach 
+  Niederlage nicht fordern
+
+Datum-Vergleich: Prüft letzte 7 Tage in matches-Tabelle.
+
+
+================================================================================
+9. SICHERHEITSHINWEISE
+================================================================================
+
+WARNUNG: Die folgenden Dateien enthalten SENSIBLE DATEN und sollten NICHT 
+         öffentlich gemacht werden:
+
+- functions/service-account.json
+  Enthält Google Service Account Private Key
+
+- firebase.json / .firebaserc
+  Enthält Projekt-Referenzen
+
+Empfohlene Maßnahmen:
+- service-account.json in .gitignore aufnehmen
+- Credentials über Firebase Environment Variables speichern
+- Firestore Rules aktualisieren (laufen am 24.03.2026 ab)
+
+
+================================================================================
+10. DEPLOYMENT
+================================================================================
+
+Backend (Cloud Functions):
+--------------------------
+cd functions
+npm run lint           # ESLint prüfen
+firebase deploy --only functions
+
+Frontend (Hosting):
+-------------------
+firebase deploy --only hosting
+
+Oder alles:
+-----------
+firebase deploy
+
+
+================================================================================
+11. ZUKÜNFTIGE VERBESSERUNGEN
+================================================================================
+
+- [ ] Ranglisten-Updates nach Match-Bestätigung (automatisch oder manuell?)
+- [ ] Zeitverzögerung vor Ranking-Update
+- [ ] Match-Ergebnisse auf matches.html anzeigen
+- [ ] Sperrzeit/Schutzzeit automatisch verwalten
+- [ ] Admin-Panel für Sportliche Leitung
+- [ ] E-Mail-Benachrichtigungen bei Forderungen
+- [ ] TypeScript Migration
+- [ ] Build-Prozess mit Minifizierung
+- [ ] Tests für Cloud Functions
+
+
+================================================================================
+12. CHANGELOG
+================================================================================
+
+2026-04-21:
+-----------
+- BUGFIX: IDs in falsche Zellen geschrieben bei Herausforderungen
+  Grund: append() mit range "preMatches!A:F" oder "preMatches!A1:F"
+  Fix: Range zu "preMatches" (nur Sheet-Name) geändert
+  
+- FEATURE: Mehrfaches Herausfordern jetzt möglich
+  Problem: Button blieb disabled nach erstem Versand
+  Fix: Button nach erfolgreicher Herausforderung wieder enablen, Form leeren
+  
+- FEATURE: Herausforderungs-Validierungen nach Ranglisten-Regeln
+  • Offene Forderungen blockieren neue Forderungen
+  • Geforderte steht 7 Tage unter Schutzzeit nach Sieg
+  • Forderer steht 7 Tage unter Sperrzeit nach Niederlage
+  Hinweis: 7-Tage-Fristen können nicht live getestet werden
+
+2026-04-16:
+-----------
+- PreMatches: Alle sehen alle Forderungen, nur eingeloggte können Ergebnis eintragen
+- "(Du)" Label bei PreMatches entfernt
+- Test-Buttons und indexTest.js aus index.html entfernt
+- Dropdown-Fix für matches.html
+- Typen-Mismatch-Fix (String-Konvertierung bei IDs)
+
+2026-04-15:
+-----------
+- Ergebnis-Modal mit 3 Sätzen für PreMatches
+- Match-Ergebnisse werden in matches-Tabelle geschrieben
+- preMatches-Zeile wird nach Abschluss geleert
+- Alle PreMatches für alle sichtbar (vorher nur eigene)
+
+2026-04-14:
+-----------
+- PreMatches-Seite erstellt (preMatches.html, preMatchesList.js)
+- Cloud Functions: readPreMatches, setPreMatchResult
+- Dropdown-Navigation bei Matches
+- Ergebnis-eintragen Button (nur für involvierte Spieler)
+
+2026-04-13:
+-----------
+- Notification Bell System
+- getMyChallenges Cloud Function
+- setMatchDate Cloud Function
+- Datum/Platz setzen für Forderungen
+
+2026-04-12:
+-----------
+- Ranglisten-Pyramide
+- Match-Anfrage Modal
+- addMatch Cloud Function
+- Ranglisten-Regeln implementiert (fordern, Herausforderung)
+
+
+================================================================================
+12. CHANGELOG (Fortsetzung)
+================================================================================
+
+2026-04-21:
+-----------
+- addMatch: preMatches-Spaltenanzahl korrigiert (10 statt 6)
+  Problem: IDs wurden in falsche Zellen geschrieben
+  Lösung: Alle 10 Spalten werden beim Append beschrieben
+  Neue Werte: [[p1id, p2id, p3id, p4id, "", "", "offen", "", "", ""]]
+
+2026-04-22:
+-----------
+- setPreMatchResult: Ranking-Update nach Match implementiert
+  Regeln implementiert:
+  - Gewinnt Forderer: Übernimmt Platz des Geforderten
+  - Alle dazwischenliegenden Spieler rutschen 1 Platz nach hinten
+  - Gewinnt Geforderter: Beide behalten ihre Positionen
+  - Neue Property: rankingUpdated im Response
+
+2026-04-20:
+-----------
+- PROTOKOLL.txt erstellt (Projekt-Dokumentation)
+- PreMatches: Alle sehen alle Forderungen
+- PreMatches: Nur eingeloggte User können Ergebnis eintragen
+- "(Du)" Label bei PreMatches entfernt
+- Test-Buttons und indexTest.js aus index.html entfernt
+- Dropdown-Fix für matches.html
+- Typen-Mismatch-Fix (String-Konvertierung bei IDs)
+
+================================================================================
+ENDE DES PROTOKOLLS
+================================================================================

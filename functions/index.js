@@ -203,13 +203,96 @@ export const addMatch = onCall(async (request) => {
     const p2id = player2Id.toString().trim();
     const p3id = player3Id.toString().trim();
     const p4id = player4Id.toString().trim();
-    // Daten in preMatches schreiben (leere datum/platz = offen)
+
+    // 🔹 Lese preMatches und matches für Validierungen
+    const [preRes, matchesRes] = await Promise.all([
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "preMatches",
+      }),
+      sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "matches",
+      }),
+    ]);
+
+    const preRows = preRes.data.values || [];
+    const matchesRows = matchesRes.data.values || [];
+
+    // --- Prüfe offene Forderungen ---
+    if (preRows.length > 1) {
+      const preHeader = preRows[0].map((h) => h.trim().toLowerCase());
+      const i1 = preHeader.indexOf("spieler id 1");
+      const i2 = preHeader.indexOf("spieler id 2");
+      const i3 = preHeader.indexOf("spieler id 3");
+      const i4 = preHeader.indexOf("spieler id 4");
+      const d = preHeader.indexOf("datum");
+
+      for (let i = 1; i < preRows.length; i++) {
+        const row = preRows[i];
+        // Nur offene (kein Datum) berücksichtigen
+        if (!row[d] || row[d] === "") {
+          const existing1 = String(row[i1] || "").trim();
+          const existing2 = String(row[i2] || "").trim();
+          const existing3 = String(row[i3] || "").trim();
+          const existing4 = String(row[i4] || "").trim();
+
+          if (existing1 === p1id || existing1 === p3id ||
+              existing2 === p1id || existing2 === p3id ||
+              existing3 === p1id || existing3 === p3id ||
+              existing4 === p1id || existing4 === p3id) {
+            return {success: false, error: "Einer der Spieler hat bereits eine offene Forderung!"};
+          }
+        }
+      }
+    }
+
+    // --- Prüfe 7-Tage-Regeln (Schutzzeit nach Sieg, Sperrzeit nach Niederlage) ---
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    if (matchesRows.length > 1) {
+      const matchesHeader = matchesRows[0].map((h) => h.trim().toLowerCase());
+      const mi1 = matchesHeader.indexOf("spieler id 1");
+      const mi3 = matchesHeader.indexOf("spieler id 3");
+      const md = matchesHeader.indexOf("datum");
+      const ms1 = matchesHeader.indexOf("satz 1");
+      const ms2 = matchesHeader.indexOf("satz 2");
+
+      for (let i = 1; i < matchesRows.length; i++) {
+        const row = matchesRows[i];
+        const matchDate = row[md] ? new Date(row[md]) : null;
+
+        if (matchDate && matchDate >= sevenDaysAgo) {
+          const m1 = String(row[mi1] || "").trim();
+          const m3 = String(row[mi3] || "").trim();
+          const satz1 = String(row[ms1] || "").trim();
+          const satz2 = String(row[ms2] || "").trim();
+
+          // Prüfe ob es ein abgeschlossenes Match ist
+          if (satz1 && satz2) { // Minimum 2 Sätze
+            // --- Schutzzeit: p3id (Geforderte) nach Sieg ---
+            if (m3 === p3id) {
+              return {success: false, error: "Geforderte(r) steht unter Schutzzeit (7 Tage nach Sieg)"};
+            }
+
+            // --- Sperrzeit: p1id (Forderer) nach Niederlage ---
+            if (m1 === p1id) {
+              return {success: false, error: "Sie stehen unter Sperrzeit (7 Tage nach Niederlage)"};
+            }
+          }
+        }
+      }
+    }
+
+    // Daten in preMatches schreiben (alle 10 Spalten!)
+    // Spalten: A-J = SpielerID1, SpielerID2, SpielerID3, SpielerID4, Datum, Platz, Status, ForderungAm, Ergebnis, BestaetigtVon
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: "preMatches!A:F",
+      range: "preMatches",
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[p1id, p2id, p3id, p4id, "", ""]],
+        values: [[p1id, p2id, p3id, p4id, "", "", "offen", "", "", ""]],
       },
     });
 
@@ -769,6 +852,7 @@ export const readPreMatches = onCall(async (request) => {
 
 /**
  * Tragt Match-Ergebnis ein, verschiebt in matches Tabelle.
+ * Aktualisiert Rangliste wenn Forderer gewinnt.
  */
 export const setPreMatchResult = onCall(async (request) => {
   try {
@@ -823,6 +907,7 @@ export const setPreMatchResult = onCall(async (request) => {
     const datum = matchRow[d] || "";
     const platz = matchRow[p] || "";
 
+    // Gewinner berechnen
     const saetze = [satz1, satz2, satz3];
     let siegeP1 = 0;
     let siegeP3 = 0;
@@ -840,10 +925,11 @@ export const setPreMatchResult = onCall(async (request) => {
         }
       }
     });
-    const gewinner = siegeP1 > siegeP3 ? p1 : p3;
+    const fordererGewonnen = siegeP3 > siegeP1;
+    const gewinner = fordererGewonnen ? p3 : p1;
 
+    // Match in matches schreiben
     const newRow = [p1, p2, p3, p4, satz1, satz2, satz3, datum, platz, gewinner];
-
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
       range: "matches!A:J",
@@ -851,6 +937,7 @@ export const setPreMatchResult = onCall(async (request) => {
       requestBody: {values: [newRow]},
     });
 
+    // preMatches Zeile leeren
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       range: "preMatches!A" + row + ":J" + row,
@@ -858,7 +945,88 @@ export const setPreMatchResult = onCall(async (request) => {
       requestBody: {values: [["", "", "", "", "", "", "", "", "", ""]]},
     });
 
-    return {success: true};
+    // RANKLISTEN-UPDATE wenn Forderer gewonnen hat
+    if (fordererGewonnen) {
+      const rankRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: "rankedPlayers",
+      });
+      const rankValues = rankRes.data.values || [];
+      if (rankValues.length < 2) {
+        return {success: true, rankingUpdated: false};
+      }
+
+      const rankHeader = rankValues[0].map((h) => h.trim().toLowerCase());
+      const rangIdx = rankHeader.indexOf("rang");
+      const pidIdx = rankHeader.indexOf("playerid");
+
+      if (rangIdx === -1 || pidIdx === -1) {
+        return {success: true, rankingUpdated: false};
+      }
+
+      // Finde Positionen von p1 (Geforderter) und p3 (Forderer)
+      let rangP1 = -1;
+      let rangP3 = -1;
+
+      for (let i = 1; i < rankValues.length; i++) {
+        const rowRank = rankValues[i];
+        const playerId = String(rowRank[pidIdx] || "").trim();
+        if (playerId === p1) {
+          rangP1 = parseInt(rowRank[rangIdx], 10);
+        }
+        if (playerId === p3) {
+          rangP3 = parseInt(rowRank[rangIdx], 10);
+        }
+      }
+
+      console.log("Rangliste: Forderer=" + p3 + "(Rang " + rangP3 + ") fordert " + p1 + "(Rang " + rangP1 + ")");
+
+      // Wenn Forderer ranghoher ist (kleine Zahl = besser), dann tauschen
+      if (rangP1 > 0 && rangP3 > 0 && rangP3 > rangP1) {
+        console.log("Forderer gewinnt! Tausche Rang " + rangP3 + " mit Rang " + rangP1);
+
+        // Alle Spieler zwischen rangP1 und rangP3 um 1 nach hinten schieben
+        for (let i = 1; i < rankValues.length; i++) {
+          const rowRank = rankValues[i];
+          const aktRang = parseInt(rowRank[rangIdx], 10);
+          if (aktRang > rangP1 && aktRang < rangP3) {
+            // Rang um 1 erhoehen (nach hinten schieben)
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SHEET_ID,
+              range: "rankedPlayers!A" + (i + 1),
+              valueInputOption: "USER_ENTERED",
+              requestBody: {values: [[aktRang + 1]]},
+            });
+          }
+        }
+
+        // Forderer (p3) auf Rang von Gefordertem (p1) setzen
+        const fordererRowIdx = rankValues.findIndex((r) => String(r[pidIdx] || "").trim() === p3);
+        if (fordererRowIdx > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SHEET_ID,
+            range: "rankedPlayers!A" + (fordererRowIdx + 1),
+            valueInputOption: "USER_ENTERED",
+            requestBody: {values: [[rangP1]]},
+          });
+        }
+
+        // Geforderter (p1) auf Rang von Forderer (p3) setzen
+        const geforderterRowIdx = rankValues.findIndex((r) => String(r[pidIdx] || "").trim() === p1);
+        if (geforderterRowIdx > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SHEET_ID,
+            range: "rankedPlayers!A" + (geforderterRowIdx + 1),
+            valueInputOption: "USER_ENTERED",
+            requestBody: {values: [[rangP3]]},
+          });
+        }
+
+        console.log("Rangliste aktualisiert!");
+      }
+    }
+
+    return {success: true, rankingUpdated: fordererGewonnen};
   } catch (err) {
     console.error("Fehler in setPreMatchResult:", err);
     return {success: false, error: err.message};

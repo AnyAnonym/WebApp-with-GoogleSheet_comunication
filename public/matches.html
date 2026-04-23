@@ -12,42 +12,66 @@
 
   <!-- HEADER -->
   <header>
-    <div class="header-bar"
-      style="display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 1200px;">
-      <!-- NAVIGATION LINKS LINKS -->
-      <nav class="main-nav" style="display: flex; gap: 20px;">
-        <a href="index.html">Dashboard</a>
-        <a href="players.html">Spieler</a>
-        <div class="dropdown">
-          <a href="matches.html" class="dropbtn dropbtn-active" onclick="event.stopPropagation()">Matches ▾</a>
-          <div class="dropdown-content">
-            <a href="matches.html" class="active">Matches</a>
-            <a href="preMatches.html">Pre-Matches</a>
-          </div>
+    <!-- Desktop Navigation (links) -->
+    <nav id="mainNav" class="main-nav desktop-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="players.html">Spieler</a>
+      <div class="dropdown">
+        <a href="matches.html" class="dropbtn">Matches ▾</a>
+        <div class="dropdown-content">
+          <a href="matches.html" class="active" onclick="event.stopPropagation()">Matches</a>
+          <a href="preMatches.html" onclick="event.stopPropagation()">Pre-Matches</a>
         </div>
-        <a href="rangliste.html">Rangliste</a>
+      </div>
+      <a href="rangliste.html">Rangliste</a>
+    </nav>
+
+    <!-- Logo (center) -->
+    <div class="header-center">
+      <span class="logo">ASKÖ Piberbach</span>
+      <button class="hamburger" id="hamburgerBtn">☰</button>
+    </div>
+
+    <!-- Desktop Auth Nav (rechts) -->
+    <nav class="auth-nav desktop-auth">
+      <a href="#" id="notificationBell" class="loggedIn notification-bell" style="position: relative; text-decoration: none;">
+        🔔
+        <span id="notificationBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; display: flex; align-items: center; justify-content: center;"></span>
+      </a>
+      <a href="#" id="openLogin" class="loggedOut">Sign In</a>
+      <a href="#" id="openSignup" class="loggedOut">Sign Up</a>
+      <a href="#" id="profileButton" class="loggedIn">Profil</a>
+      <a href="#" id="signOutButton" class="loggedIn">Sign Out</a>
+    </nav>
+  </header>
+
+  <!-- MOBILE NAV MODAL -->
+  <div id="mobileNavModal" class="modal hidden">
+    <div class="modal-content mobile-nav-content">
+      <!-- Close Button -->
+      <span class="close">&times;</span>
+
+      <!-- Mobile Notification Bell -->
+      <a href="#" id="notificationBellMobile" class="loggedIn notification-bell mobile-bell">🔔</a>
+
+      <!-- Mobile Auth Nav -->
+      <nav class="mobile-auth-section">
+        <a href="#" id="openLoginMobile" class="loggedOut">Sign In</a>
+        <a href="#" id="openSignupMobile" class="loggedOut">Sign Up</a>
+        <a href="#" id="profileButtonMobile" class="loggedIn">Profil</a>
+        <a href="#" id="signOutButtonMobile" class="loggedIn">Sign Out</a>
       </nav>
 
-      <!-- LOGO ZENTRIERT -->
-      <div class="logo" style="flex: 1; text-align: center; font-size: 1.4rem; font-weight: 600;">
-        ASKÖ Piberbach
-      </div>
-
-      <!-- AUTH NAV RECHTS -->
-      <div class="auth-buttons" style="display: flex; gap: 10px; align-items: center;">
-        <a href="#" id="notificationBell" class="loggedIn notification-bell" style="position: relative; text-decoration: none;">
-          🔔
-          <span id="notificationBadge" style="display: none; position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; display: flex; align-items: center; justify-content: center;"></span>
-        </a>
-        <nav class="auth-nav" style="display: flex; gap: 20px;">
-          <a href="#" id="openLogin" class="loggedOut">Sign In</a>
-          <a href="#" id="openSignup" class="loggedOut">Sign Up</a>
-          <a href="#" id="profileButton" class="loggedIn">Profil</a>
-          <a href="#" id="signOutButton" class="loggedIn">Sign Out</a>
-        </nav>
-      </div>
+      <!-- Mobile Navigation Links -->
+      <nav class="mobile-nav-links">
+        <a href="index.html">Dashboard</a>
+        <a href="players.html">Spieler</a>
+        <a href="matches.html" class="active">Matches</a>
+        <a href="preMatches.html">Pre-Matches</a>
+        <a href="rangliste.html">Rangliste</a>
+      </nav>
     </div>
-  </header>
+  </div>
 
   <!-- Hauptbereich -->
   <main>

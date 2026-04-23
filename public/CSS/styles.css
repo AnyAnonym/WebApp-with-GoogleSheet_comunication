@@ -123,28 +123,55 @@ body {
 }
 
 /* -------------------------------------------------- */
-/*  HEADER & NAVIGATION (neu für das 3-Teilige Layout) */
+/*  HEADER & NAVIGATION (Desktop + Mobile)             */
 /* -------------------------------------------------- */
 
 header {
   background: #0b57d0;
   color: #fff;
-  padding: 16px 24px;
+  padding: 12px 24px;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* Desktop: 3-spaltig Layout */
+.desktop-nav {
+  display: flex;
+  gap: 20px;
+  order: 1;
+  flex: 1;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  order: 2;
+  flex: 1;
+}
+
+.desktop-auth {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  order: 3;
+  flex: 1;
+  justify-content: flex-end;
 }
 
 header .logo {
   font-size: 1.4rem;
   font-weight: 600;
-  margin-bottom: 8px;
 }
 
 nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 15px;
+  align-items: center;
 }
 
 nav a {
@@ -163,12 +190,144 @@ nav a.active {
   padding-bottom: 2px;
 }
 
+.hamburger {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.8rem;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+  margin: 0;
+  margin-left: auto;
+}
+
 .loggedIn {
   display: none;
 }
 
 .loggedOut {
   display: inline;
+}
+
+/* -------------------------------------------------- */
+/*  MOBILE HEADER & HAMBURGER MENU                    */
+/* -------------------------------------------------- */
+
+/* Mobile Layout */
+@media (max-width: 700px) {
+  header {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 12px 16px;
+  }
+
+  .header-center {
+    flex: 1;
+    order: 1;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  header .logo {
+    margin: 0;
+    font-size: 1.3rem;
+  }
+
+  .desktop-nav,
+  .desktop-auth {
+    display: none !important;
+  }
+
+  .hamburger {
+    display: block;
+    order: 2;
+  }
+}
+
+/* Modal für mobile Navigation */
+.mobile-nav-content {
+  width: 90%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mobile-nav-content .close {
+  position: static;
+  font-size: 1.3rem;
+  color: #555;
+  cursor: pointer;
+  text-align: left;
+  align-self: flex-start;
+  margin-bottom: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Mobile Notification Bell */
+.mobile-bell {
+  color: white;
+  font-size: 1.2rem;
+  text-align: center;
+  display: block;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+/* Mobile Auth Section */
+.mobile-auth-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 12px;
+}
+
+.mobile-auth-section a {
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 500;
+  text-align: center;
+}
+
+.mobile-auth-section a:last-child {
+  border-bottom: none;
+}
+
+.mobile-auth-section a:hover {
+  background: #f5f5f5;
+}
+
+/* Mobile Nav Links */
+.mobile-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mobile-nav-links a {
+  display: block;
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 500;
+  text-align: center;
+}
+
+.mobile-nav-links a:last-child {
+  border-bottom: none;
+}
+
+.mobile-nav-links a:hover {
+  background: #f5f5f5;
 }
 
 /* -------------------------------------------------- */

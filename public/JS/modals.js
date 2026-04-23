@@ -505,3 +505,90 @@ window.addEventListener("load", () => {
     loadChallenges();
   }
 });
+
+//-------------------------------------------------------
+// Mobile Navigation - Hamburger Menu
+//-------------------------------------------------------
+const hamburgerBtn = document.getElementById("hamburgerBtn");
+const mobileNavModal = document.getElementById("mobileNavModal");
+
+if (hamburgerBtn && mobileNavModal) {
+  // Open menu when hamburger button clicked
+  hamburgerBtn.addEventListener("click", () => {
+    mobileNavModal.classList.remove("hidden");
+  });
+
+  // Close menu when X button clicked
+  mobileNavModal.querySelector(".close").addEventListener("click", () => {
+    mobileNavModal.classList.add("hidden");
+  });
+
+  // Close menu when clicked outside modal content
+  mobileNavModal.addEventListener("click", (e) => {
+    if (e.target === mobileNavModal) {
+      mobileNavModal.classList.add("hidden");
+    }
+  });
+
+  // Close menu when a navigation link is clicked
+  mobileNavModal.querySelectorAll(".mobile-nav-links a").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      // Don't close if it's a modal trigger (like Sign In, Profil, etc.)
+      if (!e.target.id || !e.target.id.includes("Modal")) {
+        mobileNavModal.classList.add("hidden");
+      }
+    });
+  });
+
+  // Mobile notification bell should trigger the notification modal
+  const notificationBellMobile = document.getElementById("notificationBellMobile");
+  if (notificationBellMobile) {
+    notificationBellMobile.addEventListener("click", (e) => {
+      e.preventDefault();
+      mobileNavModal.classList.add("hidden");
+      window.openNotificationModal();
+    });
+  }
+
+  // Mobile Sign In button
+  const openLoginMobile = document.getElementById("openLoginMobile");
+  if (openLoginMobile) {
+    openLoginMobile.addEventListener("click", (e) => {
+      e.preventDefault();
+      mobileNavModal.classList.add("hidden");
+      modal.classList.remove("hidden");
+    });
+  }
+
+  // Mobile Sign Up button
+  const openSignupMobile = document.getElementById("openSignupMobile");
+  if (openSignupMobile) {
+    openSignupMobile.addEventListener("click", (e) => {
+      e.preventDefault();
+      mobileNavModal.classList.add("hidden");
+      signupModal.classList.remove("hidden");
+    });
+  }
+
+  // Mobile Profile button
+  const profileButtonMobile = document.getElementById("profileButtonMobile");
+  if (profileButtonMobile) {
+    profileButtonMobile.addEventListener("click", (e) => {
+      e.preventDefault();
+      mobileNavModal.classList.add("hidden");
+      // Trigger the profile button logic from the main nav
+      openProfile.click();
+    });
+  }
+
+  // Mobile Sign Out button
+  const signOutButtonMobile = document.getElementById("signOutButtonMobile");
+  if (signOutButtonMobile) {
+    signOutButtonMobile.addEventListener("click", (e) => {
+      e.preventDefault();
+      mobileNavModal.classList.add("hidden");
+      // Trigger the sign out button logic from the main nav
+      document.getElementById("signOutButton").click();
+    });
+  }
+}

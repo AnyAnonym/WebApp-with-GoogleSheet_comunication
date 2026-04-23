@@ -374,6 +374,40 @@ firebase deploy
 - BUGFIX: IDs in falsche Zellen geschrieben bei Herausforderungen
   Grund: append() mit range "preMatches!A:F" oder "preMatches!A1:F"
   Fix: Range zu "preMatches" (nur Sheet-Name) geändert
+
+2026-04-23:
+-----------
+- FEATURE: Responsive Mobile-Navigation mit Hamburger-Menu
+
+  📱 Mobile Layout (< 700px):
+  - Hamburger Button (☰) ganz rechts neben Logo
+  - Klick öffnet Modal mit:
+    ✕ Close Button (oben)
+    🔔 Glocke für Benachrichtigungen
+    Auth Links (Sign In, Sign Up, Profil, Sign Out)
+    Navigation Links (Dashboard, Spieler, Matches, Pre-Matches, Rangliste)
+  
+  💻 Desktop Layout (≥ 700px):
+  - 3-spaltig: Navigation (links) | Logo (mitte) | Glocke + Auth (rechts)
+  - Dropdown für Matches bleibt erhalten
+  - Alle Navigation-Links sichtbar
+  
+  Umgesetzte Änderungen:
+  - HTML: Neue Header-Struktur mit desktop-nav, header-center, desktop-auth
+  - HTML: Mobile Navigation Modal hinzugefügt
+  - CSS: Responsive Header mit Flexbox-Layout
+  - CSS: Mobile Modal-Styling mit Sections für Bell, Auth, Navigation
+  - JS (modals.js): Hamburger-Menu Event-Listener + Modal-Logik
+  - JS: Mobile Links triggern Desktop-Modal-Funktionen (Login, Profile, etc.)
+  
+  Dateien aktualisiert:
+  ✅ public/index.html
+  ✅ public/matches.html
+  ✅ public/players.html
+  ✅ public/rangliste.html
+  ✅ public/preMatches.html
+  ✅ public/CSS/styles.css
+  ✅ public/JS/modals.js
   
 - FEATURE: Mehrfaches Herausfordern jetzt möglich
   Problem: Button blieb disabled nach erstem Versand

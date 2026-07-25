@@ -1,0 +1,313 @@
+================================================================================
+SERVER-SETUP.txt — Server-Infrastruktur (ePiber Self-Hosted)
+================================================================================
+Stand: v3.0.2
+Erstellt: 21.07.2026
+Letzte Aenderung: 22.07.2026
+
+Dieses Dokument beschreibt die Server-Infrastruktur des ePiber-Projekts:
+Verzeichnisstruktur, Ports, Ersteinrichtung, Firewall und Status-Pruefung.
+
+Fuer Versionierung und Deployment-Workflow siehe: Project/DEPLOYMENT.txt
+
+
+================================================================================
+1. PROJEKTSTRUKTUR
+================================================================================
+
+Repository-Root (R:\ lokal, /srv/http/ePiber/<system>/ am Server):
+
+├── Frontend/                    # Caddy liefert aus (statische Dateien)
+│   ├── index.html
+│   ├── Bewerbe.html
+│   ├── bewerbsRaster.html
+│   ├── entryList.html
+│   ├── Matches1.html
+│   ├── monitor.html
+│   ├── navigator.html
+│   ├── players.html
+│   ├── rangliste.html
+│   ├── RoundRobin.html
+│   ├── scoreboard.html
+│   ├── court-score-test.html
+│   ├── JS/
+│   │   ├── SDK.js               ← NICHT im Git! (pro System unterschiedlich)
+│   │   ├── SDK.js.example       ← Vorlage im Git
+│   │   ├── dataClient.js
+│   │   ├── global.js            ← laedt APP_VERSION vom Backend per fetch
+│   │   ├── clock.js
+│   │   ├── footer.js
+│   │   ├── navbar.js
+│   │   ├── modals.js
+│   │   ├── loadingHelper.js
+│   │   └── ... (alle weiteren JS-Dateien)
+│   └── CSS/
+│       ├── styles.css
+│       ├── Matches1.css
+│       ├── RoundRobin.css
+│       └── scoreboard.css
+│
+├── Backend/                     # Node.js ePiber-Backend (WebSocket + Google Sheets)
+│   ├── server.js                ← HTTP-Endpoints: /health, /status, /version, /set-active
+│   ├── config.js                ← liest SHEET_ID, PORT, COURT_URL aus Umgebungsvariablen
+│   ├── dataStore.js
+│   ├── dataPoller.js
+│   ├── courtPoller.js
+│   ├── dataProvider.js
+│   ├── stateStore.js
+│   ├── package.json             ← Zentrale Versionsnummer (einzige Stelle!)
+│   ├── .env.example             ← Vorlage im Git
+│   └── .env                     ← NICHT im Git! (pro System unterschiedlich)
+│
+├── Project/                     # Dokumentation, Konfigvorlagen, Serverconfig
+│   ├── PROTOKOLL.txt
+│   ├── DB.txt
+│   ├── Seiten.txt
+│   ├── README.md
+│   ├── DEPLOYMENT.txt           ← Versionierung und Deployment-Workflow
+│   ├── copilot-instructions.md
+│   ├── server-configs/          ← Server-Infrastruktur
+│   │   ├── SERVER-DOKU.txt      ← Verzeichnis-Index
+│   │   ├── SERVER-SETUP.txt     ← Diese Datei
+│   │   ├── CHANGELOG.txt        ← Aenderungsprotokoll Server/Infrastruktur
+│   │   ├── Caddyfile            ← Vorlage fuer /etc/caddy/Caddyfile
+│   │   └── systemd/
+│   │       ├── epiber-piber.service
+│   │       ├── epiber-paj.service
+│   │       └── epiber-pk.service
+│   ├── software/
+│   │   ├── ARCHITEKTUR.txt
+│   │   └── ENDPOINTS.txt
+│   └── additional Files/
+│       └── ...
+│
+└── .gitignore
+
+
+================================================================================
+2. SERVER-VERZEICHNISSTRUKTUR
+================================================================================
+
+/srv/http/ePiber/
+├── piber/                       # LIVE (epiber.at)
+│   ├── Frontend/                ← Git checkout
+│   ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
+│   └── Project/                 ← Git checkout
+│
+├── paj/                         # TEST PAJ (epiber.at:8081)
+│   ├── Frontend/                ← Git checkout
+│   ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
+│   └── Project/                 ← Git checkout
+│
+└── pk/                          # TEST PK (epiber.at:8082)
+    ├── Frontend/                ← Git checkout
+    ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
+    └── Project/                 ← Git checkout
+
+
+================================================================================
+3. PORT-ZUORDNUNG
+================================================================================
+
+System   | Caddy (extern)  | Backend (intern) | WebSocket-URL
+---------|-----------------|------------------|---------------------------
+piber    | 443 (HTTPS)     | 8080             | wss://epiber.at/ws
+paj      | 8081 (HTTP)     | 8083             | ws://epiber.at:8081/ws
+pk       | 8082 (HTTP)     | 8084             | ws://epiber.at:8082/ws
+
+Hinweis: Nur das Live-System (piber) laeuft ueber HTTPS mit automatischem
+Let's Encrypt Zertifikat. Die Testsysteme PAJ und PK laufen ueber HTTP.
+
+
+================================================================================
+4. ERSTEINRICHTUNG AUF DEM SERVER
+================================================================================
+
+4.1 Pakete installieren
+-----------------------
+
+  pacman -S nodejs npm caddy git
+
+
+4.2 Benutzer anlegen
+--------------------
+
+  useradd -r -s /bin/nologin piber
+
+
+4.3 Verzeichnisse anlegen
+--------------------------
+
+  mkdir -p /srv/http/ePiber/{piber,paj,pk}
+  chown -R piber:piber /srv/http/ePiber
+
+
+4.4 Git-Repository klonen (3x)
+-------------------------------
+
+  cd /srv/http/ePiber/piber
+  git clone <REPO_URL> .
+
+  cd /srv/http/ePiber/paj
+  git clone <REPO_URL> .
+
+  cd /srv/http/ePiber/pk
+  git clone <REPO_URL> .
+
+
+4.5 Backend Dependencies installieren (3x)
+-------------------------------------------
+
+  cd /srv/http/ePiber/piber/Backend && npm install --production
+  cd /srv/http/ePiber/paj/Backend   && npm install --production
+  cd /srv/http/ePiber/pk/Backend    && npm install --production
+
+
+4.6 Konfigurationsdateien erstellen (pro System!)
+--------------------------------------------------
+
+Jedes System benoetigt eine eigene .env und SDK.js. Diese Dateien
+sind NICHT im Git und muessen manuell erstellt werden.
+
+  # --- LIVE (piber) ---
+
+  # Backend/.env:
+  SHEET_ID=1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04
+  PORT=8080
+  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
+  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/piber/Backend/service-account.json
+
+  # Frontend/JS/SDK.js:
+  export const BACKEND_WS_URL = "wss://epiber.at/ws";
+
+  # --- PAJ ---
+
+  # Backend/.env:
+  SHEET_ID=1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo
+  PORT=8083
+  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
+  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/paj/Backend/service-account.json
+
+  # Frontend/JS/SDK.js:
+  export const BACKEND_WS_URL = "ws://epiber.at:8081/ws";
+
+  # --- PK ---
+
+  # Backend/.env:
+  SHEET_ID=<PK-Sheet-ID>
+  PORT=8084
+  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
+  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/pk/Backend/service-account.json
+
+  # Frontend/JS/SDK.js:
+  export const BACKEND_WS_URL = "ws://epiber.at:8082/ws";
+
+
+4.7 Google Service-Account-Key
+-------------------------------
+
+  Den JSON-Key vom Google Cloud Projekt "e-piber" herunterladen:
+    Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON
+
+  Die Datei als "service-account.json" in jedes Backend/ legen:
+    /srv/http/ePiber/piber/Backend/service-account.json
+    /srv/http/ePiber/paj/Backend/service-account.json
+    /srv/http/ePiber/pk/Backend/service-account.json
+
+  WICHTIG: Der Service Account braucht Bearbeiter-Zugriff auf alle
+  3 Google Spreadsheets!
+
+
+4.8 Caddyfile installieren
+---------------------------
+
+  cp /srv/http/ePiber/piber/Project/server-configs/Caddyfile /etc/caddy/Caddyfile
+  systemctl enable --now caddy
+
+
+4.9 Systemd-Services installieren
+----------------------------------
+
+  cp /srv/http/ePiber/piber/Project/server-configs/systemd/*.service /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now epiber-piber
+  systemctl enable --now epiber-paj
+  systemctl enable --now epiber-pk
+
+
+4.10 Firewall oeffnen
+---------------------
+
+  Ports 443 (HTTPS), 80 (HTTP Redirect), 8081 und 8082 muessen offen sein.
+
+  # Bei iptables:
+  iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+  iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+  iptables -A INPUT -p tcp --dport 8081 -j ACCEPT
+  iptables -A INPUT -p tcp --dport 8082 -j ACCEPT
+
+  # Bei firewalld:
+  firewall-cmd --permanent --add-port=80/tcp
+  firewall-cmd --permanent --add-port=443/tcp
+  firewall-cmd --permanent --add-port=8081/tcp
+  firewall-cmd --permanent --add-port=8082/tcp
+  firewall-cmd --reload
+
+
+4.11 DNS
+--------
+
+  A-Record: epiber.at → <Server-IP>
+
+  Caddy holt sich automatisch ein Let's Encrypt Zertifikat, sobald der
+  A-Record korrekt auf den Server zeigt und Port 80/443 erreichbar ist.
+
+
+================================================================================
+5. KONFIGURATIONSDATEIEN-UEBERSICHT
+================================================================================
+
+Die folgenden Dateien muessen pro System manuell erstellt werden und sind
+NICHT im Git:
+
+  Backend/.env                    → Sheet-ID, Port, Court-URL, Credentials-Pfad
+  Backend/service-account.json    → Google Service Account Key (JSON)
+  Frontend/JS/SDK.js              → WebSocket-URL (BACKEND_WS_URL)
+
+Vorlagen im Git:
+  Backend/.env.example
+  Frontend/JS/SDK.js.example
+
+
+================================================================================
+6. STATUS PRUEFEN
+================================================================================
+
+  # Systemd-Services
+  systemctl status epiber-piber
+  systemctl status epiber-paj
+  systemctl status epiber-pk
+
+  # Backend Health-Check (inkl. Version)
+  curl https://epiber.at/health
+  curl http://epiber.at:8081/health
+  curl http://epiber.at:8082/health
+
+  # Nur Versionsnummer
+  curl https://epiber.at/version
+  curl http://epiber.at:8081/version
+  curl http://epiber.at:8082/version
+
+  # Backend Detailstatus
+  curl https://epiber.at/status
+  curl http://epiber.at:8081/status
+  curl http://epiber.at:8082/status
+
+  # Caddy
+  systemctl status caddy
+
+  # Logs
+  journalctl -u epiber-piber -f
+  journalctl -u epiber-paj -f
+  journalctl -u epiber-pk -f
+  journalctl -u caddy -f

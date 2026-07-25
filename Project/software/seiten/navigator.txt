@@ -1,0 +1,48 @@
+================================================================================
+Navigator-Steuerung — Fernbedienung fuer die Monitor-Anzeige
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Fernsteuerung fuer die Monitor-Seite. Buttons navigieren den Monitor
+  zu verschiedenen Seiten, Overlays steuern Platz-Zuweisungen.
+
+-- Dateien --
+  HTML: Frontend/navigator.html
+  JS:   Frontend/JS/navigatorList.js
+         Frontend/JS/navigatorScroll.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  navigator            – Button-Konfiguration aus Navigator-Sheet
+  preMatches           – Offene Matches (fuer Platzzuweisung)
+  players              – Spielernamen
+  bewerbe              – Bewerbsdaten
+  setNavigatorTarget   – Navigationsziel setzen
+  getNavigatorTarget   – Aktuelles Ziel abfragen
+  setScoreboardCourt   – Platz-Match-Zuweisung setzen
+  getScoreboardCourts  – Platz-Status abfragen
+
+-- Layout --
+  KEINE Navbar / Footer.
+  Button-Grid (4 Spalten), konfiguriert aus dem Navigator-Sheet.
+  Fixierte Scroll-Buttons (hoch/runter) am unteren Rand.
+  Body-Klasse: "navigator-body".
+
+-- Bedienung --
+  URL-Parameter: ?profil=<id> (Standard: "1")
+  Filtert Buttons nach Navigator.Profil-Spalte.
+
+-- Shared Module --
+  SDK.js, global.js
+
+-- Besonderheiten --
+  3 Overlay-Typen:
+    OL-Platz-1 / OL-Platz-2:
+      Match-Zuweisung – Auswahl aus naechsten 20 offenen Matches oder
+      "Individual" mit kaskadierenden Overlays fuer Spielerauswahl.
+    OL-Platzaktivierung:
+      Platz aktiv/inaktiv umschalten mit gruenem/rotem Indikator.
+  Navigationsbestaetigung: 150ms-Polling bis Monitor "loaded" meldet.
+  Button blinkt waehrend der Wartezeit.
+  Scroll-Betrag: 300px pro Klick.

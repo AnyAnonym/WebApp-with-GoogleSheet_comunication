@@ -1,0 +1,33 @@
+================================================================================
+Spieler-Tabelle — Uebersicht aller aktiven Spieler
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zeigt eine Tabelle aller aktiven Spieler mit Kontaktdaten.
+  Nur fuer eingeloggte Benutzer zugaenglich.
+
+-- Dateien --
+  HTML: Frontend/players.html
+  JS:   Frontend/JS/playerList.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  players – Spielerdaten (Name, Vorname, Telefon, Aktiv-Status)
+
+-- Layout --
+  HTML-Tabelle mit Spalten: Nachname, Vorname, Telefon.
+  Sidebar-Container vorhanden (leer).
+
+-- Bedienung --
+  Keine URL-Parameter.
+  Nav-Link hat data-auth="required" – nur fuer eingeloggte Benutzer sichtbar.
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+
+-- Besonderheiten --
+  Nur aktive Spieler angezeigt (Aktiv="1").
+  Sortierung nach Nachname A-Z.
+  Telefonnummer-Formatierung: 0043 wird zu +43.
+  Leere Telefonnummern werden als "---" dargestellt.

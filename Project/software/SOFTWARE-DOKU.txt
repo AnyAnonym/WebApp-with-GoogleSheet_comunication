@@ -1,0 +1,70 @@
+================================================================================
+SOFTWARE-DOKU.txt — Verzeichnis-Dokumentation: software/
+================================================================================
+Stand: v3.0.2
+
+Dieses Verzeichnis enthaelt die aktuelle Software-Dokumentation des
+ePiber-Projekts. Die Dateien werden bei jeder Versionierung aktualisiert
+und stellen den jeweils gueltigen Stand dar.
+
+
+================================================================================
+INHALT
+================================================================================
+
+Datei/Verzeichnis           | Beschreibung
+----------------------------|------------------------------------------------
+SOFTWARE-DOKU.txt           | Diese Datei (Verzeichnis-Index)
+CHANGELOG.txt               | Software-Aenderungsprotokoll pro Version
+                            | (Added / Changed / Fixed / Removed)
+DATENBANK.txt               | Google Spreadsheet Schema: alle 10 Tabellen
+                            | mit Spalten, Formaten und Logik-Hinweisen
+ARCHITEKTUR.txt             | Gesamtarchitektur, Backend-Module, Datenfluss,
+                            | Shared Frontend-Module, CSS, Authentifizierung,
+                            | WebSocket-Protokoll
+ENDPOINTS.txt               | Alle Endpoints im Detail:
+                            |   4 HTTP-Endpoints (health, version, status, set-active)
+                            |   16 WebSocket Read-Endpoints
+                            |   6 WebSocket State-Endpoints
+                            |   8 WebSocket Write-Endpoints
+seiten/                     | Pro HTML-Seite eine Dokumentationsdatei
+
+
+================================================================================
+SEITEN-DOKUMENTATION
+================================================================================
+
+seiten/index.txt            | Dashboard / Willkommensseite
+seiten/bewerbe.txt          | Bewerbe-Uebersicht (Aktiv/Bevorstehend/Beendet)
+seiten/bewerbsRaster.txt    | Turnierraster / KO-Baumansicht
+seiten/matches1.txt         | Matches-Uebersicht mit Filtern (zentrale Match-Seite)
+seiten/players.txt          | Spieler-Tabelle
+seiten/scoreboard.txt       | Live-Scoreboard (Vollbild fuer Anzeigemonitore)
+seiten/monitor.txt          | Monitor-Anzeige (ferngesteuerter iframe)
+seiten/navigator.txt        | Navigator-Steuerung (Fernbedienung fuer Monitor)
+seiten/entryList.txt        | Eintragungsliste fuer Bewerbe
+seiten/rangliste.txt        | Ranglisten-Pyramide (Forderungssystem)
+seiten/roundRobin.txt       | RoundRobin-Gruppenphase
+
+Jede Seitendatei dokumentiert:
+  Funktion, Dateien, Datenquellen, Layout, Bedienung,
+  Shared Module und Besonderheiten.
+
+
+================================================================================
+VERWANDTE DOKUMENTATION
+================================================================================
+
+  Project/server-configs/             Server-Infrastruktur (Caddy, systemd, Ports)
+  Project/DEPLOYMENT.txt              Versionierung und Deployment-Workflow
+  Project/KOMMUNIKATION-ANALYSE.md    Analyse der Client-Server-Kommunikation
+  Project/LOGGING-ANALYSE.md          Analyse von Logging und Observability
+
+
+================================================================================
+ARCHIV (nicht mehr aktualisiert)
+================================================================================
+
+  Project/DB.txt              Alte DB-Doku (aktueller Stand: DATENBANK.txt)
+  Project/Seiten.txt          Alte Seiten-Doku (aktueller Stand: seiten/)
+  Project/PROTOKOLL.txt       Historischer Changelog v1.0 bis v3.0.2

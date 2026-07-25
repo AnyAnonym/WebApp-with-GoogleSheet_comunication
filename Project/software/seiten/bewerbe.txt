@@ -1,0 +1,42 @@
+================================================================================
+Bewerbe-Uebersicht — Auflistung aller Bewerbe als Karten
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zeigt alle Bewerbe in drei Kategorien als Karten-Grid an.
+  Klick auf eine Karte navigiert zur jeweiligen Detailansicht.
+
+-- Dateien --
+  HTML: Frontend/Bewerbe.html
+  JS:   Frontend/JS/bewerbeList.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  bewerbe       – Liste aller Bewerbe
+  bewerbsart    – Bewerbstyp-Definitionen (Rangliste, RoundRobin, KO etc.)
+
+-- Layout --
+  Karten gruppiert in 3 Kategorien:
+    1. "Aktive Bewerbe"       – gestartet, noch nicht beendet
+    2. "Bevorstehende Bewerbe" – noch nicht gestartet
+    3. "Beendete Bewerbe"     – bereits abgeschlossen
+  Leere Kategorien werden ausgeblendet. Grid-Layout fuer die Karten.
+
+-- Bedienung --
+  Keine URL-Parameter.
+  Klick auf Karte navigiert je nach Bewerbstyp:
+    Rangliste   -> rangliste.html?id=X
+    RoundRobin  -> RoundRobin.html?id=X
+    KO-Turnier  -> bewerbsRaster.html?id=X
+    EntryList   -> entryList.html?id=X (wenn Eintragung offen)
+  "Eintragen"-Button nur fuer eingeloggte Benutzer sichtbar.
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+  loadingHelper.js (Retry-Logik)
+
+-- Besonderheiten --
+  Sortierung nach SortOrder-Spalte, dann nach Datum.
+  Datumsformate: YYMMDD oder YYYYMMDD, optional mit -HHMM.
+  Eintragungszeitraum wird erzwungen – Buttons nur waehrend offener Periode.

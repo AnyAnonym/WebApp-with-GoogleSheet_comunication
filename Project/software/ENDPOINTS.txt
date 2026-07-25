@@ -1,0 +1,390 @@
+==================================================================================
+  ENDPOINTS.txt — WebSocket- und HTTP-Endpoint-Referenz
+  Projekt:  ePiber / ASKÖ Piberbach Tennis
+  Stand:    v3.0.2
+==================================================================================
+
+
+==================================================================================
+  1. HTTP-ENDPOINTS
+==================================================================================
+
+Insgesamt 6 HTTP-Routen (inkl. CORS und Fallback).
+
+
+----- OPTIONS * -----
+  Methode:    OPTIONS
+  Pfad:       * (alle Pfade)
+  Response:   204 No Content
+  Beschreibung:
+    CORS-Preflight-Handler. Beantwortet alle OPTIONS-Requests.
+
+
+----- GET /health -----
+  Methode:    GET
+  Pfad:       /health
+  Response:   200 JSON
+  Body:
+    {
+      status:    "ok",
+      version:   "3.0.2",
+      dataReady: true/false,
+      court: {
+        pollingActive: true/false,
+        courtActive:   true/false,
+        pollCount:     number,
+        pushCount:     number
+      },
+      provider: {
+        clientCount: number
+      },
+      poller: {
+        running:   true/false,
+        tickCount: number
+      }
+    }
+  Beschreibung:
+    System-Gesundheitsstatus. Liefert kompakte Uebersicht ueber den
+    aktuellen Zustand aller Subsysteme.
+
+
+----- GET /version -----
+  Methode:    GET
+  Pfad:       /version
+  Response:   200 JSON
+  Body:
+    {
+      version: "3.0.2"
+    }
+  Beschreibung:
+    Gibt die aktuelle Backend-Version zurueck. Wird vom Frontend
+    (global.js) abgerufen und in window.APP_VERSION gespeichert.
+
+
+----- GET /status -----
+  Methode:    GET
+  Pfad:       /status
+  Response:   200 JSON
+  Body:
+    {
+      status:    "ok",
+      dataReady: true/false,
+      court: {
+        pollingActive: true/false,
+        courtActive:   true/false,
+        pollCount:     number,
+        pushCount:     number
+      },
+      provider: {
+        clientCount: number,
+        clientList:  [...]
+      },
+      poller: {
+        running:     true/false,
+        tickCount:   number,
+        perTableMeta: {
+          <tabellenname>: { lastUpdate, rowCount }
+        }
+      }
+    }
+  Beschreibung:
+    Detaillierter Systemstatus. Erweiterte Version von /health mit
+    Client-Liste und Tabellen-Metadaten pro Tabelle.
+
+
+----- POST /set-active -----
+  Methode:    POST
+  Pfad:       /set-active
+  Response:   200 oder 400 JSON
+  Request-Body:
+    {
+      courts: {
+        "1": 0 oder 1,
+        "2": 0 oder 1
+      }
+    }
+  Response-Body:
+    { success: true } oder { error: "..." }
+  Beschreibung:
+    Steuert das Court-Polling. Aktiviert (1) oder deaktiviert (0)
+    das Polling fuer einzelne Plaetze.
+
+
+----- GET * (Fallback) -----
+  Methode:    GET
+  Pfad:       * (alle nicht gematchten Pfade)
+  Response:   200 Text
+  Body:
+    "ePiber Backend WebSocket Service running."
+  Beschreibung:
+    Fallback-Route. Zeigt an, dass das Backend laeuft.
+
+
+==================================================================================
+  2. WEBSOCKET READ-ENDPOINTS
+==================================================================================
+
+Insgesamt 16 Lese-Endpoints.
+
+Format der folgenden Tabelle:
+  Name | Parameter | Rueckgabe | Filterung | Genutzt von
+
+
+----- players -----
+  Parameter:    keine
+  Rueckgabe:    { success, values }
+                values = rohe Personen-Tabelle (2D-Array)
+  Filterung:    keine
+  Genutzt von:  modals, Matches1, playerList,
+                bewerbsRaster, scoreboardPolling,
+                navigatorList, entryList, rangliste, RoundRobin
+
+
+----- bewerbe -----
+  Parameter:    keine
+  Rueckgabe:    { success, values, bewerbsartValues }
+                values = Bewerb-Tabelle
+                bewerbsartValues = Bewerbsart-Tabelle (mitgeliefert)
+  Filterung:    keine
+  Genutzt von:  bewerbeList, Matches1,
+                bewerbsRaster, scoreboardPolling, navigatorList,
+                entryList, rangliste, RoundRobin
+
+
+----- bewerbsart -----
+  Parameter:    keine
+  Rueckgabe:    { success, values }
+                values = Bewerbsart-Tabelle
+  Filterung:    keine
+  Genutzt von:  bewerbeList, bewerbsRaster, RoundRobin
+
+
+----- matches1 -----
+  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
+  Rueckgabe:    { success, values }
+  Filterung:    Ignore-Filterung standardmaessig aktiv.
+                Optionaler BewerbID-Filter.
+  Genutzt von:  scoreboardPolling, Matches1
+
+
+----- preMatches -----
+  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
+  Rueckgabe:    { success, values }
+  Filterung:    Identisch mit matches1 (Kompatibilitaets-Alias)
+  Genutzt von:  navigatorList, rangliste
+
+
+----- matches -----
+  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
+  Rueckgabe:    { success, values }
+  Filterung:    Identisch mit matches1 (Kompatibilitaets-Alias)
+  Genutzt von:  bewerbsRaster, RoundRobin
+
+
+----- matchTyp -----
+  Parameter:    keine
+  Rueckgabe:    { success, values }
+                values = MatchTyp-Tabelle
+  Filterung:    keine
+  Genutzt von:  (selten verwendet)
+
+
+----- rlPlatzierung -----
+  Parameter:    { bewerbId?: string }
+  Rueckgabe:    { success, values }
+  Filterung:    Optionaler BewerbID-Filter
+  Genutzt von:  entryList, rangliste, rankingSidebar
+
+
+----- navigator -----
+  Parameter:    { profil?: string }
+  Rueckgabe:    { success, values }
+  Filterung:    Optionaler Profil-Filter
+  Genutzt von:  navigatorList
+
+
+----- entryList -----
+  Parameter:    { bewerbId?: string }
+  Rueckgabe:    { success, values, playerMap }
+                playerMap = Join mit Personen-Tabelle
+  Filterung:    Optionaler BewerbID-Filter
+  Genutzt von:  entryList
+
+
+----- roundRobin -----
+  Parameter:    keine
+  Rueckgabe:    { success, matchesValues, playerValues,
+                  bewerbValues, bewerbsartValues }
+                Zusammengesetzter Endpoint (Composite)
+  Filterung:    keine
+  Genutzt von:  RoundRobin
+
+
+----- bracket -----
+  Parameter:    keine
+  Rueckgabe:    { success, matchesValues, playerValues,
+                  bewerbValues, bewerbsartValues }
+                Selbe Struktur wie roundRobin (Composite)
+  Filterung:    keine
+  Genutzt von:  bewerbsRaster
+
+
+----- scoreboard -----
+  Parameter:    keine
+  Rueckgabe:    { success, matchesValues, playerValues, bewerbValues }
+                Zusammengesetzter Endpoint (Composite)
+  Filterung:    keine
+  Genutzt von:  scoreboardPolling
+
+
+----- courtScores -----
+  Parameter:    keine
+  Rueckgabe:    { success, data }
+                data = zuletzt abgefragtes Court-JSON oder null
+  Filterung:    keine
+  Genutzt von:  scoreboardPolling
+
+
+----- readMatchRestrictions -----
+  Parameter:    { bewerbId?: string }
+  Rueckgabe:    { success,
+                  schutzzeit: [{ id, until }],
+                  sperrzeit:  [{ id, until }] }
+                Durchsucht Matches der letzten 7 Tage
+  Filterung:    Optionaler BewerbID-Filter
+  Genutzt von:  rangliste
+
+
+----- getMyChallenges -----
+  Parameter:    { userId: string }
+  Rueckgabe:    { success,
+                  challenges: [{ row, player3, matchDate }] }
+                Offene Matches fuer den angegebenen Benutzer
+  Filterung:    Nach userId (Spieler3)
+  Genutzt von:  (Benachrichtigungen, derzeit entfernt)
+
+
+==================================================================================
+  3. WEBSOCKET STATE-ENDPOINTS
+==================================================================================
+
+Insgesamt 6 State-Endpoints (3 Lese-, 3 Schreib-Paare).
+State ist fluechtig (In-Memory, verloren bei Neustart).
+
+
+----- getScoreboardCourts (Lesen) -----
+  Parameter:    keine
+  Rueckgabe:    { success, courts }
+                courts = Objekt mit Court-Daten pro Platz
+  Beschreibung: Liest den aktuellen Scoreboard-Court-State.
+
+
+----- setScoreboardCourt (Schreiben) -----
+  Parameter:    { court, matchId, bewerb, homePlayer, guestPlayer,
+                  dateTime, aktiv, runde }
+  Rueckgabe:    { success }
+  Beschreibung: Setzt den State fuer einen Court. Steuert zusaetzlich
+                den courtPoller (aktiviert/deaktiviert Polling je nach
+                aktiv-Flag).
+
+
+----- getNavigatorTarget (Lesen) -----
+  Parameter:    keine
+  Rueckgabe:    { success, path, status }
+  Beschreibung: Liest das aktuelle Navigator-Ziel.
+
+
+----- setNavigatorTarget (Schreiben) -----
+  Parameter:    { path, status }
+                status = Standard "pending"
+  Rueckgabe:    { success }
+  Beschreibung: Setzt ein neues Navigator-Ziel mit Status.
+
+
+----- getNavigatorScroll (Lesen) -----
+  Parameter:    keine
+  Rueckgabe:    { success, amount, ts }
+  Beschreibung: Liest den aktuellen Scroll-Wert und Zeitstempel.
+
+
+----- setNavigatorScroll (Schreiben) -----
+  Parameter:    { amount }
+                amount = Zahl (Scroll-Betrag)
+  Rueckgabe:    { success }
+  Beschreibung: Setzt einen neuen Scroll-Wert.
+
+
+==================================================================================
+  4. WEBSOCKET WRITE-ENDPOINTS
+==================================================================================
+
+Insgesamt 8 Schreib-Endpoints (Aenderungen an Google Sheets oder
+Verifizierung gegen den Cache).
+
+
+----- verifyUserLogin -----
+  Parameter:    { email, passwordHash }
+  Rueckgabe:    { success, valid }
+  Schreibt:     NEIN (liest nur aus dem Cache)
+  Beschreibung: Verifiziert Login-Daten gegen die gecachte
+                Personen-Tabelle. Kein Google Sheets API-Aufruf.
+
+
+----- resetPassword -----
+  Parameter:    { email, passwordHash }
+  Rueckgabe:    { success }
+  Schreibt:     Personen-Tabelle (Passwort-Spalte)
+  Beschreibung: Setzt ein neues Passwort. Voraussetzung: Das Feld
+                kennwortvergessen muss "x" enthalten. Nach dem
+                Zuruecksetzen wird dieses Flag geloescht.
+
+
+----- setMatchDate -----
+  Parameter:    { row, datum }
+  Rueckgabe:    { success }
+  Schreibt:     Matches1-Tabelle, Spalte C (MatchDate)
+  Beschreibung: Setzt oder aendert das Match-Datum.
+
+
+----- setPreMatchResult -----
+  Parameter:    { row, satz1, satz2, satz3, userId }
+  Rueckgabe:    { success }
+  Schreibt:     Matches1-Tabelle, Ergebnis-Spalte
+  Beschreibung: Schreibt das Ergebnis eines Matches. Baut den
+                Ergebnis-String aus den einzelnen Saetzen zusammen.
+
+
+----- addMatch -----
+  Parameter:    { bewerbId, p1id, p2id, p3id, p4id, forderungDate }
+  Rueckgabe:    { success, newMatchId }
+  Schreibt:     Matches1-Tabelle (neue Zeile angehaengt)
+  Beschreibung: Erstellt ein neues Match. Generiert automatisch eine
+                neue eindeutige ID.
+
+
+----- addEntryList -----
+  Parameter:    { bewerbId, personenId, datum? }
+  Rueckgabe:    { success }
+  Schreibt:     EntryList-Tabelle (neue Zeile angehaengt)
+  Beschreibung: Meldet einen Spieler zu einem Bewerb an.
+
+
+----- removeEntryList -----
+  Parameter:    { bewerbId, personenId }
+  Rueckgabe:    { success }
+  Schreibt:     EntryList-Tabelle (Zeile geloescht)
+  Beschreibung: Entfernt eine Anmeldung. Sucht die Zeile anhand der
+                BewerbID- und PersonenID-Kombination und loescht sie.
+
+
+----- withdrawFromRanking -----
+  Parameter:    { reason, rank, bewerbId, userId }
+  Rueckgabe:    { success }
+  Schreibt:     Logging-Tabelle (neue Zeile angehaengt)
+  Beschreibung: Protokolliert das Zurueckziehen eines Spielers aus
+                einer Rangliste im Audit-Log.
+
+
+==================================================================================
+  ENDE — ENDPOINTS.txt
+==================================================================================

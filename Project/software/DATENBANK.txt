@@ -1,0 +1,249 @@
+==================================================================================
+  DATENBANK.txt — Spreadsheet-Schema (Google Sheets)
+  Projekt:  ePiber / ASKÖ Piberbach Tennis
+  Stand:    v3.0.2
+==================================================================================
+
+
+Dieses Dokument beschreibt das vollstaendige Datenbankschema des Google
+Spreadsheets, das als zentrale Datenbank fuer das ePiber-System dient.
+Alle Tabellen (Sheets) werden hier mit ihren Spalten, Formaten und
+Konventionen dokumentiert.
+
+
+==================================================================================
+  1. TABELLE: Matches1
+==================================================================================
+
+Enthaelt ALLE Matches (offene + gespielte) in einer einzigen Tabelle.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  Ignore          | "1" = Match wird in Anzeigen und Berechnungen ignoriert
+                  | leer = aktiv
+  ID              | Eindeutige Match-ID
+  MatchDate       | Format: YYMMDD-HHMM (z.B. 260518-1700)
+  ForderungDate   | Zeitstempel der Forderung, selbes Format
+  Dauer           | (reserviert) Match-Dauer, noch nicht verwendet
+  BewerbID        | Referenz auf die Bewerb-Tabelle (ID)
+  BewerbRunde     | Runden-Codierung:
+                  |   R1, R2, R3         = Runden
+                  |   AF                 = Achtelfinale
+                  |   VF                 = Viertelfinale
+                  |   HF                 = Halbfinale
+                  |   F                  = Finale
+                  |   G1, G2             = Gruppen
+                  | Kombiniert mit Partie: z.B. AF-P3 = 3. Match des
+                  | Achtelfinales
+  MatchtypID      | Match-Typ fuer Nicht-Bewerbs-Matches (Referenz auf
+                  | MatchTyp-Tabelle)
+  Spieler1ID      | Spieler 1 (Einzel: Gegner von Spieler3)
+                  | Suffixe: [wo] = Walkover, [ret] = Retired
+                  | BYE = spielfrei
+  Spieler2ID      | Spieler 2 (nur Doppel, Partner von Spieler1)
+  Spieler3ID      | Spieler 3 (Einzel: Gegner von Spieler1)
+                  | Selbe Suffixe wie Spieler1ID
+  Spieler4ID      | Spieler 4 (nur Doppel, Partner von Spieler3)
+  Ergebnis        | Ergebnis-Format: 6-3/6-4 (Saetze getrennt durch /)
+                  | Tiebreak: 7-6(5)/6-4
+                  | Bei [wo]-Matches nicht erforderlich
+  PTN-Wertung     | (reserviert) Skill-Rating, noch nicht verwendet
+  Bemerkung       | Freitext-Anmerkungen
+---------------------------------------------------------------------------
+
+Gewinner-Logik:
+  Der Gewinner wird NICHT in der Datenbank gespeichert, sondern wird aus
+  dem Ergebnis berechnet. Es werden die gewonnenen Saetze gezaehlt.
+    - Spieler1-Seite = linke Zahl jedes Satzes
+    - Spieler3-Seite = rechte Zahl jedes Satzes
+
+Ignore-Logik:
+  Zeilen mit Ignore="1" werden in allen Abfragen herausgefiltert.
+  BYE-Matches werden vollstaendig gefiltert.
+
+Match-Status (implizit, nicht als Spalte gespeichert):
+  - Kein Ergebnis + kein [wo]  = offen
+  - Mit Ergebnis               = gespielt
+  - [wo]                       = gespielt (ohne Ergebnis)
+  - Kein MatchDate             = Datum noch nicht festgelegt
+
+Hinweis fuer Code:
+  Spaltennamen werden im Code lowercase verglichen.
+  BewerbRunde -> "bewerbrunde" (NICHT "bewerbsrunde").
+
+
+==================================================================================
+  2. TABELLE: Personen
+==================================================================================
+
+Stammdaten aller Spieler.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  ID              | Eindeutige Personen-ID
+  Vorname         | Vorname des Spielers
+  Nachname        | Nachname des Spielers
+  E-Mail          | E-Mail-Adresse
+  Passwort        | Passwort-Hash (SHA-256)
+  Telefon         | Telefonnummer
+  Geschlecht      | 1 = maennlich, 2 = weiblich
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  3. TABELLE: Bewerb
+==================================================================================
+
+Bewerbe (Turniere, Ranglisten etc.).
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte              | Beschreibung
+---------------------------------------------------------------------------
+  ID                  | Eindeutige Bewerb-ID
+  BewerbsartID        | Referenz auf Bewerbsart-Tabelle
+  MatchtypID Standard | Standard-Matchtyp fuer diesen Bewerb
+  Bezeichnung         | Name des Bewerbs (z.B. "Vereinsrangliste 2026")
+  Entrystart          | Beginn der Anmeldefrist
+  Entrydeadline       | Ende der Anmeldefrist
+  Bewerbsbeginn       | Startdatum des Bewerbs
+  Bewerbsende         | Enddatum des Bewerbs
+  Geschlecht          | 1 = Herren, 2 = Damen, 1,2 = Mixed
+  Alterskategorie     | z.B. 0+ = alle, 60+ = Senioren
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  4. TABELLE: Bewerbsart
+==================================================================================
+
+Typen von Bewerben.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte              | Beschreibung
+---------------------------------------------------------------------------
+  ID                  | Eindeutige Bewerbsart-ID
+  Bezeichnung         | Name der Bewerbsart
+                      | z.B. "Rangliste", "KO-Turnier"
+  EntryListAvailable  | "1" = hat Meldeliste
+  Rasterfunktion      | Spieleranzahl fuer Turnierraster
+                      | z.B. 4, 8, 16
+  RoundRobin          | "1" = Gruppenformat
+  Spezifikum          | Aufstiegsregeln
+                      | z.B. "1G(A)/2G(A)/3G(1)"
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  5. TABELLE: EntryList
+==================================================================================
+
+Anmeldungen zu Bewerben.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  ID              | Eindeutige Anmeldungs-ID
+  BewerbID        | Referenz auf Bewerb-Tabelle
+  PersonenID      | Referenz auf Personen-Tabelle
+  Datum           | Anmeldedatum
+  GebuehrBezahlt  | Zahlungsstatus
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  6. TABELLE: RL-Platzierung
+==================================================================================
+
+Ranglistenplatzierungen.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  BewerbID        | Referenz auf Bewerb-Tabelle
+  Rang            | Platzierung (Nummer)
+  PersonID        | Referenz auf Personen-Tabelle
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  7. TABELLE: Navigator
+==================================================================================
+
+Steuerungs-Buttons fuer den Monitor/Navigator.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  ID              | Eindeutige Navigator-ID
+  Name            | Anzeigename des Buttons
+  Ziel            | URL oder Overlay-Befehl:
+                  |   OL-Platz-1    = Overlay Platz 1
+                  |   OL-Platz-2    = Overlay Platz 2
+                  |   OL-Platzaktivierung
+                  |   OL-Ergebnis
+  Profil          | Gruppierung (Standard: 1)
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  8. TABELLE: MatchTyp
+==================================================================================
+
+Matchtypen.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  ID              | Eindeutige Matchtyp-ID
+  Bezeichnung     | Name des Matchtyps
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  9. TABELLE: Logging
+==================================================================================
+
+Audit-Log fuer Systemereignisse.
+ACHTUNG: Diese Tabelle hat KEINE Kopfzeile.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  Timestamp       | Zeitstempel des Eintrags
+  Source           | Quelle des Eintrags
+  Entry           | Inhalt / Beschreibung des Ereignisses
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  10. TABELLE: ScoreLog
+==================================================================================
+
+Protokoll der Live-Score-Aenderungen.
+ACHTUNG: Diese Tabelle hat KEINE Kopfzeile.
+
+Spalten:
+---------------------------------------------------------------------------
+  Spalte          | Beschreibung
+---------------------------------------------------------------------------
+  Timestamp       | Zeitstempel der Score-Aenderung
+  PlatzNr         | Platznummer
+  Score           | Score-Format: Satz1/Satz2/Satz3/Punkte
+                  | z.B. 6-0/1-2/2-0/40-30
+---------------------------------------------------------------------------
+
+
+==================================================================================
+  ENDE — DATENBANK.txt
+==================================================================================

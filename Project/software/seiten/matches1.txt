@@ -1,0 +1,52 @@
+================================================================================
+Matches-Uebersicht mit Filtern — Zentrale Match-Seite
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zentrale Uebersichtsseite fuer ALLE Matches (offen + gespielt).
+  Datenquelle: Tabelle "Matches1" im Google Spreadsheet.
+  Die frueheren separaten Seiten matches.html und preMatches.html
+  wurden durch diese Seite ersetzt und existieren nicht mehr.
+
+-- Dateien --
+  HTML: Frontend/Matches1.html
+  JS:   Frontend/JS/Matches1.js
+  CSS:  Frontend/CSS/Matches1.css
+
+-- Datenquellen --
+  matches1  – Match-Daten (erweitertes Format)
+  players   – Spielernamen
+  bewerbe   – Bewerbszuordnung
+
+-- Layout --
+  Kategorie-Leiste (A/B/C Buttons) oben, einklappbares Filter-Panel,
+  Match-Karten darunter mit Anzahl-Indikator.
+  Desktop: Filter ausgeklappt.
+  Mobil <600px: Filter eingeklappt, Karten in voller Breite.
+
+-- Bedienung --
+  Keine URL-Parameter.
+  3 Kategorien:
+    A = Gespielte Matches (mit Ergebnis oder [wo])
+    B = Offene Matches    (ohne Ergebnis, ohne [wo])
+    C = Alle Matches
+  5 optionale, kombinierbare Filter:
+    1. Spieler      – Dropdown-Auswahl
+    2. Bewerb       – Dropdown-Auswahl
+    3. Zeitraum     – Von/Bis-Felder + Presets: -1M / -3M / -12M / +1M / +3M / +12M
+    4. Fehlender Spielpartner
+    5. Forderung ohne Spieldatum
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+  loadingHelper.js
+
+-- Besonderheiten --
+  Sortierung:
+    Gespielte = neueste zuerst.
+    Offene    = naechstes Match zuerst; Matches ohne Datum am Ende,
+                dort nach Bewerb sortiert.
+  BYE-Matches komplett ausgeblendet.
+  [wo]-Matches zaehlen als gespielt.
+  Datumsfilter blendet Matches ohne MatchDate aus.

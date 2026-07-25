@@ -1,0 +1,35 @@
+================================================================================
+Dashboard / Willkommensseite — Startseite der Anwendung
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zentrale Einstiegsseite (Landing Page). Zeigt einen Willkommenstext und
+  bietet ueber die Navbar Zugang zu allen Bereichen der Anwendung.
+
+-- Dateien --
+  HTML: Frontend/index.html
+  JS:   (kein eigenes JS – nur Shared Module)
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  Keine seitenspezifischen Endpoints.
+
+-- Layout --
+  Header + Main-Bereich mit Willkommenstext + Sidebar-Container + Footer.
+  Responsive: Sidebar rutscht unterhalb des Main-Bereichs bei <768px.
+
+-- Bedienung --
+  Keine URL-Parameter.
+  Dient ausschliesslich als Landing Page / Startseite.
+
+-- Shared Module --
+  navbar.js
+  modals.js
+  global.js
+  clock.js
+  footer.js
+
+-- Besonderheiten --
+  Der Sidebar-Container ist im DOM vorhanden, jedoch wird rankingSidebar.js
+  nicht mehr geladen. Die Sidebar bleibt daher leer.

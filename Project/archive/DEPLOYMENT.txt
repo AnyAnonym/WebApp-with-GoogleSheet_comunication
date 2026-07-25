@@ -1,0 +1,108 @@
+================================================================================
+DEPLOYMENT.txt — Versionierung und Deployment-Workflow
+================================================================================
+Stand: v3.0.2
+Erstellt: 21.07.2026
+Letzte Aenderung: 22.07.2026
+
+Dieses Dokument beschreibt Versionierung, Deployment und den
+Entwicklungs-Workflow fuer das ePiber-Projekt.
+
+Fuer Server-Infrastruktur siehe: Project/server-configs/SERVER-SETUP.txt
+
+
+================================================================================
+1. VERSIONIERUNG
+================================================================================
+
+Die Versionsnummer wird an EINER einzigen Stelle gepflegt:
+
+  Backend/package.json → "version": "3.0.2"
+
+Das Backend stellt sie ueber den HTTP-Endpoint /version bereit:
+
+  GET /version → {"version":"3.0.2"}
+
+Das Frontend (global.js) holt die Version per fetch("/version") und zeigt
+sie im Footer an. Kein Hardcoding im Frontend noetig.
+
+Versionsaenderung: Nur Backend/package.json editieren, committen, deployen.
+
+
+================================================================================
+2. DEPLOYMENT-WORKFLOW
+================================================================================
+
+2.1 Entwicklung (lokal auf Windows, R:\)
+-----------------------------------------
+
+  1. Code aendern
+  2. git add + git commit + git push
+  3. Fuer Analyse:
+       git log      # detaillierte Commit-Historie
+       git status   # aktueller Zustand des Repositorys
+
+
+2.2 Merge (Branch-Workflow)
+----------------------------
+
+  1. Branch erstellen
+  2. Code aendern
+  3. Normal committen
+  4. git switch main
+  5. git merge --no-ff <commit-hash> -m "<version> | <beschreibung>"
+
+  Beispiel:
+    git merge --no-ff b70d74a -m "3.0.10 | Test 6"
+
+  Der Hash ist der letzte Commit des Branches.
+  Der Text in den "" ist die Commit-Ueberschrift.
+
+
+2.3 Server-Update
+------------------
+
+  # Live-System (piber)
+  cd /srv/http/ePiber/piber && git pull
+  cd Backend && npm install --production    # nur wenn package.json geaendert
+  systemctl restart epiber-piber            # nur wenn Backend-Code geaendert
+
+  # PAJ-Testsystem
+  cd /srv/http/ePiber/paj && git pull
+  cd Backend && npm install --production
+  systemctl restart epiber-paj
+
+  # PK-Testsystem
+  cd /srv/http/ePiber/pk && git pull
+  cd Backend && npm install --production
+  systemctl restart epiber-pk
+
+
+2.4 Hinweis: Restart-Verhalten
+-------------------------------
+
+  Frontend-Aenderungen brauchen keinen Restart.
+  Caddy liefert die Dateien direkt aus dem Dateisystem.
+
+  Backend-Aenderungen erfordern einen Restart des jeweiligen
+  systemd-Services (systemctl restart epiber-<system>).
+
+
+================================================================================
+3. NICHT MEHR BENOETIGTE DATEIEN (historische Referenz)
+================================================================================
+
+Die folgenden Dateien/Verzeichnisse aus dem alten Repository wurden bereits
+entfernt und sind nicht in der neuen Struktur enthalten:
+
+  public/                        → ersetzt durch Frontend/
+  scorer-service/                → ersetzt durch Backend/
+  functions/                     → Firebase Cloud Functions (seit v2.1.0 obsolet)
+  firebase.json                  → Firebase Hosting Config (ersetzt durch Caddy)
+  firestore.rules                → Firestore nicht mehr genutzt
+  firestore.indexes.json         → Firestore nicht mehr genutzt
+  .firebaserc                    → Firebase Projektreferenz
+  package.json (Root)            → war nur fuer Firebase
+  package-lock.json (Root)       → war nur fuer Firebase
+  Dockerfile                     → kein Docker, Node.js direkt
+  .vs/                           → Visual Studio Dateien

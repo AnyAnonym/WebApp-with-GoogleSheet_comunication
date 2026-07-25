@@ -1,0 +1,39 @@
+================================================================================
+Monitor-Anzeige — Ferngesteuerte Anzeige via iframe
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Vollbild-Anzeige, die per Navigator-Seite ferngesteuert wird.
+  Laedt Ziel-URLs in einem iframe und unterstuetzt Remote-Scrolling.
+
+-- Dateien --
+  HTML: Frontend/monitor.html
+  JS:   Frontend/JS/monitorPolling.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  getNavigatorTarget  – Abfrage des aktuellen Navigationsziels
+  setNavigatorTarget  – Bestaetigung des geladenen Ziels
+  getNavigatorScroll  – Abfrage der Scroll-Position
+  setNavigatorScroll  – Setzen der Scroll-Position
+
+-- Layout --
+  KEINE Navbar / Footer.
+  Vollbild-iframe mit Overlay "Warte auf Navigation..." wenn kein Ziel gesetzt.
+  Body-Klasse: "monitor-body".
+
+-- Bedienung --
+  Keine URL-Parameter.
+  Pollt getNavigatorTarget alle 2 Sekunden.
+  Bei neuem Ziel: URL wird im iframe geladen mit ?monitor=1&_t=<cachebust>.
+  Pollt getNavigatorScroll alle 150ms fuer Remote-Scrolling.
+  Bestaetigt geladenen Status zurueck ans Backend.
+
+-- Shared Module --
+  SDK.js, global.js
+
+-- Besonderheiten --
+  Eigene WebSocket-Verbindung (getrennt von der iframe-Seite).
+  OL-* Pfade (Overlays) werden ignoriert / nicht im iframe geladen.
+  iframe-Load-Event bestaetigt Navigation ans Backend.

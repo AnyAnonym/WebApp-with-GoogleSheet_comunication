@@ -1,0 +1,44 @@
+================================================================================
+Live-Scoreboard — Vollbild-Anzeige fuer den Veranstaltungsort
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Eigenstaendige Vollbild-Anzeige fuer Live-Spielstaende an Plaetzen,
+  naechste und letzte Matches. Gedacht fuer TV/Monitor am Veranstaltungsort.
+
+-- Dateien --
+  HTML: Frontend/scoreboard.html
+  JS:   Frontend/JS/scoreboardPolling.js
+  CSS:  Frontend/CSS/scoreboard.css
+
+-- Datenquellen --
+  matches1             – Match-Daten
+  players              – Spielernamen
+  bewerbe              – Bewerbsdaten
+  getScoreboardCourts  – Platz-Metadaten (aktiv/inaktiv)
+  courtScores          – Aktuelle Spielstaende (direkte Anfrage)
+
+-- Layout --
+  KEINE Navbar / Footer. Loading-Spinner beim Start.
+  2-Spalten-Grid:
+    Links:  2 Plaetze uebereinander (Spielernamen, 3 Saetze, Punkte in Lila)
+    Rechts: Naechste 6 + Letzte 6 Matches
+  Rechte Spalte ausgeblendet <1300px. Kleinere Schrift <1000px.
+  Body-Klasse: "scoreboard-body".
+
+-- Bedienung --
+  Keine URL-Parameter. Standalone-Seite.
+
+-- Shared Module --
+  KEINE (nur scoreboardPolling.js + dataClient.js)
+
+-- Besonderheiten --
+  Live-Scores via WebSocket-Push (setOnScoreChange-Callback).
+  Initiale Spielstaende ueber courtScores-Endpoint geladen.
+  Platz-Metadaten: Polling alle 1 Sekunde.
+  Match-Daten: Polling alle 5 Sekunden.
+  Platz-Status als gruener/roter Header (aktiv/inaktiv).
+  Doppel unterstuetzt (uebereinander gestapelte Namen).
+  Gewinner fett / Verlierer ausgeblendet in letzten Matches.
+  Schriftart: Roboto Flex condensed.

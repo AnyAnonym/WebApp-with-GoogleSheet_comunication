@@ -1,0 +1,43 @@
+================================================================================
+Eintragungsliste — Anmeldung / Nennung fuer einen Bewerb
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zeigt die Nennliste fuer einen bestimmten Bewerb und ermoeglicht
+  eingeloggten Benutzern die An- und Abmeldung.
+
+-- Dateien --
+  HTML: Frontend/entryList.html
+  JS:   Frontend/JS/entryList.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  entryList       – Nennliste des Bewerbs
+  players         – Spielerdaten
+  bewerbe         – Bewerbsdaten (Eintragungszeitraum)
+  rlPlatzierung   – Ranglisten-Platzierungen (fuer RL-Spalte)
+  addEntryList    – Spieler eintragen
+  removeEntryList – Spieler austragen
+
+-- Layout --
+  Ueberschrift mit Bewerbsname, Toolbar (Eintragen-/Austragen-Buttons),
+  Tabelle mit Spalten: #, ID, RL-Rang, Name, Datum.
+
+-- Bedienung --
+  URL-Parameter: ?id=<bewerbId> (PFLICHT)
+  Zeigt die Nennliste fuer den angegebenen Bewerb.
+  "Eintragen" / "Austragen" nur fuer eingeloggte Benutzer.
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+  loadingHelper.js
+
+-- Besonderheiten --
+  Eintragungszeitraum wird erzwungen – bei geschlossener Periode wird
+  eine Meldung mit den Daten angezeigt.
+  RL-Spalte: Quervergleich mit RL-Platzierung (geschlechtsabhaengig).
+  Bezahlte Eintraege gruen hervorgehoben (.entry-paid).
+  Duplikat-Pruefung verhindert doppelte Anmeldung.
+  Multi-Format Datumsparser: YYMMDD, YYMMDD-HHMM, YYYYMMDD, YYYYMMDD-HHMM.
+  Sortierung nach Nachname A-Z.

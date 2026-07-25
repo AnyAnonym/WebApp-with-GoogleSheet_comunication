@@ -1,0 +1,48 @@
+================================================================================
+Ranglisten-Pyramide — Interaktive Ranglistenleiter
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zeigt die Rangliste als Pyramide an. Spieler koennen andere Spieler
+  fordern (challengen). Komplexes Regelwerk fuer Forderungslogik.
+
+-- Dateien --
+  HTML: Frontend/rangliste.html
+  JS:   Frontend/JS/rangliste.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  rlPlatzierung         – Ranglistendaten
+  players               – Spielernamen
+  preMatches            – Offene Matches (Forderungen)
+  readMatchRestrictions – Schutz-/Sperrzeiten
+  bewerbe               – Bewerbsdaten
+
+-- Layout --
+  Pyramiden-Reihen: Jede Box zeigt Rang-Nummer + Spielername.
+  Legende als Sidebar mit Farb-Erklaerungen.
+
+-- Bedienung --
+  URL-Parameter: ?id=<bewerbId> (Standard: "2")
+  Bestimmt, welche Rangliste angezeigt wird.
+  Klick auf Box oeffnet Profil-Modal (modals.js).
+  "Fordern"-Button im Profil, wenn Ziel gruen markiert ist.
+  Nach erfolgreicher Forderung: 1.5s Verzoegerung, dann Seite neu laden.
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+
+-- Besonderheiten --
+  KOMPLEXES REGELWERK (applyAllRules):
+  Farben:
+    Blau   = eigene Position
+    Gruen  = herausforderbar
+    Gelb   = hat offene Forderung
+    Pink   = Schutzzeit (geschuetzt nach Sieg, 7 Tage)
+    Lila   = Sperrzeit  (gesperrt nach Niederlage, 7 Tage)
+  Forderungsregeln:
+    - Gleiche Reihe: alle links vom eigenen Platz
+    - Reihe darueber: alle rechts der eigenen Spalte
+    - Sonderregel Rang 3: darf auch Rang 1 fordern
+  Countdown-Timer in geschuetzten/gesperrten Boxen.

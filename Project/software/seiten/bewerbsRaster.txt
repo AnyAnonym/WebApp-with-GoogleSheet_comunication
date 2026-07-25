@@ -1,0 +1,42 @@
+================================================================================
+Turnierraster / KO-Baumansicht — Bracket-Darstellung eines KO-Turniers
+================================================================================
+Stand: v3.0.2
+
+-- Funktion --
+  Zeigt den KO-Turnierbaum (Bracket) fuer einen bestimmten Bewerb.
+  Runden werden als Spalten dargestellt, Verbindungslinien via SVG.
+
+-- Dateien --
+  HTML: Frontend/bewerbsRaster.html
+  JS:   Frontend/JS/bewerbsRaster.js
+  CSS:  (kein eigenes CSS)
+
+-- Datenquellen --
+  matches     – Alle Matches des Bewerbs
+  players     – Spielerdaten
+  bewerbe     – Bewerbsdaten
+  bewerbsart  – Rasterfunktion (Draw-Groesse), RoundRobin-Flag
+
+-- Layout --
+  CSS-Grid-Bracket mit 5 Spalten fuer Runden: R1, AF, VF, HF, F.
+  Dynamische Zeilenanzahl basierend auf Bewerbsart.Rasterfunktion.
+  SVG-Verbindungslinien zwischen den Slots.
+  Horizontal scrollbar bei grossem Bracket.
+
+-- Bedienung --
+  URL-Parameter: ?id=<bewerbId> (PFLICHT)
+  Zeigt das Bracket fuer den angegebenen Bewerb.
+  Klick auf Spielername oeffnet Profil-Modal.
+  Umschaltung zur RoundRobin-Ansicht moeglich, wenn bewerbsart.roundRobin=1.
+
+-- Shared Module --
+  navbar.js, modals.js, global.js, clock.js, footer.js
+  loadingHelper.js
+
+-- Besonderheiten --
+  Dynamische Spaltenbreiten (breitester Name+Score wird gemessen).
+  Unterstuetzt Doppel-Ansicht (Name1 / Name2).
+  Sonder-Tags: [wo], [ret], [gesetzt], BYE – jeweils speziell dargestellt.
+  Gewinner gruen hervorgehoben.
+  Polling alle 2 Sekunden fuer automatische Bracket-Aktualisierung.

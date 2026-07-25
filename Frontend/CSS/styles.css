@@ -975,90 +975,6 @@ input[type="date"] {
   line-height: 1;
 }
 
-/* -------------------------------------------------- */
-/*  MATCHCARDS (neues Layout für matches.html)        */
-/* -------------------------------------------------- */
-
-#matches-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.match-card {
-  background: #fff;
-  border: 1px solid var(--table-border);
-  border-radius: 12px;
-  padding: 8px 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
-  max-width: 100%;
-}
-
-.match-date {
-  font-weight: 600;
-  color: var(--accent);
-  font-size: 0.9rem;
-}
-
-.match-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-width: 100%;
-}
-
-.team {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.player {
-  font-weight: 500;
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.player.sub {
-  color: var(--fg);
-  font-style: normal;
-}
-
-.team-winner .player {
-  font-weight: 700;
-}
-
-.vs {
-  font-weight: 600;
-  color: var(--accent);
-  font-size: 1.1rem;
-}
-
-.sets {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.set {
-  font-weight: 600;
-  color: var(--fg);
-  font-size: 1rem;
-  white-space: nowrap;
-}
-
 @media (max-width: 768px) {
   main {
     grid-template-columns: 1fr !important;
@@ -1066,14 +982,6 @@ input[type="date"] {
 
   .sidebar {
     order: 2;
-  }
-
-  .match-content {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 20px;
-    gap: 8px;
   }
 
   .desktop-nav,

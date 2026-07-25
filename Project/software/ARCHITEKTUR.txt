@@ -1,0 +1,349 @@
+==================================================================================
+  ARCHITEKTUR.txt — Backend-Module, Datenfluss, Shared Frontend
+  Projekt:  ePiber / ASKÖ Piberbach Tennis
+  Stand:    v3.0.2
+==================================================================================
+
+
+==================================================================================
+  1. GESAMTARCHITEKTUR
+==================================================================================
+
+  Browser
+    |-- HTTP: HTML, CSS, JavaScript ueber Caddy (statisch)
+    |-- HTTP: GET /version, /health, /status
+    `-- WebSocket: /ws
+         |-- Request/Response (Fachdaten)
+         |-- Schreiboperationen (Google Sheets)
+         |-- Navigator-/Scoreboard-State
+         |-- Ping/Pong Keepalive (30s/90s)
+         `-- Live-Score Push
+
+  Caddy
+    |-- Statische Frontend-Dateien aus Frontend/
+    `-- Reverse Proxy: /ws + HTTP-Endpoints -> Node.js Backend
+
+  Node.js Backend (6 Module)
+    |-- server.js         HTTP-Server, Startup-Orchestrierung
+    |-- config.js         Umgebungsvariablen, Polling-Intervalle, Tabellen
+    |-- dataStore.js      In-Memory-Cache aller Spreadsheet-Daten
+    |-- dataPoller.js     Periodisches Google Sheets Polling
+    |-- courtPoller.js    Externes Court-Score-Polling + ScoreLog
+    `-- dataProvider.js   WebSocket-Server, Endpoints, Sheet-Writes
+        stateStore.js     Fluechtiger In-Memory-State
+
+
+==================================================================================
+  2. BACKEND-MODULE
+==================================================================================
+
+
+----- server.js -----
+
+Zweck:
+  HTTP-Server und zentrale Startup-Orchestrierung.
+
+Endpoints:
+  - GET /health    -> System-Gesundheitsstatus
+  - GET /version   -> Aktuelle Version
+  - GET /status    -> Detaillierter Systemstatus
+  - POST /set-active -> Court-Polling Steuerung
+
+Startup-Reihenfolge:
+  1. initialLoad (alle Tabellen parallel laden)
+  2. WebSocket-Server initialisieren
+  3. Poller starten
+  4. HTTP-Server listen
+
+Wichtige Details:
+  Der Server startet erst, wenn der initiale Datenload abgeschlossen ist.
+  Alle HTTP-Endpoints liefern JSON zurueck.
+
+
+----- config.js -----
+
+Zweck:
+  Zentrale Konfiguration aus Umgebungsvariablen und Konstanten.
+
+Umgebungsvariablen:
+  - SHEET_ID    -> Google Spreadsheet ID
+  - PORT        -> Server-Port
+  - COURT_URL   -> Externe URL fuer Court-Score-Abfrage
+
+Polling-Intervalle:
+  - POLL_BASE   = 5 Sekunden (Basis-Tick)
+  - Fast        = 2x Basis = 10 Sekunden
+  - Slow        = 6x Basis = 30 Sekunden
+  - Court       = 2 Sekunden
+
+TABLE_CONFIG:
+  Definiert 8 Tabellen mit ihren Kategorien (fast/slow).
+  Jede Tabelle hat: Sheet-Name, Kategorie, Header-Zeile ja/nein.
+
+
+----- dataStore.js -----
+
+Zweck:
+  In-Memory-Cache aller Spreadsheet-Daten.
+
+Datenstruktur:
+  Einfaches JavaScript-Objekt. Speichert rohe 2D-Arrays pro Tabelle
+  (exakt so, wie sie von Google Sheets kommen).
+
+API:
+  - set(table, data)    -> Daten fuer eine Tabelle setzen
+  - get(table)          -> Daten einer Tabelle lesen
+  - getMeta(table)      -> Metadaten (letztes Update, Zeilenanzahl)
+  - getAll()            -> Alle Tabellen
+  - isReady()           -> true wenn alle Tabellen geladen
+
+Wichtig:
+  Keine Filterung in diesem Modul. Der dataStore liefert immer die
+  vollstaendigen Rohdaten. Filterung geschieht in dataProvider.js.
+
+
+----- dataPoller.js -----
+
+Zweck:
+  Periodisches Polling der Google Sheets API.
+
+Tick-basiertes System:
+  - Fast-Tabellen (alle 10s): matches1, rlPlatzierung, entryList
+  - Slow-Tabellen (alle 30s): players, bewerbe, bewerbsart, matchTyp,
+    navigator
+
+Funktionsweise:
+  - Basis-Tick alle 5 Sekunden
+  - Fast-Tabellen bei jedem 2. Tick
+  - Slow-Tabellen bei jedem 6. Tick
+  - Overlap-Guard: Verhindert parallele Polls derselben Tabelle
+
+Initialer Load:
+  Alle Tabellen werden beim Start parallel geladen (Promise.all).
+
+
+----- courtPoller.js -----
+
+Zweck:
+  Polling einer externen URL fuer Live-Court-Scores und Protokollierung
+  in der ScoreLog-Tabelle.
+
+Polling:
+  - Intervall: alle 2 Sekunden
+  - Roher JSON-Textvergleich fuer Aenderungserkennung
+  - Score-Format pro Court
+
+ScoreLog:
+  - Fire-and-Forget Schreiboperationen in die ScoreLog-Tabelle
+  - Keine Bestaetigung abgewartet
+
+Court-Aktivierung:
+  - Steuert ob Polling aktiv oder inaktiv ist
+  - Kann ueber /set-active HTTP-Endpoint und ueber
+    setScoreboardCourt WebSocket-Endpoint gesteuert werden
+
+
+----- dataProvider.js -----
+
+Zweck:
+  WebSocket-Server mit 25+ Endpoints fuer Lese-, Schreib- und
+  State-Operationen.
+
+Funktionen:
+  - WebSocket-Server Verwaltung
+  - Client-Tracking (Map mit Client-Informationen)
+  - Ping/Pong Keepalive (Ping alle 30s, Dead nach 90s ohne Pong)
+  - Score-Broadcasting an alle verbundenen Clients
+  - Endpoint-Routing und Parameterverarbeitung
+
+Hilfs-Funktionen:
+  - getHeader(table)            -> Kopfzeile einer Tabelle
+  - filterIgnored(rows)         -> Filtert Ignore="1" und BYE
+  - buildPlayerMap(players)     -> Spieler-ID -> Name Map
+  - determineWinnerFromResult() -> Gewinner aus Ergebnis berechnen
+
+
+----- stateStore.js -----
+
+Zweck:
+  Fluechtiger In-Memory-State (geht bei Neustart verloren).
+
+State-Bereiche:
+  - Courts: matchId, bewerb, players, dateTime, runde, aktiv
+  - Navigator: target (path + status)
+  - Scroll: amount + Zeitstempel (ts)
+
+Wichtig:
+  Dieser State wird NICHT persistiert. Bei einem Server-Neustart
+  gehen alle State-Daten verloren.
+
+
+==================================================================================
+  3. DATENFLUSS
+==================================================================================
+
+  Lesen (periodisch):
+    Google Sheets  -->  dataPoller  -->  dataStore (Cache)
+
+  Lesen (Client-Anfrage):
+    Client Request  -->  dataProvider  -->  dataStore (Read)  -->  Response
+
+  Schreiben:
+    Client Write  -->  dataProvider  -->  Google Sheets API (Write)
+
+  Live-Score:
+    Externe URL  -->  courtPoller  -->  Score Push  -->  Alle Clients
+
+  State:
+    State Read/Write  -->  stateStore (In-Memory, verloren bei Neustart)
+
+
+==================================================================================
+  4. FRONTEND SHARED MODULES
+==================================================================================
+
+
+----- dataClient.js -----
+  Zentraler WebSocket-Client fuer alle Frontend-Seiten.
+  - createEndpoint()      -> Erzeugt einen benannten Endpoint-Caller
+  - request()             -> Sendet Request und wartet auf Response
+  - setOnScoreChange()    -> Callback fuer Live-Score-Push
+  - Auto-Connect beim Laden
+  - Auto-Reconnect nach 3 Sekunden bei Verbindungsverlust
+  - Request-Timeout: 15 Sekunden
+  - Connect-Wait: 10 Sekunden
+
+----- navbar.js -----
+  Header-Navigation fuer alle Seiten.
+  - Desktop- und Mobile-Ansicht (Hamburger-Menue)
+  - Nav-Links: Dashboard, Spieler, Matches, Bewerbe, Scoreboard
+
+----- modals.js -----
+  Modale Dialoge (684 Zeilen, groesstes Frontend-Modul).
+  - Login-Modal (SHA-256 Hash)
+  - Passwort-vergessen-Modal
+  - Profil-Modal
+  - Match-Forderungs-Modal
+  - Zurueckziehen-Modal
+  - Setzt window-Globals fuer seitenuebergreifenden Zugriff
+
+----- global.js -----
+  Globale Initialisierung.
+  - Ruft /version Endpoint ab
+  - Setzt window.APP_VERSION
+  - Aktualisiert Footer mit Versionsnummer
+
+----- clock.js -----
+  Zeitbezogene Hilfsfunktionen.
+  - getCurrentDateTimeString()  -> Aktuelles Datum/Zeit als String
+  - getCurrentYear()            -> Aktuelles Jahr
+  - getStorageTimestamp()       -> Zeitstempel fuer localStorage
+
+----- footer.js -----
+  Footer-Rendering.
+  - Datum, Copyright, Version
+
+----- loadingHelper.js -----
+  Lade- und Fehlerbehandlung.
+  - callWithRetry()  -> 3 Versuche, 10s Verzoegerung
+  - Loading-Overlay anzeigen/verstecken
+  - Error-Overlay anzeigen
+
+----- SDK.js -----
+  Einzelner Export: BACKEND_WS_URL
+  - Systemspezifisch (pro Installation unterschiedlich)
+  - Nicht im Git-Repository enthalten
+
+
+==================================================================================
+  5. CSS-ARCHITEKTUR
+==================================================================================
+
+
+----- styles.css (2257 Zeilen) -----
+  Globales Stylesheet fuer alle Seiten.
+  CSS-Variablen:
+    --bg, --fg, --muted, --accent, --table-border
+  Breakpoints:
+    480px, 600px, 768px, 900px
+
+----- scoreboard.css (347 Zeilen) -----
+  Scoreboard-spezifische Styles.
+  - 2-Spalten Grid-Layout
+  - Court-Anzeigen
+  - Roboto Flex Schrift
+  Breakpoints:
+    1000px, 1300px
+
+----- RoundRobin.css (311 Zeilen) -----
+  Gruppenphasen-Styling.
+  - CSS Grid mit --rr-cols Variable
+  - Roboto Flex Schrift
+  Breakpoints:
+    499px, 1501px
+
+----- Matches1.css (289 Zeilen) -----
+  Match-Uebersicht mit Filtern und Karten.
+  Breakpoints:
+    600px
+
+
+==================================================================================
+  6. AUTHENTIFIZIERUNG
+==================================================================================
+
+  Hashing:
+    SHA-256 Hash ueber die Web Crypto API (clientseitig berechnet)
+
+  Verifikation:
+    Verglichen mit Passwort-Hash-Spalte in der Personen-Tabelle
+
+  Session-Speicherung (localStorage):
+    - isLoggedIn
+    - currentUserEmail
+    - currentUserId
+    - currentUserName
+
+  Einschraenkungen:
+    - Kein Server-Token
+    - Kein JWT
+    - Keine Sitzung serverseitig
+    - Authentifizierung basiert ausschliesslich auf clientseitigem
+      localStorage
+
+
+==================================================================================
+  7. WEBSOCKET-PROTOKOLL
+==================================================================================
+
+  Request (Client -> Server):
+    {
+      type:     "request",
+      id:       "req-N",
+      endpoint: "name",
+      params:   {}
+    }
+
+  Response (Server -> Client):
+    {
+      type:     "response",
+      id:       "req-N",
+      endpoint: "name",
+      data:     {}
+    }
+
+  Push (Server -> alle Clients):
+    {
+      type: "scores",
+      data: { courts: [...] }
+    }
+
+  Keepalive:
+    - Server sendet { type: "ping" } alle 30 Sekunden
+    - Client antwortet mit { type: "pong" }
+    - Client gilt als tot nach 90 Sekunden ohne Pong-Antwort
+
+
+==================================================================================
+  ENDE — ARCHITEKTUR.txt
+==================================================================================

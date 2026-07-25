@@ -1,3 +1,6 @@
+# ARCHIV — wird nicht mehr aktualisiert
+# Aktueller Stand: siehe Project/VERSIONIERUNG.txt
+
 # GitHub Copilot Instructions für ePiber
 
 ## Commit-Struktur nach Semantic Versioning

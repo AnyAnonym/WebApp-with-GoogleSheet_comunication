@@ -339,10 +339,10 @@ function renderBracket(rounds) {
           : (slot.name || "—");
 
         if (match.result && slot.name) {
-          const score = match.result.map((s) => slot._side === "left" ? s.left : s.right).join(" | ");
+          const resultText = match.result.map((s) => slot._side === "left" ? s.left : s.right).join(" | ");
           const hasRet = match.result.some((s) => s.special && (slot._side === "left" ? s.retOnLeft : !s.retOnLeft));
           const nameBadges = [hasRet ? badgeHtml("ret") : "", slot.special ? badgeHtml(slot.special) : "", slot.gesetzt ? badgeHtml("gesetzt") : ""].filter(Boolean).join(" ");
-          el.innerHTML = `<span class="pname">${displayName} ${nameBadges}</span> <span class="pscore">${score}</span>`;
+          el.innerHTML = `<span class="pname">${displayName} ${nameBadges}</span> <span class="player-result">${resultText}</span>`;
         } else {
           const badges = [badgeHtml(slot.special), slot.gesetzt ? badgeHtml("gesetzt") : ""].filter(Boolean).join(" ");
           el.innerHTML = (slot.name ? displayName : "—") + (badges ? " " + badges : "");
@@ -371,29 +371,29 @@ function renderBracket(rounds) {
   // Spaltenbreite dynamisch berechnen basierend auf Inhalt
   requestAnimationFrame(() => {
     let maxNameWidth = 0;
-    let maxScoreWidth = 0;
+    let maxResultWidth = 0;
     const padding = 28; // 14px padding links + 14px rechts
-    const minGap = 12;  // Mindestabstand zwischen Name und Score
+    const minGap = 12;  // Mindestabstand zwischen Name und Ergebnis
 
     grid.querySelectorAll(".bracket-player").forEach((el) => {
       const nameEl = el.querySelector(".pname");
-      const scoreEl = el.querySelector(".pscore");
+      const resultEl = el.querySelector(".player-result");
       if (nameEl) {
         const w = nameEl.scrollWidth;
         if (w > maxNameWidth) maxNameWidth = w;
       }
-      if (scoreEl) {
-        const w = scoreEl.scrollWidth;
-        if (w > maxScoreWidth) maxScoreWidth = w;
+      if (resultEl) {
+        const w = resultEl.scrollWidth;
+        if (w > maxResultWidth) maxResultWidth = w;
       }
       // Auch Spieler ohne Ergebnis berücksichtigen
-      if (!nameEl && !scoreEl) {
+      if (!nameEl && !resultEl) {
         const w = el.scrollWidth;
         if (w > maxNameWidth) maxNameWidth = w;
       }
     });
 
-    const colWidth = Math.max(200, Math.min(maxNameWidth + maxScoreWidth + padding + minGap, 600));
+    const colWidth = Math.max(200, Math.min(maxNameWidth + maxResultWidth + padding + minGap, 600));
     grid.querySelectorAll(".bracket-match").forEach((el) => {
       el.style.width = colWidth + "px";
     });
@@ -699,9 +699,9 @@ let pollTimer = null;
 //           el.classList.toggle("blink-green", !!newPre);
 // 
 //           if (newResult && oldSlot.name) {
-//             const score = newResult.map((s) => side === "left" ? s.left : s.right).join(" | ");
+//             const resultText = newResult.map((s) => side === "left" ? s.left : s.right).join(" | ");
 //             const hasRet = newResult.some((s) => s.special && (side === "left" ? s.retOnLeft : !s.retOnLeft));
-//             el.innerHTML = `<span class="pname">${oldSlot.name}</span> <span class="pscore">${score}</span>${hasRet ? " " + badgeHtml("ret") : ""}`;
+//             el.innerHTML = `<span class="pname">${oldSlot.name}</span> <span class="player-result">${resultText}</span>${hasRet ? " " + badgeHtml("ret") : ""}`;
 //           } else {
 //             el.innerHTML = (oldSlot.name || "—") + (oldSlot.name ? " " + badgeHtml(oldSlot.special) : "");
 //             el.classList.toggle("bye", !oldSlot.name);

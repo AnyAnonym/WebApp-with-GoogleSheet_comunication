@@ -1808,7 +1808,7 @@ input[type="date"] {
   gap: 8px;
 }
 
-.bracket-player .pscore {
+.bracket-player .player-result {
   font-weight: 600;
   color: #555;
   flex-shrink: 0;
@@ -1819,7 +1819,7 @@ input[type="date"] {
   background: #e8f5e9;
   font-weight: 600;
 }
-.bracket-player.winner .pscore {
+.bracket-player.winner .player-result {
   color: #2e7d32;
 }
 

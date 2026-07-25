@@ -24,7 +24,7 @@ Repository-Root (R:\ lokal, /srv/http/ePiber/<system>/ am Server):
 │   ├── rangliste.html
 │   ├── RoundRobin.html
 │   ├── scoreboard.html
-│   ├── scorer-test.html
+│   ├── court-score-test.html
 │   ├── JS/
 │   │   ├── SDK.js               ← NICHT im Git! (pro System unterschiedlich)
 │   │   ├── SDK.js.example       ← Vorlage im Git
@@ -42,7 +42,7 @@ Repository-Root (R:\ lokal, /srv/http/ePiber/<system>/ am Server):
 │       ├── RoundRobin.css
 │       └── scoreboard.css
 │
-├── Backend/                     # Node.js scorer-service
+├── Backend/                     # Node.js ePiber-Backend (WebSocket + Google Sheets)
 │   ├── server.js                ← HTTP-Endpoints: /health, /status, /version, /set-active
 │   ├── config.js                ← liest SHEET_ID, PORT, COURT_URL aus Umgebungsvariablen
 │   ├── dataStore.js
@@ -167,7 +167,7 @@ pk       | 8082 (HTTP)    | 8084             | ws://epiber.at:8082/ws
   GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/piber/Backend/service-account.json
 
   # Frontend/JS/SDK.js:
-  export const SCORER_WS_URL = "wss://epiber.at/ws";
+  export const BACKEND_WS_URL = "wss://epiber.at/ws";
 
   # --- PAJ ---
   # Backend/.env:
@@ -177,7 +177,7 @@ pk       | 8082 (HTTP)    | 8084             | ws://epiber.at:8082/ws
   GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/paj/Backend/service-account.json
 
   # Frontend/JS/SDK.js:
-  export const SCORER_WS_URL = "ws://epiber.at:8081/ws";
+  export const BACKEND_WS_URL = "ws://epiber.at:8081/ws";
 
   # --- PK ---
   # Backend/.env:
@@ -187,7 +187,7 @@ pk       | 8082 (HTTP)    | 8084             | ws://epiber.at:8082/ws
   GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/pk/Backend/service-account.json
 
   # Frontend/JS/SDK.js:
-  export const SCORER_WS_URL = "ws://epiber.at:8082/ws";
+  export const BACKEND_WS_URL = "ws://epiber.at:8082/ws";
 
 5.7 Google Service-Account-Key
 ------------------------------

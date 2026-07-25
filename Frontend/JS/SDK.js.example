@@ -7,4 +7,4 @@
 // PAJ:   ws://epiber.at:8081/ws   (HTTP  → ws://)
 // PK:    ws://epiber.at:8082/ws   (HTTP  → ws://)
 //
-export const SCORER_WS_URL = "ws://epiber.at:8082/ws ";
+export const BACKEND_WS_URL = "ws://epiber.at:8082/ws";

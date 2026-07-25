@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════
-// server.js — Scorer-Service Hauptserver
+// server.js — ePiber-Backend-Hauptserver
 // Orchestriert: dataPoller, courtPoller, dataProvider
 // HTTP-Endpoints: health, status, set-active
 // ══════════════════════════════════════════════════════
@@ -82,14 +82,14 @@ const server = http.createServer((req, res) => {
   }
 
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Scorer WebSocket Service running. Connect via ws://");
+  res.end("ePiber Backend WebSocket Service running.");
 });
 
 // ── Start ──
 
 async function startup() {
   console.log("═══════════════════════════════════════");
-  console.log(`  Scorer-Service v${APP_VERSION} startet...`);
+  console.log(`  ePiber-Backend v${APP_VERSION} startet...`);
   console.log("═══════════════════════════════════════");
 
   // 1. Spreadsheet-Daten initial laden

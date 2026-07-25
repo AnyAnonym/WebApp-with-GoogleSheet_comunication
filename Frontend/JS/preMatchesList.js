@@ -14,7 +14,7 @@ function parseSheetDate(raw) {
   return `${dd}.${mm}.${yyyy} - ${hh}:${mi}`;
 }
 
-function formatSetScore(raw) {
+function formatSetResult(raw) {
   if (!raw) return "";
   return String(raw).replace(/\((\d+)\)/g, (_, tiebreak) => {
     const superscripts = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"};
@@ -24,7 +24,7 @@ function formatSetScore(raw) {
 
 function formatErgebnis(raw) {
   if (!raw) return "";
-  return String(raw).split("/").map((s) => formatSetScore(s)).join("/");
+  return String(raw).split("/").map((s) => formatSetResult(s)).join("/");
 }
 
 function parsePlayerId(raw) {

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════
-// Scorer-Service Konfiguration
+// ePiber-Backend-Konfiguration
 // Umgebungsspezifische Werte werden aus Umgebungs-
 // variablen gelesen (z.B. aus .env via systemd)
 // ══════════════════════════════════════════════════════

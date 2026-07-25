@@ -1,10 +1,10 @@
 // ══════════════════════════════════════════════════════
 // dataClient.js — Frontend WebSocket-Client
-// Zentrale Verbindung zum Scorer-Service
+// Zentrale Verbindung zum ePiber-Backend
 // Ersetzt httpsCallable-Aufrufe für Lesezugriffe
 // ══════════════════════════════════════════════════════
 
-import { SCORER_WS_URL } from "./SDK.js";
+import { BACKEND_WS_URL } from "./SDK.js";
 
 // ── Konfiguration ──
 const RECONNECT_DELAY = 3000;
@@ -22,10 +22,10 @@ let reconnectTimer = null;
 
 function connect() {
   if (ws) return;
-  if (!SCORER_WS_URL) { console.error("dataClient: SCORER_WS_URL nicht konfiguriert"); return; }
+  if (!BACKEND_WS_URL) { console.error("dataClient: BACKEND_WS_URL nicht konfiguriert"); return; }
 
   try {
-    ws = new WebSocket(SCORER_WS_URL);
+    ws = new WebSocket(BACKEND_WS_URL);
   } catch (err) {
     console.error("dataClient: WebSocket Fehler:", err);
     scheduleReconnect();

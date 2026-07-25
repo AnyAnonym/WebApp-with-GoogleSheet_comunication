@@ -30,7 +30,7 @@ function parseSheetDate(raw) {
   return `${dd}.${mm}.${yyyy} - ${hh}:${mi}`;
 }
 
-function formatSetScore(raw) {
+function formatSetResult(raw) {
   if (!raw) return "";
   return String(raw).replace(/\((\d+)\)/g, (_, tiebreak) => {
     const superscripts = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"};
@@ -135,7 +135,7 @@ async function main() {
         const pid3 = parsePlayerId(row[i3]);
         const pid4 = parsePlayerId(row[i4]);
         const ergebnisRaw = row[ergebnisIdx] || "";
-        const sets = ergebnisRaw ? ergebnisRaw.split("/").map((s) => formatSetScore(s)) : [];
+        const sets = ergebnisRaw ? ergebnisRaw.split("/").map((s) => formatSetResult(s)) : [];
         const bewerbId = bewerbIdIdx !== -1 ? String(row[bewerbIdIdx] || "").trim() : "";
         const runde = rasterIdx !== -1 ? parseRunde(row[rasterIdx]) : "";
 
@@ -177,7 +177,7 @@ async function main() {
             return "";
           })(),
           sets,
-          ergebnis: ergebnisRaw.split("/").map((s) => formatSetScore(s)).join("/"),
+          ergebnis: ergebnisRaw.split("/").map((s) => formatSetResult(s)).join("/"),
           bewerbName: bewerbMap.get(bewerbId) || "",
           runde,
         };

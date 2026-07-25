@@ -85,7 +85,7 @@ function badgeHtml(type) {
   return "";
 }
 
-function formatSetScore(raw) {
+function formatSetResult(raw) {
   if (!raw) return "";
   return String(raw).replace(/\((\d+)\)/g, (_, tb) => {
     const sup = {"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
@@ -187,7 +187,7 @@ async function loadData() {
           p3: {name: pid3.cleanId ? (playerMap.get(pid3.cleanId) || pid3.cleanId) : "", id: pid3.cleanId, special: pid3.special},
           p4: {name: pid4.cleanId ? (playerMap.get(pid4.cleanId) || pid4.cleanId) : "", id: pid4.cleanId, special: pid4.special},
           ergebnis,
-          ergebnisFormatted: ergebnis.split("/").map((s) => formatSetScore(s)).join("/"),
+          ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
           winner: determineWinnerWithWo(ergebnis, pid1.special, pid3.special),
           hasWo: !!(pid1.special === "wo" || pid2.special === "wo" || pid3.special === "wo" || pid4.special === "wo"),
           isPlayed: !!ergebnis || pid1.special === "wo" || pid3.special === "wo" || pid1.special === "ret" || pid3.special === "ret",

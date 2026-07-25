@@ -65,18 +65,13 @@ Project/     Dokumentation und Konfigurationsvorlagen
 ### Weitere Dokumente
 | Datei                        | Inhalt                                   |
 |------------------------------|------------------------------------------|
-| Project/VERSIONIERUNG.txt    | Versioning-Regeln, Commit-Format, Doku-Workflow |
 | Project/DEPLOYMENT.txt       | Versionierung, Deployment-Workflow       |
 | Project/KOMMUNIKATION-ANALYSE.md | Client-Server-Analyse + Arbeitspakete K1-K12 |
 | Project/LOGGING-ANALYSE.md   | Logging/Observability + Arbeitspakete L1-L14 |
 
 ### Archiv (nicht mehr aktualisiert)
-| Datei                          | Ersetzt durch                          |
-|--------------------------------|----------------------------------------|
-| Project/PROTOKOLL.txt          | software/CHANGELOG.txt + server-configs/CHANGELOG.txt |
-| Project/DB.txt                 | software/DATENBANK.txt                 |
-| Project/Seiten.txt             | software/seiten/*.txt                  |
-| Project/copilot-instructions.md| Project/VERSIONIERUNG.txt              |
+Nichtmehr verwendete "alte Dateien" liegen unter Project/archive
+Diese sollen nicht mehr durchsucht werden
 
 ## Konfigurations-Dateien (NICHT im Git)
 
@@ -94,27 +89,27 @@ Kommunikations- und Logging-Analyse — alles unter `Project/`.
 
 **Codebasis nur noetig fuer:**
 Konkreten Bug-Fix, spezifische Implementierungsdetails, CSS-Debugging,
-Zeilengenaue Aenderungen.
+Zeilengenaue Aenderungen und nur im Notfall durchsuchen wenn ein tiefes suchen bzw. ein tiefes Verständnis gewonnen werden soll
 
 **Bei Versionierung:**
-Regeln und Workflow: siehe `Project/VERSIONIERUNG.txt`
 1. `git diff` / `git log` lesen
 2. Betroffene Doku-Dateien unter Project/ aktualisieren
 3. CHANGELOG-Dateien ergaenzen (server-configs/ und/oder software/)
-4. PROTOKOLL.txt, DB.txt, Seiten.txt, copilot-instructions.md NICHT mehr anfassen
 
-## Schnellreferenz: 11 HTML-Seiten
+## Schnellreferenz: 13 HTML-Seiten
 
 | Seite             | Funktion                     | URL-Param   |
 |-------------------|------------------------------|-------------|
 | index.html        | Dashboard                    | —           |
 | Bewerbe.html      | Bewerbe-Uebersicht           | —           |
 | bewerbsRaster.html| Turnierraster (KO-Baum)      | ?id=        |
+| matches.html      | Gespielte Matches            | —           |
 | Matches1.html     | Match-Uebersicht mit Filtern | —           |
 | players.html      | Spieler-Tabelle              | —           |
 | scoreboard.html   | Live-Scoreboard (Vollbild)   | —           |
 | monitor.html      | Ferngesteuerte Anzeige       | —           |
 | navigator.html    | Fernbedienung fuer Monitor   | ?profil=    |
 | entryList.html    | Eintragungsliste             | ?id=        |
+| preMatches.html   | Offene Matches               | —           |
 | rangliste.html    | Ranglisten-Pyramide          | ?id=        |
 | RoundRobin.html   | Gruppenphase                 | ?id= ?paarungslayout= |

@@ -39,7 +39,7 @@ Caddy ordnet die Systeme wie folgt zu:
 | PAJ | `http://epiber.at:8081` | `localhost:8083` |
 | PK | `http://epiber.at:8082` | `localhost:8084` |
 
-Referenz: `Project/Caddyfile`.
+Referenz: `Project/server-configs/Caddyfile`.
 
 ## 2. Beginn der Kommunikation
 

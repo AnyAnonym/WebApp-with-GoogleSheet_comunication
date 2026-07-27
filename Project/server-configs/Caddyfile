@@ -10,7 +10,7 @@
 #
 # Live: Caddy holt sich automatisch ein Let's Encrypt Zertifikat
 #       weil ein Domainname angegeben ist.
-# Test: Kein TLS — sind interne Testsysteme.
+# Test: Kein TLS. Diese Vorlage enthaelt keine zusaetzliche Zugriffsbeschraenkung.
 # ══════════════════════════════════════════════════════
 
 
@@ -44,7 +44,6 @@ epiber.at {
 	}
 }
 
-
 # ── Testsystem PAJ (http://epiber.at:8081) ──
 
 http://epiber.at:8081 {
@@ -71,7 +70,6 @@ http://epiber.at:8081 {
 		header Cache-Control "no-cache"
 	}
 }
-
 
 # ── Testsystem PK (http://epiber.at:8082) ──
 

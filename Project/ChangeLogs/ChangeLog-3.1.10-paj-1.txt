@@ -1,0 +1,66 @@
+================================================================================
+TEMPORAERES CHANGELOG - Seitenbranch 3.1.10-paj-1
+================================================================================
+Basisversion: 3.1.10
+Status: Unversioniert
+
+Diese Eintraege werden erst bei einem bestaetigten Merge als neuer Versionseintrag
+in ChangeLog-main.txt uebernommen. Die aktuellen Fachdokumentaenderungen sind eine
+einmalige Bootstrap-Vorbereitung und werden erst durch diesen Merge auf main
+gueltig.
+
+
+Added
+- [Dokumentation] LLM-START.md als gezielter, token-effizienter Einstiegspunkt
+  mit Doku-Routing, Suchregeln, Secret-Schutz und korrigierter Seitenreferenz
+  angelegt.
+- [Dokumentation] Project/DokuVersGit.txt als einzige aktive Regelquelle fuer
+  Dokumentation, SemVer, Branches, Commits, Changelogs, Merge und Git-Sicherheit
+  angelegt.
+- [Dokumentation] Zentrales Gesamtprojekt-Changelog unter
+  Project/ChangeLogs/ChangeLog-main.txt eingefuehrt.
+- [Dokumentation] Git-Historie von 3.0.3 bis 3.1.10 anhand der tatsaechlichen
+  Commit-Diffs im zentralen Changelog nachgetragen.
+- [Dokumentation] Historische Credential-Commits als offenen Sicherheitsbefund
+  dokumentiert, ohne die Schluesseldateien zu lesen.
+- [Repository] Ignore-Regel fuer das lokale Project/ChangeLogs/ChangeLog-main.tmp
+  ergaenzt.
+- [Repository] Die bearbeiteten Git- und Example-Dateien auf einheitliche
+  LF-Zeilenenden normalisiert.
+
+Changed
+- [Dokumentation] Server- und Softwareindizes auf den zentralen Changelog- und
+  Workflow-Pfad umgestellt.
+- [Dokumentation] Server-Setup um getrennte Service-Benutzer, passende
+  Eigentumsrechte und aktuelle Projektpfade korrigiert und erweitert.
+- [Dokumentation] Spreadsheet-Dokumentation an die im Code verwendeten Header
+  PasswdHash, KennwortVergessen, TelefonMobil, Aktiv und SortOrder angepasst.
+- [Infrastruktur] Geheimnisfreie Konfigurationsvorlagen werden als versioniert
+  beschrieben und verwenden neutrale CHANGE_ME-Werte statt aktiver PK-Werte.
+- [Infrastruktur] Caddy-Kommentar stellt klar, dass die Testsysteme durch die
+  Vorlage keine zusaetzliche Zugriffsbeschraenkung erhalten.
+- [Dokumentation] Migrationsbasis 3.1.10 und die einmalige Abweichung zur noch
+  alten Paketversion 3.0.2 dokumentiert.
+- [Dokumentation] Software- und Infrastrukturhistorie in einem gemeinsamen
+  Changelog konsolidiert.
+- [Dokumentation] Branch-ID-Vergabe, Push-Fehlerbehandlung und Reihenfolge von
+  Branchabschluss und Versionsfreigabe praezisiert.
+
+Fixed
+- [Software] Veraltete Cloud-Function-/Firestore-Kommentare auf die aktuelle
+  Backend- und stateStore-Architektur umgestellt.
+- [Dokumentation] Veraltete Pfade zu Archiv-, 2do-, Caddy- und systemd-Dateien
+  sowie falsche Endpoint-, Modul- und Seitenangaben korrigiert.
+- [Dokumentation] Alte Seiten matches.html und preMatches.html korrekt als
+  entfernte Seiten beziehungsweise verbleibende WebSocket-Aliase eingeordnet.
+- [Infrastruktur] PAJ-/PK-Setup an die in den systemd-Units verwendeten Benutzer
+  paj und pk angeglichen.
+- [Repository] Falsche Aussagen, dass die versionierten Example-Dateien nicht
+  im Git liegen, entfernt.
+
+Removed
+- [Dokumentation] LLM-KONTEXT.md durch LLM-START.md ersetzt.
+- [Dokumentation] Project/VERSIONIERUNG.txt nach Uebernahme der weiterhin
+  gueltigen SemVer-Regeln entfernt.
+- [Dokumentation] Getrennte Software- und Infrastruktur-Changelogs nach der
+  Zusammenfuehrung in ChangeLog-main.txt entfernt.

@@ -5,10 +5,10 @@
 ==================================================================================
 
 
-Dieses Dokument beschreibt das vollstaendige Datenbankschema des Google
-Spreadsheets, das als zentrale Datenbank fuer das ePiber-System dient.
-Alle Tabellen (Sheets) werden hier mit ihren Spalten, Formaten und
-Konventionen dokumentiert.
+Dieses Dokument beschreibt das im Projekt verwendete und dokumentierte Schema
+des Google Spreadsheets, das als zentrale Datenbank fuer das ePiber-System
+dient. Die Tabellen werden mit den fuer die Software relevanten Spalten,
+Formaten und Konventionen dokumentiert.
 
 
 ==================================================================================
@@ -88,9 +88,11 @@ Spalten:
   Vorname         | Vorname des Spielers
   Nachname        | Nachname des Spielers
   E-Mail          | E-Mail-Adresse
-  Passwort        | Passwort-Hash (SHA-256)
-  Telefon         | Telefonnummer
+  PasswdHash      | Passwort-Hash (SHA-256)
+  KennwortVergessen | "x" = Passwort-Reset durch Administrator freigegeben
+  TelefonMobil    | Telefonnummer
   Geschlecht      | 1 = maennlich, 2 = weiblich
+  Aktiv           | "1" = aktiv und in Spielerlisten sichtbar
 ---------------------------------------------------------------------------
 
 
@@ -114,6 +116,8 @@ Spalten:
   Bewerbsende         | Enddatum des Bewerbs
   Geschlecht          | 1 = Herren, 2 = Damen, 1,2 = Mixed
   Alterskategorie     | z.B. 0+ = alle, 60+ = Senioren
+  SortOrder           | Optionale Ganzzahl; kleinere Werte werden zuerst
+                      | angezeigt, leere Werte nach allen Zahlen
 ---------------------------------------------------------------------------
 
 

@@ -4,8 +4,8 @@ SOFTWARE-DOKU.txt — Verzeichnis-Dokumentation: software/
 Stand: v3.0.2
 
 Dieses Verzeichnis enthaelt die aktuelle Software-Dokumentation des
-ePiber-Projekts. Die Dateien werden bei jeder Versionierung aktualisiert
-und stellen den jeweils gueltigen Stand dar.
+ePiber-Projekts. Die Dateien werden beim Main-Versionssprung aktualisiert und
+stellen den jeweils gueltigen Main-Stand dar.
 
 
 ================================================================================
@@ -15,19 +15,18 @@ INHALT
 Datei/Verzeichnis           | Beschreibung
 ----------------------------|------------------------------------------------
 SOFTWARE-DOKU.txt           | Diese Datei (Verzeichnis-Index)
-CHANGELOG.txt               | Software-Aenderungsprotokoll pro Version
-                            | (Added / Changed / Fixed / Removed)
-DATENBANK.txt               | Google Spreadsheet Schema: alle 10 Tabellen
+DATENBANK.txt               | Dokumentiertes Google-Spreadsheets-Schema
                             | mit Spalten, Formaten und Logik-Hinweisen
 ARCHITEKTUR.txt             | Gesamtarchitektur, Backend-Module, Datenfluss,
                             | Shared Frontend-Module, CSS, Authentifizierung,
                             | WebSocket-Protokoll
 ENDPOINTS.txt               | Alle Endpoints im Detail:
-                            |   4 HTTP-Endpoints (health, version, status, set-active)
+                            |   4 fachliche HTTP-Endpoints
+                            |   plus OPTIONS und GET-Fallback
                             |   16 WebSocket Read-Endpoints
                             |   6 WebSocket State-Endpoints
-                            |   8 WebSocket Write-Endpoints
-seiten/                     | Pro HTML-Seite eine Dokumentationsdatei
+                            |   8 WebSocket Write-/Operations-Endpoints
+seiten/                     | Pro fachlicher Anwendungsseite eine Dokumentationsdatei
 
 
 ================================================================================
@@ -50,21 +49,25 @@ Jede Seitendatei dokumentiert:
   Funktion, Dateien, Datenquellen, Layout, Bedienung,
   Shared Module und Besonderheiten.
 
+Frontend/court-score-test.html ist eine technische Testseite und besitzt keine
+eigene Seitendokumentation.
+
 
 ================================================================================
 VERWANDTE DOKUMENTATION
 ================================================================================
 
   Project/server-configs/             Server-Infrastruktur (Caddy, systemd, Ports)
-  Project/DEPLOYMENT.txt              Versionierung und Deployment-Workflow
-  Project/KOMMUNIKATION-ANALYSE.md    Analyse der Client-Server-Kommunikation
-  Project/LOGGING-ANALYSE.md          Analyse von Logging und Observability
+  Project/ChangeLogs/ChangeLog-main.txt Zentrales Aenderungsprotokoll
+  Project/DokuVersGit.txt              Dokumentation, Versionierung und Git
+  Project/2do/KOMMUNIKATION-ANALYSE.md Analyse der Client-Server-Kommunikation
+  Project/2do/LOGGING-ANALYSE.md       Analyse von Logging und Observability
 
 
 ================================================================================
 ARCHIV (nicht mehr aktualisiert)
 ================================================================================
 
-  Project/DB.txt              Alte DB-Doku (aktueller Stand: DATENBANK.txt)
-  Project/Seiten.txt          Alte Seiten-Doku (aktueller Stand: seiten/)
-  Project/PROTOKOLL.txt       Historischer Changelog v1.0 bis v3.0.2
+  Project/archive/DB.txt        Alte DB-Doku (aktueller Stand: DATENBANK.txt)
+  Project/archive/Seiten.txt    Alte Seiten-Doku (aktueller Stand: seiten/)
+  Project/archive/PROTOKOLL.txt Historischer Changelog v1.0 bis v3.0.2

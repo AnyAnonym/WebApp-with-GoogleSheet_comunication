@@ -2,7 +2,7 @@
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 10000;
 
-// ── Retry-Logik für Cloud Function Calls ──
+// ── Retry-Logik für asynchrone Backend-Aufrufe ──
 
 export async function callWithRetry(fn, args = {}, opts = {}) {
   const maxAttempts = opts.maxAttempts || RETRY_MAX_ATTEMPTS;

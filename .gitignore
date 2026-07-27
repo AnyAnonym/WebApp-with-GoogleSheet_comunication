@@ -35,9 +35,12 @@ desktop.ini
 .env
 .eslintcache
 
-# ── Sheet API Keys ──
+# ── Lokales temporaeres Main-Changelog ──
+Project/ChangeLogs/ChangeLog-main.tmp
+
+# ── Google-Service-Account-Schluessel ──
 # PAJ
-epiberpaj-5032a34639bf.json     
+epiberpaj-5032a34639bf.json
 # PK
 epiberpk-e127db14e366.json
 # Piber

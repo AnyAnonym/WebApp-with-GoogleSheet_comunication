@@ -1,0 +1,436 @@
+================================================================================
+DokuVersGit.txt - Dokumentation, Versionierung und Git
+================================================================================
+
+Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
+Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
+Repository-Root, sofern sie nicht mit / beginnen.
+
+Die Regeln gelten ab der bestaetigten Migrationsbasis 3.1.10. Aeltere Commits
+koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben.
+
+
+================================================================================
+1. GRUNDREGELN UND FREIGABEN
+================================================================================
+
+1. Dokumentation, Versionierung sowie Git-Aktionen werden nur auf ausdruecklichen
+   Auftrag des Users ausgefuehrt.
+2. Ein Implementierungsauftrag allein autorisiert keine Dokumentation, keinen
+   Commit, keinen Push, keinen Merge und keine Branch-Loeschung.
+3. Ein eindeutiger Auftrag gilt fuer genau die genannten Schritte. Bei unklarem
+   oder erweitertem Umfang ist vor der Ausfuehrung nachzufragen.
+4. Wenn der User "dokumentieren" anfordert, wird zuerst nur das temporaere
+   Changelog des aktuellen Arbeitszweigs aktualisiert. Nach einem gegebenenfalls
+   noch notwendigen Branchabschluss muss immer gefragt werden, ob eine neue
+   Main-Version erstellt werden soll.
+5. Vor einer Versionierung werden aktuelle Main-Version, erkannte SemVer-Stufe,
+   vorgeschlagene Zielversion und Begruendung genannt. Ohne Bestaetigung der
+   konkreten Zielversion wird keine Version erstellt.
+6. Die Bestaetigung einer konkreten Version autorisiert:
+   - Uebernahme der temporaeren Changelog-Eintraege,
+   - Aktualisierung der betroffenen Fachdokumentation,
+   - Aktualisierung von Backend/package.json,
+   - den zugehoerigen Main- oder Merge-Commit.
+7. Push und Branch-Loeschung benoetigen auch nach einer Versionsbestaetigung eine
+   eigene ausdrueckliche Freigabe.
+8. Aendert sich nach der Bestaetigung der Main-Stand, der Aenderungsumfang oder
+   eine konfliktbedingte Loesung, verfaellt die Bestaetigung. Version und Umfang
+   muessen erneut vorgeschlagen und bestaetigt werden.
+9. Keine destruktiven Git-Aktionen, kein Force-Push, kein Rebase eines
+   veroeffentlichten Branches, kein Amend und kein Ueberspringen von Pruefungen
+   ohne gesonderten ausdruecklichen Auftrag.
+
+
+================================================================================
+2. VERSION UND MIGRATIONSBASIS
+================================================================================
+
+Versionsformat:
+
+  MAJOR.MINOR.PATCH
+
+Nach dem ersten regelkonformen Versionssprung ist die einzige kanonische Quelle:
+
+  Backend/package.json -> Feld "version"
+
+Die laufende Version wird je System ueber GET /version ausgegeben. Auf main
+muessen Paketversion und Versionsnummer im letzten Versionscommit uebereinstimmen.
+Eine Abweichung blockiert weitere Versionierungen, bis der User die Korrektur
+bestaetigt hat.
+
+Einmalige Migration:
+
+  - Bestaetigte logische Main-Version: 3.1.10
+  - Aktuelles Backend/package.json vor der Migration: 3.0.2
+  - Beim naechsten bestaetigten Main-Versionssprung wird package.json direkt auf
+    die neue Zielversion gesetzt, voraussichtlich 3.1.11.
+  - Ab diesem Commit gilt package.json wieder ohne Ausnahme als einzige Quelle.
+
+Bootstrap-Ausnahme:
+
+  - Die vor Einfuehrung dieser Regeln bereits auf main begonnenen, uncommitteten
+    Dokumentationsaenderungen wurden in den Branch 3.1.10-paj-1 uebernommen.
+  - Sie duerfen dort einmalig als Release-Vorbereitung bearbeitet werden, werden
+    aber erst durch den bestaetigten Merge zum gueltigen Main-Dokumentationsstand.
+  - Diese Ausnahme gilt nicht fuer spaetere Seitenbranches.
+
+Beim ersten regelkonformen Main-Versionssprung muessen zusaetzlich:
+
+  - alle temporaeren Migrationshinweise in LLM-START.md, SERVER-SETUP.txt und
+    diesem Dokument entfernt oder als abgeschlossen formuliert werden,
+  - die Versions-/Datumskoepfe der tatsaechlich geaenderten Dokumente auf den
+    bestaetigten Stand gesetzt werden,
+  - Stand und Migrationshinweis in ChangeLog-main.txt abgeschlossen werden.
+
+In Seitenbranches wird die Paketversion niemals erhoeht. Sie bleibt auf der vom
+Main-Stand geerbten Version. Der Entwicklungsstand wird dort ueber Branchname und
+Branch-Commit identifiziert, nicht ueber GET /version.
+
+
+================================================================================
+3. SEMANTIC VERSIONING
+================================================================================
+
+  Stufe  | Ausloeser
+  -------|--------------------------------------------------------------------
+  MAJOR  | Inkompatible DB-/API-Aenderung oder inkompatibler Architekturumbau
+  MINOR  | Neues Feature, neue Seite oder neuer Endpoint
+  PATCH  | Bugfix, Refactoring, Performance, Dokumentation, Style oder Tests
+
+Bei mehreren Aenderungsarten gilt die hoechste erforderliche Stufe.
+
+Beispiele ab 3.1.10:
+
+  PATCH -> 3.1.11
+  MINOR -> 3.2.0
+  MAJOR -> 4.0.0
+
+Der Vorschlag ist eine fachliche Empfehlung. Der User kann eine andere gueltige
+SemVer-Version vorgeben; diese konkrete Nummer gilt mit seiner Antwort als
+Bestaetigung.
+
+
+================================================================================
+4. BRANCH-MODELL
+================================================================================
+
+Der Normalfall ist die Arbeit in einem Seitenbranch. Direkte Aenderungen auf
+main sind nur als ausdruecklich freigegebene Ausnahme erlaubt.
+
+Aktuelle Entwickler-/Systemkuerzel:
+
+  paj   Entwicklungs-WebRoot /srv/http/ePiber/paj
+  pk    Entwicklungs-WebRoot /srv/http/ePiber/pk
+
+Branchname:
+
+  <Basisversion>-<Kuerzel>-<BranchId>
+
+Beispiel:
+
+  3.1.10-paj-1
+
+Regeln:
+
+1. Basisversion ist die aktuelle Main-Version beim Anlegen des Branches.
+2. BranchId ist eine positive Ganzzahl. Fuer dieselbe Kombination aus
+   Basisversion und Kuerzel wird die naechste historisch noch nie verwendete ID
+   eingesetzt. Bereits geloeschte Branches geben ihre ID nicht wieder frei.
+3. Vor dem Anlegen werden lokale und Remote-Branches, die Git-Historie und
+   ChangeLog-main.txt auf bereits verwendete Namen geprueft.
+4. Der Branchname bleibt unveraendert, wenn main waehrend der Arbeit fortschreitet.
+5. Mehrere Seitenbranches derselben Basisversion sind erlaubt. Sie werden
+   nacheinander integriert; vor jedem Merge wird die Version neu berechnet.
+6. Ein integrierter Branch wird nicht fuer neue Arbeiten wiederverwendet.
+7. Liegen noch uncommittete Aenderungen auf main, werden sie vor dem ersten
+   Commit auf einen freigegebenen Seitenbranch uebernommen.
+
+
+================================================================================
+5. COMMIT-NAMEN
+================================================================================
+
+Commit im Seitenbranch:
+
+  <Branchname>-<laufendeNummer> | <Kurzkommentar>
+
+Beispiele:
+
+  3.1.10-paj-1-1 | Dokumentationsworkflow vereinheitlicht
+  3.1.10-paj-1-2 | Changelog-Historie nachgetragen
+
+Die laufende Nummer beginnt je Branch bei 1 und wird lueckenlos erhoeht. Auch
+ein erforderlicher Merge von main in den Seitenbranch erhaelt die naechste
+Branch-Commitnummer. Branch-Commits benoetigen einen ausdruecklichen Auftrag.
+
+Main- oder Merge-Commit:
+
+  <NeueVersion> | <Kurzkommentar>
+
+Beispiel:
+
+  3.1.11 | Dokumentations- und Versionsworkflow vereinheitlicht
+
+Mit "Commit-ID" ist in diesem Workflow die Commit-Nachricht gemeint, nicht der
+von Git erzeugte SHA-Hash. Der Kurzkommentar beschreibt den gesamten Umfang in
+einem knappen Satz.
+
+Es werden keine Versions-Tags erstellt, solange der User dies nicht gesondert
+beauftragt.
+
+
+================================================================================
+6. CHANGELOG-DATEIEN
+================================================================================
+
+Alle aktiven Changelog-Dateien liegen exakt unter Project/ChangeLogs/.
+Gross-/Kleinschreibung ist unter Linux verbindlich.
+
+Zentrales, versioniertes Changelog:
+
+  Project/ChangeLogs/ChangeLog-main.txt
+
+Temporaeres Log einer ausdruecklich erlaubten direkten Main-Aenderung:
+
+  Project/ChangeLogs/ChangeLog-main.tmp
+
+Temporaeres, versioniertes Seitenbranch-Log:
+
+  Project/ChangeLogs/ChangeLog-<voller-Branchname>.txt
+
+Beispiel:
+
+  Project/ChangeLogs/ChangeLog-3.1.10-paj-1.txt
+
+Regeln:
+
+1. Jeder Seitenbranch besitzt spaetestens im ersten Commit ein eigenes Branch-Log.
+   Es ist obligatorisches Commit-Bookkeeping, wird vor jedem Branch-Commit
+   aktualisiert und ist durch die Freigabe dieses Commits mitautorisiert.
+2. ChangeLog-main.tmp wird nur bei einer explizit erlaubten direkten Main-Arbeit
+   verwendet, bleibt lokal und wird ueber .gitignore ausgeschlossen.
+3. ChangeLog-main.txt enthaelt nur bestaetigte Main-Versionen. Unversionierte
+   Aenderungen stehen dort nicht.
+4. Beim Versionssprung werden alle zutreffenden Eintraege aus dem temporaeren Log
+   uebernommen, geprueft und zusammengefasst. Danach wird das temporaere Log
+   entfernt.
+5. Bei einem Merge wird die Quelle als voller Seitenbranchname dokumentiert.
+6. Software, Infrastruktur, Dokumentation und Repository-Aenderungen stehen im
+   selben zentralen Changelog. Es gibt keine weiteren aktiven Changelogs.
+7. Leere Kategorien werden weggelassen. Doppelte Eintraege werden beim Uebertrag
+   zusammengefuehrt, ohne Informationen zu verlieren.
+
+Format eines Main-Eintrags:
+
+  [3.1.11] - <YYYY-MM-DD>
+  Commit: 3.1.11 | Dokumentations- und Versionsworkflow vereinheitlicht
+  Quelle: 3.1.10-paj-1
+
+    Added
+    - [Dokumentation] ...
+
+    Changed
+    - [Software] ...
+    - [Infrastruktur] ...
+
+    Fixed
+    - [Software] ...
+
+    Removed
+    - [Repository] ...
+
+Zulaessige Scopes:
+
+  [Software] [Infrastruktur] [Dokumentation] [Repository] [Datenbank]
+
+Das Changelog beschreibt die tatsaechlichen Aenderungen zwischen zwei
+Main-Versionen. Der Commit-Betreff liefert nur die Zusammenfassung und ersetzt
+nicht die einzelnen Changelog-Punkte.
+
+
+================================================================================
+7. ABLAUF BEI "DOKUMENTIEREN"
+================================================================================
+
+1. Aktuellen Branch, Arbeitsbaum, Diff und vorhandene Testergebnisse pruefen.
+2. Tatsaechliche Aenderungen nach Added, Changed, Fixed und Removed einordnen.
+3. Nur das passende temporaere Changelog aktualisieren.
+4. Noch keine permanente Fachdokumentation und keine Paketversion aendern.
+5. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
+   getestet, committed, sauber und gepusht sein. Fehlen Commit oder Push, werden
+   zuerst die jeweils gesonderten Freigaben eingeholt und ausgefuehrt.
+6. Erst danach aktuelle Main-Version und Main-SHA neu pruefen und ausgeben:
+
+     Aktuelle Main-Version: <version>
+     Erkannte Aenderungsart: <MAJOR|MINOR|PATCH>
+     Vorgeschlagene Version: <neue-version>
+     Begruendung: <kurze Begruendung>
+
+     Soll Version <neue-version> erstellt werden?
+
+7. Antwortet der User mit Nein, bleiben nur die temporaeren Eintraege bestehen.
+8. Bestaetigt oder aendert der User die konkrete Version, beginnt die
+   Release-/Merge-Vorbereitung.
+
+
+================================================================================
+8. DOKUMENTATION BEIM MAIN-VERSIONSSPRUNG
+================================================================================
+
+Die temporaeren Changelog-Dateien sind waehrend der Arbeit die einzige
+fortlaufende Dokumentation. Fachliche Dokumentationsdateien werden erst bei der
+bestaetigten Main-Version aktualisiert und beschreiben danach den neuen
+aktuellen Main-Stand.
+
+Funktionale Code- und Konfigurationsdateien werden waehrend der Umsetzung normal
+geaendert. Die Aufschubregel betrifft beschreibende Dokumentation, nicht
+ausfuehrbare Konfigurationen oder Vorlagen, die fuer die Funktion erforderlich
+sind.
+
+  Aenderung                         | Beim Versionssprung pruefen/aktualisieren
+  ----------------------------------|-------------------------------------------
+  Jede Aenderung                    | Project/ChangeLogs/ChangeLog-main.txt
+  Datenbankschema                   | Project/software/DATENBANK.txt
+  Endpoint oder Protokoll           | Project/software/ENDPOINTS.txt
+  Architektur, Cache, State, Auth   | Project/software/ARCHITEKTUR.txt
+  Bestehende HTML-Seite             | Exakte Zuordnung aus SOFTWARE-DOKU.txt;
+                                    | Project/software/seiten/<dokumentname>.txt
+  Neue/entfernte Seite              | Seitendoku, SOFTWARE-DOKU.txt, LLM-START.md
+  Software-Dokumentstruktur         | Project/software/SOFTWARE-DOKU.txt
+  Serverbetrieb                     | Project/server-configs/SERVER-SETUP.txt,
+                                    | ggf. Project/server-configs/SERVER-DOKU.txt
+  Caddy/systemd-Vorlagen            | Betroffene Vorlage und Serverdokumentation
+  Projektueberblick oder Routing    | LLM-START.md
+  Workflowregel                     | Project/DokuVersGit.txt
+
+Project/2do/ wird nur bei direktem fachlichem Bezug aktualisiert.
+Project/archive/ wird nie aktualisiert.
+HTML-Dateinamen werden nicht automatisch in Dokumentnamen umgewandelt, da die
+Gross-/Kleinschreibung einzelner Dateien abweicht.
+
+
+================================================================================
+9. SEITENBRANCH-WORKFLOW
+================================================================================
+
+Start:
+
+1. Branch, Status, Diff und aktuellen Main-Stand pruefen.
+2. main muss vor einer neuen Arbeit sauber und auf dem freigegebenen Stand sein.
+   Ein Update erfolgt nur im autorisierten Git-Workflow mit Fast-Forward:
+
+     git pull --ff-only origin main
+
+3. Nach einem autorisierten git fetch den freien Branchnamen auch gegen Remote
+   und Historie pruefen und Branch anlegen:
+
+     git switch -c <Basisversion>-<Kuerzel>-<BranchId>
+
+Arbeit im Seitenbranch:
+
+1. Implementieren und relevante Pruefungen ausfuehren.
+2. Branch-Changelog aktualisieren.
+3. Vor jedem Commit git status, Diff und die letzten Commits pruefen.
+4. Nur beauftragte Dateien stagen; Secrets ausschliessen.
+5. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
+6. Push nur nach ausdruecklicher Freigabe ausfuehren.
+7. Kein Rebase oder Force-Push eines veroeffentlichten Branches.
+
+Vor der Integration:
+
+1. Seitenbranch muss vollstaendig, getestet, sauber und gepusht sein.
+2. main aktualisieren, dabei nur Fast-Forward zulassen.
+3. Aktuelle Main-Version und Main-SHA erfassen.
+4. Gesamten Integrationsumfang nach SemVer bewerten.
+5. Zielversion vorschlagen und konkret bestaetigen lassen.
+6. Vor dem Merge erneut pruefen, dass main und Remote-Branch unveraendert sind.
+
+Integration:
+
+1. Immer einen echten Merge-Commit erzwingen und die Finalisierung offenlassen:
+
+     git merge --no-ff --no-commit <Branchname>
+
+2. Bei unerwarteten Konflikten oder unklarem Umfang abbrechen und nachfragen.
+3. Branch-Changelog in ChangeLog-main.txt uebertragen und Branch-Log entfernen.
+4. Betroffene Fachdokumentation aktualisieren.
+5. Backend/package.json auf die bestaetigte Version setzen.
+6. Status, Diff, Changelog, Paketversion und Tests pruefen.
+7. Sicherstellen, dass MERGE_HEAD existiert.
+8. Merge-Commit mit exakt folgendem Format erstellen:
+
+     <NeueVersion> | <Kurzkommentar>
+
+Nach der Integration:
+
+1. Pruefen, dass der Merge-Commit zwei Eltern besitzt.
+2. Pruefen, dass Paketversion, Changelog und Commit-Version identisch sind.
+3. Push von main separat freigeben lassen.
+4. Erst nach erfolgreichem und verifiziertem Main-Push die Branch-Loeschung
+   separat freigeben lassen.
+5. Remote-Branch zuerst, lokalen Branch danach sicher mit git branch -d loeschen.
+   Nie -D verwenden, solange keine gesonderte Freigabe vorliegt.
+6. Wird ein Push abgelehnt, im sicheren Stop-Zustand bleiben: den lokalen
+   Merge-Commit nicht veraendern, nicht pullen, nicht resetten, nicht rebasen,
+   nicht force-pushen und nichts loeschen. Status und Abweichung melden.
+7. Eine Wiederherstellung, zum Beispiel Sicherungsbranch plus erneute Integration
+   auf aktuellem origin/main, wird als separater Plan vorgelegt und benoetigt
+   eine neue ausdrueckliche Freigabe sowie eine neue Versionsbestaetigung.
+
+
+================================================================================
+10. DIREKTE MAIN-AUSNAHME
+================================================================================
+
+Direkte Main-Arbeit ist nur erlaubt, wenn der User sie vor der Aenderung
+ausdruecklich als Ausnahme freigibt.
+
+1. Alle Aenderungen werden bis zur Versionierung in ChangeLog-main.tmp erfasst.
+2. Es gibt keinen Zwischencommit ohne Versionsnummer.
+3. Vor dem Versionscommit werden SemVer-Vorschlag und konkrete Zielversion wie
+   beim Merge bestaetigt.
+4. Danach werden Changelog, Fachdokumentation und package.json aktualisiert.
+5. Der normale Main-Commit lautet <NeueVersion> | <Kurzkommentar>.
+6. Im zentralen Changelog lautet das Quellenfeld "direkte Main-Ausnahme".
+7. Ist die Arbeit zu gross fuer einen einzelnen Versionscommit, muss stattdessen
+   ein Seitenbranch verwendet werden.
+
+
+================================================================================
+11. SICHERHEIT UND GIT-HYGIENE
+================================================================================
+
+Folgende Dateien und Inhalte duerfen niemals committed oder vollstaendig
+ausgegeben werden:
+
+  Backend/.env
+  Backend/service-account.json
+  sonstige Service-Account-JSON-Dateien
+  private Schluessel, Tokens, Passwoerter und Session-Geheimnisse
+
+Vor jedem Commit werden Dateinamen, staged Diff und .gitignore geprueft. Wird ein
+Geheimnis committed, ist die Arbeit zu stoppen. Der Schluessel muss zuerst beim
+Anbieter gesperrt oder rotiert werden. Eine Bereinigung der Git-Historie ist ein
+separater destruktiver Vorgang und benoetigt eine ausdrueckliche Freigabe.
+
+Bekannter historischer Befund:
+
+  Die Commits 48c20e9, 4e2826a und 685d3b4 fuegten jeweils eine spaeter
+  geloeschte Service-Account-JSON-Datei zur Git-Historie hinzu. Die operative
+  Sperrung/Rotation und eine moegliche History-Bereinigung wurden vom User
+  vorerst zurueckgestellt. Die Dateiinhalte duerfen nicht ausgelesen oder
+  wiedergegeben werden.
+
+
+================================================================================
+12. ABSCHLUSSBERICHT
+================================================================================
+
+Nach Dokumentations-, Versions- oder Git-Arbeiten wird knapp berichtet:
+
+1. Welche Dateien und Regeln geaendert wurden.
+2. Welche Pruefungen erfolgreich waren oder nicht ausgefuehrt werden konnten.
+3. Aktueller Branch und Arbeitsbaumstatus.
+4. Erstellte Commit- und Versionsnummer, falls vorhanden.
+5. Ob Push, Merge oder Branch-Loeschung noch ausstehen.

@@ -1,0 +1,16 @@
+================================================================================
+CHANGELOG - Branch 3.1.12-paj-1
+================================================================================
+Basisversion: 3.1.12
+
+  Changed
+  - [Dokumentation] Kommunikationsanalyse auf den aktuellen Stand v3.1.12
+    fortgeschrieben und um Backend-Kommunikation mit Google Sheets und der
+    externen Court-Quelle, HTTP-/WebSocket-Verhalten, Endpoint- und
+    Seiteninventar, Datenfrische, Fehlerbehandlung und Betriebsverhalten
+    erweitert.
+  - [Dokumentation] Risiken nach Schwere priorisiert, konkrete aktuelle
+    Vertrags-, Sicherheits- und Datenintegritaetsfehler dokumentiert und den
+    technischen Umsetzungsbacklog mit Abnahmekriterien neu geordnet.
+  - [Dokumentation] Unterschiede zum zuvor analysierten Stand v3.0.2 sowie
+    weiterhin unveraenderte Kommunikationsstrategien kenntlich gemacht.

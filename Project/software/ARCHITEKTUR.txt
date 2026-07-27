@@ -1,7 +1,7 @@
 ==================================================================================
   ARCHITEKTUR.txt — Backend-Module, Datenfluss, Shared Frontend
   Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.1.11
+  Stand:    v3.1.12
 ==================================================================================
 
 
@@ -219,8 +219,8 @@ Wichtig:
   - Nav-Links: Dashboard, Spieler, Matches, Bewerbe, Scoreboard
 
 ----- modals.js -----
-  Modale Dialoge (684 Zeilen, groesstes Frontend-Modul).
-  - Login-Modal (SHA-256 Hash)
+  Modale Dialoge (groesstes Frontend-Modul).
+  - Login-Modal (SHA-256; Web Crypto mit JavaScript-Fallback)
   - Passwort-vergessen-Modal
   - Profil-Modal
   - Match-Forderungs-Modal
@@ -293,7 +293,11 @@ Wichtig:
 ==================================================================================
 
   Hashing:
-    SHA-256 Hash ueber die Web Crypto API (clientseitig berechnet)
+    SHA-256 Hash, clientseitig berechnet:
+    - In sicheren Browser-Kontexten ueber die Web Crypto API
+    - Bei fehlendem crypto.subtle ueber einen kompatiblen JavaScript-Fallback;
+      dies betrifft insbesondere die per HTTP betriebenen Testsysteme
+    - Login und Passwort-Reset fangen Fehler beim Hashing ab
 
   Verifikation:
     Verglichen mit Passwort-Hash-Spalte in der Personen-Tabelle
@@ -310,6 +314,8 @@ Wichtig:
     - Keine Sitzung serverseitig
     - Authentifizierung basiert ausschliesslich auf clientseitigem
       localStorage
+    - Der JavaScript-Fallback stellt auf HTTP nur die Funktion bereit; die
+      Transportverbindung wird dadurch nicht verschluesselt
 
 
 ==================================================================================

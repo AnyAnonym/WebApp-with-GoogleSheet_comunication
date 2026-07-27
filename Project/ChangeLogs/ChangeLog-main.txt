@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 3.1.11
+Stand: 3.1.12
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,23 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[3.1.12] - 2026-07-27
+Commit: 3.1.12 | Login-Hashing auf HTTP-Testsystemen repariert
+Quelle: direkte Main-Ausnahme
+
+  Changed
+  - [Dokumentation] Authentifizierungsarchitektur um den Web-Crypto-Fallback,
+    die Fehlerbehandlung beim Hashing und den Hinweis zur unverschluesselten
+    HTTP-Transportverbindung erweitert.
+
+  Fixed
+  - [Software] Login und Passwort-Reset funktionieren auch auf den per HTTP
+    betriebenen Testsystemen, indem bei fehlendem Web Crypto ein kompatibler
+    SHA-256-Fallback verwendet wird.
+  - [Software] Fehler beim Erzeugen des Passwort-Hashes werden in Login und
+    Passwort-Reset abgefangen statt als unbehandelte Promise-Fehler ausgegeben.
 
 
 [3.1.11] - 2026-07-27

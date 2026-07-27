@@ -1,0 +1,513 @@
+================================================================================
+CHANGELOG - ePiber Gesamtprojekt
+================================================================================
+Stand: 3.1.11
+
+Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
+und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
+Dokumentation, Datenbank und Repository-Struktur. Format und Workflow stehen in
+Project/DokuVersGit.txt.
+
+Historischer Migrationshinweis:
+Die Eintraege 3.0.3 bis 3.1.10 wurden am 27.07.2026 anhand der Git-Diffs
+nachgetragen. Die damaligen Commit-Betreffzeilen wurden nicht in
+Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
+3.1.10 wurde vom User als logische Migrationsbasis bestaetigt. Mit Version
+3.1.11 wurden Paket-, Commit- und Changelog-Version wieder angeglichen.
+
+Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
+mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[3.1.11] - 2026-07-27
+Commit: 3.1.11 | Dokumentations- und Versionsworkflow vereinheitlicht
+Quelle: 3.1.10-paj-1
+
+  Added
+  - [Dokumentation] LLM-START.md als gezielter, token-effizienter Einstiegspunkt
+    mit Doku-Routing, Suchregeln, Secret-Schutz und korrigierter Seitenreferenz
+    angelegt.
+  - [Dokumentation] Project/DokuVersGit.txt als einzige aktive Regelquelle fuer
+    Dokumentation, SemVer, Branches, Commits, Changelogs, Merge und
+    Git-Sicherheit angelegt.
+  - [Dokumentation] Zentrales Gesamtprojekt-Changelog unter
+    Project/ChangeLogs/ChangeLog-main.txt eingefuehrt.
+  - [Dokumentation] Git-Historie von 3.0.3 bis 3.1.10 anhand der tatsaechlichen
+    Commit-Diffs im zentralen Changelog nachgetragen.
+  - [Dokumentation] Historische Credential-Commits als offenen Sicherheitsbefund
+    dokumentiert, ohne die Schluesseldateien zu lesen.
+  - [Repository] Ignore-Regel fuer das lokale
+    Project/ChangeLogs/ChangeLog-main.tmp ergaenzt.
+
+  Changed
+  - [Dokumentation] Server- und Softwareindizes auf den zentralen Changelog- und
+    Workflow-Pfad umgestellt.
+  - [Dokumentation] Server-Setup um getrennte Service-Benutzer, passende
+    Eigentumsrechte und aktuelle Projektpfade korrigiert und erweitert.
+  - [Dokumentation] Spreadsheet-Dokumentation an die im Code verwendeten Header
+    PasswdHash, KennwortVergessen, TelefonMobil, Aktiv und SortOrder angepasst.
+  - [Infrastruktur] Geheimnisfreie Konfigurationsvorlagen als versioniert
+    beschrieben und aktive PK-Werte durch neutrale CHANGE_ME-Werte ersetzt.
+  - [Infrastruktur] Caddy-Kommentar stellt klar, dass die Testsysteme durch die
+    Vorlage keine zusaetzliche Zugriffsbeschraenkung erhalten.
+  - [Dokumentation] Software- und Infrastrukturhistorie in einem gemeinsamen
+    Changelog konsolidiert.
+  - [Dokumentation] Branch-ID-Vergabe, Push-Fehlerbehandlung und Reihenfolge von
+    Branchabschluss und Versionsfreigabe verbindlich festgelegt.
+  - [Repository] Bearbeitete Git- und Example-Dateien auf LF-Zeilenenden
+    normalisiert.
+
+  Fixed
+  - [Software] Veraltete Cloud-Function-/Firestore-Kommentare auf die aktuelle
+    Backend- und stateStore-Architektur umgestellt.
+  - [Dokumentation] Veraltete Pfade zu Archiv-, 2do-, Caddy- und systemd-Dateien
+    sowie falsche Endpoint-, Modul- und Seitenangaben korrigiert.
+  - [Dokumentation] Versionsbeispiele der HTTP-Endpunkte /health und /version
+    auf den neuen kanonischen Stand 3.1.11 angeglichen.
+  - [Dokumentation] Alte Seiten matches.html und preMatches.html korrekt als
+    entfernte Seiten beziehungsweise verbleibende WebSocket-Aliase eingeordnet.
+  - [Infrastruktur] PAJ-/PK-Setup an die in den systemd-Units verwendeten
+    Benutzer paj und pk angeglichen.
+  - [Repository] Falsche Aussagen entfernt, nach denen die versionierten
+    Example-Dateien nicht im Git liegen.
+
+  Removed
+  - [Dokumentation] LLM-KONTEXT.md durch LLM-START.md ersetzt.
+  - [Dokumentation] Project/VERSIONIERUNG.txt nach Uebernahme der weiterhin
+    gueltigen SemVer-Regeln entfernt.
+  - [Dokumentation] Getrennte Software- und Infrastruktur-Changelogs nach der
+    Zusammenfuehrung in ChangeLog-main.txt entfernt.
+
+
+[3.1.10] - 2026-07-25
+Commit: 3.1.10 | Saubere Doku und Promtingstruktur
+
+  Added
+  - [Dokumentation] Die bereits entfernten Seiten matches.html und
+    preMatches.html wurden irrtuemlich wieder in die LLM-Schnellreferenz
+    aufgenommen.
+
+  Changed
+  - [Dokumentation] Seitenanzahl im LLM-Kontext von elf auf dreizehn geaendert.
+  - [Dokumentation] Archiv- und Code-Suchregeln im LLM-Kontext verkuerzt und
+    restriktiver formuliert.
+
+  Removed
+  - [Dokumentation] Konkreter Verweis auf VERSIONIERUNG.txt und die detaillierte
+    Ersetzungstabelle archivierter Dokumente aus dem LLM-Kontext entfernt.
+
+Historischer Hinweis: Zwischen 3.1.8 und 3.1.10 existiert weder ein Commit noch
+ein Tag fuer 3.1.9. Die Historie wurde nicht nachtraeglich umgeschrieben.
+
+
+[3.1.8] - 2026-07-25
+Commit: 3.1.8 | Projektdokumentierung umstrukturiert
+
+  Added
+  - [Dokumentation] LLM-Projektkontext sowie Versionierungs- und
+    Dokumentationsregeln angelegt.
+  - [Dokumentation] Softwaredokumentation fuer Architektur, Datenbank,
+    Endpoints, Changelog und elf Anwendungsseiten angelegt.
+  - [Dokumentation] Server-Index und Infrastruktur-Changelog angelegt.
+
+  Changed
+  - [Repository] Dokumentation in software/, server-configs/, 2do/ und archive/
+    neu strukturiert.
+  - [Infrastruktur] Caddy- und systemd-Vorlagen ohne fachliche Aenderung nach
+    Project/server-configs/ verschoben.
+  - [Dokumentation] Server-Setup auf Infrastruktur fokussiert und Statuspruefung
+    fuer alle drei Systeme erweitert.
+
+  Fixed
+  - [Dokumentation] Installationspfade fuer verschobene Caddy- und
+    systemd-Vorlagen sowie PK-/PAJ-Beispiele korrigiert.
+
+  Removed
+  - [Software] Alte Seiten matches.html und preMatches.html samt zugehoerigen
+    JavaScript-Dateien und Match-Card-Styles entfernt.
+  - [Software] Nicht mehr verwendete playersList.js- und matchesList.js-Ladevorgaenge
+    aus index.html entfernt.
+
+
+[3.1.7] - 2026-07-25
+Commit: 3.1.7 | Renaming & Log/Com-Auditierung
+
+  Added
+  - [Dokumentation] Analysen zu Client-Server-Kommunikation und
+    Logging/Observability mit Risiken und Umsetzungs-Backlog angelegt.
+
+  Changed
+  - [Software] Frontend-Konfiguration von SCORER_WS_URL auf BACKEND_WS_URL
+    umbenannt und WebSocket-Client sowie Vorlage angepasst.
+  - [Software] Scorer-Bezeichnungen auf ePiber-Backend umgestellt und
+    scorer-test.html in court-score-test.html umbenannt.
+  - [Software] Interne Score-Bezeichner und eine CSS-Klasse ohne erkennbare
+    Berechnungslogik-Aenderung auf Ergebnis-Terminologie umbenannt.
+  - [Dokumentation] Server-Setup an die neuen Backend-, Testseiten- und
+    Konfigurationsnamen angepasst.
+  - [Repository] Vier fachlich unveraenderte Dateien von LF auf CRLF umgestellt.
+
+  Fixed
+  - [Software] Leerzeichen am Ende der WebSocket-URL in SDK.js.example entfernt.
+
+
+[3.1.6] - 2026-07-24
+Commit: 3.1.6 | Piber Dienstkonto erneuerung
+
+  Added
+  - [Repository] Ignore-Regel fuer die Live-/Piber-Service-Account-Datei
+    ergaenzt.
+
+
+[3.1.5] - 2026-07-24
+Commit: 3.1.5 | PK service file user change
+
+  Changed
+  - [Infrastruktur] Ausfuehrungsbenutzer der PK-systemd-Unit vom gemeinsamen
+    Konto piber auf das dedizierte Konto pk geaendert.
+
+
+[3.1.4] - 2026-07-24
+Commit: 3.1.4 | PK Dienstkonto erneuerung
+
+  Added
+  - [Repository] Ignore-Regel fuer die erneuerte PK-Service-Account-Datei
+    ergaenzt.
+
+  Changed
+  - [Infrastruktur] PK-Credentials-Pfadhinweis in Backend/.env.example an die
+    erneuerte lokale Schluesseldatei angepasst.
+
+
+[3.1.3] - 2026-07-24
+Commits: 3.1.3 | detailierterer Workflow mit mehr Git Befehlen
+         3.1.3 | fix fuer Tabellenzugriff
+Integration: generischer Merge-Commit db1b010
+
+  Added
+  - [Dokumentation] Server-Setup um git log, git status und einen
+    Branch-/Merge-Ablauf erweitert.
+  - [Repository] Ignore-Regel fuer den damaligen PAJ-Credential-Dateinamen
+    ergaenzt.
+
+  Fixed
+  - [Infrastruktur] PAJ-Credential-Pfadhinweis in Backend/.env.example auf die
+    ignorierte lokale Datei umgestellt.
+
+  Removed
+  - [Repository] Drei versehentlich getrackte Credential-JSON-Dateien aus dem
+    Arbeitsbaum entfernt. Sie blieben in der Git-Historie erhalten.
+
+Historischer Hinweis: Zwei parallele Commits trugen dieselbe Version 3.1.3. Der
+anschliessende Merge besass keine eigene Version und keine Konfliktaufloesung.
+
+
+[3.1.2] - 2026-07-24
+Commit: 3.1.2 | Example Files Update
+
+  Added
+  - [Repository] Eine Service-Account-JSON-Datei wurde versehentlich versioniert.
+    Ihr Inhalt wurde bei der Changelog-Rekonstruktion nicht gelesen.
+
+  Changed
+  - [Infrastruktur] Backend/.env.example um systemspezifische Hinweise und
+    Beispielwerte fuer Sheet-ID, Port und Credentials-Pfad erweitert.
+  - [Software] WebSocket-Beispielwert in Frontend/JS/SDK.js.example geaendert.
+
+
+[3.1.1] - 2026-07-24
+Commit: 3.1.1 | first Use
+
+  Changed
+  - [Dokumentation] Abschliessende Trennlinie in Project/README.md ergaenzt;
+    keine inhaltliche Aenderung.
+
+
+[3.1.0] - 2026-07-24
+Commit: 3.1.0 | Git Works
+
+  Fixed
+  - [Infrastruktur] Unix-Benutzer der damaligen PAJ-systemd-Unit von piber auf
+    paj korrigiert.
+
+  Removed
+  - [Repository] Testdateien 1234.txt und 3.0.8-paj-1.txt entfernt.
+
+
+[3.0.10] - 2026-07-24
+Commit: 3.0.10 | Test 6
+Quelle: 3.0.8-paj-1
+
+  Added
+  - [Repository] Testdatei 3.0.8-paj-1.txt aus dem Seitenbranch integriert.
+
+  Changed
+  - [Repository] Inhalt der Testdatei vor dem Merge einmal ersetzt.
+
+
+[3.0.9] - 2026-07-24
+Commit: 3.0.9 | Test 5
+
+  Changed
+  - [Repository] Zuvor leere Testdatei 1234.txt um eine Testzeile ergaenzt.
+
+
+[3.0.8] - 2026-07-24
+Commit: 3.0.8 | Test 4
+
+  Added
+  - [Repository] Temporaere Testdatei test3.txt und anschliessend die leere
+    Testdatei 1234.txt angelegt.
+
+  Removed
+  - [Repository] test3.txt und die aus 3.0.7 stammende testo1.txt entfernt.
+
+Historischer Hinweis: Die Seitenbranch-Commits wurden linear ohne eigenen
+Merge-Commit in main aufgenommen.
+
+
+[3.0.7] - 2026-07-24
+Commit: 3.0.7 | Test 3
+
+  Added
+  - [Repository] Einzeilige Testdatei testo1.txt angelegt.
+
+
+[3.0.6] - 2026-07-23
+Commit: 3.0.6 | Test2
+
+  Removed
+  - [Repository] Testdatei abc.txt entfernt; der Baum entsprach danach wieder
+    dem Stand 3.0.2.
+
+
+[3.0.5] - 2026-07-23
+Commit: 3.0.5 | Test1
+
+  Added
+  - [Repository] Einzeilige Testdatei abc.txt angelegt.
+
+
+[3.0.4] - 2026-07-23
+Commit: 3.0.4 - Test
+Quelle: historischer Branch 3.0.2-paj-1
+
+  Added
+  - [Repository] Testdatei test im Seitenbranch angelegt und vor dem
+    Versionscommit integriert.
+
+  Removed
+  - [Repository] Testdateien test und test-live wieder entfernt; der Baum
+    entsprach danach erneut dem Stand 3.0.2.
+
+Historischer Hinweis: Der vorausgehende Merge verwendete einen generischen
+Merge-Betreff; der Seitencommit entsprach nicht dem heutigen Namensschema.
+
+
+[3.0.3] - 2026-07-22
+Commit: 3.0.3
+
+  Added
+  - [Repository] Einzeilige Testdatei test-live angelegt.
+
+
+[3.0.2] - 2026-07-22
+Commit: 3.0.2
+
+  Added
+  - [Infrastruktur] Google-Service-Account-Schluessel lokal fuer alle drei
+    Systeme eingerichtet.
+  - [Repository] Eine Service-Account-JSON-Datei wurde versehentlich versioniert
+    und blieb trotz spaeterer Loeschung in der Git-Historie erhalten.
+
+  Changed
+  - [Infrastruktur] Backend/.env und Frontend/JS/SDK.js fuer Live, PAJ und PK
+    systemspezifisch konfiguriert.
+
+
+[3.0.1] - 2026-07-22
+Commit: 3.0.1 Lauffaehig nach Umzug auf epiber.at
+
+  Added
+  - [Repository] Eine Service-Account-JSON-Datei wurde versehentlich versioniert
+    und blieb trotz spaeterer Loeschung in der Git-Historie erhalten.
+
+  Fixed
+  - [Infrastruktur] PAJ-/PK-WebSocket-URLs im Server-Setup auf ws:// korrigiert.
+  - [Dokumentation] /version in der Statuspruefung dokumentiert.
+
+
+[3.0.0] - 2026-07-21
+Commit: 3.0.0 - Serverplattformumzug
+
+  Added
+  - [Infrastruktur] Caddy als Reverse Proxy mit automatischem TLS fuer Live.
+  - [Infrastruktur] Drei systemd-Services, Firewall-Regeln, DNS-Konfiguration
+    und HTTP-Endpunkte /health, /version, /status und /set-active angelegt.
+  - [Infrastruktur] Umgebungsbasierte Backend-Konfiguration sowie Vorlagen fuer
+    .env und SDK.js eingefuehrt.
+  - [Dokumentation] Server-Konfigurationsverzeichnis mit Caddy- und
+    systemd-Vorlagen angelegt.
+
+  Changed
+  - [Infrastruktur] Hosting von Google Cloud auf einen eigenen Arch-Linux-Server
+    mit den Systemen piber, paj und pk migriert.
+  - [Repository] Projektstruktur von public/ und scorer-service/ auf Frontend/
+    und Backend/ umgestellt.
+  - [Software] Firebase aus SDK.js entfernt und BACKEND_WS_URL als einzige
+    Frontend-Konfiguration verwendet.
+  - [Software] Frontend-Version wird ueber GET /version aus package.json geladen.
+
+  Removed
+  - [Infrastruktur] Firebase Hosting und Google Cloud Run entfernt.
+  - [Repository] Docker-, Firebase- und obsolete Root-/Functions-Dateien entfernt.
+  - [Software] Firebase-SDK-Imports aus allen Frontend-Dateien entfernt.
+
+
+[2.1.2] - 2026-07-16
+
+  Added
+  - Bewerbe-Sortierung nach SortOrder-Spalte + Datum (bewerbeList.js)
+  - Passwort-Vergessen: Administrator-Freigabe erforderlich (kennwortvergessen="x")
+  - Passwort-Freigabe wird nach erfolgreicher Aenderung automatisch geloescht
+
+  Changed
+  - Matches1.html Filter-Reihenfolge: Spieler, Bewerb, Zeitraum, Fehlender
+    Spielpartner, Forderung ohne Spieldatum
+
+  Fixed
+  - Spaltenname "passwdhash" statt "passwort" in verifyUserLogin und resetPassword
+
+
+[2.1.1] - 2026-07-16
+
+  Changed
+  - SDK.js auf Minimum reduziert: nur noch BACKEND_WS_URL Export
+
+  Fixed
+  - Navigator Spielerauswahl zeigte alle Matches statt nur offene
+  - players.html ERR_CONNECTION_REFUSED durch Firebase SDK Entfernung behoben
+
+
+[2.1.0] - 2026-07-16
+
+  Added
+  - stateStore.js: In-Memory State fuer Courts, Navigator, Scroll (ersetzt Firestore)
+  - 7 Schreib-Endpoints im dataProvider.js (verifyUserLogin, resetPassword,
+    setMatchDate, setPreMatchResult, addMatch, addEntryList, removeEntryList)
+  - 6 State-Endpoints (get/setScoreboardCourts, get/setNavigatorTarget,
+    get/setNavigatorScroll)
+  - readMatchRestrictions und getMyChallenges als WebSocket-Endpoints
+  - withdrawFromRanking Endpoint mit Logging in Spreadsheet
+
+  Changed
+  - ALLE Schreib-Operationen von Firebase Cloud Functions auf WebSocket migriert
+  - 10 Frontend-Dateien auf dataClient.js umgestellt (kein httpsCallable mehr)
+  - Firestore komplett durch In-Memory stateStore ersetzt
+
+  Fixed
+  - [wo]/[ret] Regex erweitert: matcht [w.o.], [wo], [ret] zuverlaessig
+  - [ret] in bewerbsRaster erkannt und korrekt dargestellt
+  - Scoreboard: [wo]-Matches aus "Naechste Spiele" herausgefiltert
+  - RoundRobin: Spiele-Zaehlung ueberspringt jetzt Matches ohne Ergebnis
+  - Rangliste: Prueft Ergebnis-Spalte statt nicht-existierende Status-Spalte
+  - Matches1: Spielerfilter nach Nachname sortiert, nur aktive Spieler
+
+  Removed
+  - Firebase Cloud Functions komplett (26 Functions)
+  - Firestore-Zugriffe aus Frontend und Backend
+  - httpsCallable Imports aus 10 Frontend-Dateien
+
+
+[2.0.1] - 2026-07-15
+
+  Added
+  - Matches1.html: Datum-Presets +/-1M neben +/-3M und +/-12M
+
+  Fixed
+  - Spaltenname "bewerbrunde" (ohne "s") in 11 Stellen / 7 Frontend-Dateien
+  - [wo]-Matches als gespielt behandelt (Kategorie A) auch ohne Ergebnis
+  - BYE-Matches komplett herausgefiltert (keine Kategorie)
+  - Datumsfilter schliesst Matches ohne Datum korrekt aus
+
+
+[2.0.0] - 2026-07-15
+
+  Added
+  - Matches1.html: Neue zentrale Match-Uebersicht mit 3 Kategorien (A/B/C)
+    und 5 kombinierbaren Filtern
+  - Matches1.js + Matches1.css: Komplette Seitenlogik und Styling
+  - determineWinnerFromResult(): Zentrale Gewinner-Ermittlung aus Ergebnis
+  - DB.txt und Seiten.txt als neue Dokumentationsdateien
+
+  Changed
+  - Tabellen preMatches + matches zu Matches1 zusammengefuehrt
+  - Spaltenumbenennung: SpielerID1-4 -> Spieler1ID-4ID, Zeitpunkt -> MatchDate,
+    ZeitpunktForderung -> ForderungDate, RasterPaarung -> BewerbRunde,
+    Ignorieren -> Ignore
+  - 20 Dateien auf neue Spaltennamen umgestellt
+  - Schutz-/Sperrzeit-Logik: Neuestes Match ueberschreibt alten Status
+
+  Removed
+  - Gewinner-Spalte in Datenbank (wird aus Ergebnis berechnet)
+  - Status-Spalte (implizit ueber Ergebnis vorhanden/nicht vorhanden)
+
+
+[1.25.1] - 2026-07-14
+
+  Added
+  - courtScores Endpoint: Gibt letzten Score-Stand zurueck (Initialanzeige)
+  - KeepAlive Ping/Pong: Server sendet alle 30s Ping, tote Clients nach 90s entfernt
+  - rangliste.js auf dataClient umgestellt (Lese-Calls ueber WebSocket)
+
+  Fixed
+  - Cloud Functions Permission Denied: invoker:"public" bei 20 Functions ergaenzt
+  - Login e-mail Spaltenname: Sucht nach "e-mail" und "email" als Fallback
+  - Spielerzuweisung deaktivierte Platz nicht mehr implizit
+  - Scoreboard zeigte initial nur Nullen (courtScores Endpoint hinzugefuegt)
+  - Beendete Bewerbe sind jetzt klickbar (Ergebnis-Ansicht)
+
+  Removed
+  - Notification-Glocke aus Desktop- und Mobile-Navigation
+  - Ranglisten-Sidebar aus 6 HTML-Seiten
+
+  Changed
+  - Matches-Seite: Kompakteres Layout, volle Breite, responsive Verbesserungen
+
+
+[1.25.0] - 2026-07-13
+
+  Added
+  - Modulare Backend-Architektur: config.js, dataStore.js, dataPoller.js,
+    courtPoller.js, dataProvider.js (ersetzt monolithisches server.js)
+  - dataClient.js: Zentraler WebSocket-Client mit createEndpoint(), request(),
+    setOnScoreChange(), Auto-Connect und Auto-Reconnect
+  - WebSocket-Protokoll: Request/Response mit ID-Korrelation, Score-Push
+  - Tick-basiertes Polling: fast (10s) und slow (30s) Kategorien
+  - /status Endpoint: Clientliste, Polling-Status, Court-Status
+
+  Changed
+  - Alle Frontend-Leseoperationen von Cloud Functions auf WebSocket umgestellt
+  - Login robuster: readPlayerDetails ueber WebSocket, parallele Requests
+  - dataClient.js Verbindungswartelogik: bis 10s warten statt 2s einmalig
+
+  Fixed
+  - Login e-mail Spalte mit Bindestrich ("e-mail" statt "email")
+
+
+[1.24.0] - 2026-07-10
+
+  Added
+  - Live-Scores ueber WebSocket-Push statt Frontend-Polling
+  - ScoreLog in Google Spreadsheet (Court-Score-Aenderungen protokolliert)
+  - RoundRobin.html: Gruppentabellen mit Statistik und Paarungen
+  - Doppel-Unterstuetzung in Navigator-Overlay und Scoreboard
+  - EntryList um ID-Spalte erweitert
+  - Matches-Tabelle: Ignorieren-Spalte filtert vorbereitete Matches
+
+  Changed
+  - Migration von us-central1 nach europe-west3 (alle Cloud Functions + Cloud Run)
+  - Scoreboard: pollCourt() durch WebSocket-Score-Push ersetzt
+
+  Fixed
+  - Cache-Busting fuer Monitor-iframe (Timestamp-Parameter)

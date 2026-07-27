@@ -1,7 +1,7 @@
 ==================================================================================
   ENDPOINTS.txt — WebSocket- und HTTP-Endpoint-Referenz
   Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.0.2
+  Stand:    v3.1.11
 ==================================================================================
 
 
@@ -27,7 +27,7 @@ Insgesamt 6 HTTP-Routen (inkl. CORS und Fallback).
   Body:
     {
       status:    "ok",
-      version:   "3.0.2",
+      version:   "3.1.11",
       dataReady: true/false,
       court: {
         pollingActive: true/false,
@@ -54,7 +54,7 @@ Insgesamt 6 HTTP-Routen (inkl. CORS und Fallback).
   Response:   200 JSON
   Body:
     {
-      version: "3.0.2"
+      version: "3.1.11"
     }
   Beschreibung:
     Gibt die aktuelle Backend-Version zurueck. Wird vom Frontend

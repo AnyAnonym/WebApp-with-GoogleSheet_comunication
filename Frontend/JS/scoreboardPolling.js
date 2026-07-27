@@ -361,7 +361,7 @@ function handleCourtData(data) {
 // Score-Push über dataClient empfangen
 setOnScoreChange(handleCourtData);
 
-// ── Scoreboard state (Spielernamen + Bewerb + aktiv-Status aus Firestore) ──
+// ── Scoreboard-State (Spielernamen + Bewerb + Aktiv-Status aus stateStore) ──
 // Wird IMMER gepollt, unabhängig vom aktiv-Status
 
 function updateScoreboardCourt(courtKey, courtData) {
@@ -372,7 +372,7 @@ function updateScoreboardCourt(courtKey, courtData) {
   setText(prefix + '-datetime', courtData.dateTime);
 
   // Bewerb + Runde zusammensetzen
-  // Runde aus Firestore, oder per matchId aus preMatch/Match-Daten nachschlagen
+  // Runde aus stateStore oder per matchId aus den Match-Daten nachschlagen
   let runde = courtData.runde || "";
   if (!runde && courtData.matchId) {
     const rasterRaw = matchRasterMap.get(courtData.matchId) || "";

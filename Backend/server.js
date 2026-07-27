@@ -59,7 +59,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST /set-active — Signal von Cloud Function
+  // POST /set-active — HTTP-Signal zur Court-Polling-Steuerung
   if (req.url === "/set-active" && req.method === "POST") {
     let body = "";
     req.on("data", (chunk) => { body += chunk; });

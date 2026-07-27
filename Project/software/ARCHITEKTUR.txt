@@ -1,7 +1,7 @@
 ==================================================================================
   ARCHITEKTUR.txt — Backend-Module, Datenfluss, Shared Frontend
   Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.0.2
+  Stand:    v3.1.11
 ==================================================================================
 
 
@@ -23,14 +23,14 @@
     |-- Statische Frontend-Dateien aus Frontend/
     `-- Reverse Proxy: /ws + HTTP-Endpoints -> Node.js Backend
 
-  Node.js Backend (6 Module)
+  Node.js Backend (server.js + 6 unterstuetzende Module)
     |-- server.js         HTTP-Server, Startup-Orchestrierung
     |-- config.js         Umgebungsvariablen, Polling-Intervalle, Tabellen
     |-- dataStore.js      In-Memory-Cache aller Spreadsheet-Daten
     |-- dataPoller.js     Periodisches Google Sheets Polling
     |-- courtPoller.js    Externes Court-Score-Polling + ScoreLog
-    `-- dataProvider.js   WebSocket-Server, Endpoints, Sheet-Writes
-        stateStore.js     Fluechtiger In-Memory-State
+    |-- dataProvider.js   WebSocket-Server, Endpoints, Sheet-Writes
+    `-- stateStore.js     Fluechtiger In-Memory-State
 
 
 ==================================================================================
@@ -78,7 +78,7 @@ Polling-Intervalle:
 
 TABLE_CONFIG:
   Definiert 8 Tabellen mit ihren Kategorien (fast/slow).
-  Jede Tabelle hat: Sheet-Name, Kategorie, Header-Zeile ja/nein.
+  Jede Tabelle hat: Sheet-Name und Polling-Kategorie.
 
 
 ----- dataStore.js -----
@@ -260,14 +260,14 @@ Wichtig:
 ==================================================================================
 
 
------ styles.css (2257 Zeilen) -----
+----- styles.css -----
   Globales Stylesheet fuer alle Seiten.
   CSS-Variablen:
     --bg, --fg, --muted, --accent, --table-border
   Breakpoints:
     480px, 600px, 768px, 900px
 
------ scoreboard.css (347 Zeilen) -----
+----- scoreboard.css -----
   Scoreboard-spezifische Styles.
   - 2-Spalten Grid-Layout
   - Court-Anzeigen
@@ -275,14 +275,14 @@ Wichtig:
   Breakpoints:
     1000px, 1300px
 
------ RoundRobin.css (311 Zeilen) -----
+----- RoundRobin.css -----
   Gruppenphasen-Styling.
   - CSS Grid mit --rr-cols Variable
   - Roboto Flex Schrift
   Breakpoints:
     499px, 1501px
 
------ Matches1.css (289 Zeilen) -----
+----- Matches1.css -----
   Match-Uebersicht mit Filtern und Karten.
   Breakpoints:
     600px

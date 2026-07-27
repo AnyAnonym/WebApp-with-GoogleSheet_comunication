@@ -1,14 +1,14 @@
 ================================================================================
 SERVER-SETUP.txt — Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Stand: v3.0.2
+Stand: v3.1.11
 Erstellt: 21.07.2026
-Letzte Aenderung: 22.07.2026
+Letzte Aenderung: 27.07.2026
 
 Dieses Dokument beschreibt die Server-Infrastruktur des ePiber-Projekts:
 Verzeichnisstruktur, Ports, Ersteinrichtung, Firewall und Status-Pruefung.
 
-Fuer Versionierung und Deployment-Workflow siehe: Project/DEPLOYMENT.txt
+Fuer Dokumentation, Versionierung und Git siehe: Project/DokuVersGit.txt
 
 
 ================================================================================
@@ -55,31 +55,31 @@ Repository-Root (R:\ lokal, /srv/http/ePiber/<system>/ am Server):
 │   ├── courtPoller.js
 │   ├── dataProvider.js
 │   ├── stateStore.js
-│   ├── package.json             ← Zentrale Versionsnummer (einzige Stelle!)
+│   ├── package.json             ← Kanonische Versionsnummer
 │   ├── .env.example             ← Vorlage im Git
 │   └── .env                     ← NICHT im Git! (pro System unterschiedlich)
 │
 ├── Project/                     # Dokumentation, Konfigvorlagen, Serverconfig
-│   ├── PROTOKOLL.txt
-│   ├── DB.txt
-│   ├── Seiten.txt
-│   ├── README.md
-│   ├── DEPLOYMENT.txt           ← Versionierung und Deployment-Workflow
-│   ├── copilot-instructions.md
+│   ├── DokuVersGit.txt          ← Dokumentation, Versionierung und Git
+│   ├── ChangeLogs/              ← Zentrale und temporaere Aenderungsprotokolle
+│   │   ├── ChangeLog-main.txt
+│   │   └── ChangeLog-<Branchname>.txt
 │   ├── server-configs/          ← Server-Infrastruktur
 │   │   ├── SERVER-DOKU.txt      ← Verzeichnis-Index
 │   │   ├── SERVER-SETUP.txt     ← Diese Datei
-│   │   ├── CHANGELOG.txt        ← Aenderungsprotokoll Server/Infrastruktur
 │   │   ├── Caddyfile            ← Vorlage fuer /etc/caddy/Caddyfile
 │   │   └── systemd/
 │   │       ├── epiber-piber.service
 │   │       ├── epiber-paj.service
 │   │       └── epiber-pk.service
-│   ├── software/
+│   ├── software/                ← Aktuelle Software-Dokumentation
+│   │   ├── SOFTWARE-DOKU.txt    ← Verzeichnis-Index
+│   │   ├── DATENBANK.txt
 │   │   ├── ARCHITEKTUR.txt
-│   │   └── ENDPOINTS.txt
-│   └── additional Files/
-│       └── ...
+│   │   ├── ENDPOINTS.txt
+│   │   └── seiten/
+│   ├── 2do/                     ← Analysen und offene Aufgaben
+│   └── archive/                 ← Historische, nicht gepflegte Dokumente
 │
 └── .gitignore
 
@@ -132,14 +132,18 @@ Let's Encrypt Zertifikat. Die Testsysteme PAJ und PK laufen ueber HTTP.
 4.2 Benutzer anlegen
 --------------------
 
-  useradd -r -s /bin/nologin piber
+  useradd -r -U -s /bin/nologin piber
+  useradd -r -U -s /bin/nologin paj
+  useradd -r -U -s /bin/nologin pk
 
 
 4.3 Verzeichnisse anlegen
 --------------------------
 
   mkdir -p /srv/http/ePiber/{piber,paj,pk}
-  chown -R piber:piber /srv/http/ePiber
+  chown piber:piber /srv/http/ePiber/piber
+  chown paj:paj     /srv/http/ePiber/paj
+  chown pk:pk       /srv/http/ePiber/pk
 
 
 4.4 Git-Repository klonen (3x)
@@ -153,6 +157,11 @@ Let's Encrypt Zertifikat. Die Testsysteme PAJ und PK laufen ueber HTTP.
 
   cd /srv/http/ePiber/pk
   git clone <REPO_URL> .
+
+  # Durch den Clone als root erzeugte Dateien den Service-Benutzern zuweisen:
+  chown -R piber:piber /srv/http/ePiber/piber
+  chown -R paj:paj     /srv/http/ePiber/paj
+  chown -R pk:pk       /srv/http/ePiber/pk
 
 
 4.5 Backend Dependencies installieren (3x)
@@ -203,16 +212,22 @@ sind NICHT im Git und muessen manuell erstellt werden.
   export const BACKEND_WS_URL = "ws://epiber.at:8082/ws";
 
 
-4.7 Google Service-Account-Key
--------------------------------
+4.7 Google-Service-Account-Schluessel
+--------------------------------------
 
-  Den JSON-Key vom Google Cloud Projekt "e-piber" herunterladen:
+  Die JSON-Schluesseldatei vom Google Cloud Projekt "e-piber" herunterladen:
     Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON
 
   Die Datei als "service-account.json" in jedes Backend/ legen:
     /srv/http/ePiber/piber/Backend/service-account.json
     /srv/http/ePiber/paj/Backend/service-account.json
     /srv/http/ePiber/pk/Backend/service-account.json
+
+  Besitzer und Rechte der lokalen Backend-Konfiguration setzen:
+    chown piber:piber /srv/http/ePiber/piber/Backend/{.env,service-account.json}
+    chown paj:paj     /srv/http/ePiber/paj/Backend/{.env,service-account.json}
+    chown pk:pk       /srv/http/ePiber/pk/Backend/{.env,service-account.json}
+    chmod 600 /srv/http/ePiber/{piber,paj,pk}/Backend/{.env,service-account.json}
 
   WICHTIG: Der Service Account braucht Bearbeiter-Zugriff auf alle
   3 Google Spreadsheets!
@@ -271,7 +286,7 @@ Die folgenden Dateien muessen pro System manuell erstellt werden und sind
 NICHT im Git:
 
   Backend/.env                    → Sheet-ID, Port, Court-URL, Credentials-Pfad
-  Backend/service-account.json    → Google Service Account Key (JSON)
+  Backend/service-account.json    → Google-Service-Account-Schluessel (JSON)
   Frontend/JS/SDK.js              → WebSocket-URL (BACKEND_WS_URL)
 
 Vorlagen im Git:

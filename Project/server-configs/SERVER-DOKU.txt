@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt — Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Stand: v3.0.2
+Stand: v3.1.11
 
 Dieses Verzeichnis enthaelt alle Konfigurationsvorlagen und Dokumentation
 fuer die Server-Infrastruktur des ePiber-Projekts.
@@ -16,9 +16,8 @@ Datei/Verzeichnis           | Beschreibung
 SERVER-DOKU.txt             | Diese Datei (Verzeichnis-Index)
 SERVER-SETUP.txt            | Server-Infrastruktur: Filestruktur, Ports,
                             | Ersteinrichtung, Firewall, DNS, Status
-CHANGELOG.txt               | Aenderungsprotokoll fuer Server/Infrastruktur
-                            | (Semantic Versioning: Added/Changed/Fixed/Removed)
-Caddyfile                   | Caddy-Konfiguration (Vorlage fuer /etc/caddy/)
+Caddyfile                   | Caddy-Konfiguration (Vorlage fuer
+                            | /etc/caddy/Caddyfile)
 systemd/                    | systemd Service-Dateien (Vorlagen fuer
                             | /etc/systemd/system/)
   epiber-piber.service      |   Live-System (Port 8080, User piber)
@@ -50,8 +49,8 @@ NICHT im Git. Vorlagen befinden sich an diesen Stellen:
   Frontend/JS/SDK.js.example  -> Frontend/JS/SDK.js
     Enthaelt: BACKEND_WS_URL (WebSocket-URL pro System)
 
-Zusaetzlich wird pro System ein Google Service Account Key benoetigt:
-  Backend/service-account.json (JSON-Key von Google Cloud Console)
+Zusaetzlich wird pro System ein Google-Service-Account-Schluessel benoetigt:
+  Backend/service-account.json (JSON-Datei aus der Google Cloud Console)
 
 
 ================================================================================
@@ -72,8 +71,9 @@ Systemd-Services:
 VERWANDTE DOKUMENTATION
 ================================================================================
 
-  Project/DEPLOYMENT.txt              Versionierung und Deployment-Workflow
-  Project/KOMMUNIKATION-ANALYSE.md    Analyse der Client-Server-Kommunikation
-  Project/LOGGING-ANALYSE.md          Analyse von Logging und Observability
-  Project/software/ARCHITEKTUR.txt    Backend-Module und Datenfluss
-  Project/software/ENDPOINTS.txt      Alle WebSocket- und HTTP-Endpoints
+  Project/DokuVersGit.txt              Dokumentation, Versionierung und Git
+  Project/ChangeLogs/ChangeLog-main.txt Zentrales Aenderungsprotokoll
+  Project/2do/KOMMUNIKATION-ANALYSE.md Analyse der Client-Server-Kommunikation
+  Project/2do/LOGGING-ANALYSE.md       Analyse von Logging und Observability
+  Project/software/ARCHITEKTUR.txt     Backend-Module und Datenfluss
+  Project/software/ENDPOINTS.txt       Alle WebSocket- und HTTP-Endpoints

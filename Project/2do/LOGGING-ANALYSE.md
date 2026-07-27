@@ -478,7 +478,7 @@ Durch `Restart=always` und `RestartSec=5` kann ein dauerhaft fehlschlagender Sta
 
 ## 15. Caddy-Logging
 
-Im `Project/Caddyfile` ist kein `log`-Block vorhanden. Regulare HTTP-Zugriffe werden daher nicht in einem konfigurierten Access-Log erfasst.
+Im `Project/server-configs/Caddyfile` ist kein `log`-Block vorhanden. Regulare HTTP-Zugriffe werden daher nicht in einem konfigurierten Access-Log erfasst.
 
 Es fehlen damit insbesondere:
 

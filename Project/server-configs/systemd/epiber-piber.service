@@ -5,16 +5,41 @@
 
 [Unit]
 Description=ePiber Backendserver (Live - piber)
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
 User=piber
 WorkingDirectory=/srv/http/ePiber/piber/Backend
 EnvironmentFile=/srv/http/ePiber/piber/Backend/.env
-ExecStart=/usr/bin/node server.js
+LoadCredential=google-service-account:/srv/http/ePiber/piber/Backend/service-account.json
+ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=piber LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at ALLOW_INSECURE_TRANSPORT=false SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-piber/state.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
 Restart=always
 RestartSec=5
+TimeoutStopSec=95
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=epiber-piber
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

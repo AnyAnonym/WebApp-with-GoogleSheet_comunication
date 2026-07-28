@@ -16,7 +16,8 @@
   <main>
     <section>
       <h2>Spieler</h2>
-      <table id="tbl" class="players-table">
+      <div id="playerDirectoryMessage" aria-live="polite"></div>
+      <table id="tbl" class="players-table" hidden>
         <thead>
           <tr>
             <th>Nachname</th>
@@ -33,7 +34,6 @@
 
   <div id="footer-container"></div>
 
-  <script type="module" src="JS/SDK.js"></script>
   <script type="module" src="JS/modals.js"></script>
   <script type="module" src="JS/navbar.js"></script>
   <script type="module" src="JS/playerList.js"></script>

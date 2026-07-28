@@ -6,9 +6,13 @@
   <title>Scoreboard</title>
   <link rel="stylesheet" href="./CSS/styles.css" />
   <link rel="stylesheet" href="./CSS/scoreboard.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:wdth@50..100&display=swap" rel="stylesheet">
 </head>
 <body class="scoreboard-body">
+  <div id="scoreboard-status" class="scoreboard-status" role="status" aria-live="polite" aria-atomic="true">
+    <span id="scoreboard-connection-state" class="scoreboard-status-item is-reconnecting">Verbindung wird hergestellt</span>
+    <span id="scoreboard-sync-state" class="scoreboard-status-item is-unsynchronized">Nicht synchronisiert</span>
+    <span id="scoreboard-source-state" class="scoreboard-status-item is-source-unknown">Court-Quelle: Alter unbekannt</span>
+  </div>
   <div id="scoreboard-loader">
     <div class="loader-spinner"></div>
     <div class="loader-text">Daten werden geladen...</div>

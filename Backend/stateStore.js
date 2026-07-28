@@ -1,64 +1,161 @@
-// ══════════════════════════════════════════════════════
-// stateStore.js — In-Memory State (ersetzt Firestore)
-// Hält Scoreboard- und Navigator-State zur Laufzeit
-// Bei Neustart werden Defaults verwendet
-// ══════════════════════════════════════════════════════
+const { AppError } = require("./errors.js");
 
-const state = {
-  scoreboardCourts: {
-    "1": {matchId: "", bewerb: "", homePlayer: "", guestPlayer: "", dateTime: "", runde: "", aktiv: 0},
-    "2": {matchId: "", bewerb: "", homePlayer: "", guestPlayer: "", dateTime: "", runde: "", aktiv: 0},
-  },
-  navigatorTarget: {target: "", status: ""},
-  navigatorScroll: {amount: 0, ts: 0},
-};
+const listeners = new Set();
+let repository = null;
 
-// ── Scoreboard Courts ──
+const DEFAULT_COURT = Object.freeze({
+  matchId: "",
+  bewerbId: "",
+  bewerb: "",
+  homePlayerIds: [],
+  guestPlayerIds: [],
+  homePlayer: "",
+  guestPlayer: "",
+  dateTime: "",
+  runde: "",
+  aktiv: 0,
+});
+
+function ensureReady() {
+  if (!repository) throw new AppError("STATE_UNAVAILABLE", "State-Store ist nicht initialisiert", 503);
+}
+
+function init(stateRepository) {
+  repository = stateRepository;
+  for (const court of ["1", "2"]) {
+    const key = `court:${court}`;
+    const current = repository.getState(key, DEFAULT_COURT);
+    if (current.revision === 0) repository.setState(key, DEFAULT_COURT, 0);
+  }
+}
+
+function emit(event) {
+  for (const listener of listeners) {
+    try {
+      listener(event);
+    } catch (error) {
+      console.error("stateStore: Listener-Fehler:", error.message);
+    }
+  }
+}
+
+function onChange(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getCourt(court) {
+  ensureReady();
+  if (court !== "1" && court !== "2") throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
+  const snapshot = repository.getState(`court:${court}`, DEFAULT_COURT);
+  return { ...structuredClone(snapshot.value), revision: snapshot.revision, updatedAt: snapshot.updatedAt };
+}
 
 function getScoreboardCourts() {
-  return state.scoreboardCourts;
+  return { "1": getCourt("1"), "2": getCourt("2") };
 }
 
-function setScoreboardCourt(court, data) {
-  if (court !== "1" && court !== "2") return false;
-  const existing = state.scoreboardCourts[court];
-  if (data.matchId !== undefined) existing.matchId = data.matchId;
-  if (data.bewerb !== undefined) existing.bewerb = data.bewerb;
-  if (data.homePlayer !== undefined) existing.homePlayer = data.homePlayer;
-  if (data.guestPlayer !== undefined) existing.guestPlayer = data.guestPlayer;
-  if (data.dateTime !== undefined) existing.dateTime = data.dateTime;
-  if (data.runde !== undefined) existing.runde = data.runde;
-  if (typeof data.aktiv === "number") existing.aktiv = data.aktiv;
-  return true;
+function setScoreboardCourt(court, data, expectedRevision = undefined) {
+  const current = getCourt(court);
+  const { revision: _revision, updatedAt: _updatedAt, ...currentValue } = current;
+  const next = {
+    ...currentValue,
+    ...structuredClone(data),
+    aktiv: data.aktiv === undefined ? currentValue.aktiv : (data.aktiv ? 1 : 0),
+  };
+  const snapshot = repository.setState(`court:${court}`, next, expectedRevision);
+  const value = { ...snapshot.value, revision: snapshot.revision, updatedAt: snapshot.updatedAt };
+  emit({ type: "court", court, value });
+  return value;
 }
 
-// ── Navigator Target ──
-
-function getNavigatorTarget() {
-  return state.navigatorTarget;
+function applyCourtOperation(court, operation, update) {
+  ensureReady();
+  if (court !== "1" && court !== "2") throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
+  const outcome = repository.applyStateOperation({
+    stateKey: `court:${court}`,
+    fallback: DEFAULT_COURT,
+    expectedRevision: operation.expectedRevision,
+    actorKey: `${operation.principal.type}:${operation.principal.id}`,
+    operationId: operation.operationId,
+    endpoint: operation.endpoint,
+    payload: operation.payload,
+    update(current) {
+      const data = update(structuredClone(current));
+      return {
+        ...current,
+        ...structuredClone(data),
+        aktiv: data.aktiv === undefined ? current.aktiv : (data.aktiv ? 1 : 0),
+      };
+    },
+    resultForSnapshot(snapshot) {
+      return { success: true, court: { ...snapshot.value, revision: snapshot.revision, updatedAt: snapshot.updatedAt } };
+    },
+  });
+  if (outcome.snapshot) emit({ type: "court", court, value: outcome.result.court });
+  return outcome.repeated ? { ...outcome.result, repeated: true } : outcome.result;
 }
 
-function setNavigatorTarget(target, status) {
-  state.navigatorTarget.target = target || "";
-  state.navigatorTarget.status = status || "pending";
+function getNavigatorTarget(monitorId) {
+  ensureReady();
+  const fallback = { monitorId, commandId: "", path: "", issuedAt: 0 };
+  const snapshot = repository.getState(`monitor-target:${monitorId}`, fallback);
+  return { ...snapshot.value, revision: snapshot.revision, updatedAt: snapshot.updatedAt };
 }
 
-// ── Navigator Scroll ──
-
-function getNavigatorScroll() {
-  return state.navigatorScroll;
+function setNavigatorTarget(monitorId, target, expectedRevision = undefined) {
+  ensureReady();
+  const value = {
+    monitorId,
+    commandId: target.commandId,
+    path: target.path,
+    issuedAt: target.issuedAt,
+  };
+  const snapshot = repository.setState(`monitor-target:${monitorId}`, value, expectedRevision);
+  const result = { ...snapshot.value, revision: snapshot.revision, updatedAt: snapshot.updatedAt };
+  emit({ type: "monitor-target", monitorId, value: result });
+  return result;
 }
 
-function setNavigatorScroll(amount) {
-  state.navigatorScroll.amount = amount;
-  state.navigatorScroll.ts = Date.now();
+function applyNavigatorTargetOperation(monitorId, target, operation) {
+  ensureReady();
+  const outcome = repository.applyStateOperation({
+    stateKey: `monitor-target:${monitorId}`,
+    fallback: { monitorId, commandId: "", path: "", issuedAt: 0 },
+    expectedRevision: operation.expectedRevision,
+    actorKey: `${operation.principal.type}:${operation.principal.id}`,
+    operationId: operation.operationId,
+    endpoint: operation.endpoint,
+    payload: operation.payload,
+    update: () => ({ monitorId, commandId: target.commandId, path: target.path, issuedAt: target.issuedAt }),
+    resultForSnapshot(snapshot) {
+      return { success: true, commandId: target.commandId, targetRevision: snapshot.revision };
+    },
+  });
+  const snapshot = outcome.snapshot
+    ? { ...outcome.snapshot.value, revision: outcome.snapshot.revision, updatedAt: outcome.snapshot.updatedAt }
+    : null;
+  if (snapshot) emit({ type: "monitor-target", monitorId, value: snapshot });
+  return { result: outcome.repeated ? { ...outcome.result, repeated: true } : outcome.result, target: snapshot, repeated: outcome.repeated };
+}
+
+function getStatus() {
+  return {
+    ready: !!repository,
+    courts: repository ? getScoreboardCourts() : null,
+  };
 }
 
 module.exports = {
-  getScoreboardCourts,
-  setScoreboardCourt,
+  DEFAULT_COURT,
+  applyCourtOperation,
+  applyNavigatorTargetOperation,
+  getCourt,
   getNavigatorTarget,
+  getScoreboardCourts,
+  getStatus,
+  init,
+  onChange,
   setNavigatorTarget,
-  getNavigatorScroll,
-  setNavigatorScroll,
+  setScoreboardCourt,
 };

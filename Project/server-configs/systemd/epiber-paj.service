@@ -5,16 +5,41 @@
 
 [Unit]
 Description=ePiber Backendserver (Test - PAJ)
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
 User=paj
 WorkingDirectory=/srv/http/ePiber/paj/Backend
 EnvironmentFile=/srv/http/ePiber/paj/Backend/.env
-ExecStart=/usr/bin/node server.js
+LoadCredential=google-service-account:/srv/http/ePiber/paj/Backend/service-account.json
+ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=paj LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at:8081 SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-paj/state.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
 Restart=always
 RestartSec=5
+TimeoutStopSec=95
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=epiber-paj
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

@@ -34,6 +34,53 @@
   font-size: 1.2rem;
   color: var(--muted);
 }
+#scoreboard-loader.failed .loader-spinner {
+  display: none;
+}
+#scoreboard-loader.failed .loader-text {
+  color: #dc3545;
+  font-weight: 700;
+}
+
+/* ── Non-blocking connection status ── */
+.scoreboard-status {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 7000;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px;
+  max-width: calc(100vw - 16px);
+  pointer-events: none;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+.scoreboard-status-item {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.82);
+  color: #fff;
+  white-space: nowrap;
+}
+.scoreboard-status-item.is-connected,
+.scoreboard-status-item.is-synchronized,
+.scoreboard-status-item.is-source-current {
+  border-color: #198754;
+}
+.scoreboard-status-item.is-reconnecting,
+.scoreboard-status-item.is-unsynchronized,
+.scoreboard-status-item.is-source-inactive,
+.scoreboard-status-item.is-source-unknown {
+  border-color: #d39e00;
+}
+.scoreboard-status-item.is-stale {
+  border-color: #dc3545;
+  background: rgba(90, 12, 20, 0.9);
+}
 
 /* ── WebSocket-Fehler Overlay ── */
 .ws-error-overlay {
@@ -239,8 +286,8 @@
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.3;
-  font-family: "Roboto Flex", sans-serif;
-  font-stretch: 20%;
+  font-family: "Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif;
+  font-stretch: condensed;
 }
 .ae-players span {
   white-space: nowrap;
@@ -267,8 +314,8 @@
   color: var(--accent);
   text-align: right;
   white-space: nowrap;
-  font-family: "Roboto Flex", sans-serif;
-  font-stretch: 5%;
+  font-family: "Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif;
+  font-stretch: condensed;
 }
 
 .pre-entry {
@@ -302,6 +349,16 @@
 
 /* ── Responsive: unter 1400px kleinere Schriftgrößen ── */
 @media (max-width: 1000px) {
+  .scoreboard-status {
+    top: 4px;
+    left: 4px;
+    gap: 3px;
+    max-width: calc(100vw - 8px);
+    font-size: 0.58rem;
+  }
+  .scoreboard-status-item {
+    padding: 2px 5px;
+  }
   .platz-header {
     font-size: 2rem;
   }

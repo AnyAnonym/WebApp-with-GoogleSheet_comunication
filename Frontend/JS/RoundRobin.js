@@ -1,5 +1,6 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 // preMatches endpoint beibehalten für Kompatibilität, wird aber nicht mehr verwendet
 // const readPreMatches  = createEndpoint("preMatches");
@@ -108,10 +109,15 @@ function formatPlayerName(id, playerMap) {
   return playerMap.get(id) || "—";
 }
 
-function formatTeamName(pid1, pid2, playerMap) {
-  const n1 = formatPlayerName(pid1, playerMap);
+function escapeHtml(value) {
+  const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(value ?? "").replace(/[&<>"']/g, (char) => entities[char]);
+}
+
+function formatTeamHtml(pid1, pid2, playerMap) {
+  const n1 = escapeHtml(formatPlayerName(pid1, playerMap));
   if (!pid2) return `<span class="rr-player">${n1}</span>`;
-  const n2 = formatPlayerName(pid2, playerMap);
+  const n2 = escapeHtml(formatPlayerName(pid2, playerMap));
   return `<span class="rr-player">${n1}</span><span class="rr-team-sep"> / </span><span class="rr-player">${n2}</span>`;
 }
 
@@ -292,8 +298,8 @@ function collectPairings(data, header, bewerbId, playerMap) {
       }
     }
 
-    const team1 = formatTeamName(id1, id2, playerMap);
-    const team2 = formatTeamName(id3, id4, playerMap);
+    const team1Html = formatTeamHtml(id1, id2, playerMap);
+    const team2Html = formatTeamHtml(id3, id4, playerMap);
 
     const isPlayed = !!ergebnis;
 
@@ -304,8 +310,8 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     pairings.push({
       group: g,
-      team1,
-      team2,
+      team1Html,
+      team2Html,
       matchId,
       ergebnis: ergebnis || "",
       played: isPlayed,
@@ -321,8 +327,14 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
 // ── Render ──
 
+function renderMessage(container, message) {
+  const paragraph = document.createElement("p");
+  paragraph.textContent = message;
+  container.replaceChildren(paragraph);
+}
+
 export async function renderRoundRobin(bewerbId, container, paarungslayout) {
-  container.innerHTML = "";
+  container.replaceChildren();
   showLoadingOverlay("Lade Gruppen...");
 
   try {
@@ -400,8 +412,9 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     const sortedGroups = [...groups.entries()].sort((a, b) => a[0] - b[0]);
 
     if (sortedGroups.length === 0) {
-      container.innerHTML = "<p>Keine Gruppen für diesen Bewerb gefunden.</p>";
-      return;
+      renderMessage(container, "Keine Gruppen für diesen Bewerb gefunden.");
+      hideLoadingOverlay();
+      return true;
     }
 
     // Statistik
@@ -451,7 +464,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     allGroupRows.forEach(({ gNum, rows }) => {
 
       html += `<div class="rr-group-card">`;
-      html += `<div class="rr-group-title">Gruppe ${gNum}</div>`;
+      html += `<div class="rr-group-title">Gruppe ${escapeHtml(gNum)}</div>`;
       html += `<table class="rr-table">`;
       html += `<thead><tr>`;
       html += `<th>Rang</th><th class="rr-name-col">Name</th><th>Spiele</th><th>Siege</th>`;
@@ -463,14 +476,14 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
         const rang = idx + 1;
         const isPromoted = promotedPlayers.has(r.id);
         const cls = isPromoted ? ' class="rr-highlight"' : "";
-        const teamName = formatTeamName(r.id, r.partner, playerMap);
+        const teamHtml = formatTeamHtml(r.id, r.partner, playerMap);
         html += `<tr${cls}>`;
-        html += `<td class="rr-center">${rang}</td>`;
-        html += `<td>${teamName}</td>`;
-        html += `<td class="rr-center">${r.matches.length}</td>`;
-        html += `<td class="rr-center">${r.siege}</td>`;
-        html += `<td class="rr-center">${r.saetzeW}-${r.saetzeL}</td>`;
-        html += `<td class="rr-center">${r.gamesW}-${r.gamesL}</td>`;
+        html += `<td class="rr-center">${escapeHtml(rang)}</td>`;
+        html += `<td>${teamHtml}</td>`;
+        html += `<td class="rr-center">${escapeHtml(r.matches.length)}</td>`;
+        html += `<td class="rr-center">${escapeHtml(r.siege)}</td>`;
+        html += `<td class="rr-center">${escapeHtml(r.saetzeW)}-${escapeHtml(r.saetzeL)}</td>`;
+        html += `<td class="rr-center">${escapeHtml(r.gamesW)}-${escapeHtml(r.gamesL)}</td>`;
         html += `</tr>`;
       });
 
@@ -489,9 +502,9 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
           const t2cls = p.winner === 2 ? "rr-pairing-winner" : p.winner === 1 ? "rr-pairing-loser" : "";
           const datumDisplay = formatPairingDate(p.datumRaw, p.played, paarungslayout);
           html += `<div class="${cls}">`;
-          if (datumDisplay) html += `<span class="rr-pairing-date">${datumDisplay}</span>`;
-          html += `<span class="rr-pairing-teams"><span class="${t1cls}">${p.team1}</span> <span class="rr-pairing-sep">-</span> <span class="${t2cls}">${p.team2}</span></span>`;
-          if (p.ergebnis) html += `<span class="rr-pairing-result">${p.ergebnis}</span>`;
+          if (datumDisplay) html += `<span class="rr-pairing-date">${escapeHtml(datumDisplay)}</span>`;
+          html += `<span class="rr-pairing-teams"><span class="${t1cls}">${p.team1Html}</span> <span class="rr-pairing-sep">-</span> <span class="${t2cls}">${p.team2Html}</span></span>`;
+          if (p.ergebnis) html += `<span class="rr-pairing-result">${escapeHtml(p.ergebnis)}</span>`;
           html += `</div>`;
         });
         html += `</div>`;
@@ -501,11 +514,13 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     });
 
     html += "</div>";
+    // Backend-derived text is escaped before it is added to this markup string.
     container.innerHTML = html;
     hideLoadingOverlay();
-  } catch (err) {
-    console.error("RoundRobin Fehler:", err);
+    return true;
+  } catch {
     showErrorOverlay("Fehler beim Laden der Gruppen", () => renderRoundRobin(bewerbId, container, paarungslayout));
+    return false;
   }
 }
 
@@ -525,7 +540,7 @@ async function loadBewerbName(bewerbId) {
     if (row && row[bBezIdx]) {
       heading.textContent = row[bBezIdx];
     }
-  } catch (err) {
+  } catch {
     // silent
   }
 }
@@ -534,13 +549,33 @@ const params = new URLSearchParams(window.location.search);
 const BEWERB_ID = params.get("id");
 const PAARUNGSLAYOUT = params.get("paarungslayout") || "0";
 
-if (BEWERB_ID) {
+async function initRoundRobinPage() {
   const container = document.getElementById("roundRobinContainer");
-  if (container) {
-    loadBewerbName(BEWERB_ID);
-    renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT);
+  if (!container) return;
+
+  if (!BEWERB_ID) {
+    renderMessage(container, "Keine Bewerb-ID angegeben.");
+    signalMonitorFailed();
+    return;
   }
-} else {
-  const container = document.getElementById("roundRobinContainer");
-  if (container) container.innerHTML = "<p>Keine Bewerb-ID angegeben.</p>";
+
+  try {
+    const [, rendered] = await Promise.all([
+      loadBewerbName(BEWERB_ID),
+      renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT),
+    ]);
+    subscribeInvalidations(["matches", "players", "bewerbe", "bewerbsart"], async () => {
+      await Promise.all([
+        loadBewerbName(BEWERB_ID),
+        renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT),
+      ]);
+    });
+    if (rendered) signalMonitorReady();
+    else signalMonitorFailed();
+  } catch {
+    signalMonitorFailed();
+    showErrorOverlay("Fehler beim Laden der Gruppen");
+  }
 }
+
+void initRoundRobinPage();

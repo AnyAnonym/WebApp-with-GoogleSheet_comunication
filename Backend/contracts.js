@@ -1,0 +1,121 @@
+const { AppError } = require("./errors.js");
+const {
+  booleanValue,
+  idValue,
+  integerValue,
+  operationId,
+  requireObject,
+  stringValue,
+} = require("./validators.js");
+
+function objectShape(raw, fields) {
+  const value = requireObject(raw);
+  for (const key of Object.keys(value)) {
+    if (!Object.hasOwn(fields, key)) throw new AppError("VALIDATION_ERROR", `Unbekanntes Feld: ${key}`);
+  }
+  return Object.fromEntries(Object.entries(fields).flatMap(([key, validator]) => {
+    const result = validator(value[key]);
+    return result === undefined ? [] : [[key, result]];
+  }));
+}
+
+const optional = (validator) => (value) => value === undefined ? undefined : validator(value);
+const id = (name) => (value) => idValue(value, name);
+const text = (name, options) => (value) => stringValue(value, name, options);
+const integer = (name, options) => (value) => integerValue(value, name, options);
+const operation = (value) => operationId(value);
+const empty = (params) => objectShape(params, {});
+const competitionFilter = (params) => objectShape(params, { bewerbId: optional(id("bewerbId")) });
+const competitionWrite = (params) => objectShape(params, { operationId: operation, bewerbId: id("bewerbId") });
+const monitorWrite = (params) => objectShape(params, { operationId: operation, monitorId: id("monitorId") });
+const playerIds = (name) => (value) => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
+    throw new AppError("VALIDATION_ERROR", `${name} muss ein Array mit ein bis zwei IDs sein`);
+  }
+  return value.map((entry) => idValue(entry, name));
+};
+
+const requestContracts = {
+  players: empty,
+  publicProfile: (params) => objectShape(params, { id: id("id") }),
+  bewerbe: empty,
+  bewerbsart: empty,
+  matches1: competitionFilter,
+  preMatches: competitionFilter,
+  matches: competitionFilter,
+  rlPlatzierung: competitionFilter,
+  entryList: competitionFilter,
+  readMatchRestrictions: competitionFilter,
+  getScoreboardCourts: empty,
+  courtScores: empty,
+  scoreboardSnapshot: empty,
+  memberDirectory: empty,
+  myProfile: empty,
+  operationStatus: (params) => objectShape(params, { operationId: operation }),
+  addMatch: (params) => objectShape(params, {
+    operationId: operation,
+    bewerbId: id("bewerbId"),
+    opponentId: id("opponentId"),
+  }),
+  addEntryList: competitionWrite,
+  removeEntryList: competitionWrite,
+  withdrawFromRanking: (params) => objectShape(params, {
+    operationId: operation,
+    bewerbId: id("bewerbId"),
+    rank: integer("rank", { min: 1, max: 10000 }),
+    reason: text("reason", { min: 3, max: 500 }),
+  }),
+  navigator: (params) => objectShape(params, { profil: optional(text("profil", { max: 32 })) }),
+  courtAssign: (params) => objectShape(params, {
+    operationId: operation,
+    court: id("court"),
+    expectedRevision: integer("expectedRevision", { min: 1 }),
+    matchId: optional(id("matchId")),
+    homePlayerIds: optional(playerIds("homePlayerIds")),
+    guestPlayerIds: optional(playerIds("guestPlayerIds")),
+  }),
+  courtSetActive: (params) => objectShape(params, {
+    operationId: operation,
+    court: id("court"),
+    expectedRevision: integer("expectedRevision", { min: 1 }),
+    active: (value) => booleanValue(value, "active"),
+  }),
+  monitorList: empty,
+  monitorNavigate: (params) => objectShape(params, {
+    operationId: operation,
+    monitorId: id("monitorId"),
+    path: text("path", { max: 512 }),
+  }),
+  monitorScroll: (params) => objectShape(params, {
+    operationId: operation,
+    monitorId: id("monitorId"),
+    direction: text("direction", { max: 4, pattern: /^(up|down)$/ }),
+  }),
+  monitorProvision: (params) => objectShape(params, {
+    operationId: operation,
+    label: text("label", { max: 100 }),
+  }),
+  monitorRotate: monitorWrite,
+  monitorRevoke: monitorWrite,
+  monitorTarget: empty,
+  monitorAck: (params) => objectShape(params, {
+    kind: text("kind", { max: 16, pattern: /^(navigate|scroll)$/ }),
+    commandId: id("commandId"),
+    status: text("status", { max: 16 }),
+    errorCode: optional(text("errorCode", { max: 64, pattern: /^[A-Z0-9_]+$/ })),
+  }),
+};
+
+function validateEndpointRequest(endpoint, params) {
+  const contract = requestContracts[endpoint];
+  if (!contract) throw new AppError("ENDPOINT_CONTRACT_MISSING", "Endpointvertrag fehlt", 500);
+  return contract(params);
+}
+
+function validateEndpointResponse(endpoint, result) {
+  requireObject(result, `${endpoint} response`);
+  if (result.success !== true) throw new AppError("ENDPOINT_RESPONSE_INVALID", "Endpointantwort ist ungueltig", 500);
+  return result;
+}
+
+module.exports = { requestContracts, validateEndpointRequest, validateEndpointResponse };

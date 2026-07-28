@@ -3,19 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Navigator</title>
+  <title>Monitorsteuerung</title>
   <link rel="stylesheet" href="./CSS/styles.css" />
 </head>
 <body class="navigator-body">
-  <div id="navigator-container"><p>Lade Navigation...</p></div>
+  <section id="navigator-access" class="navigator-access" aria-live="polite">
+    <div class="navigator-access-card">
+      <p class="navigator-eyebrow">Geschützter Bereich</p>
+      <h1>Monitorsteuerung</h1>
+      <p id="navigator-access-message">Sitzung wird geprüft...</p>
+      <a class="navigator-primary-link" href="index.html">Zur Anmeldung</a>
+    </div>
+  </section>
+
+  <div id="navigator-app" class="navigator-app" hidden>
+    <header class="navigator-toolbar">
+      <div class="navigator-title-block">
+        <p class="navigator-eyebrow">Live-Regie</p>
+        <h1>Monitorsteuerung</h1>
+        <span id="navigator-session" class="navigator-session">Sitzung wird geprüft...</span>
+      </div>
+
+      <div class="navigator-monitor-picker">
+        <label for="monitor-select">Monitor</label>
+        <select id="monitor-select" aria-describedby="monitor-presence">
+          <option value="">Monitore werden geladen...</option>
+        </select>
+        <span id="monitor-presence" class="navigator-state" data-state="none">Kein Monitor ausgewählt</span>
+      </div>
+
+      <div class="navigator-live-status" aria-live="polite">
+        <span id="navigator-connection" class="navigator-state" data-state="idle">Nicht verbunden</span>
+        <span id="monitor-command-status" class="navigator-command-status" data-state="idle">Navigation: kein Monitor</span>
+        <span id="scroll-status" class="navigator-command-status" data-state="idle">Scroll: kein Monitor</span>
+      </div>
+    </header>
+
+    <div id="navigator-notice" class="navigator-notice" role="status" aria-live="polite" hidden></div>
+    <div id="navigator-container" class="navigator-grid">
+      <p class="navigator-empty">Navigation wird geladen...</p>
+    </div>
+
+    <section id="admin-monitor-panel" class="admin-monitor-panel" hidden>
+      <div class="admin-monitor-heading">
+        <div>
+          <p class="navigator-eyebrow">Administration</p>
+          <h2>Monitorgeräte</h2>
+        </div>
+        <form id="monitor-provision-form" class="monitor-provision-form">
+          <label for="monitor-label">Bezeichnung</label>
+          <input id="monitor-label" name="label" type="text" maxlength="100" required autocomplete="off" />
+          <button id="monitor-provision" class="navigator-primary-btn" type="submit">Monitor anlegen</button>
+        </form>
+      </div>
+
+      <p id="admin-monitor-status" class="admin-monitor-status" role="status" aria-live="polite"></p>
+      <div id="monitor-token-panel" class="monitor-token-panel" hidden>
+        <strong id="monitor-token-heading">Einmaliger Gerätetoken</strong>
+        <p>Dieser Token wird nicht gespeichert und kann später nicht erneut angezeigt werden.</p>
+        <code id="monitor-token" class="monitor-token"></code>
+        <div class="monitor-token-actions">
+          <button id="monitor-token-copy" class="navigator-primary-btn" type="button">Token kopieren</button>
+          <button id="monitor-token-dismiss" class="navigator-secondary-btn" type="button">Anzeige schließen</button>
+        </div>
+      </div>
+      <div id="admin-monitor-list" class="admin-monitor-list"></div>
+    </section>
+
+    <div id="scroll-btns" class="navigator-scroll-controls">
+      <button id="scroll-up" type="button" aria-label="Monitor nach oben scrollen">&#9650;</button>
+      <button id="scroll-down" type="button" aria-label="Monitor nach unten scrollen">&#9660;</button>
+    </div>
+  </div>
 
   <script src="JS/global.js"></script>
-  <script type="module" src="JS/SDK.js"></script>
   <script type="module" src="JS/navigatorList.js"></script>
   <script type="module" src="JS/navigatorScroll.js"></script>
-  <div id="scroll-btns">
-    <button id="scroll-up">▲</button>
-    <button id="scroll-down">▼</button>
-  </div>
 </body>
 </html>

@@ -2,14 +2,21 @@
   const footerContainer = document.getElementById("footer-container");
   if (!footerContainer) return;
 
-  footerContainer.innerHTML = `
-  <footer class="footer">
-    <div id="clock" class="footer-clock"></div>
-    |&emsp;© ASKÖ Piberbach – Tennis&emsp;|&emsp;<span id="footer-version">v${window.APP_VERSION}</span>
-  </footer>
-  `;
+  const footer = document.createElement("footer");
+  footer.className = "footer";
 
-  const el = document.getElementById("clock");
+  const clock = document.createElement("div");
+  clock.id = "clock";
+  clock.className = "footer-clock";
+
+  const version = document.createElement("span");
+  version.id = "footer-version";
+  version.textContent = `v${window.APP_VERSION}`;
+
+  footer.append(clock, " |\u2003© ASKÖ Piberbach – Tennis\u2003|\u2003", version);
+  footerContainer.replaceChildren(footer);
+
+  const el = clock;
 
   function update() {
     el.textContent = window.getCurrentDateTimeString();

@@ -125,3 +125,26 @@ Umfang oder zusaetzlichen Schritten ist nachzufragen.
 
 Vor dem ersten solchen Schritt ist `Project/DokuVersGit.txt` zu lesen und der
 dort beschriebene Workflow zu befolgen.
+
+### Seitenbranch-Kurzregel
+
+1. Die sichtbare Paketversion eines Seitenbranches entspricht immer exakt der
+   Branch-Commit-ID, zum Beispiel `3.1.12-paj-1-2`. `package.json`, Lockfile,
+   Commit-Nachricht und `/version` muessen zusammenpassen.
+2. Ein Seitenbranch darf beliebig viele aufeinanderfolgende Implementierungs-,
+   Test- und Korrekturcommits besitzen. Jeder Commit erhaelt die naechste
+   lueckenlose Nummer und einen eigenen Abschnitt im temporaeren Branch-Changelog.
+3. Neue Anwendungsstaende werden im Seitenbranch ausschliesslich im detaillierten
+   `Project/ChangeLogs/ChangeLog-<Branchname>.txt` beschrieben. Permanente
+   Software-, Seiten-, Datenbank- und Serverdokumentation bleibt bis zum
+   bestaetigten Main-Merge unveraendert.
+4. Das temporaere Changelog enthaelt eine dateigenaue Liste aller beim spaeteren
+   Main-Versionssprung zu aktualisierenden Dokumente und der jeweils zu
+   uebernehmenden Fakten. Es ist bis dahin die alleinige fachliche
+   Dokumentationsquelle fuer den Branchstand.
+5. `Project/DokuVersGit.txt` und `LLM-START.md` sind organisatorische Ausnahmen und
+   duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch angepasst
+   werden.
+6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
+   `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
+   Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.

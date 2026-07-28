@@ -1,8 +1,9 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
+import { ready, getUser, isAuthenticated, subscribeAuth } from "./authClient.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 const readRlPlatzierung     = createEndpoint("rlPlatzierung");
 const readPlayersList       = createEndpoint("players");
-const readPlayerDetails     = createEndpoint("players");
 const readPreMatches        = createEndpoint("preMatches");
 const readMatchRestrictions = createEndpoint("readMatchRestrictions");
 const readBewerbe           = createEndpoint("bewerbe");
@@ -11,8 +12,39 @@ const params    = new URLSearchParams(window.location.search);
 const BEWERB_ID = params.get("id")
   || document.getElementById("rankingContainer")?.dataset.bewerbId
   || "2";
+const protectionIntervals = new Set();
+let restrictionExpiryTimer = null;
+let rankingRefresh = Promise.resolve();
 
-window.currentBewerbId = BEWERB_ID;
+function queueRankingRefresh() {
+  rankingRefresh = rankingRefresh.catch(() => {}).then(() => renderRanking());
+  return rankingRefresh;
+}
+
+function clearProtectionTimers() {
+  for (const interval of protectionIntervals) clearInterval(interval);
+  protectionIntervals.clear();
+}
+
+function scheduleRestrictionExpiry(dates) {
+  if (restrictionExpiryTimer) clearTimeout(restrictionExpiryTimer);
+  restrictionExpiryTimer = null;
+  const now = Date.now();
+  const next = dates.map((date) => date?.getTime()).filter((value) => Number.isFinite(value) && value > now).sort((a, b) => a - b)[0];
+  if (!next) return;
+  restrictionExpiryTimer = setTimeout(() => {
+    restrictionExpiryTimer = null;
+    queueRankingRefresh().catch(() => {});
+  }, Math.min(2147483647, Math.max(1, next - now + 50)));
+}
+
+function errorMessage(value, fallback) {
+  if (value instanceof Error && value.message) return value.message;
+  if (value?.error?.message) return value.error.message;
+  if (typeof value?.error === "string") return value.error;
+  if (value?.message) return value.message;
+  return fallback;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  COUNTDOWN-TIMER (analog zu clock.js: new Date(), update jede Minute)
@@ -24,10 +56,15 @@ function startProtectionTimer(box, endDate) {
   el.className = "box-timer";
   box.appendChild(el);
 
+  let intervalId = null;
+
   function tick() {
     const ms = endDate - new Date();   // ← wie clock.js: aktuelles Datum
     if (ms <= 0) {
-      clearInterval(intervalId);
+      if (intervalId) {
+        clearInterval(intervalId);
+        protectionIntervals.delete(intervalId);
+      }
       el.remove();
       return;
     }
@@ -38,7 +75,10 @@ function startProtectionTimer(box, endDate) {
   }
 
   tick();
-  const intervalId = setInterval(tick, 60_000); // jede Minute, wie clock.js
+  if (el.isConnected) {
+    intervalId = setInterval(tick, 60_000); // jede Minute, wie clock.js
+    protectionIntervals.add(intervalId);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49,7 +89,9 @@ function startProtectionTimer(box, endDate) {
 async function fetchBusyIds() {
   const res = await readPreMatches();
   const { success, values = [] } = res?.data || {};
-  if (!success || values.length < 2) return { busyIds: new Set(), preMatches: [] };
+  if (!success || !Array.isArray(values) || values.length < 1) {
+    throw new Error("Offene Forderungen sind nicht verfuegbar.");
+  }
 
   const header = values[0].map((h) => h.trim().toLowerCase());
   const bewerbIdx = header.indexOf("bewerbid");
@@ -58,6 +100,9 @@ async function fetchBusyIds() {
   const p2Idx = header.indexOf("spieler2id");
   const p3Idx = header.indexOf("spieler3id");
   const p4Idx = header.indexOf("spieler4id");
+  if ([bewerbIdx, ergebnisIdx, p1Idx, p3Idx].includes(-1)) {
+    throw new Error("Matchdaten sind unvollstaendig.");
+  }
 
   const busyIds = new Set();
   values.slice(1).forEach((row) => {
@@ -82,8 +127,8 @@ async function fetchBusyIds() {
  */
 async function fetchRestrictions() {
   const res = await readMatchRestrictions({ bewerbId: BEWERB_ID });
-  const { success, schutzzeit = [], sperrzeit = [] } = res?.data || {};
-  if (!success) return { schutzzeitMap: new Map(), sperrzeitMap: new Map() };
+  const { success, complete, schutzzeit = [], sperrzeit = [] } = res?.data || {};
+  if (!success || complete !== true) throw new Error("Schutz- und Sperrzeiten sind nicht vollstaendig.");
 
   return {
     schutzzeitMap: new Map(
@@ -97,35 +142,12 @@ async function fetchRestrictions() {
 
 /** Identifiziert den aktuell eingeloggten Spieler */
 async function fetchMyState(rankedList) {
-  const email =
-    localStorage.getItem("currentUserEmail") ||
-    localStorage.getItem("loggedInEmail");
+  await ready;
+  const myPlayerId = String(getUser()?.id || "").trim();
+  if (!myPlayerId) return null;
 
-  if (!email) return null;
-
-  const res = await readPlayerDetails();
-  const values = res?.data?.values || [];
-  if (values.length < 2) return null;
-
-  const header = values[0].map((h) => String(h || "").trim().toLowerCase());
-  const idIdx = header.indexOf("id");
-  const emailIdx = header.indexOf("e-mail") !== -1 ? header.indexOf("e-mail") : header.indexOf("email");
-  const fnIdx = header.indexOf("vorname");
-  const lnIdx = header.indexOf("nachname");
-
-  const meRow = values.slice(1).find(
-    (r) => String(r[emailIdx] || "").trim().toLowerCase() === email.trim().toLowerCase()
-  );
-  if (!meRow) return null;
-
-  const meId = String(meRow[idIdx] || "").trim();
-  const meFullName = [meRow[fnIdx] || "", meRow[lnIdx] || ""].map((s) => String(s).trim()).filter(Boolean).join(" ");
-
-  if (meId) localStorage.setItem("currentUserId", meId);
-
-  const myPlayerId = meId;
-  const myEntry    = rankedList.find(
-    (p) => p.name.trim().toLowerCase() === meFullName.trim().toLowerCase()
+  const myEntry = rankedList.find(
+    (player) => String(player.playerId || "").trim() === myPlayerId
   );
 
   return myEntry
@@ -165,18 +187,29 @@ async function applyAllRules(container, pyramid, rankedList) {
     ? restrictRes.value
     : (console.warn("⚠️ Beschränkungen nicht geladen:", restrictRes.reason),
        { schutzzeitMap: new Map(), sperrzeitMap: new Map() });
+  scheduleRestrictionExpiry([...schutzzeitMap.values(), ...sperrzeitMap.values()]);
 
   const myState = myRes.status === "fulfilled"
     ? myRes.value
     : (console.warn("⚠️ Eigener Spieler nicht geladen:", myRes.reason), null);
 
-  console.log(`✅ Daten geladen | Busy: ${busyData.busyIds.size} | Schutz: ${schutzzeitMap.size} | Sperre: ${sperrzeitMap.size}`);
-
-  // Aktuelle Platzierung speichern für Raushängen-Funktion
-  if (myState?.myRank != null) {
-    localStorage.setItem("currentRank", String(myState.myRank));
-    localStorage.setItem("currentBewerbId", BEWERB_ID);
+  const ruleDataComplete = busyRes.status === "fulfilled" && restrictRes.status === "fulfilled";
+  let warning = document.getElementById("rankingDataWarning");
+  if (!ruleDataComplete && !warning) {
+    warning = document.createElement("div");
+    warning.id = "rankingDataWarning";
+    warning.className = "ranking-data-warning";
+    warning.setAttribute("role", "alert");
+    container.parentElement?.insertBefore(warning, container);
   }
+  if (warning) {
+    warning.textContent = ruleDataComplete
+      ? ""
+      : "Forderungen sind voruebergehend deaktiviert, weil Regeldaten unvollstaendig sind.";
+    warning.hidden = ruleDataComplete;
+  }
+
+  console.log(`✅ Daten geladen | Busy: ${busyData.busyIds.size} | Schutz: ${schutzzeitMap.size} | Sperre: ${sperrzeitMap.size}`);
 
   // ── Schritt 2: Meine Position in der Pyramide finden
   let myPlayerId = null, myRow = -1, myCol = -1;
@@ -193,7 +226,7 @@ async function applyAllRules(container, pyramid, rankedList) {
 
   // ── Schritt 3: Forderbare IDs berechnen (Regelwerk)
   const challengeableIds = new Set();
-  if (myRow !== -1 && myCol !== -1) {
+  if (ruleDataComplete && myRow !== -1 && myCol !== -1) {
     const me = pyramid[myRow][myCol];
 
     // Gleiche Zeile – alle links von mir
@@ -328,70 +361,74 @@ async function applyAllRules(container, pyramid, rankedList) {
     [...challengeableIds].filter(id => busyData.busyIds.has(id)).length} | Schutz: ${
     [...challengeableIds].filter(id => schutzzeitMap.has(id)).length} | Sperre: ${
     [...challengeableIds].filter(id => sperrzeitMap.has(id)).length}`);
+
+  return myState;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  RANGLISTE LADEN
 // ═══════════════════════════════════════════════════════════════════════════
 export async function loadRanking() {
-  try {
-    const [rankRes, playersRes] = await Promise.all([
-      readRlPlatzierung(),
-      readPlayersList(),
-    ]);
+  const [rankRes, playersRes] = await Promise.all([
+    readRlPlatzierung({ bewerbId: BEWERB_ID }),
+    readPlayersList(),
+  ]);
 
-    if (!rankRes.data?.success || !playersRes.data?.success) {
-      console.error("❌ Fehler beim Laden der Ranglisten-Daten");
-      return [];
-    }
-
-    const rankValues = rankRes.data.values || [];
-    const playerValues = playersRes.data.values || [];
-
-    if (rankValues.length < 2 || playerValues.length < 2) return [];
-
-    const rHeader = rankValues[0].map((h) => h.trim().toLowerCase());
-    const bewerbIdIdx = rHeader.indexOf("bewerbid");
-    const rankIdx = rHeader.indexOf("rang");
-    const personIdIdx = rHeader.indexOf("personid");
-
-    const pHeader = playerValues[0].map((h) => h.trim().toLowerCase());
-    const pIdIdx = pHeader.indexOf("id");
-    const pFnIdx = pHeader.indexOf("vorname");
-    const pLnIdx = pHeader.indexOf("nachname");
-
-    const playerMap = new Map();
-    playerValues.slice(1).forEach((r) => {
-      const id = r[pIdIdx];
-      const name = `${(r[pFnIdx] || "").trim()} ${(r[pLnIdx] || "").trim()}`.trim();
-      playerMap.set(id, name);
-    });
-
-    const rankedList = rankValues.slice(1)
-      .filter((row) => {
-        const bewerbId = String(row[bewerbIdIdx] || "").trim();
-        return !BEWERB_ID || bewerbId === BEWERB_ID;
-      })
-      .map((row) => ({
-        bewerbId: row[bewerbIdIdx] || "",
-        rank: Number(row[rankIdx]),
-        playerId: row[personIdIdx],
-        name: playerMap.get(row[personIdIdx]) || "Unbekannt",
-      }))
-      .sort((a, b) => a.rank - b.rank);
-
-    console.log(`🏆 ${rankedList.length} Spieler geladen (BewerbID: ${BEWERB_ID})`);
-    return rankedList;
-  } catch (err) {
-    console.error("❌ Fehler beim Laden der Rangliste:", err);
-    return [];
+  if (!rankRes.data?.success || !playersRes.data?.success) {
+    const failedData = !rankRes.data?.success ? rankRes.data : playersRes.data;
+    throw new Error(errorMessage(failedData, "Fehler beim Laden der Ranglisten-Daten."));
   }
+
+  const rankValues = rankRes.data.values || [];
+  const playerValues = playersRes.data.values || [];
+
+  if (rankValues.length < 2 || playerValues.length < 2) return [];
+
+  const rHeader = rankValues[0].map((h) => String(h || "").trim().toLowerCase());
+  const bewerbIdIdx = rHeader.indexOf("bewerbid");
+  const rankIdx = rHeader.indexOf("rang");
+  const personIdIdx = rHeader.indexOf("personid");
+
+  const pHeader = playerValues[0].map((h) => String(h || "").trim().toLowerCase());
+  const pIdIdx = pHeader.indexOf("id");
+  const pFnIdx = pHeader.indexOf("vorname");
+  const pLnIdx = pHeader.indexOf("nachname");
+
+  const playerMap = new Map();
+  playerValues.slice(1).forEach((row) => {
+    const id = String(row[pIdIdx] || "").trim();
+    const firstName = String(row[pFnIdx] || "").trim();
+    const lastName = String(row[pLnIdx] || "").trim();
+    if (id) playerMap.set(id, { firstName, lastName });
+  });
+
+  const rankedList = rankValues.slice(1)
+    .filter((row) => {
+      const bewerbId = String(row[bewerbIdIdx] || "").trim();
+      return !BEWERB_ID || bewerbId === BEWERB_ID;
+    })
+    .map((row) => {
+      const playerId = String(row[personIdIdx] || "").trim();
+      const player = playerMap.get(playerId) || { firstName: "Unbekannt", lastName: "" };
+      return {
+        bewerbId: String(row[bewerbIdIdx] || "").trim(),
+        rank: Number(row[rankIdx]),
+        playerId,
+        firstName: player.firstName,
+        lastName: player.lastName,
+        name: `${player.firstName} ${player.lastName}`.trim(),
+      };
+    })
+    .sort((a, b) => a.rank - b.rank);
+
+  console.log(`🏆 ${rankedList.length} Spieler geladen (BewerbID: ${BEWERB_ID})`);
+  return rankedList;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  PYRAMIDE AUFBAUEN
 // ═══════════════════════════════════════════════════════════════════════════
-function renderRankingLegend() {
+function renderRankingLegend(myState = null) {
   const section = document.getElementById("rankingSection");
   if (!section) return;
 
@@ -420,17 +457,13 @@ function renderRankingLegend() {
     body.insertBefore(legend, body.firstChild);
   }
 
-  // Sichtbarkeit abhängig vom Login-Status (localStorage keys, wie in fetchMyState verwendet)
-  const isLoggedIn = Boolean(
-    localStorage.getItem("currentUserEmail") ||
-    localStorage.getItem("loggedInEmail") ||
-    localStorage.getItem("currentUserId")
-  );
+  const authenticated = isAuthenticated();
+  const canWithdraw = authenticated && Number.isInteger(myState?.myRank);
 
   const itemsBox = [];
   const itemsFrame = [];
   // "Forderbar" und "Ich" nur sichtbar für eingeloggte Nutzer
-  if (isLoggedIn) {
+  if (authenticated) {
     itemsBox.push('<div class="legend-item"><span class="legend-swatch challengeable"></span><span>Forderbar</span></div>');
     itemsBox.push('<div class="legend-item"><span class="legend-swatch selected"></span><span>Ich</span></div>');
   }
@@ -440,7 +473,7 @@ function renderRankingLegend() {
   itemsBox.push('<div class="legend-item"><span class="legend-swatch sperrzeit"></span><span>Sperrzeit</span></div>');
 
   // Rahmen-Sektion (nur für eingeloggte Nutzer)
-  if (isLoggedIn) {
+  if (authenticated) {
     itemsFrame.push('<div class="legend-item"><span class="legend-swatch challenge-with-me"></span><span>Mit mir in einer offenen Forderung</span></div>');
   }
 
@@ -455,20 +488,27 @@ function renderRankingLegend() {
   legend.innerHTML = `
     <div class="legend-label">Legende:</div>
     ${sections.join("\n")}
-    <button id="withdrawBtn" class="btn-login" style="margin-top: 12px; width: 100%; display: ${isLoggedIn ? 'block' : 'none'};">Raushängen</button>
+    <button id="withdrawBtn" class="btn-login" style="margin-top: 12px; width: 100%; display: ${canWithdraw ? 'block' : 'none'};">Raushängen</button>
   `;
 
-  document.getElementById("withdrawBtn")?.addEventListener("click", () => {
-    const btn = document.getElementById("withdrawBtn");
-    if (btn && btn.style.display !== "none") {
-      document.getElementById("withdrawModal")?.classList.remove("hidden");
-    }
+  const withdrawButton = document.getElementById("withdrawBtn");
+  withdrawButton?.style.setProperty("display", canWithdraw ? "block" : "none", "important");
+  withdrawButton?.addEventListener("click", () => {
+    if (!canWithdraw) return;
+    window.openWithdrawModal?.({ rank: myState.myRank, bewerbId: BEWERB_ID });
   });
 }
 
 export async function renderRanking() {
   const container = document.getElementById("rankingContainer");
-  if (!container) return;
+  if (!container) {
+    const error = new Error("Ranglisten-Container fehlt.");
+    error.code = "RANKING_CONTAINER_MISSING";
+    throw error;
+  }
+
+  await ready;
+  clearProtectionTimers();
 
   const h2 = document.querySelector("#rankingSection h2");
   if (h2) {
@@ -492,10 +532,12 @@ export async function renderRanking() {
   renderRankingLegend();
 
   const rankedList = await loadRanking();
-  container.innerHTML = "";
+  container.replaceChildren();
 
   if (!rankedList.length) {
-    container.innerHTML = "<p>Es gibt noch keine Spieler für diese Rangliste.</p>";
+    const message = document.createElement("p");
+    message.textContent = "Es gibt noch keine Spieler für diese Rangliste.";
+    container.appendChild(message);
     return;
   }
 
@@ -519,28 +561,27 @@ export async function renderRanking() {
       const box    = document.createElement("div");
       box.className = "box";
 
-      const parts     = (player.name || "").split(" ");
-      const firstName = parts[0] || "";
-      const lastName  = parts.slice(1).join(" ") || "";
+      const rankElement = document.createElement("span");
+      rankElement.className = "box-rank-bg";
+      rankElement.textContent = String(player.rank);
 
-      box.innerHTML = `
-        <span class="box-rank-bg">${player.rank}</span>
-        <span class="box-name">${firstName}<br>${lastName}</span>
-      `;
+      const nameElement = document.createElement("span");
+      nameElement.className = "box-name";
+      nameElement.appendChild(document.createTextNode(player.firstName || "Unbekannt"));
+      nameElement.appendChild(document.createElement("br"));
+      nameElement.appendChild(document.createTextNode(player.lastName || ""));
+
+      box.appendChild(rankElement);
+      box.appendChild(nameElement);
 
       rowEl.appendChild(box);
       box.addEventListener("click", () => {
-        const isLoggedIn = Boolean(
-          localStorage.getItem("currentUserEmail") ||
-          localStorage.getItem("loggedInEmail") ||
-          localStorage.getItem("currentUserId")
-        );
-        if (isLoggedIn) {
-          window.openProfileModal({
-            playerId: player.playerId || "",
-            boxElement: box,
-          });
-        }
+        window.openProfileModal?.({
+          playerId: player.playerId || "",
+          boxElement: box,
+          bewerbId: BEWERB_ID,
+          canChallenge: box.classList.contains("challengeable"),
+        });
       });
 
       rowBoxes.push({
@@ -565,9 +606,64 @@ export async function renderRanking() {
   }
 
   // Alle Regeln anwenden (Daten zuerst, dann DOM)
-  await applyAllRules(container, pyramid, rankedList);
+  const myState = await applyAllRules(container, pyramid, rankedList);
+  renderRankingLegend(myState);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  renderRanking();
+let rankingInitialized = false;
+let observedUserId = null;
+
+subscribeAuth((user) => {
+  const nextUserId = String(user?.id || "");
+  const authChanged = rankingInitialized && nextUserId !== observedUserId;
+  observedUserId = nextUserId;
+  if (!authChanged) return;
+
+  if (!user) {
+    document.querySelectorAll("#rankingContainer .box").forEach((box) => {
+      box.classList.remove("selected", "challengeable", "challenge-with-me");
+    });
+    renderRankingLegend();
+  }
+
+  rankingRefresh = queueRankingRefresh()
+    .catch((error) => {
+      console.error("Rangliste konnte nach der Authentifizierungsänderung nicht aktualisiert werden:", error);
+    });
+});
+
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await ready;
+    const initialUserId = String(getUser()?.id || "");
+    observedUserId = initialUserId;
+    let renderedUserId = initialUserId;
+
+    try {
+      await renderRanking();
+    } catch (error) {
+      const changedUserId = String(getUser()?.id || "");
+      if (changedUserId === initialUserId) throw error;
+      await renderRanking();
+      renderedUserId = changedUserId;
+    }
+
+    const latestSessionId = String(getUser()?.id || "");
+    if (latestSessionId !== renderedUserId) await renderRanking();
+    observedUserId = latestSessionId;
+    rankingInitialized = true;
+    subscribeInvalidations(["ranking", "matches", "players", "bewerbe"], () => {
+      return queueRankingRefresh();
+    });
+    signalMonitorReady();
+  } catch (error) {
+    console.error("Rangliste konnte nicht initialisiert werden:", error);
+    const container = document.getElementById("rankingContainer");
+    if (container) {
+      const message = document.createElement("p");
+      message.textContent = errorMessage(error, "Rangliste konnte nicht geladen werden.");
+      container.replaceChildren(message);
+    }
+    signalMonitorFailed(error.code || "RANKING_LOAD_FAILED");
+  }
 });

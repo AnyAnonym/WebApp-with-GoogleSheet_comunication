@@ -1,5 +1,6 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 // preMatches endpoint beibehalten für Kompatibilität, wird aber nicht mehr verwendet
 // const readPreMatches   = createEndpoint("preMatches");
@@ -10,6 +11,9 @@ const readBewerbsart   = createEndpoint("bewerbsart");
 
 const params = new URLSearchParams(window.location.search);
 const BEWERB_ID = params.get("id");
+const PAIRING_LAYOUT = params.get("paarungslayout") || "0";
+let activeView = "bracket";
+let refreshRoundRobinView = null;
 
 const ROUND_DISPLAY = {
   R1: "1. Runde", R2: "2. Runde", R3: "3. Runde",
@@ -26,11 +30,30 @@ function parsePlayerId(raw) {
   return { cleanId, special: wo ? "wo" : ret ? "ret" : null, pre, gesetzt };
 }
 
-function badgeHtml(type) {
-  if (type === "wo") return '<span class="badge badge-wo">w.o.</span>';
-  if (type === "ret") return '<span class="badge badge-wo">ret.</span>';
-  if (type === "gesetzt") return '<span class="badge badge-gesetzt">gesetzt</span>';
-  return "";
+function createBadge(type) {
+  const badge = document.createElement("span");
+  if (type === "wo") {
+    badge.className = "badge badge-wo";
+    badge.textContent = "w.o.";
+    return badge;
+  }
+  if (type === "ret") {
+    badge.className = "badge badge-wo";
+    badge.textContent = "ret.";
+    return badge;
+  }
+  if (type === "gesetzt") {
+    badge.className = "badge badge-gesetzt";
+    badge.textContent = "gesetzt";
+    return badge;
+  }
+  return null;
+}
+
+function renderMessage(container, message) {
+  const paragraph = document.createElement("p");
+  paragraph.textContent = message;
+  container.replaceChildren(paragraph);
 }
 
 function parseRaster(val) {
@@ -191,9 +214,6 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
     });
   }
 
-  console.log("buildRounds: r1CountConfigPlayers=" + r1CountConfigPlayers + " effCount=" + effCount + " seq=" + JSON.stringify(seq));
-  console.log("roundDefs:", JSON.stringify(roundDefs.map(d => d.label + ":" + d.count)));
-
   const result = roundDefs.map((rd) => {
     const matches = [];
     for (let m = 1; m <= rd.count; m++) {
@@ -210,7 +230,6 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
     }
     return { roundName: rd.label, matches };
   });
-  console.log("result rounds:", JSON.stringify(result.map(r => r.roundName + ":" + r.matches.length)));
   return result;
 }
 
@@ -226,8 +245,6 @@ function addConnectors(grid, rounds) {
     if (!byCol[col]) byCol[col] = [];
     byCol[col].push(el);
   });
-
-  console.log("addConnectors: columns=" + Object.keys(byCol).length + " per col:", JSON.stringify(Object.entries(byCol).map(([k,v]) => k+":"+v.length)));
 
   for (let col = 1; col < rounds.length; col++) {
     const left = byCol[col];
@@ -276,18 +293,16 @@ function addConnectors(grid, rounds) {
 function renderBracket(rounds) {
   const container = document.getElementById("bracketContainer");
   if (!container) return;
-  container.innerHTML = "";
+  container.replaceChildren();
 
   if (!rounds || rounds.length === 0) {
-    container.innerHTML = "<p>Keine Rasterdaten für diesen Bewerb.</p>";
+    renderMessage(container, "Keine Rasterdaten für diesen Bewerb.");
     return;
   }
 
   const numRounds = rounds.length;
   const r1Count = rounds[0].matches.length;
   const gridRows = r1Count * 2;
-
-  console.log("renderBracket: rounds=" + numRounds + " r1Count=" + r1Count + " gridRows=" + gridRows);
 
   const bracketDiv = document.createElement("div");
   bracketDiv.className = "bracket";
@@ -341,11 +356,24 @@ function renderBracket(rounds) {
         if (match.result && slot.name) {
           const resultText = match.result.map((s) => slot._side === "left" ? s.left : s.right).join(" | ");
           const hasRet = match.result.some((s) => s.special && (slot._side === "left" ? s.retOnLeft : !s.retOnLeft));
-          const nameBadges = [hasRet ? badgeHtml("ret") : "", slot.special ? badgeHtml(slot.special) : "", slot.gesetzt ? badgeHtml("gesetzt") : ""].filter(Boolean).join(" ");
-          el.innerHTML = `<span class="pname">${displayName} ${nameBadges}</span> <span class="player-result">${resultText}</span>`;
+          const name = document.createElement("span");
+          name.className = "pname";
+          name.textContent = displayName;
+          [hasRet ? "ret" : null, slot.special, slot.gesetzt ? "gesetzt" : null].forEach((type) => {
+            const badge = createBadge(type);
+            if (badge) name.append(" ", badge);
+          });
+
+          const result = document.createElement("span");
+          result.className = "player-result";
+          result.textContent = resultText;
+          el.append(name, " ", result);
         } else {
-          const badges = [badgeHtml(slot.special), slot.gesetzt ? badgeHtml("gesetzt") : ""].filter(Boolean).join(" ");
-          el.innerHTML = (slot.name ? displayName : "—") + (badges ? " " + badges : "");
+          el.textContent = slot.name ? displayName : "—";
+          [slot.special, slot.gesetzt ? "gesetzt" : null].forEach((type) => {
+            const badge = createBadge(type);
+            if (badge) el.append(" ", badge);
+          });
           if (!slot.name && !slot.special) el.classList.add("bye");
         }
 
@@ -406,20 +434,18 @@ function renderBracket(rounds) {
   });
 }
 
-let cachedRounds = null;
-let cachedR1Count = 16;
-let cachedBewerbName = "";
 let playerMap = new Map();
 
 async function loadBracket() {
   const container = document.getElementById("bracketContainer");
 
   if (!BEWERB_ID) {
-    if (container) container.innerHTML = "<p>Bitte eine Bewerb-ID angeben.</p>";
-    return;
+    if (container) renderMessage(container, "Bitte eine Bewerb-ID angeben.");
+    return false;
   }
 
-  if (container) container.innerHTML = "";
+  if (!container) return false;
+  container.replaceChildren();
   showLoadingOverlay("Lade Turnierraster...");
 
   try {
@@ -491,47 +517,46 @@ async function loadBracket() {
     const matchData = matchValues.slice(1);
 
     const rounds = buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers);
-    cachedRounds = rounds;
-    cachedR1Count = r1CountConfigPlayers;
-    cachedBewerbName = bewerbName;
 
     if (rounds.length === 0) {
-      if (container) container.innerHTML = "<p>Keine Rasterdaten für diesen Bewerb.</p>";
-      return;
+      renderMessage(container, "Keine Rasterdaten für diesen Bewerb.");
+      hideLoadingOverlay();
+      return true;
     }
 
     renderBracket(rounds);
 
     if (isRoundRobin && info) {
-      info.innerHTML = "";
+      info.replaceChildren();
       const btnRow = document.createElement("div");
       btnRow.style.cssText = "display:flex;gap:12px;margin-bottom:16px;";
 
       const btnRaster = document.createElement("button");
       btnRaster.className = "btn-action";
       btnRaster.textContent = "Raster";
-      btnRaster.addEventListener("click", () => {
-        setHeading("Turnierraster - " + (bewerbName || "Bewerb"));
-        container.innerHTML = "";
-        renderBracket(rounds);
-        startPolling();
+      btnRaster.addEventListener("click", async () => {
+        activeView = "bracket";
+        refreshRoundRobinView = null;
+        await loadBracket();
       });
 
       const btnGruppe = document.createElement("button");
       btnGruppe.className = "btn-action";
       btnGruppe.textContent = "Gruppe";
       btnGruppe.addEventListener("click", async () => {
-        stopPolling();
+        activeView = "round-robin";
         setHeading("Round Robin - " + (bewerbName || "Bewerb"));
         try {
           const mod = await import("./RoundRobin.js?v=3");
           if (mod.renderRoundRobin) {
-            container.innerHTML = "";
-            mod.renderRoundRobin(BEWERB_ID, container, { r1CountConfigPlayers, bewerbName });
+            refreshRoundRobinView = async () => {
+              container.replaceChildren();
+              await mod.renderRoundRobin(BEWERB_ID, container, PAIRING_LAYOUT);
+            };
+            await refreshRoundRobinView();
           }
-        } catch (err) {
-          console.error("RoundRobin Fehler:", err);
-          container.innerHTML = "<p>Fehler beim Laden der Gruppen-Ansicht.</p>";
+        } catch {
+          renderMessage(container, "Fehler beim Laden der Gruppen-Ansicht.");
         }
       });
 
@@ -541,206 +566,25 @@ async function loadBracket() {
     }
 
     hideLoadingOverlay();
-  } catch (err) {
-    console.error("Fehler beim Laden des Turnierrasters:", err);
+    return true;
+  } catch {
     showErrorOverlay("Fehler beim Laden des Turnierrasters", loadBracket);
+    return false;
   }
 }
 
-let pollTimer = null;
-
-// async function refreshNames() {
-//   if (!cachedRounds) return;
-//   try {
-//     const [preRes, matchRes, playerRes] = await Promise.all([
-//       readPreMatches(), readMatchesList(), readPlayersList(),
-//     ]);
-//     const preValues = preRes.data?.values || [];
-//     const matchValues = matchRes.data?.values || [];
-//     const playerValues = playerRes.data?.values || [];
-// 
-//     console.log("refreshNames: playerValues.length=" + playerValues.length);
-// 
-//     const playerMap = new Map();
-//     if (playerValues.length > 1) {
-//       const ph = playerValues[0].map((h) => String(h).trim().toLowerCase());
-//       const pidIdx = ph.indexOf("id");
-//       const pfnIdx = ph.indexOf("vorname");
-//       const plnIdx = ph.indexOf("nachname");
-//       playerValues.slice(1).forEach((r) => {
-//         const id = String(r[pidIdx] || "").trim();
-//         const name = [r[pfnIdx], r[plnIdx]].filter(Boolean).map((s) => String(s).trim()).join(" ");
-//         if (id) playerMap.set(id, name);
-//       });
-//     }
-// 
-//     console.log("refreshNames: playerMap.size=" + playerMap.size);
-// 
-//     const preHeader = preValues[0] || [];
-//     const preData = preValues.slice(1);
-//     const matchHeader = matchValues[0] || [];
-//     const matchData = matchValues.slice(1);
-// 
-//     function idx(hdr) {
-//       return hdr.map((c) => String(c).trim().toLowerCase());
-//     }
-// 
-//     const phdr = idx(preHeader);
-//     const pBwIdx = phdr.indexOf("bewerbid");
-//     const pRtIdx = phdr.indexOf("rasterpaarung");
-//     const pP1Idx = phdr.indexOf("spielerid1");
-//     const pP3Idx = phdr.indexOf("spielerid3");
-// 
-//     const keyResultMap = {};
-//     preData.forEach((row) => {
-//       if (pBwIdx >= 0 && String(row[pBwIdx] || "").trim() !== String(BEWERB_ID).trim()) return;
-//       const p = parseRaster(pRtIdx >= 0 ? String(row[pRtIdx] || "").trim() : "");
-//       if (!p) return;
-//       const key = p.roundKey + "-" + p.match;
-//       if (!keyResultMap[key]) {
-//         keyResultMap[key] = {
-//           topId: parsePlayerId(row[pP1Idx]).cleanId,
-//           bottomId: parsePlayerId(row[pP3Idx]).cleanId,
-//           topPre: parsePlayerId(row[pP1Idx]).pre,
-//           bottomPre: parsePlayerId(row[pP3Idx]).pre,
-//           result: null,
-//           winner: null,
-//         };
-//       }
-//     });
-// 
-//     const mhdr = idx(matchHeader);
-//     const mBwIdx = mhdr.indexOf("bewerbid");
-//     const mRtIdx = mhdr.indexOf("rasterpaarung");
-//     const mP1Idx = mhdr.indexOf("spielerid1");
-//     const mP3Idx = mhdr.indexOf("spielerid3");
-//     const mErgIdx = mhdr.indexOf("ergebnis");
-//     const mGwIdx = mhdr.indexOf("gewinner");
-// 
-//     matchData.forEach((row) => {
-//       if (mBwIdx >= 0 && String(row[mBwIdx] || "").trim() !== String(BEWERB_ID).trim()) return;
-//       const p = parseRaster(mRtIdx >= 0 ? String(row[mRtIdx] || "").trim() : "");
-//       if (!p) return;
-//       const key = p.roundKey + "-" + p.match;
-//       const rawResult = mErgIdx >= 0 ? String(row[mErgIdx] || "").trim() : "";
-//       if (!keyResultMap[key]) {
-//         keyResultMap[key] = { topId: "", bottomId: "", topPre: false, bottomPre: false, result: null, winner: null };
-//       }
-//       keyResultMap[key].result = parseResult(rawResult);
-//       keyResultMap[key].winner = String(row[mGwIdx] || "").trim();
-//       keyResultMap[key].topId = parsePlayerId(row[mP1Idx]).cleanId;
-//       keyResultMap[key].bottomId = parsePlayerId(row[mP3Idx]).cleanId;
-//       keyResultMap[key].topPre = parsePlayerId(row[mP1Idx]).pre;
-//       keyResultMap[key].bottomPre = parsePlayerId(row[mP3Idx]).pre;
-//     });
-// 
-//     const playerMapOk = playerMap.size > 0;
-//     console.log("refreshNames: playerMapOk=" + playerMapOk + " rounds=" + cachedRounds.length + " keyResultMap=" + Object.keys(keyResultMap).length);
-//     let anyOverallChange = false;
-// 
-//     cachedRounds.forEach((round, rIdx) => {
-//       round.matches.forEach((match, mIdx) => {
-//         const oldMatch = round.matches[mIdx];
-//         if (!oldMatch) return;
-// 
-//         const key = oldMatch._key;
-// 
-//         const freshR = key && keyResultMap[key];
-//         const newResult = freshR ? freshR.result : null;
-//         const newWinner = freshR ? freshR.winner : null;
-//         const newTopId = freshR ? freshR.topId : "";
-//         const newBottomId = freshR ? freshR.bottomId : "";
-//         const resultChanged = JSON.stringify(newResult) !== JSON.stringify(oldMatch.result);
-//         const winnerChanged = newWinner !== oldMatch.winner;
-// 
-//         let anyMatchChange = resultChanged || winnerChanged;
-// 
-//         const resolve = (id) => /^BYE$/i.test(id) ? "BYE" : /^PRE$/i.test(id) ? null : (playerMap.get(id) || null);
-// 
-//         [oldMatch.top, oldMatch.bottom].forEach((oldSlot, sIdx) => {
-//           const el = oldSlot._el;
-//           if (!el) return;
-// 
-//           const newSlotId = sIdx === 0 ? newTopId : newBottomId;
-//           const newPre = freshR ? (sIdx === 0 ? freshR.topPre : freshR.bottomPre) : false;
-//           if (oldSlot.id === "88" || newSlotId === "88" || newSlotId === "PRE") console.log("refreshNames: 88/PRE debug key=" + key + " oldSlot.id=" + oldSlot.id + " newSlotId=" + newSlotId + " freshR=" + !!freshR);
-//           let idChanged = false;
-//           if (newSlotId && newSlotId !== oldSlot.id) {
-//             idChanged = true;
-//             anyMatchChange = true;
-//             oldSlot.id = newSlotId;
-//             if (el) el.dataset.playerId = newSlotId;
-//           }
-//           if (newPre !== oldSlot.pre) {
-//             oldSlot.pre = newPre;
-//             anyMatchChange = true;
-//           }
-// 
-//           let newName = oldSlot.name;
-//           if (playerMapOk && oldSlot.id) {
-//             const resolved = resolve(oldSlot.id);
-//             if (resolved) {
-//               newName = resolved;
-//             } else if (/^PRE$/i.test(oldSlot.id)) {
-//               newName = null;
-//             }
-//           }
-//           const nameChanged = newName !== oldSlot.name;
-// 
-//           if (!nameChanged && !resultChanged && !winnerChanged && !idChanged) return;
-//           if (nameChanged || idChanged) console.log("refreshNames: Slot geändert ID=" + oldSlot.id + " Name='" + oldSlot.name + "' → '" + newName + "'");
-//           anyMatchChange = true;
-// 
-//           oldSlot.name = newName;
-// 
-//           const side = oldSlot._side;
-//           const isWinner = newWinner && oldSlot.id && newWinner === oldSlot.id;
-//           el.classList.toggle("winner", isWinner);
-//           el.classList.toggle("blink-green", !!newPre);
-// 
-//           if (newResult && oldSlot.name) {
-//             const resultText = newResult.map((s) => side === "left" ? s.left : s.right).join(" | ");
-//             const hasRet = newResult.some((s) => s.special && (side === "left" ? s.retOnLeft : !s.retOnLeft));
-//             el.innerHTML = `<span class="pname">${oldSlot.name}</span> <span class="player-result">${resultText}</span>${hasRet ? " " + badgeHtml("ret") : ""}`;
-//           } else {
-//             el.innerHTML = (oldSlot.name || "—") + (oldSlot.name ? " " + badgeHtml(oldSlot.special) : "");
-//             el.classList.toggle("bye", !oldSlot.name);
-//           }
-//         });
-// 
-//         if (anyMatchChange) {
-//           oldMatch.result = newResult;
-//           oldMatch.winner = newWinner;
-//           if (oldMatch._el) oldMatch._el.classList.toggle("has-result", !!newResult);
-//           anyOverallChange = true;
-//         }
-//       });
-//     });
-// 
-//   } catch (err) {
-//     console.error("refreshNames Fehler:", err);
-//   }
-// }
-
-async function refreshNames() {}
-
-function startPolling() {
-  stopPolling();
-  const poll = async () => {
-    const c = document.getElementById("bracketContainer");
-    if (c && c.innerHTML !== "" && cachedRounds) {
-      await refreshNames();
-    }
-    pollTimer = setTimeout(poll, 2000);
-  };
-  pollTimer = setTimeout(poll, 2000);
-}
-
-function stopPolling() {
-  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadBracket();
-  startPolling();
+  try {
+    const rendered = await loadBracket();
+    if (rendered) signalMonitorReady();
+    else signalMonitorFailed();
+    subscribeInvalidations(["matches", "players", "bewerbe", "bewerbsart"], () => (
+      activeView === "round-robin" && refreshRoundRobinView
+        ? refreshRoundRobinView()
+        : loadBracket()
+    ));
+  } catch {
+    signalMonitorFailed();
+    showErrorOverlay("Fehler beim Laden des Turnierrasters");
+  }
 });

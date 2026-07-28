@@ -1,10 +1,31 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 const readBewerbe = createEndpoint("bewerbe");
 const readBewerbsart = createEndpoint("bewerbsart");
+let competitionBoundaryTimer = null;
 
-function parseSheetDate(raw) {
+function scheduleCompetitionBoundary(competitions) {
+  if (competitionBoundaryTimer) clearTimeout(competitionBoundaryTimer);
+  competitionBoundaryTimer = null;
+  const now = Date.now();
+  const candidates = [];
+  for (const competition of competitions) {
+    for (const [field, endOfDay] of [["entrystart", false], ["entrydeadline", true], ["bewerbsbeginn", false], ["bewerbsende", true]]) {
+      const value = parseSheetDate(competition[field], endOfDay)?.getTime();
+      if (Number.isFinite(value) && value > now) candidates.push(value);
+    }
+  }
+  const next = candidates.sort((left, right) => left - right)[0];
+  if (!next) return;
+  competitionBoundaryTimer = setTimeout(() => {
+    competitionBoundaryTimer = null;
+    loadBewerbe().catch(() => {});
+  }, Math.min(2147483647, Math.max(1, next - now + 50)));
+}
+
+function parseSheetDate(raw, endOfDay = false) {
   if (!raw) return null;
   const rawStr = String(raw).trim();
   if (!rawStr) return null;
@@ -20,7 +41,7 @@ function parseSheetDate(raw) {
   const match8 = rawStr.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (match8) {
     const [, yyyy, mm, dd] = match8;
-    return new Date(+yyyy, +mm - 1, +dd);
+    return new Date(+yyyy, +mm - 1, +dd, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
   }
 
   // YYMMDD-HHMM
@@ -36,7 +57,7 @@ function parseSheetDate(raw) {
   if (match6) {
     const [, yy, mm, dd] = match6;
     const yyyy = parseInt(yy, 10) >= 50 ? 1900 + +yy : 2000 + +yy;
-    return new Date(yyyy, +mm - 1, +dd);
+    return new Date(yyyy, +mm - 1, +dd, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
   }
 
   return null;
@@ -55,7 +76,7 @@ function formatSheetDate(raw) {
 
 // ── Bewerb Cards ────────────────────────────────────────────────────────
 
-function createCard(b, _isUpcoming) {
+function createCard(b) {
   const card = document.createElement("div");
   const bewerbsartId = String(b.bewerbsartId).trim();
   const isRangliste = bewerbsartId === "2";
@@ -66,7 +87,7 @@ function createCard(b, _isUpcoming) {
   if (isRangliste) {
     card.classList.add("clickable");
     card.addEventListener("click", () => {
-      window.location.href = `rangliste.html?id=${b.id}`;
+      window.location.href = `rangliste.html?id=${encodeURIComponent(String(b.id))}`;
     });
   }
 
@@ -76,23 +97,29 @@ function createCard(b, _isUpcoming) {
   const entryDeadline = formatSheetDate(b.entrydeadline);
   const hasEntryList = b.entryListAvailable === "1";
 
-  card.innerHTML = `
-    <h3>${b.bezeichnung}</h3>
-    <div class="bewerb-dates${hasEntryList ? " with-entrylist" : ""}">
-      <span>Bewerbs Beginn: ${start || "---"}</span>
-      ${hasEntryList ? `<span>Eintragungsliste Beginn: ${entryStart || "---"}</span>` : ""}
-      <span>Bewerbs Ende: ${end || "Offen"}</span>
-      ${hasEntryList ? `<span>Eintragungsliste Ende: ${entryDeadline || "Offen"}</span>` : ""}
-    </div>
-  `;
+  const heading = document.createElement("h3");
+  heading.textContent = String(b.bezeichnung || "");
+  card.appendChild(heading);
+
+  const dates = document.createElement("div");
+  dates.className = `bewerb-dates${hasEntryList ? " with-entrylist" : ""}`;
+
+  const appendDate = (label, value) => {
+    const row = document.createElement("span");
+    row.textContent = `${label}: ${value}`;
+    dates.appendChild(row);
+  };
+
+  appendDate("Bewerbs Beginn", start || "---");
+  if (hasEntryList) appendDate("Eintragungsliste Beginn", entryStart || "---");
+  appendDate("Bewerbs Ende", end || "Offen");
+  if (hasEntryList) appendDate("Eintragungsliste Ende", entryDeadline || "Offen");
+  card.appendChild(dates);
 
   // Alle Bewerbe außer Rangliste: Klick-Logik
   if (!isRangliste) {
-    const userId = localStorage.getItem("currentUserId");
     const now = new Date();
-    const endDate = parseSheetDate(b.bewerbsende);
-    const isEnded = endDate ? endDate < now : false;
-    const deadline = parseSheetDate(b.entrydeadline);
+    const deadline = parseSheetDate(b.entrydeadline, true);
     const isPastDeadline = deadline ? deadline < now : false;
     const entryStartDate = parseSheetDate(b.entrystart);
     const isBeforeEntryStart = entryStartDate ? entryStartDate > now : false;
@@ -106,16 +133,16 @@ function createCard(b, _isUpcoming) {
     if (hasStarted) {
       // Bewerb läuft oder beendet → zur Bewerbsseite (Ergebnisse ansehen)
       if (isRoundRobin) {
-        target = `RoundRobin.html?id=${b.id}`;
+        target = `RoundRobin.html?id=${encodeURIComponent(String(b.id))}`;
       } else {
-        target = `bewerbsRaster.html?id=${b.id}`;
+        target = `bewerbsRaster.html?id=${encodeURIComponent(String(b.id))}`;
       }
     } else if (isEntryOpen) {
       // Bewerb hat noch nicht begonnen, aber EntryList ist offen
-      target = `entryList.html?id=${b.id}`;
+      target = `entryList.html?id=${encodeURIComponent(String(b.id))}`;
     }
 
-    if (userId && target) {
+    if (target) {
       card.classList.add("clickable");
       card.addEventListener("click", () => {
         window.location.href = target;
@@ -154,25 +181,28 @@ function classifyBewerb(b, today) {
   const endRaw = String(b.bewerbsende || "").trim();
 
   const startDate = parseSheetDate(startRaw);
-  const endDate = parseSheetDate(endRaw);
+  const endDate = parseSheetDate(endRaw, true);
 
   const started = startDate ? startDate <= today : false;
   const ended = endDate ? endDate < today : false;
 
+  if (!startDate && !endDate) return "active";
+  if (ended) return "finished";
   if (started && !ended) return "active";
   if (!started && !ended) return "upcoming";
-  if (ended) return "finished";
-
-  if (!startDate && !endDate) return "active";
 
   return "upcoming";
 }
 
 async function loadBewerbe() {
   const container = document.getElementById("bewerbe-container");
-  if (!container) return;
+  if (!container) {
+    const error = new Error("Bewerbe-Container fehlt.");
+    error.code = "COMPETITIONS_CONTAINER_MISSING";
+    throw error;
+  }
 
-  container.innerHTML = "";
+  container.replaceChildren();
   showLoadingOverlay("Lade Bewerbe...");
 
   try {
@@ -181,17 +211,25 @@ async function loadBewerbe() {
       callWithRetry(readBewerbsart),
     ]);
 
+    if (!bewerbRes.data?.success || !bewerbsartRes.data?.success) {
+      const failedData = !bewerbRes.data?.success ? bewerbRes.data : bewerbsartRes.data;
+      throw new Error(failedData?.error?.message || "Bewerbe konnten nicht geladen werden.");
+    }
+
     const bewerbValues = bewerbRes.data?.values || [];
     const bewerbsartValues = bewerbsartRes.data?.values || [];
 
     if (bewerbValues.length < 2) {
-      container.innerHTML = "<p>Keine Bewerbe gefunden.</p>";
+      const message = document.createElement("p");
+      message.textContent = "Keine Bewerbe gefunden.";
+      container.appendChild(message);
+      hideLoadingOverlay();
       return;
     }
 
     const baMap = new Map();
     if (bewerbsartValues.length > 1) {
-      const baHeader = bewerbsartValues[0].map((h) => h.trim().toLowerCase());
+      const baHeader = bewerbsartValues[0].map((h) => String(h || "").trim().toLowerCase());
       const baIdIdx = baHeader.indexOf("id");
       const baEntryIdx = baHeader.indexOf("entrylistavailable");
       const baBezIdx = baHeader.indexOf("bezeichnung");
@@ -208,7 +246,7 @@ async function loadBewerbe() {
       });
     }
 
-    const bHeader = bewerbValues[0].map((h) => h.trim().toLowerCase());
+    const bHeader = bewerbValues[0].map((h) => String(h || "").trim().toLowerCase());
     const bIdIdx = bHeader.indexOf("id");
     const bBewerbsartIdx = bHeader.indexOf("bewerbsartid");
     const bBezIdx = bHeader.indexOf("bezeichnung");
@@ -238,6 +276,7 @@ async function loadBewerbe() {
     });
 
     const filtered = bewerbe.filter((b) => String(b.id).trim() !== "1");
+    scheduleCompetitionBoundary(filtered);
 
     const today = new Date();
 
@@ -268,42 +307,60 @@ async function loadBewerbe() {
     upcoming.sort((a, b) => sortByOrder(a, b, "bewerbsbeginn"));
     finished.sort((a, b) => sortByOrder(a, b, "bewerbsende"));
 
-    container.innerHTML = "";
+    container.replaceChildren();
 
     if (active.length > 0) {
       const section = createSection("Aktive Bewerbe", "grid-active");
       container.appendChild(section);
+      const grid = section.querySelector(".bewerb-grid");
       active.forEach((b) => {
-        document.getElementById("grid-active").appendChild(createCard(b));
+        grid.appendChild(createCard(b));
       });
     }
 
     if (upcoming.length > 0) {
       const section = createSection("Bevorstehende Bewerbe", "grid-upcoming");
       container.appendChild(section);
+      const grid = section.querySelector(".bewerb-grid");
       upcoming.forEach((b) => {
-        document.getElementById("grid-upcoming").appendChild(createCard(b));
+        grid.appendChild(createCard(b));
       });
     }
 
     if (finished.length > 0) {
       const section = createSection("Beendete Bewerbe", "grid-finished");
       container.appendChild(section);
+      const grid = section.querySelector(".bewerb-grid");
       finished.forEach((b) => {
-        document.getElementById("grid-finished").appendChild(createCard(b));
+        grid.appendChild(createCard(b));
       });
     }
 
     if (active.length === 0 && upcoming.length === 0 && finished.length === 0) {
-      container.innerHTML = "<p>Keine Bewerbe gefunden.</p>";
+      const message = document.createElement("p");
+      message.textContent = "Keine Bewerbe gefunden.";
+      container.appendChild(message);
     }
     hideLoadingOverlay();
   } catch (err) {
     console.error("Fehler beim Laden:", err);
-    showErrorOverlay("Fehler beim Laden der Bewerbe", loadBewerbe);
+    showErrorOverlay("Fehler beim Laden der Bewerbe", () => {
+      loadBewerbe().catch(() => {});
+    });
+    throw err;
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadBewerbe();
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await loadBewerbe();
+    subscribeInvalidations(["bewerbe", "bewerbsart"], loadBewerbe);
+    signalMonitorReady();
+  } catch (error) {
+    signalMonitorFailed(error.code || "COMPETITIONS_LOAD_FAILED");
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) loadBewerbe().catch(() => {});
 });

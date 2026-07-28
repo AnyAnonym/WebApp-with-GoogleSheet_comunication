@@ -3,6 +3,10 @@ CHANGELOG - Branch 3.1.12-paj-1
 ================================================================================
 Basisversion: 3.1.12
 
+
+[3.1.12-paj-1-1] - 2026-07-27
+Commit: 3.1.12-paj-1-1 | Kommunikationsanalyse aktualisiert
+
   Changed
   - [Dokumentation] Kommunikationsanalyse auf den aktuellen Stand v3.1.12
     fortgeschrieben und um Backend-Kommunikation mit Google Sheets und der
@@ -14,3 +18,365 @@ Basisversion: 3.1.12
     technischen Umsetzungsbacklog mit Abnahmekriterien neu geordnet.
   - [Dokumentation] Unterschiede zum zuvor analysierten Stand v3.0.2 sowie
     weiterhin unveraenderte Kommunikationsstrategien kenntlich gemacht.
+
+
+[3.1.12-paj-1-2] - 2026-07-28
+Commit: 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
+
+  Added
+  - [Software] Serverseitige Authentifizierung mit Secure-/HttpOnly-/SameSite-
+    Sitzungscookies, scrypt-Passwortspeicherung, Legacy-Hashmigration,
+    Dummy-Verifikation, Loginlimits und Rollen player, operator und admin
+    eingefuehrt.
+  - [Software] Einmalige, gehashte und ablaufende Passwort-Reset-Nachweise mit
+    Admin-Erstellung, fester Passwortbindung und sicherer Wiederholung ergaenzt.
+  - [Software] Zentrale maschinenpruefbare RPC-Vertraege fuer alle Endpoints,
+    gemeinsame Validatoren, einheitliche AppError-Codes und Support-IDs
+    eingefuehrt.
+  - [Software] SQLite-StateRepository fuer Sitzungen, Loginlimits,
+    Resetnachweise, Monitorgeraete, Court-/Navigator-State, Idempotenz und
+    unbekannte externe Write-Ausgaenge eingefuehrt.
+  - [Software] SheetService mit tabellenweiser Serialisierung, stabilen aus
+    operationId abgeleiteten Datensatz-IDs, Cacheabgleich, Compare-and-set und
+    Google-Developer-Metadaten fuer zeilenstabile Updates/Deletes angelegt.
+  - [Software] Operationstatus completed/unknown fuer eigene idempotente
+    Schreiboperationen bereitgestellt. Unklare Appends werden nur bestaetigt und
+    niemals blind ein zweites Mal ausgefuehrt.
+  - [Software] WebSocket-Protokoll v2 mit Hello-/Welcome-Handshake,
+    Protokoll-/Appversion, Client-/Geraete-ID, Seitentyp, Rollenprincipal,
+    korrelierten Responses und initialen Subscription-Snapshots eingefuehrt.
+  - [Software] Topics fuer Scores, Scoreboard-State, Tabelleninvalidierungen,
+    Navigator, Monitorliste, Monitorstatus und adressierte Monitorcommands
+    eingefuehrt.
+  - [Software] MonitorBroker mit gehashten Geraetetokens, Provisionierung,
+    Rotation, Widerruf, adressierter Navigation, Command-IDs, Terminalstatus und
+    geordneter Scrollqueue ergaenzt.
+  - [Software] Frontend-authClient fuer serverseitige Sitzungen,
+    Cross-Tab-Synchronisation und per Web Locks serialisierte Auth-Mutationen
+    angelegt.
+  - [Software] Monitor-Ready-/Failed-Signalisierung, technische Court-Testlogik
+    und statische Seitenbereitschaft als eigene Frontendmodule ergaenzt.
+  - [Software] Atomarer Scoreboard-Snapshot aus oeffentlichen Personen-,
+    Bewerbs-, Match-, Court- und Scoredaten inklusive Revisionen eingefuehrt.
+  - [Software] Liveness `/live`, Readiness `/ready` beziehungsweise `/health`,
+    admin-geschuetzter `/status` sowie Session-, Passwort- und Monitor-HTTP-APIs
+    eingefuehrt.
+  - [Software] Reproduzierbares npm-Lockfile, festgeschriebene Node-26-/npm-12-
+    Laufzeit und statischer Build-/Sicherheitscheck ergaenzt.
+  - [Software] 62 automatisierte Unit-, Race-, Contract-, HTTP-, WebSocket-,
+    Persistenz-, Shutdown- und Sicherheitstests aufgebaut.
+  - [Infrastruktur] Content-Security-Policy, Security-Header, eingeschraenkte
+    Proxy-Pfade und HTTPS/WSS fuer Live, PAJ und PK in der Caddy-Vorlage
+    eingefuehrt.
+  - [Infrastruktur] Gehaertete systemd-Vorlagen mit Loopback-Bindung,
+    LoadCredential, StateDirectory, restriktiver UMask, Sandbox und
+    abgestimmtem Shutdown-Timeout ergaenzt.
+  - [Dokumentation] Branch-Versionierungsregel eingefuehrt: package.json,
+    package-lock.json, `/version` und Commit-ID verwenden im Seitenbranch exakt
+    denselben Wert, hier 3.1.12-paj-1-2.
+  - [Dokumentation] Verpflichtende commitweise Branch-Changelogfuehrung und
+    dateigenaue Dokumentationsuebernahmeliste fuer den spaeteren Main-Merge in
+    DokuVersGit.txt und zusammengefasst in LLM-START.md verankert.
+  - [Dokumentation] Die in Commit 3.1.12-paj-1-1 vorzeitig fortgeschriebene
+    permanente Kommunikationsanalyse auf die Main-Basis zurueckgefuehrt. Die
+    Branchaenderungen und spaetere Statusuebernahme sind stattdessen in diesem
+    temporaeren Changelog festgehalten.
+  - [Dokumentation] Uebergang dokumentiert: 3.1.12-paj-1-1 verwendete vor
+    Einfuehrung der neuen Regel noch Paketversion 3.1.12; ab diesem Commit muessen
+    Branch-Commit-ID und Paketversion uebereinstimmen.
+
+  Changed
+  - [Software] `players` liefert nur noch die minimale oeffentliche Projektion;
+    Mitgliederverzeichnis, eigenes Profil und oeffentliches Profil sind nach
+    Schutzbedarf getrennt.
+  - [Software] Endpointberechtigungen werden serverseitig fuer anonyme Clients,
+    Spieler, Operatoren, Administratoren und Monitorgeraete durchgesetzt.
+  - [Software] HTTP-Routing liefert korrekte 404-/405-/503-Antworten, prueft
+    Methoden, Origins, Bodygroessen und Raten und lehnt neue Operationen waehrend
+    des Shutdowns ab.
+  - [Software] dataClient arbeitet als explizite Zustandsmaschine mit
+    Socketgeneration, exponentiellem Backoff und Jitter, Stale-Watchdog,
+    Online-/Offline-, Visibility- und BFCache-Behandlung, sofortiger
+    Pending-Ablehnung und kontrolliertem Terminalzustand.
+  - [Software] Reconnect stellt Subscriptions in begrenzten Batches wieder her;
+    Writes werden nicht automatisch wiederholt, waehrend sichere Read-Retries
+    und stabile operationIds erhalten bleiben.
+  - [Software] dataStore fuehrt Tabellenrevisionen, Alter, Pollfehler,
+    Mutationversionen und Read-Sequenzen. Vor einem Write gestartete Pollerfolge
+    oder Pollfehler koennen den neueren Cache nicht mehr ueberholen.
+  - [Software] Personen-, Matches1- und EntryList-Writes loesen Zielzeilen direkt
+    vor dem Write ueber stabile IDs und Developer-Metadaten neu auf.
+  - [Software] Unklare Metadatenerstellungen bleiben persistent sichtbar und
+    duerfen keinen zweiten Metadatenwrite ausloesen. Eindeutig abgewiesene
+    Requests koennen kontrolliert wiederholt werden.
+  - [Software] Court-Poller verwendet AbortController, Fetchtimeout,
+    Antwortgroessenlimit, Strukturvalidierung, semantische Normalisierung,
+    Fehlerbackoff mit Jitter, Heartbeats und dynamische Stale-Grenzen.
+  - [Software] ScoreLog verwendet eine geordnete, begrenzte und in SQLite
+    gesicherte Write-ahead-Queue mit stabiler Event-ID. Unklare Appends werden
+    nur bestaetigt; eindeutig abgewiesene Appends werden erneut versucht.
+  - [Software] Scoreboard ersetzt Ein-/Fuenf-Sekunden-Polling durch Snapshot,
+    Subscriptions, Revisionen, Resync und sichtbare Verbindungs-, Synchron- und
+    Datenalterzustaende.
+  - [Software] Navigator steuert mehrere Monitore unabhaengig, abonniert deren
+    Status und zeigt Lade-, Offline-, Timeout- und Terminalfehler an.
+  - [Software] Monitor verwendet adressierte Pushcommands statt 150-ms-/2-s-
+    Polling, sandboxed iframes, Ziel-/Parameter-Allowlist, korrelierte Load-ACKs
+    und persistierte Scroll-Deduplizierung ohne Tokenablage.
+  - [Software] Fachseiten verwenden serverseitige Sessionidentitaet,
+    tabellenspezifische Invalidierungen, garantierte Ladeabschluesse und sichere
+    DOM-Knoten beziehungsweise begrenztes Escaping fuer externe Daten.
+  - [Software] Auth-UI unterscheidet angemeldet, abgemeldet, ladend und nicht
+    erreichbar. Dauerhafte Fehleranzeigen sind fokussierbar, schliessbar und
+    behalten vorhandene Support-IDs.
+  - [Software] Court- und Navigator-State, akzeptierte Operationen sowie offene
+    ScoreLog-Nachweise ueberleben einen kontrollierten Neustart in SQLite.
+  - [Software] Graceful Shutdown stoppt Poller/Timer, schliesst WebSockets mit
+    1012, drainiert HTTP-, Sheets- und ScoreLog-Arbeit und meldet eine
+    ueberschrittene Grace-Deadline als Fehler.
+  - [Infrastruktur] Backendprozesse binden ausschliesslich an Loopback und
+    erhalten Service-Account-Credentials ueber root-kontrolliertes systemd
+    LoadCredential statt direkt lesbarer Laufzeitpfade.
+  - [Repository] `.gitignore` schuetzt lokale State-, Env- und unterschiedliche
+    Service-Account-Dateinamen; sensible Dateien bleiben unversioniert.
+
+  Fixed
+  - [Software] Frontend und Backend verwenden fuer Matchforderungen ein
+    einheitliches Schema aus bewerbId und opponentId.
+  - [Software] Profilaufrufe verwenden konsistente oeffentliche beziehungsweise
+    private Responsevertraege.
+  - [Software] Wiederholtes EntryList-Delete kann nach Zeilenverschiebungen oder
+    Cachealterung keinen benachbarten Datensatz mehr loeschen.
+  - [Software] Parallele Adds erzeugen stabile unterschiedliche IDs; Wiederholung
+    derselben operationId erzeugt keine zweite fachliche Aenderung.
+  - [Software] Ein nach Commit verlorenes Append-Ergebnis wird anhand der stabilen
+    ID erkannt. Ein noch unklarer Commit fuehrt bei Wiederholung nur einen
+    Bestaetigungsread aus.
+  - [Software] Erfolgreiche EntryList-No-ops und Passwort-Recovery aktualisieren
+    keinen veralteten Cache mehr mit einem aelteren Snapshot.
+  - [Software] Passwortreset, Eigenaenderung und Login sind pro Benutzer geordnet;
+    ein alter Login kann einen Reset oder Logout nicht mehr ueberholen.
+  - [Software] Cross-Tab-Login und Logout werden ueber einen same-origin Web Lock
+    serialisiert, damit ein spaeter Login-Cookie den Logout nicht wieder aufhebt.
+  - [Software] Ungueltige JSON-, Nachrichten-, Endpoint- und Parameterfehler
+    erhalten nach Moeglichkeit genau eine korrelierte Response mit Support-ID.
+  - [Software] Responses mit falschem Endpoint werden clientseitig als
+    Protokollfehler abgewiesen.
+  - [Software] Mehr als zwanzig gewuenschte Subscriptions werden nach Reconnect in
+    mehreren Batches wiederhergestellt; die Gesamtzahl bleibt serverseitig
+    begrenzt.
+  - [Software] Terminale WebSocket-Codes werden nicht durch Lifecycle-Events
+    umgangen; eine erfolgreiche Monitor-Neuanmeldung darf explizit neu verbinden.
+  - [Software] Monitor-Disconnect beendet auch Navigation in received/loading mit
+    einem korrelierten MONITOR_OFFLINE-Status.
+  - [Software] Scroll-Retries behalten dieselbe Command-ID und pruefen unklare
+    beziehungsweise abgelaufene Befehle ohne erneutes Scrollen.
+  - [Software] Court-Deaktivierung bricht den laufenden Fetch ab; ungueltiges JSON
+    oder irrelevante Zusatzfelder erzeugen weder Prozessabbruch noch Scheinpush.
+  - [Software] Fehleroverlay wird nicht mehr durch einen alten Fade-out-Timer
+    entfernt und ist auch ohne Retryfunktion bedienbar.
+  - [Software] Shutdown signalisiert keinen Erfolg mehr, wenn akzeptierte Arbeit
+    die Grace-Deadline ueberschritten hat.
+
+  Removed
+  - [Software] Globale Navigatorziel-/Scroll-Endpunkte und intensives
+    Monitorpolling durch das adressierte Command-/ACK-Protokoll ersetzt.
+  - [Software] Clientseitiger localStorage-Login als Berechtigungsnachweis
+    entfernt; localStorage enthaelt keine Sitzungstokens oder Rollenautoritaet.
+  - [Repository] Obsolete systemspezifische `Frontend/JS/SDK.js.example`
+    entfernt; WebSocket-URL wird aus dem Browser-Origin abgeleitet.
+  - [Repository] Nicht mehr eingebundenes `Frontend/JS/rankingSidebar.js`
+    entfernt.
+  - [Software] Externe Font-/Script-Abhaengigkeiten und dazugehoerige HTML-
+    Referenzen entfernt, soweit sie der CSP oder reproduzierbarem Betrieb
+    widersprachen.
+
+  Verification
+  - `npm run build`: statische Pruefungen und 62 Tests erfolgreich.
+  - `npm audit --omit=dev`: keine bekannte Produktionsabhaengigkeitsluecke.
+  - Caddy-Vorlage mit `caddy validate` erfolgreich geprueft.
+  - Alle drei systemd-Units mit `systemd-analyze verify` erfolgreich geprueft.
+  - `git diff --check` fuer den neuen Branchumfang erfolgreich. Ausgenommen sind
+    zwei bereits in der Main-Basis vorhandene Endleerzeichen der bytegenau
+    zurueckgefuehrten Kommunikationsanalyse; diese permanente Datei wurde im
+    Seitenbranch bewusst nicht kosmetisch veraendert.
+  - Service-Account-Dateien sind ignoriert und nicht versioniert.
+
+  Manual migration and rollout requirements
+  - Vor dem Rollout ein Google-Sheets-Backup erstellen und in `Personen` die
+    Pflichtspalte `Role` anlegen. Alle Zeilen sollen explizit mit player,
+    operator oder admin befuellt werden; mindestens ein aktiver Admin ist
+    erforderlich. Leere Rollen werden technisch als player normalisiert, sollen
+    aber nicht als Migrationszustand verbleiben.
+  - Pflichtspalten aus Backend/tableSchemas.js und Schreibrechte fuer Personen,
+    Matches1, EntryList, Logging und ScoreLog vor dem Start pruefen.
+  - Service-Account-Schluessel vor Deployment rotieren, root:root mit Modus 0600
+    bereitstellen und nur ueber systemd LoadCredential einbinden.
+  - Node.js 26.x und npm 12.0.1 installieren, `npm ci --omit=dev` und danach den
+    Build ausfuehren.
+  - Caddy- und systemd-Vorlagen installieren, Ports/Zertifikate pruefen und zuerst
+    PAJ, danach PK und zuletzt Live ausrollen.
+  - Browser-/Kiosk-Matrix, Standby, BFCache, WLAN-Wechsel, Serverrestart,
+    erwartete und doppelte Spitzenlast, ein Veranstaltungstag Dauerbetrieb und
+    ein praktischer Rollback muessen auf PAJ abgenommen werden.
+  - Admin-Status muss aktuelle Tabellenalter, leere beziehungsweise geklaerte
+    pendingMetadataIntents und scoreLogPending sowie keine Secrets zeigen.
+    Unklare externe Writes muessen direkt anhand Record-/Event-ID in Google
+    Sheets geprueft werden und duerfen nie durch einen blinden zweiten Append
+    bereinigt werden.
+
+
+Dokumentationsuebernahme beim Main-Versionssprung
+================================================================================
+
+Project/ChangeLogs/ChangeLog-main.txt
+- Den gesamten Branchumfang aus beiden Commitabschnitten nach Added, Changed,
+  Fixed und Removed konsolidieren.
+- Quelle als `3.1.12-paj-1` und den bestaetigten Main-Merge-Commit eintragen.
+- Migrationen, Sicherheitsfolgen, Verifikation und verbleibende manuelle
+  Rolloutschritte ohne Informationsverlust uebernehmen.
+
+LLM-START.md
+- Die organisatorische Seitenbranch-Kurzregel ist bereits im Branch aktualisiert.
+- Beim Merge den technischen Schnellkontext auf den dann integrierten Stand
+  bringen: erweiterter Backendmodulumfang, SQLite-Persistenz, Cookie-/Rollenauth,
+  HTTPS/WSS fuer PAJ/PK, neue Proxy-/HTTP-Pfade und same-origin WebSocket ohne SDK.
+- Zielversion und tatsaechlich integrierte Pfade gegenpruefen.
+
+Project/DokuVersGit.txt
+- Ist als organisatorische Ausnahme bereits im Branch aktualisiert.
+- Beim Merge nur bestaetigte Main-Version, Changelogtransfer und Entfernung des
+  temporaeren Logs gegen die neuen Regeln pruefen.
+
+Project/software/DATENBANK.txt
+- `Personen.Role` als Pflichtspalte und erlaubte Rollen player/operator/admin
+  dokumentieren; erlaeutern, dass leere Werte technisch zu player normalisiert,
+  im Rollout aber explizit migriert werden.
+- Oeffentliche, Mitglieder- und private Personenprojektionen sowie die
+  SHA-256-Legacy-zu-scrypt-Migration beschreiben.
+- `epiberRecord`-Developer-Metadaten fuer stabile Personen-, Matches1- und
+  EntryList-Zeilen und deren Pflege-/Eindeutigkeitsanforderung aufnehmen.
+- SQLite-Schema mit app_state, sessions, password_reset_proofs, monitor_devices,
+  operations und login_failures, Hashing, Revisionen, WAL/FULL und Dateimodus
+  0600 dokumentieren.
+
+Project/software/ENDPOINTS.txt
+- Alte HTTP-/WS-Inventare vollstaendig durch die aktuellen Verträge ersetzen.
+- HTTP-Routen `/version`, `/live`, `/ready`, `/health`, Admin-`/status`, Session-,
+  Passwort-/Reset- und Monitor-Session-APIs inklusive Methoden, Origins, Cookies,
+  Rollen, Limits und Fehlerformat dokumentieren; `/set-active` entfernen.
+- Hello-/Welcome-v2-Handshake, id/endpoint-Korrelation, Support-ID und alle
+  zentralen Parametervertraege dokumentieren.
+- RPCs nach public, authenticated, operator/admin, admin und device auflisten;
+  operationId, expectedRevision, monitorId und opponentId exakt ausweisen.
+- Topics und Snapshotverhalten fuer public, operator und device sowie
+  Idempotenz-/unknown-Write-Semantik dokumentieren.
+
+Project/software/ARCHITEKTUR.txt
+- Backendmodule und Verantwortungen fuer Auth, Contracts, Security,
+  SheetService, SQLite, MonitorBroker, Poller und State aktualisieren.
+- Cookie-/scrypt-Authentifizierung, Rollenmatrix, sichere Datenprojektionen und
+  fehlende localStorage-Autoritaet beschreiben.
+- WS-v2, Clientzustandsmaschine, Limits, Subscriptions, Resync und
+  Browser-Lifecycle dokumentieren.
+- Cache-Revisionen/Fencing, serialisierte/idempotente Sheets-Writes,
+  Developer-Metadaten und unknown-Operationen aufnehmen.
+- Court-/ScoreLog-Haertung, persistente Statebereiche, Monitorprotokoll,
+  Readiness und Graceful Shutdown dokumentieren.
+
+Project/software/SOFTWARE-DOKU.txt
+- Indexbeschreibungen fuer Architektur, Endpoints und Datenbank auf den neuen
+  Umfang anpassen; DATENBANK.txt umfasst danach Google Sheets und SQLite.
+- Rollout-Checkliste verlinken und bestehende elf fachliche Seitenzuordnungen
+  beibehalten.
+
+Project/software/seiten/index.txt
+- `staticReady.js`, serverseitige Session fuer Navbar/Login/Profil und Entfernung
+  der rankingSidebar-/SDK-Aussagen dokumentieren.
+
+Project/software/seiten/bewerbe.txt
+- Bewerbe-/Bewerbsart-Subscriptions, Visibility-/Datumsgrenzenrefresh, sichere
+  Ziel-URLs und Monitor-Ready-/Failed-Verhalten dokumentieren.
+
+Project/software/seiten/matches1.txt
+- Invalidierungen fuer matches/players/bewerbe, sichere DOM-Erzeugung,
+  Fehlerstatus und Monitorbereitschaft dokumentieren.
+
+Project/software/seiten/bewerbsRaster.txt
+- Obsoleten Zwei-Sekunden-Timer entfernen; Subscriptionrefresh, RoundRobin-
+  Layoutparameter, sichere Badges/Namen und Monitorbereitschaft aufnehmen.
+
+Project/software/seiten/roundRobin.txt
+- Vier Quelltopics, Escaping externer Werte, Missing-ID-Fehler,
+  Monitorbereitschaft und entfernte externe Fonts dokumentieren.
+
+Project/software/seiten/players.txt
+- `memberDirectory` statt oeffentlicher Rohpersonentabelle, Loginpflicht,
+  sessiongetriebene Neudarstellung, Namens-/Telefonprojektion und
+  Player-Invalidierung dokumentieren.
+
+Project/software/seiten/entryList.txt
+- Serveridentitaet, operationId-basierte Add-/Remove-Vertraege, serverseitige
+  Personen-/Zeitwerte, Subscriptions, Fristrefresh und Login-CTA dokumentieren.
+
+Project/software/seiten/rangliste.txt
+- Sessionidentitaet, publicProfile/myProfile, vollstaendige Restriction-Daten,
+  Challenge-/Withdraw-operationIds, Subscriptions und Fristrefresh dokumentieren.
+
+Project/software/seiten/scoreboard.txt
+- Ein-/Fuenf-Sekunden-Polling durch scoreboardSnapshot und Subscriptions ersetzen.
+- Revisionen, Resync/Retry, sichtbare Connection-/Sync-/Stale-Zustaende,
+  Monitorbereitschaft und CSP-kompatible lokale Ressourcen dokumentieren.
+
+Project/software/seiten/monitor.txt
+- Enrollmenttoken und Secure-Monitorcookie, monitor-command/monitorTarget,
+  korrelierte Navigationsstatus, Timeout, Same-Origin-Pruefung, sandboxed
+  Candidate-/Active-iframes und Child-Ready-Meldungen dokumentieren.
+- Geordnete, ablaufende, persistiert deduplizierte Scrollcommands und
+  Device-Disconnect-/Duplicate-Verhalten aufnehmen; Legacy-Polling entfernen.
+
+Project/software/seiten/navigator.txt
+- Operator-/Adminschutz, Monitorauswahl, Presence und per-Monitor-Status-
+  Subscriptions dokumentieren.
+- Adressierte idempotente Navigation/Scrolls, Terminalfeedback,
+  revisionsgeschuetzte Courtsteuerung sowie Admin-Provision/Rotation/Revoke
+  aufnehmen; globalen State und 150-ms-Polling entfernen.
+
+Project/server-configs/SERVER-DOKU.txt
+- Neue Rollout-Checkliste indizieren, alle Systeme auf HTTPS/WSS umstellen und
+  same-origin WebSocket-Ableitung ohne SDK dokumentieren.
+- `.env`, LoadCredential, SQLite-StateDirectory, Caddy-Routen/Security-Header und
+  systemd-Haertung korrekt zusammenfassen.
+
+Project/server-configs/SERVER-SETUP.txt
+- Backendbaum und HTTP-Routen auf die neuen Module/APIs aktualisieren.
+- Node 26, npm 12, versioniertes Lockfile, `npm ci --omit=dev` und Buildpruefung
+  aufnehmen.
+- systemd-Werte fuer Instanz, Loopback, Public-Origin, Statepfad, Credential und
+  Shutdown sowie StateDirectory/SQLite-Rechte und Sandbox dokumentieren.
+- HTTPS/WSS, Caddy-Security-/Proxyregeln, Liveness/Readiness, Adminstatus und
+  PAJ-PK-Live-Reihenfolge dokumentieren; SDK- und `.env`-Credentialpfad entfernen.
+
+Project/server-configs/ROLLOUT-CHECKLIST.md
+- Als neue permanente Datei anlegen.
+- Sheets-Backup, Role-/Pflichtspaltenmigration, Developer-Metadatenpruefung,
+  Node/npm, root-kontrollierte Credentials, Installation und PAJ-PK-Live-
+  Reihenfolge aufnehmen.
+- Rollen-, Browser-/Kiosk-, Standby-/Reconnect-, Last-, SIGTERM-, Dauer- und
+  Rollbackabnahme sowie messbare Erfolgskriterien dokumentieren.
+- pendingMetadataIntents/scoreLogPending und die manuelle Klaerung unbekannter
+  Writes ohne blinde Wiederholung aufnehmen.
+
+Project/2do/KOMMUNIKATION-ANALYSE.md
+- Historische Analyse unveraendert lassen und nur einen datierten Umsetzungsstatus
+  ergaenzen: K0-K11 und automatisierbare K12-Teile umgesetzt/getestet;
+  Sheetsmigration, Browser/Kiosk, Last/Dauer und Rollback noch vor Ort offen.
+- Auf die neue Rollout-Checkliste verweisen.
+
+Project/2do/LOGGING-ANALYSE.md
+- Historische Analyse unveraendert lassen und einen datierten Status ergaenzen:
+  sensible Browserlogs entfernt, Support-IDs/Fehlercodes, Adminstatus,
+  Connection-/Close-Diagnose, sichtbare Frontendstatus und Shutdown ergaenzt.
+- Verbleibende Luecken explizit nennen: kein zentraler strukturierter Logger,
+  keine konfigurierbaren Loglevel, kein Metrikexport und kein eingerichtetes
+  Caddy-Accesslog.

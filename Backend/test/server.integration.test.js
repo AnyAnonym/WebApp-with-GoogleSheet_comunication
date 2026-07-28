@@ -1,0 +1,397 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { WebSocket } = require("ws");
+const { peopleFixture, setTestEnvironment } = require("./helpers.js");
+
+setTestEnvironment();
+const dataStore = require("../dataStore.js");
+const { createApplication } = require("../server.js");
+const { StateRepository } = require("../stateRepository.js");
+const { version: appVersion } = require("../package.json");
+
+function createSocketClient(url, headers) {
+  const socket = new WebSocket(url, { headers });
+  const messages = [];
+  const waiters = [];
+  let requestCounter = 0;
+  socket.on("message", (buffer) => {
+    const message = JSON.parse(buffer.toString("utf8"));
+    const waiterIndex = waiters.findIndex(({ predicate }) => predicate(message));
+    if (waiterIndex >= 0) {
+      const [{ resolve }] = waiters.splice(waiterIndex, 1);
+      resolve(message);
+    } else {
+      messages.push(message);
+    }
+  });
+  return {
+    socket,
+    async open() {
+      if (socket.readyState === WebSocket.OPEN) return;
+      await new Promise((resolve, reject) => {
+        socket.once("open", resolve);
+        socket.once("error", reject);
+      });
+    },
+    next(predicate = () => true) {
+      const index = messages.findIndex(predicate);
+      if (index >= 0) return Promise.resolve(messages.splice(index, 1)[0]);
+      return new Promise((resolve, reject) => {
+        const waiter = {
+          predicate,
+          resolve(message) {
+            clearTimeout(timer);
+            resolve(message);
+          },
+        };
+        const timer = setTimeout(() => {
+          const waiterIndex = waiters.indexOf(waiter);
+          if (waiterIndex >= 0) waiters.splice(waiterIndex, 1);
+          reject(new Error("WebSocket-Testnachricht nicht empfangen"));
+        }, 3000);
+        waiters.push(waiter);
+      });
+    },
+    async handshake(pageType = "test") {
+      await this.open();
+      socket.send(JSON.stringify({
+        type: "hello",
+        v: 2,
+        protocol: 2,
+        clientId: "00000000-0000-4000-8000-000000000010",
+        deviceId: "00000000-0000-4000-8000-000000000011",
+        pageType,
+      }));
+      return this.next((message) => message.type === "welcome");
+    },
+    async request(endpoint, params = {}) {
+      const id = `integration-${++requestCounter}`;
+      socket.send(JSON.stringify({ v: 2, type: "request", id, endpoint, params }));
+      return this.next((message) => message.type === "response" && message.id === id);
+    },
+    async close() {
+      if (socket.readyState === WebSocket.CLOSED) return;
+      await new Promise((resolve) => {
+        socket.once("close", resolve);
+        socket.close(1000, "test complete");
+      });
+    },
+  };
+}
+
+function rejectedUpgrade(url, origin) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers: { Origin: origin } });
+    socket.once("open", () => reject(new Error("WebSocket-Upgrade wurde unerwartet akzeptiert")));
+    socket.once("unexpected-response", (_request, response) => {
+      response.resume();
+      resolve(response.statusCode);
+    });
+    socket.once("error", () => {});
+  });
+}
+
+test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
+  dataStore.resetForTests();
+  const people = peopleFixture();
+  people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator"]);
+  dataStore.set("players", people, { source: "test" });
+  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID", "Geschlecht"], ["cup-1", "Cup", "type-1", "2"]], { source: "test" });
+  dataStore.set("bewerbsart", [["ID", "Bezeichnung"], ["type-1", "Turnier"]], { source: "test" });
+  dataStore.set("matches1", [[
+    "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
+    "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "InternalNote",
+  ], ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "secret-note"]], { source: "test" });
+  dataStore.set("rlPlatzierung", [["ID", "BewerbID", "PersonID", "Rang"], ["r1", "cup-1", "p1", "1"]], { source: "test" });
+  dataStore.set("navigator", [["ID", "Name", "Ziel", "Profil"], ["n1", "Scoreboard", "/scoreboard.html", "1"]], { source: "test" });
+  dataStore.set("entryList", [["ID", "BewerbID", "PersonenID", "Datum", "PaymentStatus"], ["e1", "cup-1", "p1", "260101-1200", "paid"]], { source: "test" });
+
+  const repository = new StateRepository(":memory:");
+  const sheetService = {
+    async setPasswordHash() {},
+    async stop() {},
+  };
+  const application = createApplication({ repository, sheetService });
+  await new Promise((resolve) => application.server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => application.shutdown("test"));
+
+  const address = application.server.address();
+  const httpBase = `http://127.0.0.1:${address.port}`;
+  const wsBase = `ws://127.0.0.1:${address.port}`;
+
+  const anonymousSession = await fetch(`${httpBase}/api/session`);
+  assert.equal(anonymousSession.status, 200);
+  const anonymousSessionData = await anonymousSession.json();
+  assert.equal(Number.isFinite(anonymousSessionData.serverTime), true);
+  delete anonymousSessionData.serverTime;
+  assert.deepEqual(anonymousSessionData, { success: true, authenticated: false, user: null, expiresAt: null });
+
+  const readinessResponse = await fetch(`${httpBase}/ready`);
+  assert.equal(readinessResponse.status, 503);
+  assert.deepEqual(await readinessResponse.json(), { status: "not-ready", version: appVersion });
+  assert.equal((await fetch(`${httpBase}/status`)).status, 401);
+  assert.equal((await fetch(`${httpBase}/version`, { method: "POST" })).status, 405);
+  assert.equal((await fetch(`${httpBase}/missing`)).status, 404);
+
+  const wrongOriginLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://evil.test" },
+    body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
+  });
+  assert.equal(wrongOriginLogin.status, 403);
+
+  const oversizedLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ padding: "x".repeat(3000) }),
+  });
+  assert.equal(oversizedLogin.status, 413);
+
+  const loginResponse = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
+  });
+  assert.equal(loginResponse.status, 200);
+  const loginPayload = await loginResponse.json();
+  assert.equal(loginPayload.user.role, "admin");
+  const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
+  assert.match(cookie, /^epiber_test_session=/);
+
+  const authenticatedSession = await fetch(`${httpBase}/api/session`, { headers: { Cookie: cookie } });
+  assert.equal((await authenticatedSession.json()).user.email, "ada@example.test");
+
+  const resetProofResponse = await fetch(`${httpBase}/api/admin/password-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({ personId: "p2" }),
+  });
+  assert.equal(resetProofResponse.status, 200);
+  const resetProof = await resetProofResponse.json();
+  assert.match(resetProof.resetToken, /^[A-Za-z0-9_-]{32,128}$/);
+  const resetResponse = await fetch(`${httpBase}/api/password-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ resetToken: resetProof.resetToken, newPasswordHash: "d".repeat(64) }),
+  });
+  assert.equal(resetResponse.status, 200);
+  const replayedReset = await fetch(`${httpBase}/api/password-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ resetToken: resetProof.resetToken, newPasswordHash: "d".repeat(64) }),
+  });
+  assert.equal(replayedReset.status, 200);
+  const conflictingReset = await fetch(`${httpBase}/api/password-reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ resetToken: resetProof.resetToken, newPasswordHash: "e".repeat(64) }),
+  });
+  assert.equal(conflictingReset.status, 409);
+
+  const publicClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
+  assert.equal((await publicClient.handshake()).principal.role, "anonymous");
+  publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "public-read", endpoint: "players", params: {} }));
+  const publicPlayers = await publicClient.next((message) => message.id === "public-read");
+  assert.equal(publicPlayers.type, "response");
+  assert.deepEqual(publicPlayers.data.values[0], ["ID", "Vorname", "Nachname", "Aktiv"]);
+  assert.equal(JSON.stringify(publicPlayers.data).includes("ada@example.test"), false);
+
+  const publicContracts = [
+    ["publicProfile", { id: "p1" }],
+    ["bewerbe", {}],
+    ["bewerbsart", {}],
+    ["matches1", { bewerbId: "cup-1" }],
+    ["preMatches", { bewerbId: "cup-1" }],
+    ["matches", { bewerbId: "cup-1" }],
+    ["rlPlatzierung", { bewerbId: "cup-1" }],
+    ["entryList", { bewerbId: "cup-1" }],
+    ["readMatchRestrictions", { bewerbId: "cup-1" }],
+    ["getScoreboardCourts", {}],
+    ["courtScores", {}],
+    ["scoreboardSnapshot", {}],
+  ];
+  for (const [endpoint, params] of publicContracts) {
+    const response = await publicClient.request(endpoint, params);
+    assert.equal(response.data.success, true, endpoint);
+  }
+  const projectedMatches = await publicClient.request("matches1", {});
+  assert.equal(projectedMatches.data.values[0].includes("InternalNote"), false);
+  assert.equal(JSON.stringify(projectedMatches.data).includes("secret-note"), false);
+  const projectedEntries = await publicClient.request("entryList", {});
+  assert.equal(projectedEntries.data.values[0].includes("PaymentStatus"), false);
+
+  const protectedEndpoints = [
+    "memberDirectory", "myProfile", "addMatch", "addEntryList", "removeEntryList",
+    "withdrawFromRanking", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
+    "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
+    "monitorTarget", "monitorAck",
+  ];
+  for (const endpoint of protectedEndpoints) {
+    const response = await publicClient.request(endpoint, {});
+    assert.equal(response.data.error.code, "AUTH_REQUIRED", endpoint);
+  }
+  const inheritedEndpoint = await publicClient.request("constructor", {});
+  assert.equal(inheritedEndpoint.data.error.code, "ENDPOINT_NOT_FOUND");
+  publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "invalid-contract", endpoint: 123, params: {} }));
+  const invalidContract = await publicClient.next((message) => message.id === "invalid-contract");
+  assert.equal(invalidContract.type, "response");
+  assert.equal(invalidContract.data.error.code, "INVALID_MESSAGE");
+
+  const adminClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: cookie });
+  assert.equal((await adminClient.handshake()).principal.role, "admin");
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "directory", endpoint: "memberDirectory", params: {} }));
+  const directory = await adminClient.next((message) => message.id === "directory");
+  assert.equal(directory.type, "response");
+  assert.equal(directory.data.values[1][3], "+43123");
+  assert.equal(directory.data.values[0].includes("E-Mail"), false);
+  assert.equal(directory.data.values[0].includes("PasswdHash"), false);
+
+  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  const playerClient = createSocketClient(`${wsBase}/ws`, {
+    Origin: "http://test.local",
+    Cookie: `epiber_test_session=${playerSession.token}`,
+  });
+  assert.equal((await playerClient.handshake()).principal.role, "player");
+  assert.equal((await playerClient.request("memberDirectory")).data.success, true);
+  assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
+  assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+
+  const operatorSession = repository.createSession({ userId: "p3", email: "operator@example.test", ttlMs: 60000 });
+  const operatorClient = createSocketClient(`${wsBase}/ws`, {
+    Origin: "http://test.local",
+    Cookie: `epiber_test_session=${operatorSession.token}`,
+  });
+  assert.equal((await operatorClient.handshake()).principal.role, "operator");
+  assert.equal((await operatorClient.request("navigator", { profil: "1" })).data.success, true);
+  assert.equal((await operatorClient.request("monitorList")).data.success, true);
+  assert.equal((await operatorClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+
+  const authenticatedEndpoints = [
+    "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
+    "removeEntryList", "withdrawFromRanking",
+  ];
+  const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
+  const adminEndpoints = ["monitorProvision", "monitorRotate", "monitorRevoke"];
+  const deviceEndpoints = ["monitorTarget", "monitorAck"];
+  const assertAllowedByPolicy = async (client, endpoint) => {
+    const response = await client.request(endpoint, {});
+    assert.notEqual(response.data.error?.code, "AUTH_REQUIRED", endpoint);
+    assert.notEqual(response.data.error?.code, "FORBIDDEN", endpoint);
+  };
+  const assertForbiddenByPolicy = async (client, endpoint) => {
+    assert.equal((await client.request(endpoint, {})).data.error.code, "FORBIDDEN", endpoint);
+  };
+  for (const endpoint of authenticatedEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
+  for (const endpoint of [...operatorEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(playerClient, endpoint);
+  for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints]) await assertAllowedByPolicy(operatorClient, endpoint);
+  for (const endpoint of [...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
+  for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
+  for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
+
+  assert.equal((await adminClient.request("myProfile")).data.profile.email, "ada@example.test");
+  assert.equal((await adminClient.request("navigator", { profil: "1" })).data.items[0].action.path, "/scoreboard.html");
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitors"] }));
+  const monitorSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "monitors");
+  assert.deepEqual(monitorSnapshot.data.monitors, []);
+  assert.deepEqual((await adminClient.next((message) => message.type === "subscribed")).topics, ["monitors"]);
+  const statusTopics = Array.from({ length: 40 }, (_, index) => `monitor-status:limit-${index}`);
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: statusTopics.slice(0, 20) }));
+  assert.equal((await adminClient.next((message) => message.type === "subscribed")).topics.length, 20);
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: statusTopics.slice(20) }));
+  assert.equal((await adminClient.next((message) => message.type === "subscribed")).topics.length, 11);
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "unsubscribe", topics: [statusTopics[0]] }));
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["navigator"] }));
+  const navigatorSubscription = await adminClient.next((message) => message.type === "subscribed");
+  assert.deepEqual(navigatorSubscription.topics, ["navigator"]);
+
+  const provisionOperation = "00000000-0000-4000-8000-000000000301";
+  const provisioned = await adminClient.request("monitorProvision", {
+    label: "Testmonitor",
+    operationId: provisionOperation,
+  });
+  assert.equal(provisioned.data.success, true);
+  assert.ok(provisioned.data.monitor.token);
+  const monitorId = provisioned.data.monitor.monitorId;
+
+  const deviceLogin = await fetch(`${httpBase}/api/monitor/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ token: provisioned.data.monitor.token }),
+  });
+  assert.equal(deviceLogin.status, 200);
+  const monitorCookie = deviceLogin.headers.get("set-cookie").split(";", 1)[0];
+  assert.match(monitorCookie, /^epiber_test_monitor=/);
+
+  const deviceClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: monitorCookie });
+  const deviceWelcome = await deviceClient.handshake("monitor");
+  assert.equal(deviceWelcome.principal.role, "device");
+  for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertForbiddenByPolicy(deviceClient, endpoint);
+  for (const endpoint of deviceEndpoints) await assertAllowedByPolicy(deviceClient, endpoint);
+  deviceClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitor-command"] }));
+  assert.deepEqual((await deviceClient.next((message) => message.type === "subscribed")).topics, ["monitor-command"]);
+  assert.equal((await deviceClient.request("monitorTarget")).data.target.path, "");
+
+  const navigation = await adminClient.request("monitorNavigate", {
+    monitorId,
+    operationId: "00000000-0000-4000-8000-000000000302",
+    path: "/scoreboard.html",
+  });
+  assert.equal(navigation.data.delivery, "sent");
+  const navigationCommand = await deviceClient.next((message) => (
+    message.type === "event" && message.topic === "monitor-command" && message.data.kind === "navigate"
+  ));
+  assert.equal(navigationCommand.data.commandId, navigation.data.commandId);
+  for (const status of ["received", "loading", "loaded"]) {
+    const acknowledgement = await deviceClient.request("monitorAck", {
+      kind: "navigate",
+      commandId: navigation.data.commandId,
+      status,
+    });
+    assert.equal(acknowledgement.data.success, true);
+  }
+
+  const assignment = await adminClient.request("courtAssign", {
+    court: "1",
+    homePlayerIds: ["p1"],
+    guestPlayerIds: ["p2"],
+    operationId: "00000000-0000-4000-8000-000000000303",
+    expectedRevision: 1,
+  });
+  assert.equal(assignment.data.court.homePlayer, "Ada Admin");
+  const activation = await adminClient.request("courtSetActive", {
+    court: "1",
+    active: false,
+    operationId: "00000000-0000-4000-8000-000000000304",
+    expectedRevision: assignment.data.court.revision,
+  });
+  assert.equal(activation.data.court.aktiv, 0);
+
+  const deviceClosed = new Promise((resolve) => deviceClient.socket.once("close", (code) => resolve(code)));
+  const rotated = await adminClient.request("monitorRotate", {
+    monitorId,
+    operationId: "00000000-0000-4000-8000-000000000305",
+  });
+  assert.ok(rotated.data.monitor.token);
+  assert.equal(await deviceClosed, 4003);
+  const revoked = await adminClient.request("monitorRevoke", {
+    monitorId,
+    operationId: "00000000-0000-4000-8000-000000000306",
+  });
+  assert.ok(revoked.data.monitor.revokedAt);
+  assert.equal((await adminClient.request("monitorList")).data.monitors[0].revokedAt > 0, true);
+
+  assert.equal(await rejectedUpgrade(`${wsBase}/ws`, "http://evil.test"), 403);
+  assert.equal(await rejectedUpgrade(`${wsBase}/not-ws`, "http://test.local"), 404);
+
+  const oversizedClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
+  await oversizedClient.handshake();
+  const oversizedClosed = new Promise((resolve) => oversizedClient.socket.once("close", (code) => resolve(code)));
+  oversizedClient.socket.send("x".repeat(20000));
+  assert.equal(await oversizedClosed, 1009);
+
+  await publicClient.close();
+  await adminClient.close();
+  await deviceClient.close();
+  await playerClient.close();
+  await operatorClient.close();
+});

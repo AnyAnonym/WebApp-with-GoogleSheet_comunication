@@ -1,551 +1,1177 @@
-import { createEndpoint } from "./dataClient.js";
+import {
+  createEndpoint,
+  getOperationId,
+  onConnectionState,
+  onResync,
+  releaseOperationId,
+  subscribe,
+  subscribeInvalidations,
+} from "./dataClient.js";
+import { getUser, hasRole, ready, subscribeAuth } from "./authClient.js";
 
-const readNavigator      = createEndpoint("navigator");
-const readPreMatches     = createEndpoint("preMatches");
-const readPlayersList    = createEndpoint("players");
-const readBewerbe        = createEndpoint("bewerbe");
-const setNavigatorTarget = createEndpoint("setNavigatorTarget");
-const getNavigatorTarget = createEndpoint("getNavigatorTarget");
-const setScoreboardCourt = createEndpoint("setScoreboardCourt");
-const getScoreboardCourts = createEndpoint("getScoreboardCourts");
+const readNavigator = createEndpoint("navigator");
+const readPreMatches = createEndpoint("preMatches");
+const readPlayersList = createEndpoint("players");
+const readBewerbe = createEndpoint("bewerbe");
+const readMonitors = createEndpoint("monitorList");
+const navigateMonitor = createEndpoint("monitorNavigate");
+const provisionMonitor = createEndpoint("monitorProvision");
+const rotateMonitor = createEndpoint("monitorRotate");
+const revokeMonitor = createEndpoint("monitorRevoke");
+const assignCourt = createEndpoint("courtAssign");
+const setCourtActive = createEndpoint("courtSetActive");
+const readScoreboardCourts = createEndpoint("getScoreboardCourts");
 
-let currentActiveBtn = null;
-let pendingBtn = null;
-let statusPollId = null;
+const navParams = new URLSearchParams(window.location.search);
+const NAV_PROFILE = navParams.get("profil") || "1";
+const MAX_COMMAND_HISTORY = 200;
+const navigationStatusRank = { offline: 0, sent: 0, received: 1, loading: 2, loaded: 3, failed: 3 };
 
+let domReady = false;
+let authorized = false;
+let admin = false;
+let connectionSnapshot = { state: "idle", connected: false };
+let selectedMonitorId = "";
+let monitors = new Map();
+let navigatorEntries = [];
 let playerMap = new Map();
 let playerDetails = [];
-let bewerbMap = new Map();
+let competitionMap = new Map();
 let nextMatches = [];
+let navigatorLoadGeneration = 0;
+let monitorLoadGeneration = 0;
+let authGeneration = 0;
+let authPrincipalKey = "";
+let navigationRequestInFlight = false;
 
-// ── Daten laden für Overlay ──
+const navigationBindings = new Map();
+const monitorStatusCache = new Map();
+const monitorSubscriptions = new Map();
+const selectionListeners = new Set();
+const selectedStatusListeners = new Set();
 
-async function loadPlayers() {
-  try {
-    const res = await readPlayersList();
-    const { success, values } = res.data;
-    if (!success || !Array.isArray(values) || values.length < 2) return;
-    const header = values[0].map((h) => h.trim().toLowerCase());
-    const idIdx = header.indexOf("id");
-    const fnIdx = header.indexOf("vorname");
-    const lnIdx = header.indexOf("nachname");
-    if (idIdx === -1) return;
-    const map = new Map();
-    const details = [];
-    values.slice(1).forEach((r) => {
-      const id = r[idIdx];
-      const vorname = (r[fnIdx] || "").trim();
-      const nachname = (r[lnIdx] || "").trim();
-      const name = `${vorname} ${nachname}`.trim();
-      if (id) {
-        map.set(id, name || id);
-        details.push({ id, vorname, nachname, display: `${nachname} ${vorname}`.trim(), fullName: `${vorname} ${nachname}`.trim() });
-      }
-    });
-    playerMap = map;
-    playerDetails = details.sort((a, b) => a.nachname.localeCompare(b.nachname));
-  } catch (err) {
-    // silent
+function element(tagName, className, text) {
+  const node = document.createElement(tagName);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+}
+
+function clear(node) {
+  if (node) node.replaceChildren();
+}
+
+function setText(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
+function errorFromData(data, fallback) {
+  const error = new Error(data?.error?.message || fallback);
+  error.code = data?.error?.code || "REQUEST_FAILED";
+  error.details = data?.error?.details;
+  return error;
+}
+
+async function endpointData(endpoint, params, fallback) {
+  const response = await endpoint(params);
+  if (!response?.data || response.data.success === false) {
+    throw errorFromData(response?.data, fallback);
+  }
+  return response.data;
+}
+
+function readableError(error, fallback = "Anfrage fehlgeschlagen") {
+  return error?.message || fallback;
+}
+
+function showNotice(message = "", type = "info") {
+  const notice = document.getElementById("navigator-notice");
+  if (!notice) return;
+  notice.textContent = message;
+  notice.dataset.type = type;
+  notice.hidden = !message;
+}
+
+function statusKey(monitorId, commandId) {
+  return `${monitorId}:${commandId}`;
+}
+
+function adminOperationId(key) {
+  return getOperationId(`navigator:${key}`);
+}
+
+function clearAdminOperation(key, error = null) {
+  releaseOperationId(`navigator:${key}`, error);
+}
+
+function trimCommandHistory(map) {
+  if (map.size > MAX_COMMAND_HISTORY) map.delete(map.keys().next().value);
+}
+
+function rememberMonitorStatus(status) {
+  if (!status?.monitorId || !status?.commandId) return status;
+  const key = statusKey(status.monitorId, status.commandId);
+  const previous = monitorStatusCache.get(key);
+  if (!previous) {
+    monitorStatusCache.set(key, status);
+    trimCommandHistory(monitorStatusCache);
+    return status;
+  }
+  if (status.kind !== previous.kind) return previous;
+  if (status.kind === "navigate" && status.resync) {
+    monitorStatusCache.set(key, status);
+    return status;
+  }
+  if (status.kind === "navigate") {
+    const previousRank = navigationStatusRank[previous.status] ?? -1;
+    const nextRank = navigationStatusRank[status.status] ?? -1;
+    if (nextRank < previousRank) return previous;
+  }
+  monitorStatusCache.set(key, { ...previous, ...status });
+  return monitorStatusCache.get(key);
+}
+
+function selectedMonitor() {
+  return selectedMonitorId ? monitors.get(selectedMonitorId) || null : null;
+}
+
+export function getSelectedMonitorContext() {
+  const monitor = selectedMonitor();
+  const revoked = !!monitor?.revokedAt;
+  return {
+    monitorId: monitor?.monitorId || "",
+    label: monitor?.label || "",
+    online: !!monitor?.online,
+    revoked,
+    connected: !!connectionSnapshot.connected,
+    canNavigate: !!(authorized && connectionSnapshot.connected && monitor && !revoked),
+    canScroll: !!(authorized && connectionSnapshot.connected && monitor?.online && monitor?.status?.status === "loaded" && !revoked),
+  };
+}
+
+export function onSelectedMonitorChange(callback) {
+  selectionListeners.add(callback);
+  callback(getSelectedMonitorContext());
+  return () => selectionListeners.delete(callback);
+}
+
+export function onSelectedMonitorStatus(callback) {
+  selectedStatusListeners.add(callback);
+  return () => selectedStatusListeners.delete(callback);
+}
+
+function notifySelectionListeners() {
+  const context = getSelectedMonitorContext();
+  for (const listener of selectionListeners) {
+    try {
+      listener(context);
+    } catch (error) {
+      console.error("Monitor-Auswahl Listener:", error);
+    }
   }
 }
 
-async function loadBewerbe() {
-  try {
-    const res = await readBewerbe();
-    const { success, values } = res.data;
-    if (!success || !Array.isArray(values) || values.length < 2) return;
-    const header = values[0].map((h) => h.trim().toLowerCase());
-    const idIdx = header.indexOf("id");
-    const bezIdx = header.indexOf("bezeichnung");
-    if (idIdx === -1 || bezIdx === -1) return;
-    const map = new Map();
-    values.slice(1).forEach((r) => {
-      const id = String(r[idIdx] || "").trim();
-      if (id) map.set(id, String(r[bezIdx] || "").trim());
-    });
-    bewerbMap = map;
-  } catch (err) {
-    // silent
+function notifyStatusListeners(status) {
+  for (const listener of selectedStatusListeners) {
+    try {
+      listener(status);
+    } catch (error) {
+      console.error("Monitor-Status Listener:", error);
+    }
   }
+}
+
+function connectionLabel(snapshot) {
+  if (snapshot.state === "connected") return "Verbunden";
+  if (snapshot.state === "stale") return "Verbindung veraltet";
+  if (snapshot.state === "offline") return "Browser offline";
+  if (snapshot.state === "backoff") return "Verbindung wird wiederhergestellt";
+  if (snapshot.state === "connecting") return "Verbindung wird hergestellt";
+  return "Nicht verbunden";
+}
+
+function renderConnection() {
+  const node = document.getElementById("navigator-connection");
+  if (!node) return;
+  node.textContent = connectionLabel(connectionSnapshot);
+  node.dataset.state = connectionSnapshot.state;
+  updateControlAvailability();
+  notifySelectionListeners();
+}
+
+function formatUser(user) {
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.id || "Benutzer";
+  return `${name} (${user?.role || "unbekannt"})`;
+}
+
+function renderAccess(user) {
+  const access = document.getElementById("navigator-access");
+  const app = document.getElementById("navigator-app");
+  if (!access || !app) return;
+
+  access.hidden = authorized;
+  app.hidden = !authorized;
+  setText("navigator-session", authorized ? formatUser(user) : "Keine berechtigte Sitzung");
+  const accessMessage = user
+    ? `Die Rolle "${user.role || "unbekannt"}" darf Monitore nicht steuern.`
+    : "Für diese Seite ist eine Anmeldung als Operator oder Administrator erforderlich.";
+  setText("navigator-access-message", accessMessage);
+
+  const adminPanel = document.getElementById("admin-monitor-panel");
+  if (adminPanel) adminPanel.hidden = !admin;
+}
+
+function resetOperatorState() {
+  for (const unsubscribe of monitorSubscriptions.values()) unsubscribe();
+  monitorSubscriptions.clear();
+  selectedMonitorId = "";
+  monitors = new Map();
+  navigatorEntries = [];
+  navigationBindings.clear();
+  monitorStatusCache.clear();
+  clear(document.getElementById("navigator-container"));
+  clear(document.getElementById("admin-monitor-list"));
+  dismissOneTimeToken();
+  notifySelectionListeners();
+}
+
+async function applyAuth(user) {
+  const generation = ++authGeneration;
+  const nextPrincipalKey = user ? `${user.id || ""}:${user.role || ""}` : "";
+  const identityChanged = nextPrincipalKey !== authPrincipalKey;
+  const nextAuthorized = !!user && hasRole("operator", "admin");
+  const nextAdmin = !!user && hasRole("admin");
+  const changed = identityChanged || authorized !== nextAuthorized || admin !== nextAdmin;
+  authPrincipalKey = nextPrincipalKey;
+  authorized = nextAuthorized;
+  admin = nextAdmin;
+  if (identityChanged || !admin) dismissOneTimeToken();
+  renderAccess(user);
+
+  if (!authorized) {
+    resetOperatorState();
+    return;
+  }
+
+  if (changed) showNotice("");
+  await Promise.allSettled([loadNavigator(), loadMonitors()]);
+  if (generation !== authGeneration) return;
+  updateControlAvailability();
+}
+
+function monitorOptionText(monitor) {
+  const state = monitor.revokedAt ? "widerrufen" : monitor.online ? "online" : "offline";
+  return `${monitor.label || monitor.monitorId} (${state})`;
+}
+
+function activeMonitors() {
+  return [...monitors.values()].filter((monitor) => !monitor.revokedAt);
+}
+
+function renderMonitorOptions() {
+  const select = document.getElementById("monitor-select");
+  if (!select) return;
+  clear(select);
+  const available = activeMonitors();
+  if (!available.length) {
+    const option = element("option", "", "Keine aktiven Monitore");
+    option.value = "";
+    select.appendChild(option);
+    select.disabled = true;
+    return;
+  }
+  for (const monitor of available) {
+    const option = element("option", "", monitorOptionText(monitor));
+    option.value = monitor.monitorId;
+    option.selected = monitor.monitorId === selectedMonitorId;
+    select.appendChild(option);
+  }
+  select.disabled = false;
+}
+
+function renderMonitorSummary() {
+  const monitor = selectedMonitor();
+  const presence = document.getElementById("monitor-presence");
+  if (presence) {
+    presence.textContent = !monitor ? "Kein Monitor ausgewählt" : monitor.online ? "Monitor online" : "Monitor offline";
+    presence.dataset.state = !monitor ? "none" : monitor.online ? "online" : "offline";
+  }
+
+  const command = document.getElementById("monitor-command-status");
+  if (!command) return;
+  if (!monitor) {
+    command.textContent = "Navigation: kein Monitor";
+    command.dataset.state = "idle";
+    return;
+  }
+  const target = monitor.target;
+  const status = monitor.status;
+  if (!target?.commandId || !target.path) {
+    command.textContent = "Navigation: noch kein Ziel";
+    command.dataset.state = "idle";
+    return;
+  }
+  if (!status || status.commandId !== target.commandId || status.monitorId !== monitor.monitorId) {
+    command.textContent = `Navigation: Status wird synchronisiert (${target.path})`;
+    command.dataset.state = "pending";
+    return;
+  }
+  const labels = {
+    offline: "wartet auf Monitor",
+    sent: "gesendet",
+    received: "empfangen",
+    loading: "wird geladen",
+    loaded: "geladen",
+    failed: "fehlgeschlagen",
+  };
+  const detail = status.errorCode ? `, ${status.errorCode}` : "";
+  command.textContent = `Navigation: ${labels[status.status] || status.status}${detail} (${target.path})`;
+  command.dataset.state = status.status;
+}
+
+function clearNavigationClasses() {
+  for (const entry of navigatorEntries) {
+    if (entry.action.kind !== "navigate") continue;
+    entry.button.classList.remove("active", "blink-yellow", "command-failed");
+    entry.button.removeAttribute("aria-busy");
+  }
+}
+
+function navigationEntryForPath(path) {
+  return navigatorEntries.find((entry) => entry.action.kind === "navigate" && entry.action.path === path) || null;
+}
+
+function renderNavigationState() {
+  clearNavigationClasses();
+  const monitor = selectedMonitor();
+  if (!monitor?.target?.commandId || !monitor.target.path) {
+    renderMonitorSummary();
+    return;
+  }
+  const status = monitor.status;
+  if (!status || status.commandId !== monitor.target.commandId || status.monitorId !== monitor.monitorId) {
+    renderMonitorSummary();
+    return;
+  }
+  const binding = navigationBindings.get(statusKey(monitor.monitorId, status.commandId));
+  const entry = navigationEntryForPath(monitor.target.path) || binding?.entry;
+  if (!entry) {
+    renderMonitorSummary();
+    return;
+  }
+  if (status.status === "loaded") {
+    entry.button.classList.add("active");
+  } else if (status.status === "failed") {
+    entry.button.classList.add("command-failed");
+  } else {
+    entry.button.classList.add("blink-yellow");
+    entry.button.setAttribute("aria-busy", "true");
+  }
+  renderMonitorSummary();
+}
+
+function updateControlAvailability() {
+  const context = getSelectedMonitorContext();
+  for (const entry of navigatorEntries) {
+    if (entry.action.kind === "disabled") {
+      entry.button.disabled = true;
+    } else if (entry.action.kind === "navigate") {
+      entry.button.disabled = navigationRequestInFlight || !context.canNavigate;
+    } else {
+      entry.button.disabled = !authorized || !connectionSnapshot.connected;
+    }
+  }
+
+  const provisionButton = document.getElementById("monitor-provision");
+  if (provisionButton) provisionButton.disabled = !admin || !connectionSnapshot.connected;
+  renderAdminMonitorList();
+}
+
+function selectMonitor(monitorId) {
+  const nextId = monitors.has(monitorId) && !monitors.get(monitorId).revokedAt ? monitorId : "";
+  if (nextId === selectedMonitorId) {
+    renderMonitorOptions();
+    renderMonitorSummary();
+    renderNavigationState();
+    notifySelectionListeners();
+    return;
+  }
+
+  selectedMonitorId = nextId;
+  clearNavigationClasses();
+  renderMonitorOptions();
+  renderMonitorSummary();
+  renderNavigationState();
+  updateControlAvailability();
+  notifySelectionListeners();
+}
+
+function mergeMonitorSnapshot(snapshot) {
+  if (!snapshot?.monitorId) return;
+  const current = monitors.get(snapshot.monitorId) || {};
+  const merged = { ...current, ...snapshot };
+  if (snapshot.status?.kind === "navigate") {
+    merged.status = rememberMonitorStatus(snapshot.status);
+  }
+  monitors.set(snapshot.monitorId, merged);
+}
+
+function handleMonitorStatus(rawStatus) {
+  if (!rawStatus?.monitorId) return;
+  const monitor = monitors.get(rawStatus.monitorId);
+  if (!monitor) return;
+
+  if (!rawStatus.kind) {
+    mergeMonitorSnapshot(rawStatus);
+  } else if (rawStatus.kind === "presence") {
+    monitor.online = rawStatus.status === "online";
+  } else {
+    const status = rememberMonitorStatus(rawStatus);
+    if (status.kind === "navigate") {
+      const targetMatches = monitor.target?.commandId === status.commandId;
+      const binding = navigationBindings.get(statusKey(status.monitorId, status.commandId));
+      if (targetMatches) {
+        monitor.status = status;
+      } else if (!monitor.target?.commandId && binding) {
+        monitor.target = { monitorId: status.monitorId, commandId: status.commandId, path: binding.path };
+        monitor.status = status;
+      } else if (status.path) {
+        monitor.target = { monitorId: status.monitorId, commandId: status.commandId, path: status.path };
+        monitor.status = status;
+      }
+    }
+    notifyStatusListeners(status);
+  }
+
+  renderMonitorOptions();
+  renderMonitorSummary();
+  renderNavigationState();
+  renderAdminMonitorList();
+  updateControlAvailability();
+  notifySelectionListeners();
+}
+
+function syncMonitorSubscriptions() {
+  const desired = new Set(activeMonitors().map((monitor) => monitor.monitorId));
+  for (const [monitorId, unsubscribe] of monitorSubscriptions) {
+    if (desired.has(monitorId)) continue;
+    unsubscribe();
+    monitorSubscriptions.delete(monitorId);
+  }
+  for (const monitorId of desired) {
+    if (monitorSubscriptions.has(monitorId)) continue;
+    monitorSubscriptions.set(monitorId, subscribe(`monitor-status:${monitorId}`, handleMonitorStatus));
+  }
+}
+
+async function loadMonitors(preferredMonitorId = "") {
+  if (!authorized) return;
+  const generation = ++monitorLoadGeneration;
+  try {
+    const data = await endpointData(readMonitors, {}, "Monitore konnten nicht geladen werden");
+    if (generation !== monitorLoadGeneration || !authorized) return;
+    const values = Array.isArray(data.monitors) ? data.monitors : [];
+    const next = new Map();
+    for (const value of values) {
+      if (!value?.monitorId) continue;
+      if (value.status?.kind === "navigate") value.status = rememberMonitorStatus(value.status);
+      next.set(value.monitorId, value);
+    }
+    monitors = next;
+    syncMonitorSubscriptions();
+    const available = activeMonitors();
+    const desired = [preferredMonitorId, selectedMonitorId].find((id) => id && next.has(id) && !next.get(id).revokedAt)
+      || available.find((monitor) => monitor.online)?.monitorId
+      || available[0]?.monitorId
+      || "";
+    renderAdminMonitorList();
+    selectMonitor(desired);
+  } catch (error) {
+    if (generation !== monitorLoadGeneration) return;
+    showNotice(readableError(error, "Monitore konnten nicht geladen werden"), "error");
+  }
+}
+
+async function sendNavigation(entry) {
+  const context = getSelectedMonitorContext();
+  if (!context.canNavigate || entry.action.kind !== "navigate") {
+    showNotice("Bitte zuerst einen aktiven Monitor auswählen und die Verbindung prüfen.", "warning");
+    return;
+  }
+
+  const monitorId = context.monitorId;
+  const operationKey = `navigate:${monitorId}:${entry.action.path}`;
+  const operationId = adminOperationId(operationKey);
+  navigationRequestInFlight = true;
+  entry.button.classList.add("command-sending");
+  updateControlAvailability();
+  showNotice("");
+  try {
+    const data = await endpointData(navigateMonitor, {
+      operationId,
+      monitorId,
+      path: entry.action.path,
+    }, "Navigation konnte nicht gesendet werden");
+    if (!data.commandId) throw new Error("Der Server hat keine Kommando-ID geliefert");
+    clearAdminOperation(operationKey);
+
+    const binding = { entry, monitorId, path: entry.action.path };
+    navigationBindings.set(statusKey(monitorId, data.commandId), binding);
+    trimCommandHistory(navigationBindings);
+    const monitor = monitors.get(monitorId);
+    if (monitor) {
+      monitor.target = {
+        monitorId,
+        commandId: data.commandId,
+        path: entry.action.path,
+        revision: data.targetRevision,
+      };
+      monitor.status = monitorStatusCache.get(statusKey(monitorId, data.commandId)) || {
+        kind: "navigate",
+        monitorId,
+        commandId: data.commandId,
+        path: entry.action.path,
+        status: data.delivery === "offline" ? "offline" : "sent",
+      };
+    }
+    if (selectedMonitorId === monitorId) renderNavigationState();
+  } catch (error) {
+    clearAdminOperation(operationKey, error);
+    entry.button.classList.add("command-failed");
+    showNotice(readableError(error, "Navigation konnte nicht gesendet werden"), "error");
+  } finally {
+    navigationRequestInFlight = false;
+    entry.button.classList.remove("command-sending");
+    updateControlAvailability();
+  }
+}
+
+function normalizedAction(rawAction) {
+  if (!rawAction || typeof rawAction !== "object") return { kind: "disabled", error: "ACTION_INVALID" };
+  if (rawAction.kind === "navigate" && typeof rawAction.path === "string") {
+    return { kind: "navigate", path: rawAction.path };
+  }
+  if (rawAction.kind === "court.assign" && ["1", "2"].includes(String(rawAction.court))) {
+    return { kind: "court.assign", court: String(rawAction.court) };
+  }
+  if (rawAction.kind === "court.activation") return { kind: "court.activation" };
+  return { kind: "disabled", error: String(rawAction.error || "ACTION_DISABLED") };
+}
+
+function renderNavigatorItems(items) {
+  const container = document.getElementById("navigator-container");
+  if (!container) return;
+  clear(container);
+  navigatorEntries = [];
+
+  if (!items.length) {
+    container.appendChild(element("p", "navigator-empty", "Keine Navigationseinträge gefunden."));
+    return;
+  }
+
+  container.style.setProperty("--nav-rows", String(Math.max(1, Math.ceil(items.length / 4))));
+  for (const item of items) {
+    const action = normalizedAction(item.action);
+    const button = element("button", "nav-btn", item.label || item.id || "Ohne Bezeichnung");
+    button.type = "button";
+    if (action.kind === "navigate") {
+      button.addEventListener("click", () => sendNavigation(entry));
+    } else if (action.kind === "court.assign") {
+      button.addEventListener("click", () => openCourtAssignmentOverlay(action.court));
+    } else if (action.kind === "court.activation") {
+      button.addEventListener("click", openCourtActivationOverlay);
+    } else {
+      button.disabled = true;
+      button.title = action.error;
+      button.classList.add("nav-btn-disabled");
+    }
+    const entry = { id: String(item.id || ""), action, button };
+    navigatorEntries.push(entry);
+    container.appendChild(button);
+  }
+  renderNavigationState();
+  updateControlAvailability();
+}
+
+async function loadNavigator() {
+  if (!authorized) return;
+  const generation = ++navigatorLoadGeneration;
+  const container = document.getElementById("navigator-container");
+  if (container && !navigatorEntries.length) {
+    clear(container);
+    container.appendChild(element("p", "navigator-empty", "Navigation wird geladen..."));
+  }
+  try {
+    const data = await endpointData(readNavigator, { profil: NAV_PROFILE }, "Navigation konnte nicht geladen werden");
+    if (generation !== navigatorLoadGeneration || !authorized) return;
+    renderNavigatorItems(Array.isArray(data.items) ? data.items : []);
+  } catch (error) {
+    if (generation !== navigatorLoadGeneration || !container) return;
+    clear(container);
+    container.appendChild(element("p", "navigator-empty navigator-error", readableError(error)));
+  }
+}
+
+function dismissOneTimeToken() {
+  const panel = document.getElementById("monitor-token-panel");
+  const token = document.getElementById("monitor-token");
+  if (token) token.textContent = "";
+  if (panel) panel.hidden = true;
+}
+
+function showOneTimeToken(token, label) {
+  const panel = document.getElementById("monitor-token-panel");
+  const value = document.getElementById("monitor-token");
+  const heading = document.getElementById("monitor-token-heading");
+  if (!panel || !value || !heading) return;
+  value.textContent = token;
+  heading.textContent = `Einmaliger Token für ${label}`;
+  panel.hidden = false;
+}
+
+function setAdminStatus(message = "", type = "info") {
+  const status = document.getElementById("admin-monitor-status");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.type = type;
+}
+
+async function rotateMonitorToken(monitor) {
+  if (!admin || !connectionSnapshot.connected) return;
+  if (!window.confirm(`Token für "${monitor.label}" wirklich rotieren? Das Gerät wird getrennt.`)) return;
+  setAdminStatus("Token wird rotiert...");
+  const operationKey = `rotate:${monitor.monitorId}`;
+  try {
+    const data = await endpointData(rotateMonitor, {
+      monitorId: monitor.monitorId,
+      operationId: adminOperationId(operationKey),
+    }, "Token konnte nicht rotiert werden");
+    clearAdminOperation(operationKey);
+    if (data.tokenUnavailable) {
+      setAdminStatus("Die Rotation wurde bereits ausgefuehrt, der Token konnte aber nicht erneut angezeigt werden. Bitte eine neue Rotation starten.", "warning");
+      await loadMonitors(monitor.monitorId);
+      return;
+    }
+    if (!data.monitor?.token) throw new Error("Der Server hat keinen neuen Token geliefert");
+    showOneTimeToken(data.monitor.token, monitor.label);
+    setAdminStatus("Token rotiert. Er wird nur dieses eine Mal angezeigt.", "success");
+    await loadMonitors(monitor.monitorId);
+  } catch (error) {
+    clearAdminOperation(operationKey, error);
+    setAdminStatus(readableError(error), "error");
+  }
+}
+
+async function revokeMonitorDevice(monitor) {
+  if (!admin || !connectionSnapshot.connected || monitor.revokedAt) return;
+  if (!window.confirm(`Monitor "${monitor.label}" wirklich widerrufen?`)) return;
+  setAdminStatus("Monitor wird widerrufen...");
+  const operationKey = `revoke:${monitor.monitorId}`;
+  try {
+    await endpointData(revokeMonitor, {
+      monitorId: monitor.monitorId,
+      operationId: adminOperationId(operationKey),
+    }, "Monitor konnte nicht widerrufen werden");
+    clearAdminOperation(operationKey);
+    setAdminStatus("Monitor wurde widerrufen.", "success");
+    await loadMonitors();
+  } catch (error) {
+    clearAdminOperation(operationKey, error);
+    setAdminStatus(readableError(error), "error");
+  }
+}
+
+function renderAdminMonitorList() {
+  const list = document.getElementById("admin-monitor-list");
+  if (!list || !admin) return;
+  clear(list);
+  if (!monitors.size) {
+    list.appendChild(element("p", "admin-monitor-empty", "Noch keine Monitore vorhanden."));
+    return;
+  }
+
+  for (const monitor of monitors.values()) {
+    const row = element("div", "admin-monitor-row");
+    const details = element("div", "admin-monitor-details");
+    details.appendChild(element("strong", "", monitor.label || monitor.monitorId));
+    details.appendChild(element("span", "admin-monitor-id", monitor.monitorId));
+    const state = monitor.revokedAt ? "Widerrufen" : monitor.online ? "Online" : "Offline";
+    details.appendChild(element("span", `admin-monitor-state ${monitor.revokedAt ? "revoked" : monitor.online ? "online" : "offline"}`, state));
+
+    const actions = element("div", "admin-monitor-actions");
+    const rotateButton = element("button", "navigator-secondary-btn", monitor.revokedAt ? "Neu aktivieren" : "Token rotieren");
+    rotateButton.type = "button";
+    rotateButton.disabled = !connectionSnapshot.connected;
+    rotateButton.addEventListener("click", () => rotateMonitorToken(monitor));
+    const revokeButton = element("button", "navigator-danger-btn", "Widerrufen");
+    revokeButton.type = "button";
+    revokeButton.disabled = !connectionSnapshot.connected || !!monitor.revokedAt;
+    revokeButton.addEventListener("click", () => revokeMonitorDevice(monitor));
+    actions.append(rotateButton, revokeButton);
+    row.append(details, actions);
+    list.appendChild(row);
+  }
+}
+
+function normalizedHeader(values) {
+  if (!Array.isArray(values) || !Array.isArray(values[0])) return [];
+  return values[0].map((value) => String(value || "").trim().toLowerCase());
+}
+
+async function loadPlayers() {
+  const data = await endpointData(readPlayersList, {}, "Spieler konnten nicht geladen werden");
+  const values = data.values;
+  const header = normalizedHeader(values);
+  const idIndex = header.indexOf("id");
+  const firstNameIndex = header.indexOf("vorname");
+  const lastNameIndex = header.indexOf("nachname");
+  const activeIndex = header.indexOf("aktiv");
+  if (!Array.isArray(values) || idIndex < 0) throw new Error("Spielerliste hat kein ID-Feld");
+
+  const nextMap = new Map();
+  const details = [];
+  for (const row of values.slice(1)) {
+    if (!Array.isArray(row) || (activeIndex >= 0 && String(row[activeIndex] || "1").trim() !== "1")) continue;
+    const id = String(row[idIndex] || "").trim();
+    if (!id) continue;
+    const firstName = firstNameIndex < 0 ? "" : String(row[firstNameIndex] || "").trim();
+    const lastName = lastNameIndex < 0 ? "" : String(row[lastNameIndex] || "").trim();
+    const fullName = `${firstName} ${lastName}`.trim() || id;
+    const display = `${lastName} ${firstName}`.trim() || id;
+    nextMap.set(id, fullName);
+    details.push({ id, display, lastName });
+  }
+  playerMap = nextMap;
+  playerDetails = details.sort((left, right) => left.lastName.localeCompare(right.lastName, "de"));
+}
+
+async function loadCompetitions() {
+  const data = await endpointData(readBewerbe, {}, "Bewerbe konnten nicht geladen werden");
+  const values = data.values;
+  const header = normalizedHeader(values);
+  const idIndex = header.indexOf("id");
+  const nameIndex = header.indexOf("bezeichnung");
+  if (!Array.isArray(values) || idIndex < 0 || nameIndex < 0) throw new Error("Bewerbsliste ist unvollständig");
+  const nextMap = new Map();
+  for (const row of values.slice(1)) {
+    const id = String(row[idIndex] || "").trim();
+    if (id) nextMap.set(id, String(row[nameIndex] || "").trim());
+  }
+  competitionMap = nextMap;
+}
+
+function cleanPlayerId(value) {
+  return String(value || "").replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").trim();
+}
+
+function dateToTimestamp(raw) {
+  const match = String(raw || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return 0;
+  const [, yy, month, day, hour, minute] = match;
+  const year = Number(yy) >= 50 ? 1900 + Number(yy) : 2000 + Number(yy);
+  return new Date(year, Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();
 }
 
 async function loadNextMatches() {
-  try {
-    const res = await readPreMatches();
-    const { success, values } = res.data;
-    if (!success || !Array.isArray(values) || values.length < 2) return;
-    const header = values[0].map((h) => h.trim().toLowerCase());
-    const idx = (label) => header.indexOf(label);
-    const idIdx = idx("id");
-    const i1 = idx("spieler1id");
-    const i2 = idx("spieler2id");
-    const i3 = idx("spieler3id");
-    const i4 = idx("spieler4id");
-    const d = idx("matchdate");
-    const ergebnisIdx = idx("ergebnis");
-    const bewerbIdIdx = idx("bewerbid");
-    const rasterIdx = idx("bewerbrunde");
-
-    nextMatches = values.slice(1)
-      .filter((row) => {
-        if (!row || !row[i1]) return false;
-        if (/^BYE$/i.test(String(row[i1])) || /^BYE$/i.test(String(row[i3] || ""))) return false;
-        // Nur offene Matches (ohne Ergebnis, ohne [wo]/[ret])
-        const erg = ergebnisIdx >= 0 ? String(row[ergebnisIdx] || "").trim() : "";
-        if (erg) return false;
-        const p1raw = String(row[i1] || "");
-        const p3raw = String(row[i3] || "");
-        if (/\[w\.?o\.?\]/i.test(p1raw) || /\[w\.?o\.?\]/i.test(p3raw)) return false;
-        if (/\[ret\]/i.test(p1raw) || /\[ret\]/i.test(p3raw)) return false;
-        return true;
-      })
-      .map((row) => {
-        const ts = dateToTs(row[d]);
-        const matchId = idIdx >= 0 ? String(row[idIdx] || "").trim() : "";
-        const pid1 = String(row[i1] || "").trim();
-        const pid2 = i2 >= 0 ? String(row[i2] || "").trim() : "";
-        const pid3 = String(row[i3] || "").trim();
-        const pid4 = i4 >= 0 ? String(row[i4] || "").trim() : "";
-        const bewerbId = bewerbIdIdx >= 0 ? String(row[bewerbIdIdx] || "").trim() : "";
-        const dateTimeRaw = d >= 0 ? String(row[d] || "").trim() : "";
-        const rasterRaw = rasterIdx >= 0 ? String(row[rasterIdx] || "").trim() : "";
-        return { matchId, pid1, pid2, pid3, pid4, bewerbId, dateTimeRaw, rasterRaw, ts };
-      })
-      .sort((a, b) => {
-        if (a.ts && b.ts) return a.ts - b.ts;
-        return a.ts ? -1 : b.ts ? 1 : 0;
-      })
-      .slice(0, 20);
-  } catch (err) {
-    // silent
+  const data = await endpointData(readPreMatches, {}, "Matches konnten nicht geladen werden");
+  const values = data.values;
+  const header = normalizedHeader(values);
+  const index = (name) => header.indexOf(name);
+  const indexes = {
+    id: index("id"),
+    player1: index("spieler1id"),
+    player2: index("spieler2id"),
+    player3: index("spieler3id"),
+    player4: index("spieler4id"),
+    date: index("matchdate"),
+    result: index("ergebnis"),
+    competition: index("bewerbid"),
+    round: index("bewerbrunde"),
+  };
+  if (!Array.isArray(values) || indexes.id < 0 || indexes.player1 < 0 || indexes.player3 < 0) {
+    throw new Error("Matchliste ist unvollständig");
   }
+
+  nextMatches = values.slice(1)
+    .filter((row) => {
+      if (!Array.isArray(row) || !row[indexes.id] || !row[indexes.player1] || !row[indexes.player3]) return false;
+      const player1 = String(row[indexes.player1]);
+      const player3 = String(row[indexes.player3]);
+      if (/^BYE$/i.test(player1) || /^BYE$/i.test(player3)) return false;
+      if (/\[w\.?o\.?\]|\[ret\]/i.test(player1) || /\[w\.?o\.?\]|\[ret\]/i.test(player3)) return false;
+      return indexes.result < 0 || !String(row[indexes.result] || "").trim();
+    })
+    .map((row) => ({
+      matchId: String(row[indexes.id] || "").trim(),
+      player1: cleanPlayerId(row[indexes.player1]),
+      player2: indexes.player2 < 0 ? "" : cleanPlayerId(row[indexes.player2]),
+      player3: cleanPlayerId(row[indexes.player3]),
+      player4: indexes.player4 < 0 ? "" : cleanPlayerId(row[indexes.player4]),
+      competitionId: indexes.competition < 0 ? "" : String(row[indexes.competition] || "").trim(),
+      date: indexes.date < 0 ? "" : String(row[indexes.date] || "").trim(),
+      round: indexes.round < 0 ? "" : String(row[indexes.round] || "").trim(),
+      timestamp: indexes.date < 0 ? 0 : dateToTimestamp(row[indexes.date]),
+    }))
+    .sort((left, right) => {
+      if (left.timestamp && right.timestamp) return left.timestamp - right.timestamp;
+      return left.timestamp ? -1 : right.timestamp ? 1 : 0;
+    })
+    .slice(0, 20);
 }
 
-function dateToTs(raw) {
-  if (!raw) return 0;
-  const m = String(raw).trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
-  if (!m) return 0;
-  const [, yy, mm, dd, hh, mi] = m;
-  const yyyy = parseInt(yy, 10) >= 50 ? 1900 + parseInt(yy) : 2000 + parseInt(yy);
-  return new Date(yyyy, parseInt(mm) - 1, parseInt(dd), parseInt(hh), parseInt(mi)).getTime();
+function displaySheetDate(raw) {
+  const match = String(raw || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return String(raw || "");
+  const [, , month, day, hour, minute] = match;
+  return `${day}.${month}. - ${hour}:${minute}`;
 }
 
-// ── Overlay ──
-
-function getCurrentDateTime() {
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mi = String(now.getMinutes()).padStart(2, "0");
-  return `${dd}.${mm}. - ${hh}:${mi}`;
-}
-
-function parseSheetDate(raw) {
-  if (!raw) return "";
-  const m = String(raw).trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
-  if (!m) return raw;
-  const [, , mm, dd, hh, mi] = m;
-  return `${dd}.${mm}. - ${hh}:${mi}`;
-}
-
-function parseRunde(raw) {
-  if (!raw) return "";
-  const s = String(raw).trim().toUpperCase();
-  const roundMatch = s.match(/^(R\d+|AF|VF|HF|F|G\d+)/);
-  if (!roundMatch) return "";
-  const code = roundMatch[1];
-  if (/^R(\d+)$/.test(code)) return code.replace(/^R/, "") + ".Runde";
+function displayRound(raw) {
+  const match = String(raw || "").trim().toUpperCase().match(/^(R\d+|AF|VF|HF|F|G\d+)/);
+  if (!match) return "";
+  const code = match[1];
+  if (/^R\d+$/.test(code)) return `${code.slice(1)}. Runde`;
   if (code === "AF") return "Achtelfinale";
   if (code === "VF") return "Viertelfinale";
   if (code === "HF") return "Halbfinale";
   if (code === "F") return "Finale";
-  if (/^G(\d+)$/.test(code)) return code.replace(/^G/, "") + ".Gruppe";
+  if (/^G\d+$/.test(code)) return `${code.slice(1)}. Gruppe`;
   return code;
 }
 
-function openPlayerOverlay(label) {
+function createOverlay(titleText) {
+  const overlay = element("div", "platz-overlay");
+  const box = element("div", "platz-overlay-box");
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", titleText);
+  box.appendChild(element("div", "platz-overlay-title", titleText));
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  return { overlay, box };
+}
+
+function openPlayerOverlay(label, excludedIds = new Set()) {
   return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "platz-overlay";
-
-    const box = document.createElement("div");
-    box.className = "platz-overlay-box";
-
-    const title = document.createElement("div");
-    title.className = "platz-overlay-title";
-    title.textContent = label;
-    box.appendChild(title);
-
-    const list = document.createElement("div");
-    list.className = "platz-overlay-list";
-
-    let selectedName = null;
-
-    // Spielerliste nach Nachname sortiert
-    playerDetails.forEach(({ display, fullName }) => {
-      const btn = document.createElement("button");
-      btn.className = "platz-overlay-option";
-      btn.innerHTML = `<span class="platz-overlay-paarung">${display}</span>`;
-      btn.addEventListener("click", () => {
-        list.querySelectorAll(".platz-overlay-option").forEach((b) => b.classList.remove("selected"));
-        btn.classList.add("selected");
-        selectedName = fullName;
+    const { overlay, box } = createOverlay(label);
+    const list = element("div", "platz-overlay-list");
+    let selected = null;
+    for (const player of playerDetails) {
+      if (excludedIds.has(player.id)) continue;
+      const button = element("button", "platz-overlay-option");
+      button.type = "button";
+      button.appendChild(element("span", "platz-overlay-paarung", player.display));
+      button.addEventListener("click", () => {
+        for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
+        button.classList.add("selected");
+        selected = player;
       });
-      list.appendChild(btn);
-    });
-
+      list.appendChild(button);
+    }
     box.appendChild(list);
 
-    const actions = document.createElement("div");
-    actions.className = "platz-overlay-actions";
-
-    const btnCancel = document.createElement("button");
-    btnCancel.className = "platz-overlay-btn cancel";
-    btnCancel.textContent = "Abbrechen";
-    btnCancel.addEventListener("click", () => {
+    const actions = element("div", "platz-overlay-actions");
+    const cancel = element("button", "platz-overlay-btn cancel", "Abbrechen");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => {
       overlay.remove();
       resolve(null);
     });
-
-    const btnSubmit = document.createElement("button");
-    btnSubmit.className = "platz-overlay-btn submit";
-    btnSubmit.textContent = "Übernehmen";
-    btnSubmit.addEventListener("click", () => {
-      if (!selectedName) return;
+    const submit = element("button", "platz-overlay-btn submit", "Übernehmen");
+    submit.type = "button";
+    submit.addEventListener("click", () => {
+      if (!selected) return;
       overlay.remove();
-      resolve(selectedName);
+      resolve({ id: selected.id });
     });
-
-    actions.appendChild(btnCancel);
-    actions.appendChild(btnSubmit);
+    actions.append(cancel, submit);
     box.appendChild(actions);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
   });
 }
 
-async function openPlatzOverlay(court) {
-  // Daten frisch laden bei jedem Overlay-Öffnen
-  await Promise.all([loadPlayers(), loadBewerbe(), loadNextMatches()]);
+async function freshCourtData() {
+  const data = await endpointData(readScoreboardCourts, {}, "Platzdaten konnten nicht geladen werden");
+  if (!data.courts || typeof data.courts !== "object") throw new Error("Platzdaten fehlen");
+  return data.courts;
+}
 
-  const overlay = document.createElement("div");
-  overlay.className = "platz-overlay";
+async function refreshCourtRevision(court, fallback) {
+  try {
+    const courts = await freshCourtData();
+    return Number.isInteger(courts[court]?.revision) ? courts[court].revision : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-  const box = document.createElement("div");
-  box.className = "platz-overlay-box";
+async function openCourtAssignmentOverlay(court) {
+  if (!connectionSnapshot.connected) {
+    showNotice("Die Verbindung muss vor einer Platzzuweisung hergestellt sein.", "warning");
+    return;
+  }
+  showNotice("Platzdaten werden geladen...");
+  let courts;
+  try {
+    [, , , courts] = await Promise.all([loadPlayers(), loadCompetitions(), loadNextMatches(), freshCourtData()]);
+  } catch (error) {
+    showNotice(readableError(error, "Daten für die Platzzuweisung konnten nicht geladen werden"), "error");
+    return;
+  }
+  showNotice("");
 
-  const title = document.createElement("div");
-  title.className = "platz-overlay-title";
-  title.textContent = `Platz ${court} — Spielzuweisung`;
-  box.appendChild(title);
+  let expectedRevision = courts[court]?.revision;
+  if (!Number.isInteger(expectedRevision)) {
+    showNotice("Für den Platz fehlt eine gültige Revision.", "error");
+    return;
+  }
 
-  const list = document.createElement("div");
-  list.className = "platz-overlay-list";
+  const { overlay, box } = createOverlay(`Platz ${court} - Spielzuweisung`);
+  const list = element("div", "platz-overlay-list");
+  const status = element("div", "platz-overlay-status");
+  status.setAttribute("role", "status");
+  let selection = null;
 
-  let selectedData = null;
-  let isIndividual = false;
-
-  // Option 1: Individual
-  const indBtn = document.createElement("button");
-  indBtn.className = "platz-overlay-option";
-  indBtn.innerHTML = `<span class="platz-overlay-paarung">Individual</span>`;
-  indBtn.addEventListener("click", () => {
-    list.querySelectorAll(".platz-overlay-option").forEach((b) => b.classList.remove("selected"));
-    indBtn.classList.add("selected");
-    isIndividual = true;
-    selectedData = null;
+  const individualButton = element("button", "platz-overlay-option");
+  individualButton.type = "button";
+  individualButton.appendChild(element("span", "platz-overlay-paarung", "Individual"));
+  individualButton.addEventListener("click", () => {
+    for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
+    individualButton.classList.add("selected");
+    selection = { kind: "individual" };
   });
-  list.appendChild(indBtn);
+  list.appendChild(individualButton);
 
-  // Optionen 2-9: nächste 8 preMatches
-  nextMatches.forEach((match) => {
-    const homeName = playerMap.get(match.pid1) || match.pid1;
-    const homeName2 = match.pid2 ? (playerMap.get(match.pid2) || match.pid2) : "";
-    const guestName = playerMap.get(match.pid3) || match.pid3;
-    const guestName2 = match.pid4 ? (playerMap.get(match.pid4) || match.pid4) : "";
-    const bewerbName = bewerbMap.get(match.bewerbId) || "";
-    const dateTime = parseSheetDate(match.dateTimeRaw);
-    const runde = parseRunde(match.rasterRaw);
-
-    const homeDisplay = homeName2 ? `${homeName} / ${homeName2}` : homeName;
-    const guestDisplay = guestName2 ? `${guestName} / ${guestName2}` : guestName;
-    const homeBackend = homeName2 ? `${homeName} / ${homeName2}` : homeName;
-    const guestBackend = guestName2 ? `${guestName} / ${guestName2}` : guestName;
-
-    const infoParts = [dateTime, bewerbName, runde].filter(Boolean);
-    const btn = document.createElement("button");
-    btn.className = "platz-overlay-option";
-    btn.innerHTML = `
-      <span class="platz-overlay-paarung">${homeDisplay} vs. ${guestDisplay}</span>
-      <span class="platz-overlay-bewerb">${infoParts.join(" | ")}</span>
-    `;
-    btn.addEventListener("click", () => {
-      list.querySelectorAll(".platz-overlay-option").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
-      isIndividual = false;
-      selectedData = { matchId: match.matchId, homePlayer: homeBackend, guestPlayer: guestBackend, bewerb: bewerbName, dateTime, runde };
+  for (const match of nextMatches) {
+    const home = [match.player1, match.player2].filter(Boolean).map((id) => playerMap.get(id) || id).join(" / ");
+    const guest = [match.player3, match.player4].filter(Boolean).map((id) => playerMap.get(id) || id).join(" / ");
+    const info = [displaySheetDate(match.date), competitionMap.get(match.competitionId), displayRound(match.round)].filter(Boolean);
+    const button = element("button", "platz-overlay-option");
+    button.type = "button";
+    button.appendChild(element("span", "platz-overlay-paarung", `${home} vs. ${guest}`));
+    button.appendChild(element("span", "platz-overlay-bewerb", info.join(" | ")));
+    button.addEventListener("click", () => {
+      for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
+      button.classList.add("selected");
+      selection = { kind: "match", matchId: match.matchId };
     });
-    list.appendChild(btn);
-  });
-
+    list.appendChild(button);
+  }
   box.appendChild(list);
 
-  const actions = document.createElement("div");
-  actions.className = "platz-overlay-actions";
-
-  const btnCancel = document.createElement("button");
-  btnCancel.className = "platz-overlay-btn cancel";
-  btnCancel.textContent = "Abbrechen";
-  btnCancel.addEventListener("click", () => overlay.remove());
-
-  const btnSubmit = document.createElement("button");
-  btnSubmit.className = "platz-overlay-btn submit";
-  btnSubmit.textContent = "Übernehmen";
-  btnSubmit.addEventListener("click", async () => {
-    if (!isIndividual && !selectedData) return;
-
-    if (isIndividual) {
-      overlay.remove();
-      // Spieler Heim auswählen
-      const homePlayer = await openPlayerOverlay("Spieler Heim");
-      if (!homePlayer) return;
-      // Spieler Gast auswählen
-      const guestPlayer = await openPlayerOverlay("Spieler Gast");
-      if (!guestPlayer) return;
-      // Daten senden
-      try {
-        await setScoreboardCourt({
-          court: String(court),
-          matchId: "",
-          homePlayer,
-          guestPlayer,
-          bewerb: "Individual",
-          dateTime: getCurrentDateTime(),
-          runde: "",
-        });
-      } catch (err) {
-        console.error("setScoreboardCourt Fehler:", err);
+  const actions = element("div", "platz-overlay-actions");
+  const cancel = element("button", "platz-overlay-btn cancel", "Abbrechen");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => overlay.remove());
+  const submit = element("button", "platz-overlay-btn submit", "Übernehmen");
+  submit.type = "button";
+  submit.addEventListener("click", async () => {
+    if (!selection || submit.disabled) return;
+    submit.disabled = true;
+    status.textContent = "Zuweisung wird gespeichert...";
+    let operationKey = "";
+    try {
+      let assignment;
+      if (selection.kind === "match") {
+        assignment = { matchId: selection.matchId };
+      } else {
+        const home = await openPlayerOverlay("Spieler Heim");
+        if (!home) return;
+        const guest = await openPlayerOverlay("Spieler Gast", new Set([home.id]));
+        if (!guest) return;
+        assignment = { homePlayerIds: [home.id], guestPlayerIds: [guest.id] };
       }
-    } else {
-      try {
-        await setScoreboardCourt({
-          court: String(court),
-          matchId: selectedData.matchId,
-          homePlayer: selectedData.homePlayer,
-          guestPlayer: selectedData.guestPlayer,
-          bewerb: selectedData.bewerb,
-          dateTime: selectedData.dateTime,
-          runde: selectedData.runde,
-        });
-      } catch (err) {
-        console.error("setScoreboardCourt Fehler:", err);
-      }
+      operationKey = `court-assign:${court}:${JSON.stringify(assignment)}`;
+      await endpointData(assignCourt, {
+        operationId: adminOperationId(operationKey),
+        court,
+        ...assignment,
+        expectedRevision,
+      }, "Platz konnte nicht zugewiesen werden");
+      clearAdminOperation(operationKey);
       overlay.remove();
+      showNotice(`Platz ${court} wurde zugewiesen.`, "success");
+    } catch (error) {
+      if (operationKey) clearAdminOperation(operationKey, error);
+      status.textContent = readableError(error, "Platz konnte nicht zugewiesen werden");
+      status.dataset.type = "error";
+      expectedRevision = await refreshCourtRevision(court, expectedRevision);
+    } finally {
+      if (overlay.isConnected) submit.disabled = false;
     }
   });
-
-  actions.appendChild(btnCancel);
-  actions.appendChild(btnSubmit);
-  box.appendChild(actions);
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
+  actions.append(cancel, submit);
+  box.append(status, actions);
 }
 
-// ── Platzaktivierung Overlay ──
-
-async function openAktivierungOverlay() {
-  const overlay = document.createElement("div");
-  overlay.className = "platz-overlay";
-
-  const box = document.createElement("div");
-  box.className = "platz-overlay-box";
-
-  const title = document.createElement("div");
-  title.className = "platz-overlay-title";
-  title.textContent = "Platzaktivierung";
-  box.appendChild(title);
-
-  const list = document.createElement("div");
-  list.className = "platz-overlay-list aktivierung-list";
-
-  // Aktuellen Status laden
-  let courtData = { "1": {}, "2": {} };
+async function openCourtActivationOverlay() {
+  if (!connectionSnapshot.connected) {
+    showNotice("Die Verbindung muss vor einer Platzaktivierung hergestellt sein.", "warning");
+    return;
+  }
+  let courtData;
   try {
-    const res = await getScoreboardCourts();
-    const { success, courts } = res.data;
-    if (success && courts) {
-      if (courts["1"]) courtData["1"] = courts["1"];
-      if (courts["2"]) courtData["2"] = courts["2"];
-    }
-  } catch (err) {
-    // silent
+    courtData = await freshCourtData();
+  } catch (error) {
+    showNotice(readableError(error, "Platzstatus konnte nicht geladen werden"), "error");
+    return;
   }
 
-  function createCourtBtn(courtKey) {
-    const btn = document.createElement("button");
-    btn.className = "platz-aktivierung-btn";
-    updateBtnStyle(btn, courtKey);
+  const { overlay, box } = createOverlay("Platzaktivierung");
+  const list = element("div", "platz-overlay-list aktivierung-list");
+  const status = element("div", "platz-overlay-status");
+  status.setAttribute("role", "status");
+  const buttons = new Map();
 
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      const cd = courtData[courtKey];
-      const newStatus = (cd.aktiv || 0) === 1 ? 0 : 1;
+  function updateButton(court) {
+    const button = buttons.get(court);
+    if (!button) return;
+    const active = courtData[court]?.aktiv === 1;
+    button.textContent = `Platz ${court}: ${active ? "aktiv" : "inaktiv"}`;
+    button.classList.toggle("aktivierung-active", active);
+    button.classList.toggle("aktivierung-inactive", !active);
+  }
+
+  async function toggleCourt(court) {
+    const current = courtData[court];
+    const button = buttons.get(court);
+    if (!current || !Number.isInteger(current.revision) || !button) {
+      status.textContent = "Für diesen Platz fehlt eine gültige Revision.";
+      status.dataset.type = "error";
+      return;
+    }
+    button.disabled = true;
+    status.textContent = "Status wird gespeichert...";
+    const operationKey = `court-active:${court}:${current.aktiv !== 1}:${current.revision}`;
+    try {
+      const data = await endpointData(setCourtActive, {
+        operationId: adminOperationId(operationKey),
+        court,
+        active: current.aktiv !== 1,
+        expectedRevision: current.revision,
+      }, "Platzstatus konnte nicht geändert werden");
+      clearAdminOperation(operationKey);
+      courtData[court] = data.court;
+      status.textContent = "Platzstatus gespeichert.";
+      status.dataset.type = "success";
+    } catch (error) {
+      clearAdminOperation(operationKey, error);
+      status.textContent = readableError(error, "Platzstatus konnte nicht geändert werden");
+      status.dataset.type = "error";
       try {
-        await setScoreboardCourt({
-          court: courtKey,
-          aktiv: newStatus,
-          matchId: cd.matchId || "",
-          bewerb: cd.bewerb || "",
-          homePlayer: cd.homePlayer || "",
-          guestPlayer: cd.guestPlayer || "",
-          dateTime: cd.dateTime || "",
-          runde: cd.runde || "",
-        });
-        courtData[courtKey].aktiv = newStatus;
-      } catch (err) {
-        console.error("Toggle Fehler:", err);
+        courtData = await freshCourtData();
+      } catch {
+        // Keep the last known revisions until the operator retries the overlay.
       }
-      updateBtnStyle(btn, courtKey);
-      btn.disabled = false;
-    });
-
-    return btn;
+    } finally {
+      updateButton("1");
+      updateButton("2");
+      button.disabled = false;
+    }
   }
 
-  function updateBtnStyle(btn, courtKey) {
-    const isActive = (courtData[courtKey].aktiv || 0) === 1;
-    btn.textContent = `Platz ${courtKey}`;
-    btn.classList.remove("aktivierung-active", "aktivierung-inactive");
-    btn.classList.add(isActive ? "aktivierung-active" : "aktivierung-inactive");
+  for (const court of ["1", "2"]) {
+    const button = element("button", "platz-aktivierung-btn");
+    button.type = "button";
+    button.addEventListener("click", () => toggleCourt(court));
+    buttons.set(court, button);
+    list.appendChild(button);
+    updateButton(court);
   }
-
-  list.appendChild(createCourtBtn("1"));
-  list.appendChild(createCourtBtn("2"));
   box.appendChild(list);
-
-  const actions = document.createElement("div");
-  actions.className = "platz-overlay-actions";
-
-  const btnClose = document.createElement("button");
-  btnClose.className = "platz-overlay-btn cancel";
-  btnClose.textContent = "Schließen";
-  btnClose.addEventListener("click", () => overlay.remove());
-
-  actions.appendChild(btnClose);
-  box.appendChild(actions);
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
+  const actions = element("div", "platz-overlay-actions");
+  const close = element("button", "platz-overlay-btn cancel", "Schließen");
+  close.type = "button";
+  close.addEventListener("click", () => overlay.remove());
+  actions.appendChild(close);
+  box.append(status, actions);
 }
 
-// ── Navigator laden ──
-
-const navParams = new URLSearchParams(window.location.search);
-const NAV_PROFIL = navParams.get("profil") || "1";
-
-async function loadNavigator() {
-  const container = document.getElementById("navigator-container");
-  if (!container) return;
-
-  // Daten werden erst beim Öffnen des Overlays geladen
-
+async function handleProvision(event) {
+  event.preventDefault();
+  if (!admin || !connectionSnapshot.connected) return;
+  const input = document.getElementById("monitor-label");
+  const label = input?.value.trim();
+  if (!label) {
+    setAdminStatus("Bitte eine Bezeichnung eingeben.", "error");
+    return;
+  }
+  const submit = document.getElementById("monitor-provision");
+  if (submit) submit.disabled = true;
+  dismissOneTimeToken();
+  setAdminStatus("Monitor wird angelegt...");
+  const operationKey = `provision:${label.toLowerCase()}`;
   try {
-    const res = await readNavigator();
-    const { success, values, error } = res.data;
-    if (!success) {
-      container.innerHTML = "<p>Fehler: " + (error || "Unbekannter Fehler") + "</p>";
+    const data = await endpointData(provisionMonitor, {
+      label,
+      operationId: adminOperationId(operationKey),
+    }, "Monitor konnte nicht angelegt werden");
+    clearAdminOperation(operationKey);
+    if (data.tokenUnavailable) {
+      if (input) input.value = "";
+      setAdminStatus("Der Monitor wurde bereits angelegt, der einmalige Token ist nicht erneut abrufbar. Bitte den Monitor auswaehlen und den Token rotieren.", "warning");
+      await loadMonitors(data.monitor?.monitorId || "");
       return;
     }
-    if (!Array.isArray(values) || values.length <= 1) {
-      container.innerHTML = "<p>Keine Navigationseinträge gefunden.</p>";
-      return;
-    }
-
-    const header = values[0].map((h) => String(h).trim().toLowerCase());
-    const nameIdx = header.indexOf("name");
-    const zielIdx = header.indexOf("ziel");
-    const profilIdx = header.indexOf("profil");
-    if (nameIdx === -1) {
-      container.innerHTML = "<p>Spalte Name fehlt.</p>";
-      return;
-    }
-
-    const rows = values.slice(1)
-      .map((row) => ({
-        name: String(row[nameIdx] || "").trim(),
-        ziel: zielIdx >= 0 ? String(row[zielIdx] || "").trim() : "",
-        profil: profilIdx >= 0 ? String(row[profilIdx] || "1").trim() : "1",
-      }))
-      .filter((r) => r.name && r.profil === NAV_PROFIL);
-
-    container.innerHTML = "";
-
-    // Reihen berechnen für CSS-Variable (4 Spalten)
-    const navRows = Math.ceil(rows.length / 4);
-    container.style.setProperty("--nav-rows", navRows);
-
-    rows.forEach(({ name, ziel }) => {
-      const btn = document.createElement("button");
-      btn.className = "nav-btn";
-      btn.textContent = name;
-      if (ziel) {
-        // Overlay-Ziele abfangen
-        const olPlatzMatch = ziel.trim().match(/^OL-Platz-(\d)/i);
-        const olAktivMatch = ziel.trim().match(/^OL-Platzaktivierung$/i);
-        if (olPlatzMatch) {
-          const court = olPlatzMatch[1];
-          btn.addEventListener("click", () => {
-            openPlatzOverlay(court);
-          });
-        } else if (olAktivMatch) {
-          btn.addEventListener("click", () => {
-            openAktivierungOverlay();
-          });
-        } else {
-          btn.addEventListener("click", async () => {
-            document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active", "blink-yellow"));
-            btn.classList.add("blink-yellow");
-            pendingBtn = btn;
-            try {
-              await setNavigatorTarget({path: ziel});
-            } catch (err) {
-              console.error("setNavigatorTarget Fehler:", err);
-            }
-            if (!statusPollId) {
-              statusPollId = setInterval(pollStatus, 150);
-            }
-          });
-        }
-      }
-      container.appendChild(btn);
-    });
-  } catch (err) {
-    console.error("Navigator Fehler:", err);
-    container.innerHTML = "<p>Fehler beim Laden der Navigation.</p>";
+    if (!data.monitor?.token || !data.monitor?.monitorId) throw new Error("Der Server hat keinen Gerätetoken geliefert");
+    if (input) input.value = "";
+    showOneTimeToken(data.monitor.token, data.monitor.label || label);
+    setAdminStatus("Monitor angelegt. Der Token wird nur dieses eine Mal angezeigt.", "success");
+    await loadMonitors(data.monitor.monitorId);
+  } catch (error) {
+    clearAdminOperation(operationKey, error);
+    setAdminStatus(readableError(error), "error");
+  } finally {
+    if (submit) submit.disabled = !connectionSnapshot.connected;
   }
 }
 
-async function pollStatus() {
+async function copyOneTimeToken() {
+  const token = document.getElementById("monitor-token")?.textContent || "";
+  if (!token) return;
   try {
-    const res = await getNavigatorTarget();
-    const { success, status } = res.data;
-    if (!success || status !== "loaded") return;
-    if (pendingBtn) {
-      pendingBtn.classList.remove("blink-yellow");
-      pendingBtn.classList.add("active");
-      if (currentActiveBtn && currentActiveBtn !== pendingBtn) {
-        currentActiveBtn.classList.remove("active");
-      }
-      currentActiveBtn = pendingBtn;
-      pendingBtn = null;
-    }
-    if (statusPollId) {
-      clearInterval(statusPollId);
-      statusPollId = null;
-    }
-  } catch (err) {
-    // silent
+    await navigator.clipboard.writeText(token);
+    setAdminStatus("Token wurde in die Zwischenablage kopiert.", "success");
+  } catch {
+    setAdminStatus("Token konnte nicht automatisch kopiert werden. Bitte manuell markieren.", "warning");
   }
 }
 
-document.addEventListener("DOMContentLoaded", loadNavigator);
+async function refreshOperatorData() {
+  if (!authorized) return;
+  await Promise.allSettled([loadNavigator(), loadMonitors()]);
+}
+
+function bindPageEvents() {
+  document.getElementById("monitor-select")?.addEventListener("change", (event) => selectMonitor(event.target.value));
+  document.getElementById("monitor-provision-form")?.addEventListener("submit", handleProvision);
+  document.getElementById("monitor-token-copy")?.addEventListener("click", copyOneTimeToken);
+  document.getElementById("monitor-token-dismiss")?.addEventListener("click", dismissOneTimeToken);
+}
+
+onConnectionState((snapshot) => {
+  connectionSnapshot = snapshot;
+  if (domReady) renderConnection();
+});
+
+onResync(() => {
+  if (domReady && authorized) refreshOperatorData();
+});
+
+async function initialize() {
+  domReady = true;
+  bindPageEvents();
+  renderConnection();
+  await ready;
+  subscribeInvalidations(["navigator", "monitors"], refreshOperatorData);
+  subscribeAuth((user) => {
+    applyAuth(user).catch((error) => showNotice(readableError(error), "error"));
+  });
+  if (getUser() === null) renderAccess(null);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initialize, { once: true });
+} else {
+  initialize();
+}

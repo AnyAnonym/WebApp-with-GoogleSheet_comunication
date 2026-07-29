@@ -1,44 +1,44 @@
 ================================================================================
-Live-Scoreboard — Vollbild-Anzeige fuer den Veranstaltungsort
+Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Eigenstaendige Vollbild-Anzeige fuer Live-Spielstaende an Plaetzen,
-  naechste und letzte Matches. Gedacht fuer TV/Monitor am Veranstaltungsort.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/scoreboard.html
   JS:   Frontend/JS/scoreboardPolling.js
   CSS:  Frontend/CSS/scoreboard.css
+  Standalone ohne Navbar/Footer. Zeigt zwei Courts mit Einzel-/Doppelnamen, drei
+  Saetzen und Punkten sowie am Desktop je sechs naechste und letzte Spiele.
 
--- Datenquellen --
-  matches1             – Match-Daten
-  players              – Spielernamen
-  bewerbe              – Bewerbsdaten
-  getScoreboardCourts  – Platz-Metadaten (aktiv/inaktiv)
-  courtScores          – Aktuelle Spielstaende (direkte Anfrage)
+-- Snapshot, Push und Resync --
+  Das fruehere Ein-/Fuenf-Sekunden-Polling ist entfernt. `scoreboardSnapshot`
+  liefert atomar oeffentliche Spieler-, Bewerbs-, Matches1-, Court- und Scoredaten
+  samt Tabellen- und Score-Revisionen. Danach liefern `scores` und
+  `scoreboard-state` direkte Aenderungen; `matches`, `players` und `bewerbe`
+  invalidieren den Snapshot. Revisionen verhindern Rueckschritte. Reconnect,
+  Protokoll-Resync, Luecken oder veraltete Invalidierungsrevisionen erzwingen einen
+  neuen Snapshot; Fehler werden mit exponentiellem Retry bis 30 Sekunden erneut
+  versucht. Neuere Pushes waehrend eines Snapshots gewinnen gegen dessen Stand.
 
--- Layout --
-  KEINE Navbar / Footer. Loading-Spinner beim Start.
-  2-Spalten-Grid:
-    Links:  2 Plaetze uebereinander (Spielernamen, 3 Saetze, Punkte in Lila)
-    Rechts: Naechste 6 + Letzte 6 Matches
-  Rechte Spalte ausgeblendet <1300px. Kleinere Schrift <1000px.
-  Body-Klasse: "scoreboard-body".
+-- Lade- und Statusverhalten --
+  Inhalt wird erst nach validiertem Erst-Snapshot eingeblendet und dann als
+  Monitor-Ready gemeldet. Terminale Snapshot-/DOM-Fehler bleiben als Ladefehler mit
+  optionaler Support-ID sichtbar und melden Monitor-Failed. Verbindung,
+  Synchronisation, Court-Quellenalter und Stale-Zustand werden intern ausgewertet;
+  es gibt bewusst keine sichtbaren Connection-, Sync- oder Quellenstatus-Badges.
+  Court aktiv/inaktiv bleibt an der gruenen/roten Platzueberschrift erkennbar.
 
--- Bedienung --
-  Keine URL-Parameter. Standalone-Seite.
+-- Formatierung --
+  Pro Platz stehen Datum/Uhrzeit `TT.MM. - HH:MM` und Bewerb/Runde in zwei
+  getrennten Unterzeilen. R1/AF/VF/HF/F/Gruppen-Codes werden zu lesbaren Runden,
+  z.B. `VM 2026 Frauen Vorrunde | 2.Gruppe`. Externe Daten werden ausschliesslich
+  mit sicheren DOM-/Textknoten aufgebaut; Ressourcen und Font-Fallbacks sind lokal
+  und CSP-kompatibel.
 
--- Shared Module --
-  KEINE (nur scoreboardPolling.js + dataClient.js)
-
--- Besonderheiten --
-  Live-Scores via WebSocket-Push (setOnScoreChange-Callback).
-  Initiale Spielstaende ueber courtScores-Endpoint geladen.
-  Platz-Metadaten: Polling alle 1 Sekunde.
-  Match-Daten: Polling alle 5 Sekunden.
-  Platz-Status als gruener/roter Header (aktiv/inaktiv).
-  Doppel unterstuetzt (uebereinander gestapelte Namen).
-  Gewinner fett / Verlierer ausgeblendet in letzten Matches.
-  Schriftart: Roboto Flex condensed.
+-- Responsive Namen und Layout --
+  Ueber 1300 px: Courts plus Seitenpanel. Von 1001 bis 1300 px: nur die beiden
+  Courts. Bis 1000 px: Courts oben ausgerichtet, groessere mobile Namen (maximal
+  2.6rem), Scores sowie Metadaten und `100dvh` gegen Browserleisten. Fuer jeden
+  Court wird aus realer Glyphenbreite aller Namenszeilen und verfuegbarer Hoehe die
+  groesstmoegliche gemeinsame Schriftgroesse berechnet; Heim/Gast erhalten gleiche
+  Feldhoehe. Dieselbe adaptive Obergrenze gilt fuer Einzel und Doppel.

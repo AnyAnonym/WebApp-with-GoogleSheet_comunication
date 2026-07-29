@@ -1,43 +1,35 @@
 ================================================================================
-Eintragungsliste — Anmeldung / Nennung fuer einen Bewerb
+Eintragungsliste - Anmeldung / Nennung fuer einen Bewerb
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt die Nennliste fuer einen bestimmten Bewerb und ermoeglicht
-  eingeloggten Benutzern die An- und Abmeldung.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/entryList.html
   JS:   Frontend/JS/entryList.js
-  CSS:  (kein eigenes CSS)
+  Pflichtparameter `?id=<bewerbId>`. Zeigt Bewerbsname und Nennliste mit laufender
+  Nummer, Personen-ID, geschlechtsbezogenem Ranglistenrang, Name und Entrydate.
+  `GebuehrBezahlt` gehoert nicht zur oeffentlichen Projektion und wird daher nicht
+  dargestellt.
 
--- Datenquellen --
-  entryList       – Nennliste des Bewerbs
-  players         – Spielerdaten
-  bewerbe         – Bewerbsdaten (Eintragungszeitraum)
-  rlPlatzierung   – Ranglisten-Platzierungen (fuer RL-Spalte)
-  addEntryList    – Spieler eintragen
-  removeEntryList – Spieler austragen
+-- Daten und Aktualisierung --
+  Oeffentliche Reads `entryList`, `players`, `bewerbe`, `rlPlatzierung`;
+  Schreibend `addEntryList` und `removeEntryList`. Invalidierungen der Topics
+  `entryList`, `players`, `bewerbe` und `ranking` laden Bewerb und Liste neu.
+  Sessionaenderungen, Sichtbarwerden und Timer an Start/Deadline aktualisieren die
+  Toolbar. Loading-/Fehleroverlay mit Retry sowie Monitor-Ready/Failed liefern
+  einen definierten Initialzustand.
 
--- Layout --
-  Ueberschrift mit Bewerbsname, Toolbar (Eintragen-/Austragen-Buttons),
-  Tabelle mit Spalten: #, ID, RL-Rang, Name, Datum.
+-- Anmeldung und Vertrag --
+  Authentifizierung und Personen-ID stammen ausschliesslich aus der serverseitigen
+  Sitzung. Anonyme Benutzer erhalten eine Login-CTA. Add/Remove senden nur
+  `operationId` und `bewerbId`; der Server setzt Personen-ID und beim Add den
+  Wiener Zeitstempel. `Entrydate` ist der kanonische Sheet-Spaltenname und wird
+  als `YYMMDD-HHMM` geschrieben. Stabile operationIds schuetzen Wiederholungen;
+  Writes werden bei Transportunsicherheit nicht blind automatisch wiederholt.
 
--- Bedienung --
-  URL-Parameter: ?id=<bewerbId> (PFLICHT)
-  Zeigt die Nennliste fuer den angegebenen Bewerb.
-  "Eintragen" / "Austragen" nur fuer eingeloggte Benutzer.
-
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-  loadingHelper.js
-
--- Besonderheiten --
-  Eintragungszeitraum wird erzwungen – bei geschlossener Periode wird
-  eine Meldung mit den Daten angezeigt.
-  RL-Spalte: Quervergleich mit RL-Platzierung (geschlechtsabhaengig).
-  Bezahlte Eintraege gruen hervorgehoben (.entry-paid).
-  Duplikat-Pruefung verhindert doppelte Anmeldung.
-  Multi-Format Datumsparser: YYMMDD, YYMMDD-HHMM, YYYYMMDD, YYYYMMDD-HHMM.
-  Sortierung nach Nachname A-Z.
+-- Fachlogik und Sicherheit --
+  EntryStart/EntryDeadline akzeptieren sechs- oder achtstellige Datumsformate,
+  optional mit Uhrzeit; nur innerhalb der Frist wird Eintragen angeboten. Die
+  vorhandene Mitgliedschaft bestimmt Eintragen/Austragen, der Server prueft Regeln
+  und Duplikate erneut und entfernt ueber stabile Datensatz-ID statt Sheet-Zeile.
+  Externe Namen, IDs, Daten und Meldungen werden als sichere DOM-Textknoten erzeugt.

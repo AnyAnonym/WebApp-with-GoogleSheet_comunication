@@ -1,390 +1,373 @@
-==================================================================================
-  ENDPOINTS.txt — WebSocket- und HTTP-Endpoint-Referenz
-  Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.1.11
-==================================================================================
+================================================================================
+  ENDPOINTS.txt - HTTP- und WebSocket-v2-Referenz
+  Projekt: ePiber / ASKOE Piberbach Tennis
+  Stand: v4.0.0
+================================================================================
+
+Alle dynamischen Pfade werden vom Node.js-Backend bedient; Caddy terminiert in
+Produktion HTTPS/WSS und proxyt nur freigegebene Pfade. Nicht bekannte HTTP-
+Nicht-OPTIONS-Routen liefern 404, falsche Methoden 405 mit `Allow`, und neue
+Operationen waehrend des Shutdowns 503. Erlaubte OPTIONS-Preflights werden global
+vor dem Routing mit 204 beantwortet. `/set-active` existiert nicht mehr.
 
 
-==================================================================================
-  1. HTTP-ENDPOINTS
-==================================================================================
+================================================================================
+  1. GEMEINSAME HTTP-VERTRAEGE
+================================================================================
 
-Insgesamt 6 HTTP-Routen (inkl. CORS und Fallback).
+Cookies:
+  - Benutzersession: `epiber_<INSTANCE_ID>_session`.
+  - Monitorsession: `epiber_<INSTANCE_ID>_monitor`.
+  - Beide sind `Path=/; HttpOnly; SameSite=Strict`, in HTTPS-Instanzen `Secure`.
+  - Benutzersessions laufen standardmaessig nach 8 Stunden ab; Monitorcookies
+    nach einem Jahr. In SQLite stehen nur SHA-256-Tokenhashes.
+
+Schutz:
+  - Mutierende HTTP-Routen, OPTIONS und der WebSocket-Upgrade verlangen eine in
+    `PUBLIC_ORIGIN`/`ALLOWED_ORIGINS` freigegebene Origin.
+  - JSON-Writes verlangen `Content-Type: application/json`, standardmaessig
+    maximal 8192 Byte; Auth-Bodies sind auf maximal 2048 Byte begrenzt.
+  - Login, Passwort/Reset, Monitoranmeldung und Writes besitzen IP-/Principal-
+    Limits. HTTP- und Socket-Timeouts sowie Headerlimits werden erzwungen.
+  - OPTIONS antwortet 204 mit GET, POST, DELETE, OPTIONS, Credentials und
+    `Content-Type`; es ist kein pauschal offener CORS-Handler.
+
+Erfolgsantworten besitzen ein routenspezifisches Objekt, meist `success: true`.
+Fehler verwenden:
+
+  {
+    "success": false,
+    "error": {
+      "code": "MACHINE_READABLE_CODE",
+      "message": "...",
+      "details": {}
+    },
+    "supportId": "UUID"
+  }
+
+`details` ist optional. Ratenlimits koennen `Retry-After` liefern. Ein Fehler
+nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 
 
------ OPTIONS * -----
-  Methode:    OPTIONS
-  Pfad:       * (alle Pfade)
-  Response:   204 No Content
-  Beschreibung:
-    CORS-Preflight-Handler. Beantwortet alle OPTIONS-Requests.
+================================================================================
+  2. HTTP-ROUTEN
+================================================================================
+
+----- GET /version (public) -----
+  200: `{ "version": "4.0.0" }`.
+
+----- GET /live (public) -----
+  Prozess-Liveness. 200 mit `{ status: "ok", version }`; waehrend Shutdown 503
+  mit `status: "stopping"`. Abhaengigkeitsfehler machen den laufenden Prozess
+  nicht automatisch "tot".
+
+----- GET /ready und GET /health (public, identische Semantik) -----
+  200 `{ status: "ready", version }` oder 503 `{ status: "not-ready", version }`.
+  Readiness verlangt abgeschlossene Initialisierung, offene SQLite-Datenbank,
+  aktuelle Fast-/Slow-Sheetdaten, laufenden Poller, keinen Shutdown und bei
+  aktiven Courts eine nicht stale Courtquelle.
+
+----- GET /status (admin) -----
+  Verlangt ein gueltiges Admin-Sessioncookie. Liefert detaillierte Readiness,
+  Tabellenalter/Revisionen/Fehler, WebSocket-Clients, Monitor-/Court-State,
+  SheetService-Queues und `pendingMetadataIntents`. Die Antwort darf keine
+  Cookies, Tokens, Passwortwerte, privaten Schluessel oder ScoreLog-Pendingwerte
+  enthalten.
+
+----- /api/session -----
+  GET (public):
+    `{ success, authenticated, user|null, expiresAt|null, serverTime }`.
+    `user` ist die private Eigenprojektion ohne Passwortdaten.
+
+  POST (public, erlaubte Origin):
+    Body `{ email, passwordHash }`; `passwordHash` ist exakt 64 Hexzeichen
+    (clientseitiger SHA-256-Credential). Prueft Loginlimits, aktive Person und
+    Rolle, migriert einen Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte
+    Sessions und setzt ein neues Sessioncookie. 200 liefert
+    `{ success, user, expiresAt, serverTime }`.
+
+  DELETE (public, erlaubte Origin):
+    Widerruft die aktuelle Session, loescht das Cookie und liefert
+    `{ success: true }`.
+
+----- POST /api/password (authenticated) -----
+  Body `{ currentPasswordHash, newPasswordHash }`, beide 64 Hexzeichen. Aendert
+  nur das eigene Passwort. Der Benutzerwrite ist serialisiert; alle eigenen
+  Sessions werden vor dem Sheet-Write widerrufen. Bei Erfolg wird eine neue
+  Session samt Cookie erstellt. Bei fehlgeschlagenem/unklarem Write bleibt die
+  alte Session ungueltig und der Fehler markiert `sessionInvalidated`.
+
+----- POST /api/password-reset (public, erlaubte Origin) -----
+  Body `{ resetToken, newPasswordHash }`. Verbraucht einen gehashten, ablaufenden,
+  einmaligen Adminnachweis. Der Nachweis wird an diesen neuen Credential
+  gebunden; sichere Wiederholung desselben abgeschlossenen Resets liefert
+  `{ success: true, repeated: true }`. Sessions der Zielperson werden vor dem
+  Write widerrufen. Die Route besitzt ein eigenes IP-Limit.
+
+----- POST /api/admin/password-reset (admin) -----
+  Body `{ personId }`. Erzeugt fuer die Zielperson einen einmaligen Resetcode und
+  liefert `{ success, resetToken, expiresAt, personId }`. Ein neuer Code ersetzt
+  einen noch offenen Code. Nur der Client sieht den Klartextcode einmalig.
+
+----- POST /api/admin/password (admin) -----
+  Body `{ personId, newPasswordHash }`. Setzt das Passwort einer Zielperson direkt
+  als scrypt-Sheetwert. Alle Sessions der Zielperson werden vorsorglich vor dem
+  Sheet-Write und nochmals nach Erfolg widerrufen. Bei Fehler oder unklarem
+  Ausgang bleiben sie widerrufen (`sessionsRevoked`), obwohl das Passwort im
+  Sheet unveraendert geblieben sein kann. Es wird kein Klartextpasswort
+  uebertragen und keine neue Zielsession erzeugt.
+
+----- /api/monitor/session -----
+  GET (public):
+    Prueft das Monitorcookie und liefert
+    `{ success, authenticated, monitor: { id, label }|null }`.
+
+  POST (public, erlaubte Origin):
+    Body `{ token }`, 32 bis 128 Zeichen. Prueft den Enrollmenttoken und das
+    IP-Limit, setzt das sichere Monitorcookie und liefert `{ success, monitor }`.
+
+  DELETE (public, erlaubte Origin):
+    Loescht nur das lokale Monitorcookie. Provision, Rotation und Revoke sind
+    WebSocket-RPCs fuer Administratoren.
 
 
------ GET /health -----
-  Methode:    GET
-  Pfad:       /health
-  Response:   200 JSON
-  Body:
-    {
-      status:    "ok",
-      version:   "3.1.11",
-      dataReady: true/false,
-      court: {
-        pollingActive: true/false,
-        courtActive:   true/false,
-        pollCount:     number,
-        pushCount:     number
-      },
-      provider: {
-        clientCount: number
-      },
-      poller: {
-        running:   true/false,
-        tickCount: number
-      }
+================================================================================
+  3. WEBSOCKET-UPGRADE UND V2-HANDSHAKE
+================================================================================
+
+Pfad: `/ws`, aus Browser-Origin als ws/wss abgeleitet. Upgrade nur mit erlaubter
+Origin. Standardlimits: 200 Verbindungen gesamt, 20 pro IP, 16 KiB Payload,
+8 parallele RPCs, 32 Subscriptions, Nachrichtenrate 20/s mit Burst 40 und 1 MiB
+maximal gepufferte Ausgangsdaten. Per-message compression ist deaktiviert.
+
+Innerhalb standardmaessig 5 Sekunden muss der Client senden:
+
+  {
+    "v": 2,
+    "type": "hello",
+    "protocol": 2,
+    "clientId": "...",
+    "deviceId": "...",
+    "pageType": "scoreboard",
+    "appVersion": "4.0.0"
+  }
+
+`clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
+`appVersion` ist optional/null und maximal 32 Zeichen. Die Rolle kommt nie aus
+diesen Feldern, sondern nur aus Session- beziehungsweise Monitorcookie.
+
+Serverantwort:
+
+  {
+    "v": 2,
+    "type": "welcome",
+    "protocol": 2,
+    "connectionId": "UUID",
+    "serverVersion": "4.0.0",
+    "timing": { "pingIntervalMs": 25000, "staleAfterMs": 70000 },
+    "principal": {
+      "type": "anonymous|user|device",
+      "role": "anonymous|player|operator|admin|device",
+      "user": {},
+      "monitor": {}
     }
-  Beschreibung:
-    System-Gesundheitsstatus. Liefert kompakte Uebersicht ueber den
-    aktuellen Zustand aller Subsysteme.
-
-
------ GET /version -----
-  Methode:    GET
-  Pfad:       /version
-  Response:   200 JSON
-  Body:
-    {
-      version: "3.1.11"
-    }
-  Beschreibung:
-    Gibt die aktuelle Backend-Version zurueck. Wird vom Frontend
-    (global.js) abgerufen und in window.APP_VERSION gespeichert.
-
-
------ GET /status -----
-  Methode:    GET
-  Pfad:       /status
-  Response:   200 JSON
-  Body:
-    {
-      status:    "ok",
-      dataReady: true/false,
-      court: {
-        pollingActive: true/false,
-        courtActive:   true/false,
-        pollCount:     number,
-        pushCount:     number
-      },
-      provider: {
-        clientCount: number,
-        clientList:  [...]
-      },
-      poller: {
-        running:     true/false,
-        tickCount:   number,
-        perTableMeta: {
-          <tabellenname>: { lastUpdate, rowCount }
-        }
-      }
-    }
-  Beschreibung:
-    Detaillierter Systemstatus. Erweiterte Version von /health mit
-    Client-Liste und Tabellen-Metadaten pro Tabelle.
-
-
------ POST /set-active -----
-  Methode:    POST
-  Pfad:       /set-active
-  Response:   200 oder 400 JSON
-  Request-Body:
-    {
-      courts: {
-        "1": 0 oder 1,
-        "2": 0 oder 1
-      }
-    }
-  Response-Body:
-    { success: true } oder { error: "..." }
-  Beschreibung:
-    Steuert das Court-Polling. Aktiviert (1) oder deaktiviert (0)
-    das Polling fuer einzelne Plaetze.
-
-
------ GET * (Fallback) -----
-  Methode:    GET
-  Pfad:       * (alle nicht gematchten Pfade)
-  Response:   200 Text
-  Body:
-    "ePiber Backend WebSocket Service running."
-  Beschreibung:
-    Fallback-Route. Zeigt an, dass das Backend laeuft.
-
-
-==================================================================================
-  2. WEBSOCKET READ-ENDPOINTS
-==================================================================================
-
-Insgesamt 16 Lese-Endpoints.
-
-Format der folgenden Tabelle:
-  Name | Parameter | Rueckgabe | Filterung | Genutzt von
-
-
------ players -----
-  Parameter:    keine
-  Rueckgabe:    { success, values }
-                values = rohe Personen-Tabelle (2D-Array)
-  Filterung:    keine
-  Genutzt von:  modals, Matches1, playerList,
-                bewerbsRaster, scoreboardPolling,
-                navigatorList, entryList, rangliste, RoundRobin
-
-
------ bewerbe -----
-  Parameter:    keine
-  Rueckgabe:    { success, values, bewerbsartValues }
-                values = Bewerb-Tabelle
-                bewerbsartValues = Bewerbsart-Tabelle (mitgeliefert)
-  Filterung:    keine
-  Genutzt von:  bewerbeList, Matches1,
-                bewerbsRaster, scoreboardPolling, navigatorList,
-                entryList, rangliste, RoundRobin
-
-
------ bewerbsart -----
-  Parameter:    keine
-  Rueckgabe:    { success, values }
-                values = Bewerbsart-Tabelle
-  Filterung:    keine
-  Genutzt von:  bewerbeList, bewerbsRaster, RoundRobin
-
-
------ matches1 -----
-  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
-  Rueckgabe:    { success, values }
-  Filterung:    Ignore-Filterung standardmaessig aktiv.
-                Optionaler BewerbID-Filter.
-  Genutzt von:  scoreboardPolling, Matches1
-
-
------ preMatches -----
-  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
-  Rueckgabe:    { success, values }
-  Filterung:    Identisch mit matches1 (Kompatibilitaets-Alias)
-  Genutzt von:  navigatorList, rangliste
+  }
 
+`user` erscheint nur bei Benutzern, `monitor` nur bei Geraeten. Falsche Version
+schliesst mit 4406, Handshake-Timeout mit 4408. Server-Ping enthaelt `ts`, Client
+antwortet mit Pong; tote Clients werden nach standardmaessig 75 Sekunden beendet.
 
------ matches -----
-  Parameter:    { filterIgnored?: boolean, bewerbId?: string }
-  Rueckgabe:    { success, values }
-  Filterung:    Identisch mit matches1 (Kompatibilitaets-Alias)
-  Genutzt von:  bewerbsRaster, RoundRobin
 
+================================================================================
+  4. REQUEST, RESPONSE UND FEHLERKORRELATION
+================================================================================
 
------ matchTyp -----
-  Parameter:    keine
-  Rueckgabe:    { success, values }
-                values = MatchTyp-Tabelle
-  Filterung:    keine
-  Genutzt von:  (selten verwendet)
+Request:
+  `{ "v":2, "type":"request", "id":"...", "endpoint":"name", "params":{} }`
 
+Response:
+  `{ "v":2, "type":"response", "id":"...", "endpoint":"name",
+     "data":{ "success":true, ... }, "supportId":"connectionId:requestId" }`
 
------ rlPlatzierung -----
-  Parameter:    { bewerbId?: string }
-  Rueckgabe:    { success, values }
-  Filterung:    Optionaler BewerbID-Filter
-  Genutzt von:  entryList, rangliste, rankingSidebar
+`id` (maximal 128) und `endpoint` (maximal 64, alphanumerischer Name) werden in
+jeder korrelierten Response gespiegelt. Fehler stehen in `data` im gemeinsamen
+Fehlerformat. Ein Client muss eine Response mit anderem Endpoint als
+Protokollfehler ablehnen. Unkorrelierbare Protokollfehler verwenden
+`{ type:"error", error:{ code, message } }`.
 
+Parameterobjekte sind geschlossen: unbekannte Felder sind ein
+`VALIDATION_ERROR`. IDs haben maximal 64 Zeichen und das Format
+`[A-Za-z0-9_.:-]+`. `operationId` ist eine UUID. Writes werden pro IP und
+Principal mit standardmaessig 0,2/s, Burst 6 begrenzt.
 
------ navigator -----
-  Parameter:    { profil?: string }
-  Rueckgabe:    { success, values }
-  Filterung:    Optionaler Profil-Filter
-  Genutzt von:  navigatorList
 
+================================================================================
+  5. RPC-ENDPOINTS UND ZUGRIFF
+================================================================================
 
------ entryList -----
-  Parameter:    { bewerbId?: string }
-  Rueckgabe:    { success, values, playerMap }
-                playerMap = Join mit Personen-Tabelle
-  Filterung:    Optionaler BewerbID-Filter
-  Genutzt von:  entryList
+PUBLIC:
+  `players {}`
+      Minimale Personentabelle: ID, Vorname, Nachname, Aktiv.
 
+  `publicProfile { id }`
+      Anonym: ID/Name. Mit Benutzersession: zusaetzlich E-Mail, Telefon,
+      Geburtsdatum. Adminaktionen sind separate HTTP-Routen.
 
------ roundRobin -----
-  Parameter:    keine
-  Rueckgabe:    { success, matchesValues, playerValues,
-                  bewerbValues, bewerbsartValues }
-                Zusammengesetzter Endpoint (Composite)
-  Filterung:    keine
-  Genutzt von:  RoundRobin
+  `bewerbe {}`
+      Oeffentliche Bewerbprojektion plus `bewerbsartValues`.
 
+  `bewerbsart {}`
+      Oeffentliche Bewerbsartprojektion.
 
------ bracket -----
-  Parameter:    keine
-  Rueckgabe:    { success, matchesValues, playerValues,
-                  bewerbValues, bewerbsartValues }
-                Selbe Struktur wie roundRobin (Composite)
-  Filterung:    keine
-  Genutzt von:  bewerbsRaster
+  `matches1|preMatches|matches { bewerbId? }`
+      Derselbe Vertrag; Ignore-Zeilen werden entfernt, optionaler Bewerbfilter,
+      nur freigegebene Matchspalten.
 
+  `rlPlatzierung { bewerbId? }`
+      Oeffentliche Ranglistenprojektion, optional gefiltert.
 
------ scoreboard -----
-  Parameter:    keine
-  Rueckgabe:    { success, matchesValues, playerValues, bewerbValues }
-                Zusammengesetzter Endpoint (Composite)
-  Filterung:    keine
-  Genutzt von:  scoreboardPolling
+  `entryList { bewerbId? }`
+      Projektion ID/BewerbID/PersonenID/Entrydate plus Name-`playerMap`.
 
+  `readMatchRestrictions { bewerbId? }`
+      `{ complete:true, schutzzeit:[{id,until}], sperrzeit:[{id,until}] }`.
 
------ courtScores -----
-  Parameter:    keine
-  Rueckgabe:    { success, data }
-                data = zuletzt abgefragtes Court-JSON oder null
-  Filterung:    keine
-  Genutzt von:  scoreboardPolling
+  `getScoreboardCourts {}`
+      Revisionierte persistente Court-Zustaende.
 
+  `courtScores {}`
+      Letzter normalisierter Court-Snapshot mit Revision und Quellenalter.
 
------ readMatchRestrictions -----
-  Parameter:    { bewerbId?: string }
-  Rueckgabe:    { success,
-                  schutzzeit: [{ id, until }],
-                  sperrzeit:  [{ id, until }] }
-                Durchsucht Matches der letzten 7 Tage
-  Filterung:    Optionaler BewerbID-Filter
-  Genutzt von:  rangliste
+  `scoreboardSnapshot {}`
+      Atomarer Startsnapshot aus Personen-, Bewerb-, Match-, Court- und
+      Scoredaten samt Tabellenrevisionen.
 
+AUTHENTICATED (player, operator oder admin):
+  `memberDirectory {}`
+      Aktive Mitglieder mit ID, Namen, Telefon und Aktiv.
 
------ getMyChallenges -----
-  Parameter:    { userId: string }
-  Rueckgabe:    { success,
-                  challenges: [{ row, player3, matchDate }] }
-                Offene Matches fuer den angegebenen Benutzer
-  Filterung:    Nach userId (Spieler3)
-  Genutzt von:  (Benachrichtigungen, derzeit entfernt)
+  `myProfile {}`
+      Eigenes privates Profil inklusive Rolle, nie Passwortwerte.
 
+  `operationStatus { operationId }`
+      `{ operation:null }` oder Endpoint, `completed|unknown` und createdAt.
 
-==================================================================================
-  3. WEBSOCKET STATE-ENDPOINTS
-==================================================================================
+  `addMatch { operationId, bewerbId, opponentId }`
+      Forderer aus Session; stabile Match-ID und serverseitige Fachregeln.
 
-Insgesamt 6 State-Endpoints (3 Lese-, 3 Schreib-Paare).
-State ist fluechtig (In-Memory, verloren bei Neustart).
+  `addEntryList { operationId, bewerbId }`
+      Person und `Entrydate` aus Session/Serverzeit.
 
+  `removeEntryList { operationId, bewerbId }`
+      Entfernt nur den eigenen stabil aufgeloesten Eintrag.
 
------ getScoreboardCourts (Lesen) -----
-  Parameter:    keine
-  Rueckgabe:    { success, courts }
-                courts = Objekt mit Court-Daten pro Platz
-  Beschreibung: Liest den aktuellen Scoreboard-Court-State.
+  `withdrawFromRanking { operationId, bewerbId, rank, reason }`
+      rank 1..10000, reason 3..500 Zeichen. Dreispaltiger Legacy-Logging-Append.
 
+OPERATOR ODER ADMIN:
+  `navigator { profil? }`
+      Kompilierte, serverseitig erlaubte Navigatoraktionen; Profil max. 32.
 
------ setScoreboardCourt (Schreiben) -----
-  Parameter:    { court, matchId, bewerb, homePlayer, guestPlayer,
-                  dateTime, aktiv, runde }
-  Rueckgabe:    { success }
-  Beschreibung: Setzt den State fuer einen Court. Steuert zusaetzlich
-                den courtPoller (aktiviert/deaktiviert Polling je nach
-                aktiv-Flag).
-
-
------ getNavigatorTarget (Lesen) -----
-  Parameter:    keine
-  Rueckgabe:    { success, path, status }
-  Beschreibung: Liest das aktuelle Navigator-Ziel.
-
-
------ setNavigatorTarget (Schreiben) -----
-  Parameter:    { path, status }
-                status = Standard "pending"
-  Rueckgabe:    { success }
-  Beschreibung: Setzt ein neues Navigator-Ziel mit Status.
-
-
------ getNavigatorScroll (Lesen) -----
-  Parameter:    keine
-  Rueckgabe:    { success, amount, ts }
-  Beschreibung: Liest den aktuellen Scroll-Wert und Zeitstempel.
-
-
------ setNavigatorScroll (Schreiben) -----
-  Parameter:    { amount }
-                amount = Zahl (Scroll-Betrag)
-  Rueckgabe:    { success }
-  Beschreibung: Setzt einen neuen Scroll-Wert.
-
-
-==================================================================================
-  4. WEBSOCKET WRITE-ENDPOINTS
-==================================================================================
-
-Insgesamt 8 Schreib-Endpoints (Aenderungen an Google Sheets oder
-Verifizierung gegen den Cache).
-
-
------ verifyUserLogin -----
-  Parameter:    { email, passwordHash }
-  Rueckgabe:    { success, valid }
-  Schreibt:     NEIN (liest nur aus dem Cache)
-  Beschreibung: Verifiziert Login-Daten gegen die gecachte
-                Personen-Tabelle. Kein Google Sheets API-Aufruf.
-
-
------ resetPassword -----
-  Parameter:    { email, passwordHash }
-  Rueckgabe:    { success }
-  Schreibt:     Personen-Tabelle (Passwort-Spalte)
-  Beschreibung: Setzt ein neues Passwort. Voraussetzung: Das Feld
-                kennwortvergessen muss "x" enthalten. Nach dem
-                Zuruecksetzen wird dieses Flag geloescht.
-
-
------ setMatchDate -----
-  Parameter:    { row, datum }
-  Rueckgabe:    { success }
-  Schreibt:     Matches1-Tabelle, Spalte C (MatchDate)
-  Beschreibung: Setzt oder aendert das Match-Datum.
-
-
------ setPreMatchResult -----
-  Parameter:    { row, satz1, satz2, satz3, userId }
-  Rueckgabe:    { success }
-  Schreibt:     Matches1-Tabelle, Ergebnis-Spalte
-  Beschreibung: Schreibt das Ergebnis eines Matches. Baut den
-                Ergebnis-String aus den einzelnen Saetzen zusammen.
-
-
------ addMatch -----
-  Parameter:    { bewerbId, p1id, p2id, p3id, p4id, forderungDate }
-  Rueckgabe:    { success, newMatchId }
-  Schreibt:     Matches1-Tabelle (neue Zeile angehaengt)
-  Beschreibung: Erstellt ein neues Match. Generiert automatisch eine
-                neue eindeutige ID.
-
-
------ addEntryList -----
-  Parameter:    { bewerbId, personenId, datum? }
-  Rueckgabe:    { success }
-  Schreibt:     EntryList-Tabelle (neue Zeile angehaengt)
-  Beschreibung: Meldet einen Spieler zu einem Bewerb an.
-
-
------ removeEntryList -----
-  Parameter:    { bewerbId, personenId }
-  Rueckgabe:    { success }
-  Schreibt:     EntryList-Tabelle (Zeile geloescht)
-  Beschreibung: Entfernt eine Anmeldung. Sucht die Zeile anhand der
-                BewerbID- und PersonenID-Kombination und loescht sie.
-
-
------ withdrawFromRanking -----
-  Parameter:    { reason, rank, bewerbId, userId }
-  Rueckgabe:    { success }
-  Schreibt:     Logging-Tabelle (neue Zeile angehaengt)
-  Beschreibung: Protokolliert das Zurueckziehen eines Spielers aus
-                einer Rangliste im Audit-Log.
-
-
-==================================================================================
-  ENDE — ENDPOINTS.txt
-==================================================================================
+  `courtAssign { operationId, court, expectedRevision, matchId? }`
+      Alternativ zu matchId exakt `homePlayerIds` und `guestPlayerIds`, jeweils
+      ein bis zwei eindeutige Personen-IDs. court ist 1 oder 2,
+      expectedRevision eine Ganzzahl >=1.
+
+  `courtSetActive { operationId, court, expectedRevision, active }`
+      Revisionsgeschuetzte Aktivierung; `active` ist boolean.
+
+  `monitorList {}`
+      Provisionierte Monitore mit Presence, Ziel und letztem Commandstatus.
+
+  `monitorNavigate { operationId, monitorId, path }`
+      Adressiertes, allowlist-geprueftes lokales Ziel; liefert commandId,
+      targetRevision und delivery `sent|offline`; eine idempotente Wiederholung
+      liefert `known`, ohne den Befehl erneut zu senden.
+
+  `monitorScroll { operationId, monitorId, direction }`
+      direction `up|down`; adressierter, geordneter, ablaufender Command.
+
+ADMIN:
+  `monitorProvision { operationId, label }`
+      Erzeugt Monitor-ID und einmalig sichtbaren Enrollmenttoken. Bei
+      idempotenter Wiederholung ist der Token nicht erneut verfuegbar.
+
+  `monitorRotate { operationId, monitorId }`
+      Ersetzt Token und trennt das Geraet. Wiederholung gibt keinen Token erneut.
+
+  `monitorRevoke { operationId, monitorId }`
+      Widerruft Token und trennt das Geraet.
+
+DEVICE (gueltiges Monitorcookie und pageType monitor):
+  `monitorTarget {}`
+      Persistiertes adressiertes Ziel mit commandId, path und Revision.
+
+  `monitorAck { kind, commandId, status, errorCode? }`
+      kind `navigate`: status `received|loading|loaded|failed`.
+      kind `scroll`: status `applied|failed`.
+      `errorCode` ist bei Fehlern ein Grossbuchstaben-/Ziffern-/Unterstrichcode.
+
+
+================================================================================
+  6. SUBSCRIPTIONS UND TOPICS
+================================================================================
+
+Subscribe:
+  `{ "v":2, "type":"subscribe", "topics":["scores", ...] }`
+
+Pro Nachricht werden hoechstens 20 Topics verarbeitet, insgesamt hoechstens 32.
+Nur erlaubte Topics erscheinen in `{ type:"subscribed", topics:[...] }`. Fuer
+jeden akzeptierten Topic sendet der Server unmittelbar davor einen initialen
+`event`-Snapshot. Unsubscribe verwendet dasselbe `topics`-Array. Reconnect stellt
+gewuenschte Topics clientseitig in Batches zu je 20 wieder her.
+
+Public Topics:
+  `scores`             normalisierter Court-Snapshot mit Quellenstatus
+  `scoreboard-state`   aktueller persistenter Court-State
+  `matches`            Matches1-Invalidierung mit Tabellenrevision/Alter
+  `players`            Personen-Invalidierung
+  `bewerbe`            Bewerb-Invalidierung
+  `bewerbsart`         Bewerbsart-Invalidierung
+  `entryList`          EntryList-Invalidierung
+  `ranking`            RL-Platzierung-Invalidierung
+
+Operator/Admin Topics:
+  `navigator`                    Navigator-Invalidierung
+  `monitors`                     Monitorliste/Presence
+  `monitor-status:<monitorId>`   adressierter Presence-/Commandstatus
+
+Device Topic:
+  `monitor-command`      adressierte Navigate-/Scrollcommands. Navigate enthaelt
+                         Loaddeadline und Zielrevision; Scroll enthaelt streamId,
+                         Sequenz, deltaY und expiresAt.
+
+Events haben `{ v:2, type:"event", topic, data }`. Tabellen-Topics sind
+Invalidierungen, keine Rohdatentabellen; Clients lesen danach den passenden RPC.
+
+
+================================================================================
+  7. IDEMPOTENZ, UNKNOWN UND CLIENT-RETRY
+================================================================================
+
+Fachwrites verwenden stabile `operationId`s. SQLite bindet `(actor, operationId)`
+an Endpoint und Payload. Abgeschlossene Resultate werden dedupliziert. Ein
+unklarer externer Write wird als `unknown` gespeichert und ueber
+`operationStatus` sichtbar; dieselbe operationId darf nur einen
+Bestaetigungs-/Recoverypfad ausloesen, nie einen blinden zweiten Append.
+
+Der Browser wiederholt nur sichere Read-RPCs bis zu zweimal bei Request-Timeout
+oder Shutdown. Writes werden bei Transportverlust nicht automatisch wiederholt;
+ihre operationId bleibt fuer kontrollierte Wiederaufnahme erhalten.
+
+Legacy-Ausnahmen:
+  - Logging besitzt drei Spalten und keine EventID/Readback. Erfolgreich
+    abgeschlossene Operationen werden per operationId dedupliziert; ein
+    mehrdeutiger Append ist nicht sicher wiederholbar.
+  - ScoreLog ist kein RPC-Fachwrite. Der Court-Poller schreibt drei Spalten
+    Fire-and-forget, ohne operationId/EventID, Retry, Readback, Pendingstatus,
+    SQLite-Queue oder Shutdown-Drain.
+
+
+================================================================================
+  ENDE ENDPOINTS.txt
+================================================================================

@@ -1,33 +1,33 @@
 ================================================================================
-Spieler-Tabelle — Uebersicht aller aktiven Spieler
+Spielerverzeichnis - Aktive Mitglieder und Profile
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt eine Tabelle aller aktiven Spieler mit Kontaktdaten.
-  Nur fuer eingeloggte Benutzer zugaenglich.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/players.html
-  JS:   Frontend/JS/playerList.js
-  CSS:  (kein eigenes CSS)
+  JS:   Frontend/JS/playerList.js sowie gemeinsames Profilmodal in modals.js
+  Zeigt aktive Spieler nach Nachname sortiert mit Nachname, Vorname und Telefon;
+  0043 wird als +43 und ein leerer Wert als `---` dargestellt.
 
--- Datenquellen --
-  players – Spielerdaten (Name, Vorname, Telefon, Aktiv-Status)
+-- Zugriff und Daten --
+  Die Seite wartet auf authClient.ready und verwendet die serverseitige Sitzung.
+  Ohne Anmeldung bleibt die Tabelle verborgen und eine Login-CTA wird gezeigt.
+  Angemeldet wird `memberDirectory` statt der oeffentlichen `players`-Rohansicht
+  geladen; die Mitgliederprojektion umfasst nur ID, Namen, Telefon und Aktivstatus.
+  Serverseitige Zugriffspruefung bleibt massgeblich.
 
--- Layout --
-  HTML-Tabelle mit Spalten: Nachname, Vorname, Telefon.
-  Sidebar-Container vorhanden (leer).
+-- Aktualisierung und Fehler --
+  Sessionaenderungen rendern anonymes Verzeichnis oder laden es neu; Generationen
+  verhindern, dass alte Antworten einen neueren Login/Logout ueberholen.
+  `players`-Invalidierungen aktualisieren die Liste. Lade-, Leer- und Fehlerstatus
+  sind explizit; nach erfolgreichem Initialzustand wird Monitor-Ready, bei Fehlern
+  Monitor-Failed gemeldet.
 
--- Bedienung --
-  Keine URL-Parameter.
-  Nav-Link hat data-auth="required" – nur fuer eingeloggte Benutzer sichtbar.
-
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-
--- Besonderheiten --
-  Nur aktive Spieler angezeigt (Aktiv="1").
-  Sortierung nach Nachname A-Z.
-  Telefonnummer-Formatierung: 0043 wird zu +43.
-  Leere Telefonnummern werden als "---" dargestellt.
+-- Profile und Sicherheit --
+  Jede Zeile ist per Maus sowie Enter/Leertaste als Profilaktion bedienbar.
+  `publicProfile` liefert anonym nur ID/Name, angemeldeten Benutzern auch E-Mail,
+  Telefon und Geburtsdatum; `myProfile` liefert fuer das eigene Profil zusaetzlich
+  Geschlecht und Passwortaenderung. Nur Admins sehen bei fremden Profilen
+  "Reset-Code erstellen" und "Passwort direkt setzen"; direktes Setzen widerruft
+  die Sitzungen der Zielperson. Alle Tabellen- und Profilwerte werden per
+  textContent/Textknoten dargestellt.

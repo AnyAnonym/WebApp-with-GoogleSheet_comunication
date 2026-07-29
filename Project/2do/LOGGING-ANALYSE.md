@@ -4,7 +4,9 @@ Stand der Analyse: 25.07.2026
 Analysierter Stand: ePiber v3.0.2  
 Gegenstand: Frontend, Backend, WebSocket, Google Sheets, systemd/journald und Caddy
 
-Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die beschriebenen Verbesserungsvorschlaege wurden nicht umgesetzt.
+Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die
+Verbesserungsvorschlaege waren damals nicht umgesetzt; der aktuelle Stand steht
+im Schlussabschnitt "Implementierungsstatus 2026-07-29".
 
 ## 1. Gesamtbild
 
@@ -1151,3 +1153,50 @@ Abhaengigkeiten: alle jeweils auszurollenden Arbeitspakete.
 14. L14 Tests und Rollout
 
 Die Aufgaben L2 und L3 haben hoechste Dringlichkeit, weil sie bestehende Offenlegung sensibler Daten reduzieren. Weitere Logs sollten erst nach der Richtlinie und zentralen Redaction hinzugefuegt werden.
+
+## 24. Implementierungsstatus 2026-07-29
+
+Die Abschnitte 1 bis 23 bleiben als historische Analyse und Zielbild erhalten.
+Mit Version 4.0.0 wurden sensible Browserlogs entfernt beziehungsweise durch den
+statischen Sicherheitscheck abgesichert, allgemeine Personenantworten minimiert
+und zentrale Fehlercodes mit korrelierten Support-IDs fuer HTTP- und
+WebSocket-Antworten eingefuehrt. Dauerhafte Frontendfehler behalten vorhandene
+Support-IDs. Navigator und administrative Oberflaechen zeigen relevante
+Verbindungs- und Terminalzustaende; das Scoreboard wertet Connection-, Sync- und
+Stale-Zustaende intern aus, besitzt im finalen Bedienkonzept aber keine sichtbaren
+Status- oder Court-Quellen-Badges.
+
+Der admin-geschuetzte `/status` liefert Diagnosewerte zu Clients, Polling,
+Datenalter, Courtquelle, Monitoren, SheetService und offenen Metadata-Intents.
+Unbekannte Fachwrite-Ausgaenge werden akteursbezogen ueber `operationStatus`
+abgefragt. WebSocket-Verbindungen erfassen Client-/Seitentyp, letzte Aktivitaet
+sowie Close-Code und -Grund.
+Liveness und Readiness sind getrennt. Der geordnete Shutdown stoppt Poller und
+Timer, lehnt neue Arbeit ab, schliesst WebSockets mit Code 1012 und drainiert
+akzeptierte HTTP-/Sheets-Arbeit bis zur Grace-Deadline; eine Ueberschreitung wird
+nicht als Erfolg gemeldet.
+
+Das fachliche Spreadsheet-Logging wurde bewusst nicht neu entworfen:
+
+| Writer | Spalte 1 | Spalte 2 | Spalte 3 |
+|---|---|---|---|
+| `Logging` | `Timestamp` | `Type` | `Message` |
+| `ScoreLog` | `Timestamp` | `PlatzNr` | `Score` |
+
+Beide Writer verwenden weiterhin `USER_ENTERED` und besitzen keine EventID-
+Spalte und keinen Tabellen-Readback. `ScoreLog` besitzt zudem keine Retry- oder
+Write-ahead-Queue, keine SQLite-Persistenz, keine Pendingwerte und keinen
+Shutdown-Drain; es schreibt den ersten gelesenen Stand und weitere semantische
+Scoreaenderungen fire-and-forget. Das SQLite-WAL betrifft ausschliesslich den
+Anwendungsstate und ist kein ScoreLog-WAL. Das umfassende Logging-/ScoreLog-
+Redesign bleibt einem eigenen spaeteren Branch vorbehalten.
+
+Weiterhin offen sind ein zentraler strukturierter Backend-Logger,
+konfigurierbare Loglevel, ein Metrikexport mit Alarmierung und ein eingerichtetes
+Caddy-Access-Log. Ebenso fehlen die vollstaendige Logging-/Audit-Richtlinie,
+Aufbewahrung und Rotation sowie die praktische Ende-zu-Ende-Suche einer
+Support-ID ueber alle Logkanaele. Manuelle Migrations-, Last-, Dauerbetriebs- und
+Rollbackpruefungen sind noch nicht abgeschlossen; sie werden in der
+[Rollout-Checkliste](../server-configs/ROLLOUT-CHECKLIST.md) gefuehrt. Die
+dokumentierten Branch-Pruefungen sind keine Behauptung abschliessender Checks des
+offenen Main-Merges.

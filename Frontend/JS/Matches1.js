@@ -1,5 +1,6 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 const readMatches1 = createEndpoint("matches1");
 const readPlayers = createEndpoint("players");
@@ -79,10 +80,19 @@ function parseRunde(raw) {
   return code;
 }
 
-function badgeHtml(type) {
-  if (type === "wo") return '<span class="badge-wo">w.o.</span>';
-  if (type === "ret") return '<span class="badge-ret">ret.</span>';
-  return "";
+function createBadge(type) {
+  const badge = document.createElement("span");
+  if (type === "wo") {
+    badge.className = "badge-wo";
+    badge.textContent = "w.o.";
+    return badge;
+  }
+  if (type === "ret") {
+    badge.className = "badge-ret";
+    badge.textContent = "ret.";
+    return badge;
+  }
+  return null;
 }
 
 function formatSetResult(raw) {
@@ -199,9 +209,10 @@ async function loadData() {
     populateFilterDropdowns();
     renderMatches();
     hideLoadingOverlay();
-  } catch (err) {
-    console.error("Fehler:", err);
+    return true;
+  } catch {
     showErrorOverlay("Fehler beim Laden der Matches", loadData);
+    return false;
   }
 }
 
@@ -211,15 +222,27 @@ function populateFilterDropdowns() {
   const bewerbSelect = document.getElementById("filterBewerbSelect");
   const spielerSelect = document.getElementById("filterSpielerSelect");
 
-  bewerbSelect.innerHTML = '<option value="">Alle</option>';
+  const allBewerbeOption = document.createElement("option");
+  allBewerbeOption.value = "";
+  allBewerbeOption.textContent = "Alle";
+  bewerbSelect.replaceChildren(allBewerbeOption);
   const bewerbe = [...bewerbMap.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   bewerbe.forEach(([id, name]) => {
-    bewerbSelect.innerHTML += `<option value="${id}">${name}</option>`;
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = name;
+    bewerbSelect.appendChild(option);
   });
 
-  spielerSelect.innerHTML = '<option value="">Alle</option>';
+  const allPlayersOption = document.createElement("option");
+  allPlayersOption.value = "";
+  allPlayersOption.textContent = "Alle";
+  spielerSelect.replaceChildren(allPlayersOption);
   playerFilterList.forEach(({id, display}) => {
-    spielerSelect.innerHTML += `<option value="${id}">${display}</option>`;
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = display;
+    spielerSelect.appendChild(option);
   });
 }
 
@@ -296,38 +319,86 @@ function renderMatches() {
   countEl.textContent = `${matches.length} Match${matches.length !== 1 ? "es" : ""}`;
 
   if (matches.length === 0) {
-    container.innerHTML = "<p style='text-align:center;color:var(--muted);'>Keine Matches gefunden.</p>";
+    const emptyMessage = document.createElement("p");
+    emptyMessage.style.textAlign = "center";
+    emptyMessage.style.color = "var(--muted)";
+    emptyMessage.textContent = "Keine Matches gefunden.";
+    container.replaceChildren(emptyMessage);
     return;
   }
 
-  container.innerHTML = matches.map((m) => {
+  const cards = document.createDocumentFragment();
+  matches.forEach((m) => {
     const team1Name = m.p2.name ? `${m.p1.name} / ${m.p2.name}` : (m.p1.name || "—");
     const team2Name = m.p4.name ? `${m.p3.name} / ${m.p4.name}` : (m.p3.name || "—");
-    const t1cls = m.winner === 1 ? " winner" : "";
-    const t2cls = m.winner === 2 ? " winner" : "";
     const bewerbDisplay = [m.bewerbName, m.runde].filter(Boolean).join(" | ");
-    const fordHtml = m.fordDate ? `<span class="m1-forderung">Forderung: ${m.fordDate}</span>` : "";
 
-    return `<div class="m1-card">
-      <div class="m1-meta">
-        <span class="m1-date">${m.matchDate || "Datum offen"}</span>
-        ${fordHtml}
-        ${bewerbDisplay ? `<span class="m1-bewerb">${bewerbDisplay}</span>` : ""}
-      </div>
-      <div class="m1-content">
-        <div class="m1-players">
-          <div class="m1-team${t1cls}">
-            <span class="m1-player">${team1Name} ${badgeHtml(m.p1.special)}</span>
-          </div>
-          <span class="m1-vs">vs.</span>
-          <div class="m1-team${t2cls}">
-            <span class="m1-player">${team2Name} ${badgeHtml(m.p3.special)}</span>
-          </div>
-        </div>
-        <div class="m1-result">${m.ergebnisFormatted || ""}</div>
-      </div>
-    </div>`;
-  }).join("");
+    const card = document.createElement("div");
+    card.className = "m1-card";
+
+    const meta = document.createElement("div");
+    meta.className = "m1-meta";
+
+    const date = document.createElement("span");
+    date.className = "m1-date";
+    date.textContent = m.matchDate || "Datum offen";
+    meta.appendChild(date);
+
+    if (m.fordDate) {
+      const forderung = document.createElement("span");
+      forderung.className = "m1-forderung";
+      forderung.textContent = `Forderung: ${m.fordDate}`;
+      meta.appendChild(forderung);
+    }
+
+    if (bewerbDisplay) {
+      const bewerb = document.createElement("span");
+      bewerb.className = "m1-bewerb";
+      bewerb.textContent = bewerbDisplay;
+      meta.appendChild(bewerb);
+    }
+
+    const content = document.createElement("div");
+    content.className = "m1-content";
+
+    const players = document.createElement("div");
+    players.className = "m1-players";
+
+    const team1 = document.createElement("div");
+    team1.className = "m1-team";
+    if (m.winner === 1) team1.classList.add("winner");
+    const player1 = document.createElement("span");
+    player1.className = "m1-player";
+    player1.textContent = team1Name;
+    const badge1 = createBadge(m.p1.special);
+    if (badge1) player1.append(" ", badge1);
+    team1.appendChild(player1);
+
+    const versus = document.createElement("span");
+    versus.className = "m1-vs";
+    versus.textContent = "vs.";
+
+    const team2 = document.createElement("div");
+    team2.className = "m1-team";
+    if (m.winner === 2) team2.classList.add("winner");
+    const player2 = document.createElement("span");
+    player2.className = "m1-player";
+    player2.textContent = team2Name;
+    const badge2 = createBadge(m.p3.special);
+    if (badge2) player2.append(" ", badge2);
+    team2.appendChild(player2);
+
+    players.append(team1, versus, team2);
+
+    const result = document.createElement("div");
+    result.className = "m1-result";
+    result.textContent = m.ergebnisFormatted || "";
+
+    content.append(players, result);
+    card.append(meta, content);
+    cards.appendChild(card);
+  });
+  container.replaceChildren(cards);
 }
 
 // ── Event-Listener ──
@@ -390,7 +461,15 @@ function initControls() {
 }
 
 // ── Init ──
-document.addEventListener("DOMContentLoaded", () => {
-  initControls();
-  loadData();
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    initControls();
+    const rendered = await loadData();
+    if (rendered) signalMonitorReady();
+    else signalMonitorFailed();
+    subscribeInvalidations(["matches", "players", "bewerbe"], loadData);
+  } catch {
+    signalMonitorFailed();
+    showErrorOverlay("Fehler beim Laden der Matches");
+  }
 });

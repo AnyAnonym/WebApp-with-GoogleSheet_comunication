@@ -1,35 +1,29 @@
 ================================================================================
-Dashboard / Willkommensseite — Startseite der Anwendung
+Dashboard / Willkommensseite - Startseite der Anwendung
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zentrale Einstiegsseite (Landing Page). Zeigt einen Willkommenstext und
-  bietet ueber die Navbar Zugang zu allen Bereichen der Anwendung.
-
--- Dateien --
+-- Funktion und Dateien --
+  Zentrale Einstiegsseite mit Navbar, Willkommenstext und Footer.
   HTML: Frontend/index.html
-  JS:   (kein eigenes JS – nur Shared Module)
-  CSS:  (kein eigenes CSS)
+  JS:   navbar.js, staticReady.js sowie die gemeinsamen Module modals.js,
+        global.js, clock.js und footer.js
+  CSS:  Frontend/CSS/styles.css
 
--- Datenquellen --
-  Keine seitenspezifischen Endpoints.
+-- Daten und Zugriff --
+  Keine seitenspezifischen Fachdaten. navbar.js und modals.js beziehen Identitaet
+  und Rolle ausschliesslich aus der serverseitigen Cookie-Sitzung ueber
+  authClient.js; localStorage ist kein Berechtigungsnachweis. Die Auth-UI
+  unterscheidet Pruefung, angemeldet, anonym und nicht erreichbar. Spielerlink,
+  Profil, Anmeldung und Abmeldung werden nach dem Sessionzustand dargestellt und
+  bei Aenderungen auch tabuebergreifend aktualisiert.
 
--- Layout --
-  Header + Main-Bereich mit Willkommenstext + Sidebar-Container + Footer.
-  Responsive: Sidebar rutscht unterhalb des Main-Bereichs bei <768px.
-
--- Bedienung --
-  Keine URL-Parameter.
-  Dient ausschliesslich als Landing Page / Startseite.
-
--- Shared Module --
-  navbar.js
-  modals.js
-  global.js
-  clock.js
-  footer.js
+-- Layout und Bereitschaft --
+  Header, Main-Bereich, leerer Sidebar-Container und Footer; responsiv rutscht die
+  Sidebar unter den Hauptbereich. staticReady.js meldet im Monitorbetrieb nach
+  DOMContentLoaded `epiber-monitor-ready`; die statische Seite benoetigt keine
+  Fachdaten zum Ladeabschluss.
 
 -- Besonderheiten --
-  Der Sidebar-Container ist im DOM vorhanden, jedoch wird rankingSidebar.js
-  nicht mehr geladen. Die Sidebar bleibt daher leer.
+  Keine URL-Parameter. rankingSidebar.js und SDK.js werden nicht mehr verwendet;
+  die WebSocket-Verbindung wird bei Bedarf same-origin durch dataClient aufgebaut.

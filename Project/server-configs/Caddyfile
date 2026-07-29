@@ -1,99 +1,61 @@
-# ══════════════════════════════════════════════════════
-# Caddy Konfiguration für ePiber
-# Datei: /etc/caddy/Caddyfile
-# ══════════════════════════════════════════════════════
-#
-# 3 Systeme:
-#   epiber.at       → Live (piber)   Backend Port 8080   HTTPS (automatisch)
-#   epiber.at:8081  → Test PAJ       Backend Port 8083   HTTP (kein TLS)
-#   epiber.at:8082  → Test PK        Backend Port 8084   HTTP (kein TLS)
-#
-# Live: Caddy holt sich automatisch ein Let's Encrypt Zertifikat
-#       weil ein Domainname angegeben ist.
-# Test: Kein TLS. Diese Vorlage enthaelt keine zusaetzliche Zugriffsbeschraenkung.
-# ══════════════════════════════════════════════════════
+# ePiber reverse proxy and static frontend
+# All browser-facing systems use HTTPS/WSS.
 
-
-# ── Livesystem (epiber.at, HTTPS Port 443) ──
-
-epiber.at {
-	# WebSocket-Proxy zum Backend
-	handle /ws {
-		reverse_proxy localhost:8080
-	}
-
-	# Backend HTTP-Endpoints (health, status, version, set-active)
-	handle /health {
-		reverse_proxy localhost:8080
-	}
-	handle /status {
-		reverse_proxy localhost:8080
-	}
-	handle /version {
-		reverse_proxy localhost:8080
-	}
-	handle /set-active {
-		reverse_proxy localhost:8080
-	}
-
-	# Statische Frontend-Dateien
-	handle {
-		root * /srv/http/ePiber/piber/Frontend
-		file_server
-		header Cache-Control "no-cache"
+(security_headers) {
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
 	}
 }
 
-# ── Testsystem PAJ (http://epiber.at:8081) ──
+epiber.at {
+	import security_headers
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at wss://epiber.at; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 
-http://epiber.at:8081 {
-	handle /ws {
-		reverse_proxy localhost:8083
+	@backend path /ws /api/* /live /ready /health /version /status
+	handle @backend {
+		reverse_proxy 127.0.0.1:8080
 	}
 
-	handle /health {
-		reverse_proxy localhost:8083
+	handle {
+		root * /srv/http/ePiber/piber/Frontend
+		header Cache-Control "no-cache"
+		file_server
 	}
-	handle /status {
-		reverse_proxy localhost:8083
-	}
-	handle /version {
-		reverse_proxy localhost:8083
-	}
-	handle /set-active {
-		reverse_proxy localhost:8083
+}
+
+https://epiber.at:8081 {
+	import security_headers
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8081 wss://epiber.at:8081; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+
+	@backend path /ws /api/* /live /ready /health /version /status
+	handle @backend {
+		reverse_proxy 127.0.0.1:8083
 	}
 
 	handle {
 		root * /srv/http/ePiber/paj/Frontend
-		file_server
 		header Cache-Control "no-cache"
+		file_server
 	}
 }
 
-# ── Testsystem PK (http://epiber.at:8082) ──
+https://epiber.at:8082 {
+	import security_headers
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8082 wss://epiber.at:8082; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 
-http://epiber.at:8082 {
-	handle /ws {
-		reverse_proxy localhost:8084
-	}
-
-	handle /health {
-		reverse_proxy localhost:8084
-	}
-	handle /status {
-		reverse_proxy localhost:8084
-	}
-	handle /version {
-		reverse_proxy localhost:8084
-	}
-	handle /set-active {
-		reverse_proxy localhost:8084
+	@backend path /ws /api/* /live /ready /health /version /status
+	handle @backend {
+		reverse_proxy 127.0.0.1:8084
 	}
 
 	handle {
 		root * /srv/http/ePiber/pk/Frontend
-		file_server
 		header Cache-Control "no-cache"
+		file_server
 	}
 }

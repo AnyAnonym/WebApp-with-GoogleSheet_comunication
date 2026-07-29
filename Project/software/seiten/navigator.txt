@@ -1,48 +1,44 @@
 ================================================================================
-Navigator-Steuerung — Fernbedienung fuer die Monitor-Anzeige
+Navigator-Steuerung - Regie fuer mehrere Monitorgeraete
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Fernsteuerung fuer die Monitor-Seite. Buttons navigieren den Monitor
-  zu verschiedenen Seiten, Overlays steuern Platz-Zuweisungen.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/navigator.html
-  JS:   Frontend/JS/navigatorList.js
-         Frontend/JS/navigatorScroll.js
-  CSS:  (kein eigenes CSS)
+  JS:   Frontend/JS/navigatorList.js, Frontend/JS/navigatorScroll.js
+  Standalone-Regie mit Navigator-Buttonraster, Monitorauswahl, Statusleiste,
+  Court-Overlays und Scrolltasten. `?profil=<id>` filtert die serverseitig
+  validierte Navigator-Konfiguration, Standard `1`.
 
--- Datenquellen --
-  navigator            – Button-Konfiguration aus Navigator-Sheet
-  preMatches           – Offene Matches (fuer Platzzuweisung)
-  players              – Spielernamen
-  bewerbe              – Bewerbsdaten
-  setNavigatorTarget   – Navigationsziel setzen
-  getNavigatorTarget   – Aktuelles Ziel abfragen
-  setScoreboardCourt   – Platz-Match-Zuweisung setzen
-  getScoreboardCourts  – Platz-Status abfragen
+-- Zugriff und Aktualisierung --
+  Die serverseitige Sitzung muss Rolle operator oder admin besitzen; anonyme und
+  player-Sitzungen sehen nur den Zugriffshinweis. `navigator`- und `monitors`-
+  Invalidierungen sowie ein Resync laden Konfiguration und Monitorliste neu. Fuer
+  jeden aktiven Monitor wird `monitor-status:<monitorId>` abonniert. Auswahl,
+  Online/Offline-Presence, Verbindung und Navigation sind pro Monitor getrennt;
+  ein globaler Monitorzielzustand und 150-ms-Statuspolling existieren nicht.
 
--- Layout --
-  KEINE Navbar / Footer.
-  Button-Grid (4 Spalten), konfiguriert aus dem Navigator-Sheet.
-  Fixierte Scroll-Buttons (hoch/runter) am unteren Rand.
-  Body-Klasse: "navigator-body".
+-- Navigation und Scrollen --
+  `monitorNavigate` und `monitorScroll` senden `operationId`, `monitorId` und
+  erlaubte Aktion/Pfadparameter. Navigation zeigt sent/offline, received, loading,
+  loaded oder failed samt Terminalfehler; nur der betroffene Monitor/Button wird
+  aktualisiert. Scrollen ist erst bei verbundenem, online befindlichem Monitor mit
+  geladenem Ziel moeglich und bewegt 300 px. ACK/Offline/Transport-Timeout kann
+  einen unklaren Scrollstatus erzeugen; die UI warnt, dass erneutes Senden die
+  Bewegung wiederholen koennte.
 
--- Bedienung --
-  URL-Parameter: ?profil=<id> (Standard: "1")
-  Filtert Buttons nach Navigator.Profil-Spalte.
+-- Court-Steuerung --
+  Operator und Admin koennen Platz 1/2 aus den naechsten 20 offenen Matches oder
+  als individuelle Einzelpaarung zuweisen und beide Plaetze aktiv/inaktiv setzen.
+  `courtAssign` und `courtSetActive` verwenden stabile operationIds und
+  `expectedRevision`; bei Konflikt/Fehler werden frische Revisionen geladen statt
+  alte Werte blind zu ueberschreiben. Externe Namen und Konfigurationswerte werden
+  als DOM-Textknoten dargestellt.
 
--- Shared Module --
-  SDK.js, global.js
-
--- Besonderheiten --
-  3 Overlay-Typen:
-    OL-Platz-1 / OL-Platz-2:
-      Match-Zuweisung – Auswahl aus naechsten 20 offenen Matches oder
-      "Individual" mit kaskadierenden Overlays fuer Spielerauswahl.
-    OL-Platzaktivierung:
-      Platz aktiv/inaktiv umschalten mit gruenem/rotem Indikator.
-  Navigationsbestaetigung: 150ms-Polling bis Monitor "loaded" meldet.
-  Button blinkt waehrend der Wartezeit.
-  Scroll-Betrag: 300px pro Klick.
+-- Administration --
+  Nur Admins sehen Geraeteverwaltung: Monitor mit Bezeichnung provisionieren,
+  einmaligen Token anzeigen/kopieren, Token rotieren beziehungsweise widerrufene
+  Geraete neu aktivieren und Geraete widerrufen. Tokens werden nur in der direkten
+  Provisionierungs-/Rotationsantwort angezeigt; wiederholte idempotente Antworten
+  koennen deshalb `tokenUnavailable` melden. Alle Aktionen werden bei fehlender
+  Verbindung gesperrt und serverseitig erneut autorisiert.

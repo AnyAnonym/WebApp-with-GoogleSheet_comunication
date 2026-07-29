@@ -1,73 +1,83 @@
 ================================================================================
-SOFTWARE-DOKU.txt — Verzeichnis-Dokumentation: software/
-================================================================================
-Stand: v3.1.11
-
-Dieses Verzeichnis enthaelt die aktuelle Software-Dokumentation des
-ePiber-Projekts. Die Dateien werden beim Main-Versionssprung aktualisiert und
-stellen den jeweils gueltigen Main-Stand dar.
-
-
-================================================================================
-INHALT
+  SOFTWARE-DOKU.txt - Index der Software-Dokumentation
+  Stand: v4.0.0
 ================================================================================
 
-Datei/Verzeichnis           | Beschreibung
-----------------------------|------------------------------------------------
-SOFTWARE-DOKU.txt           | Diese Datei (Verzeichnis-Index)
-DATENBANK.txt               | Dokumentiertes Google-Spreadsheets-Schema
-                            | mit Spalten, Formaten und Logik-Hinweisen
-ARCHITEKTUR.txt             | Gesamtarchitektur, Backend-Module, Datenfluss,
-                            | Shared Frontend-Module, CSS, Authentifizierung,
-                            | WebSocket-Protokoll
-ENDPOINTS.txt               | Alle Endpoints im Detail:
-                            |   4 fachliche HTTP-Endpoints
-                            |   plus OPTIONS und GET-Fallback
-                            |   16 WebSocket Read-Endpoints
-                            |   6 WebSocket State-Endpoints
-                            |   8 WebSocket Write-/Operations-Endpoints
-seiten/                     | Pro fachlicher Anwendungsseite eine Dokumentationsdatei
+Dieses Verzeichnis dokumentiert den in Main integrierten Softwarestand. Code und
+maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
 
 ================================================================================
-SEITEN-DOKUMENTATION
+  KERN-DOKUMENTE
 ================================================================================
 
-seiten/index.txt            | Dashboard / Willkommensseite
-seiten/bewerbe.txt          | Bewerbe-Uebersicht (Aktiv/Bevorstehend/Beendet)
-seiten/bewerbsRaster.txt    | Turnierraster / KO-Baumansicht
-seiten/matches1.txt         | Matches-Uebersicht mit Filtern (zentrale Match-Seite)
-seiten/players.txt          | Spieler-Tabelle
-seiten/scoreboard.txt       | Live-Scoreboard (Vollbild fuer Anzeigemonitore)
-seiten/monitor.txt          | Monitor-Anzeige (ferngesteuerter iframe)
-seiten/navigator.txt        | Navigator-Steuerung (Fernbedienung fuer Monitor)
-seiten/entryList.txt        | Eintragungsliste fuer Bewerbe
-seiten/rangliste.txt        | Ranglisten-Pyramide (Forderungssystem)
-seiten/roundRobin.txt       | RoundRobin-Gruppenphase
-
-Jede Seitendatei dokumentiert:
-  Funktion, Dateien, Datenquellen, Layout, Bedienung,
-  Shared Module und Besonderheiten.
-
-Frontend/court-score-test.html ist eine technische Testseite und besitzt keine
-eigene Seitendokumentation.
+  Pfad                         | Inhalt
+  -----------------------------|-----------------------------------------------
+  software/SOFTWARE-DOKU.txt   | Dieser Index.
+  software/DATENBANK.txt       | Google-Sheets-Schema und -Projektionen,
+                               | SQLite-Schema/State, Idempotenz, Legacy-
+                               | Logging und ScoreLog.
+  software/ARCHITEKTUR.txt     | Backend-/Frontendmodule, Cookie-/Rollenauth,
+                               | Cache, SheetService, Court, Monitor,
+                               | WebSocket v2, Readiness und Shutdown.
+  software/ENDPOINTS.txt       | Aktuelle HTTP-Routen, WebSocket-v2-Vertrag,
+                               | RPC-Berechtigungen/Parameter, Topics und
+                               | Unknown-Write-Semantik.
 
 
 ================================================================================
-VERWANDTE DOKUMENTATION
+  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN)
 ================================================================================
 
-  Project/server-configs/             Server-Infrastruktur (Caddy, systemd, Ports)
-  Project/ChangeLogs/ChangeLog-main.txt Zentrales Aenderungsprotokoll
-  Project/DokuVersGit.txt              Dokumentation, Versionierung und Git
-  Project/2do/KOMMUNIKATION-ANALYSE.md Analyse der Client-Server-Kommunikation
-  Project/2do/LOGGING-ANALYSE.md       Analyse von Logging und Observability
+  Pfad                              | Seite
+  ----------------------------------|-------------------------------------------
+  software/seiten/index.txt         | Dashboard / Willkommensseite
+  software/seiten/bewerbe.txt       | Bewerbe-Uebersicht
+  software/seiten/bewerbsRaster.txt | Turnierraster / KO-Baum
+  software/seiten/matches1.txt      | Matches-Uebersicht
+  software/seiten/players.txt       | Mitglieder-/Spielerliste
+  software/seiten/scoreboard.txt    | Live-Scoreboard
+  software/seiten/monitor.txt       | Adressierte Monitor-Ausgabe
+  software/seiten/navigator.txt     | Operator-/Admin-Monitorsteuerung
+  software/seiten/entryList.txt     | Bewerbsanmeldung
+  software/seiten/rangliste.txt     | Ranglisten-Pyramide
+  software/seiten/roundRobin.txt    | RoundRobin-Gruppenphase
+
+Jede Seitendatei beschreibt Funktion, Dateien, Datenquellen, Layout, Bedienung,
+Subscriptions und Besonderheiten. `Frontend/court-score-test.html` ist eine
+technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
 
 
 ================================================================================
-ARCHIV (nicht mehr aktualisiert)
+  BETRIEB, ROLLOUT UND ANALYSEN
 ================================================================================
 
-  Project/archive/DB.txt        Alte DB-Doku (aktueller Stand: DATENBANK.txt)
-  Project/archive/Seiten.txt    Alte Seiten-Doku (aktueller Stand: seiten/)
-  Project/archive/PROTOKOLL.txt Historischer Changelog v1.0 bis v3.0.2
+  `Project/server-configs/ROLLOUT-CHECKLIST.md`
+      Verbindliche Migrations-, Abnahme-, Rollout- und Rollback-Checkliste.
+
+  `Project/server-configs/SERVER-DOKU.txt`
+      Infrastrukturindex fuer Caddy, systemd, HTTPS/WSS und Instanzen.
+
+  `Project/server-configs/SERVER-SETUP.txt`
+      Installation und Betrieb des Backends.
+
+  `Project/ChangeLogs/ChangeLog-main.txt`
+      Zentrales Main-Aenderungsprotokoll.
+
+  `Project/DokuVersGit.txt`
+      Dokumentations-, Versions- und Git-Regeln.
+
+  `Project/2do/KOMMUNIKATION-ANALYSE.md`
+      Kommunikationsanalyse und verbleibende manuelle Risiken.
+
+  `Project/2do/LOGGING-ANALYSE.md`
+      Logging-/Observability-Analyse; das dreispaltige Legacy-Logging- und
+      ScoreLog-Redesign ist weiterhin gesonderte spaetere Arbeit.
+
+
+================================================================================
+  ARCHIV
+================================================================================
+
+`Project/archive/DB.txt`, `Project/archive/Seiten.txt` und
+`Project/archive/PROTOKOLL.txt` sind historisch und werden nicht fortgeschrieben.

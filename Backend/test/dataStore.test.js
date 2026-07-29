@@ -1,0 +1,55 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { setTestEnvironment } = require("./helpers.js");
+
+setTestEnvironment();
+const dataStore = require("../dataStore.js");
+
+test.beforeEach(() => dataStore.resetForTests());
+
+test("ein vor einem Write gestarteter Poll darf den Cache nicht zuruecksetzen", () => {
+  dataStore.set("entryList", [["ID"], ["old"]], { source: "test" });
+  const staleRead = dataStore.beginRead("entryList");
+  dataStore.set("entryList", [["ID"], ["old"], ["new"]], { source: "write" });
+
+  const result = dataStore.set("entryList", [["ID"], ["old"]], { source: "poll", readToken: staleRead });
+  assert.equal(result.ignored, true);
+  assert.deepEqual(dataStore.get("entryList"), [["ID"], ["old"], ["new"]]);
+  assert.equal(dataStore.getMeta("entryList").staleResultCount, 1);
+});
+
+test("bei ueberlappenden Reads gewinnt der spaeter gestartete Read", () => {
+  const first = dataStore.beginRead("matches1");
+  const second = dataStore.beginRead("matches1");
+  dataStore.set("matches1", [["ID"], ["newer"]], { source: "poll", readToken: second });
+  const stale = dataStore.set("matches1", [["ID"], ["older"]], { source: "poll", readToken: first });
+
+  assert.equal(stale.ignored, true);
+  assert.deepEqual(dataStore.get("matches1"), [["ID"], ["newer"]]);
+});
+
+test("Pollfehler und Erholung werden auch ohne Datenaenderung publiziert", () => {
+  const events = [];
+  const unsubscribe = dataStore.onChange((event) => events.push(event));
+  dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll" });
+  events.length = 0;
+  dataStore.markError("entryList", new Error("temporarily unavailable"));
+  dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll" });
+  unsubscribe();
+
+  assert.equal(events[0].source, "poll-error");
+  assert.equal(events[0].changed, false);
+  assert.equal(events[1].recovered, true);
+  assert.equal(events[1].changed, false);
+});
+
+test("ein vor einem Write gestarteter Pollfehler darf den Cachezustand nicht ueberholen", () => {
+  dataStore.set("entryList", [["ID"], ["old"]], { source: "test" });
+  const staleRead = dataStore.beginRead("entryList");
+  dataStore.set("entryList", [["ID"], ["new"]], { source: "write" });
+
+  const result = dataStore.markError("entryList", new Error("stale failure"), staleRead);
+  assert.equal(result.ignored, true);
+  assert.equal(dataStore.getMeta("entryList").lastError, null);
+  assert.equal(dataStore.getMeta("entryList").staleResultCount, 1);
+});

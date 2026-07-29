@@ -1,40 +1,39 @@
+import { ready, subscribeAuth } from "./authClient.js";
+
 const currentPath = window.location.pathname.split("/").pop() || "index.html";
 
-const pages = [
-  { file: "index.html", label: "Dashboard" },
-  { file: "players.html", label: "Spieler" },
-  { file: "Matches1.html", label: "Matches" },
-  { file: "Bewerbe.html", label: "Bewerbe" },
-  { file: "scoreboard.html", label: "Scoreboard" },
-];
+function activeClass(file) {
+  return currentPath === file ? "active" : "";
+}
 
 function renderHeader() {
   const headerContainer = document.getElementById("header-container");
   if (!headerContainer) return;
 
   headerContainer.innerHTML = `
-  <header>
-    <a href="index.html" class="header-logo">ASKÖ Piberbach</a>
+    <header>
+      <a href="index.html" class="header-logo">ASKÖ Piberbach</a>
 
-    <nav id="mainNav" class="main-nav desktop-nav">
-      <a href="index.html" class="${currentPath === 'index.html' ? 'active' : ''}">Dashboard</a>
-      <a href="players.html" class="${currentPath === 'players.html' ? 'active' : ''}" data-auth="required">Spieler</a>
-      <a href="Matches1.html" class="${currentPath === 'Matches1.html' ? 'active' : ''}">Matches</a>
-        <a href="Bewerbe.html" class="${currentPath === 'Bewerbe.html' ? 'active' : ''}">Bewerbe</a>
-        <a href="scoreboard.html" class="${currentPath === 'scoreboard.html' ? 'active' : ''}">Scoreboard</a>
-    </nav>
+      <nav id="mainNav" class="main-nav desktop-nav">
+        <a href="index.html" class="${activeClass("index.html")}">Dashboard</a>
+        <a href="players.html" class="${activeClass("players.html")}" data-auth="required" hidden>Spieler</a>
+        <a href="Matches1.html" class="${activeClass("Matches1.html")}">Matches</a>
+        <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
+        <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
+      </nav>
 
-    <div class="header-center">
-      <span class="logo">ASKÖ Piberbach</span>
-      <button class="hamburger" id="hamburgerBtn">☰</button>
-    </div>
+      <div class="header-center">
+        <span class="logo">ASKÖ Piberbach</span>
+        <button class="hamburger" id="hamburgerBtn" type="button" aria-label="Menü öffnen">☰</button>
+      </div>
 
-    <nav class="auth-nav desktop-auth">
-      <a href="#" id="openLogin" class="loggedOut">Anmelden</a>
-      <a href="#" id="profileButton" class="loggedIn">Profil</a>
-      <a href="#" id="signOutButton" class="loggedIn">Abmelden</a>
-    </nav>
-  </header>
+      <nav class="auth-nav desktop-auth">
+        <a href="#" id="openLogin" class="loggedOut" hidden style="display: none;">Anmelden</a>
+        <a href="#" id="profileButton" class="loggedIn" hidden style="display: none;">Profil</a>
+        <a href="#" id="signOutButton" class="loggedIn" hidden style="display: none;">Abmelden</a>
+        <span class="authUnavailable" role="status" hidden></span>
+      </nav>
+    </header>
   `;
 }
 
@@ -43,88 +42,86 @@ function renderMobileNav() {
   if (!mobileNavContainer) return;
 
   mobileNavContainer.innerHTML = `
-  <div id="mobileNavModal" class="modal hidden">
-    <div class="modal-content mobile-nav-content">
-      <span class="close">&times;</span>
-      <nav class="mobile-auth-section">
-        <a href="#" id="openLoginMobile" class="loggedOut">Anmelden</a>
-        <a href="#" id="profileButtonMobile" class="loggedIn">Profil</a>
-        <a href="#" id="signOutButtonMobile" class="loggedIn">Abmelden</a>
-      </nav>
-      <nav class="mobile-nav-links">
-        <a href="index.html" class="${currentPath === 'index.html' ? 'active' : ''}">Dashboard</a>
-        <a href="players.html" class="${currentPath === 'players.html' ? 'active' : ''}" data-auth="required">Spieler</a>
-        <a href="Matches1.html" class="${currentPath === 'Matches1.html' ? 'active' : ''}">Matches</a>
-        <a href="Bewerbe.html" class="${currentPath === 'Bewerbe.html' ? 'active' : ''}">Bewerbe</a>
-        <a href="scoreboard.html" class="${currentPath === 'scoreboard.html' ? 'active' : ''}">Scoreboard</a>
-      </nav>
+    <div id="mobileNavModal" class="modal hidden">
+      <div class="modal-content mobile-nav-content">
+        <span class="close" role="button" aria-label="Schließen" tabindex="0">&times;</span>
+        <nav class="mobile-auth-section">
+          <a href="#" id="openLoginMobile" class="loggedOut" hidden style="display: none;">Anmelden</a>
+          <a href="#" id="profileButtonMobile" class="loggedIn" hidden style="display: none;">Profil</a>
+          <a href="#" id="signOutButtonMobile" class="loggedIn" hidden style="display: none;">Abmelden</a>
+          <span class="authUnavailable" role="status" hidden></span>
+        </nav>
+        <nav class="mobile-nav-links">
+          <a href="index.html" class="${activeClass("index.html")}">Dashboard</a>
+          <a href="players.html" class="${activeClass("players.html")}" data-auth="required" hidden>Spieler</a>
+          <a href="Matches1.html" class="${activeClass("Matches1.html")}">Matches</a>
+          <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
+          <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
+        </nav>
+      </div>
     </div>
-  </div>
   `;
 }
 
-function initNavigation() {
+function setAuthControlVisibility(element, visible) {
+  element.hidden = !visible;
+  if (!visible) {
+    element.style.display = "none";
+    return;
+  }
+  element.style.display = element.closest(".mobile-auth-section") ? "block" : "inline";
+}
+
+function renderAuthState(user, authState = {}) {
+  const authenticated = Boolean(user);
+  const resolved = ["authenticated", "anonymous"].includes(authState.status);
+
+  document.querySelectorAll(".loggedIn").forEach((element) => {
+    setAuthControlVisibility(element, resolved && authenticated);
+  });
+  document.querySelectorAll(".loggedOut").forEach((element) => {
+    setAuthControlVisibility(element, resolved && !authenticated);
+  });
+  document.querySelectorAll('[data-auth="required"]').forEach((element) => {
+    element.hidden = !resolved || !authenticated;
+  });
+  document.querySelectorAll(".authUnavailable").forEach((element) => {
+    const visible = !resolved;
+    element.hidden = !visible;
+    element.style.display = visible ? "inline" : "none";
+    element.textContent = authState.status === "unavailable" ? "Anmeldung nicht erreichbar" : "Anmeldung wird geprüft";
+  });
+}
+
+function initMobileNavigation() {
+  const hamburgerButton = document.getElementById("hamburgerBtn");
+  const mobileNavModal = document.getElementById("mobileNavModal");
+  if (!hamburgerButton || !mobileNavModal) return;
+
+  hamburgerButton.addEventListener("click", () => {
+    window.scrollTo(0, 0);
+    mobileNavModal.classList.remove("hidden");
+  });
+
+  mobileNavModal.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (
+      event.target === mobileNavModal
+      || event.target.closest(".mobile-nav-links a")
+    ) {
+      mobileNavModal.classList.add("hidden");
+    }
+  });
+}
+
+async function initNavigation() {
   renderHeader();
   renderMobileNav();
+  initMobileNavigation();
 
-  const hamburgerBtn = document.getElementById("hamburgerBtn");
-  const mobileNavModal = document.getElementById("mobileNavModal");
+  subscribeAuth(renderAuthState);
 
-  if (hamburgerBtn && mobileNavModal) {
-    hamburgerBtn.addEventListener("click", () => {
-      window.scrollTo(0, 0);
-      mobileNavModal.classList.remove("hidden");
-    });
-
-    mobileNavModal.querySelector(".close").addEventListener("click", () => {
-      mobileNavModal.classList.add("hidden");
-    });
-
-    mobileNavModal.addEventListener("click", (e) => {
-      if (e.target === mobileNavModal) {
-        mobileNavModal.classList.add("hidden");
-      }
-    });
-
-    mobileNavModal.querySelectorAll(".mobile-nav-links a").forEach((link) => {
-      link.addEventListener("click", (e) => {
-        if (!e.target.id || !e.target.id.includes("Modal")) {
-          mobileNavModal.classList.add("hidden");
-        }
-      });
-    });
-
-    const openLoginMobile = document.getElementById("openLoginMobile");
-    if (openLoginMobile) {
-      openLoginMobile.addEventListener("click", (e) => {
-        e.preventDefault();
-        mobileNavModal.classList.add("hidden");
-        if (typeof window.openLoginModal === "function") {
-          window.openLoginModal();
-        }
-      });
-    }
-
-    const profileButtonMobile = document.getElementById("profileButtonMobile");
-    if (profileButtonMobile) {
-      profileButtonMobile.addEventListener("click", (e) => {
-        e.preventDefault();
-        mobileNavModal.classList.add("hidden");
-        const profileBtn = document.getElementById("profileButton");
-        if (profileBtn) profileBtn.click();
-      });
-    }
-
-    const signOutButtonMobile = document.getElementById("signOutButtonMobile");
-    if (signOutButtonMobile) {
-      signOutButtonMobile.addEventListener("click", (e) => {
-        e.preventDefault();
-        mobileNavModal.classList.add("hidden");
-        const signOutBtn = document.getElementById("signOutButton");
-        if (signOutBtn) signOutBtn.click();
-      });
-    }
-  }
+  await ready;
 }
 
 initNavigation();

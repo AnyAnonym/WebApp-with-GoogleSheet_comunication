@@ -1,0 +1,29 @@
+PAJ-Rolloutnotiz (nicht kanonisch)
+=================================
+
+Die verbindlichen Regeln und der vollstaendige Branchstand stehen in:
+
+- `Project/ChangeLogs/ChangeLog-main.txt`
+- `Project/server-configs/ROLLOUT-CHECKLIST.md`
+
+Kurzcheck vor einem PAJ-Neustart:
+
+1. Vollstaendige Spreadsheet-Kopie erstellen.
+2. `Personen.Role` mit `player`, `operator` oder `admin` befuellen. Leere und
+   ungueltige Werte fallen technisch mit Warnung auf `player` zurueck.
+3. `EntryList` verwendet `ID`, `BewerbID`, `PersonenID` und `Entrydate`.
+4. `Logging` bleibt dreispaltig: `Timestamp`, `Type`, `Message`.
+5. `ScoreLog` bleibt dreispaltig: `Timestamp`, `PlatzNr`, `Score`.
+6. Keine Event-ID-Spalten und keine ScoreLog-Pending-Migration anlegen.
+7. PAJ-Credential root-kontrolliert unter
+   `/srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json` bereitstellen.
+8. systemd- und Caddy-Vorlagen installieren und validieren.
+9. `npm ci --omit=dev` und `npm run build` ausfuehren; aktuell werden 70 Tests
+   erwartet.
+10. `epiber-paj.service` neu starten und `/version`, `/live`, `/ready` und
+    `/health` pruefen. Erwartete Releaseversion fuer diesen Stand:
+    `4.0.0`.
+
+Manuell abzunehmen sind Rollen/Login, Profil- und Admin-Passwortfunktionen,
+EntryList, Forderungen, Courtsteuerung, Monitorsteuerung sowie das Scoreboard in
+allen drei Breitenbereichen mit Einzel- und Doppelpaarungen.

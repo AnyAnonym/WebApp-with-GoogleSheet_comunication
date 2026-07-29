@@ -1,249 +1,67 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Court-Score-Test – Polling vs. WebSocket</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Court-Score-Test - RPC vs. Subscription</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
-    h1 { text-align: center; margin-bottom: 20px; color: #333; }
-
-    .controls {
-      display: flex; justify-content: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
-    }
-    .controls button {
-      padding: 10px 24px; border: none; border-radius: 8px; font-size: 1rem;
-      cursor: pointer; font-weight: 600; transition: background 0.2s;
-    }
-    .btn-poll { background: #0d6efd; color: #fff; }
-    .btn-poll:hover { background: #0b5ed7; }
-    .btn-poll.active { background: #198754; }
-    .btn-ws { background: #6f42c1; color: #fff; }
-    .btn-ws:hover { background: #5a32a3; }
-    .btn-ws.active { background: #198754; }
-    .btn-stop { background: #dc3545; color: #fff; }
-    .btn-stop:hover { background: #bb2d3b; }
-
-    .config {
-      display: flex; justify-content: center; gap: 16px; margin-bottom: 20px;
-      align-items: center; flex-wrap: wrap;
-    }
-    .config label { font-weight: 600; }
-    .config input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; width: 300px; font-size: 0.9rem; }
-
-    .status {
-      text-align: center; margin-bottom: 20px; font-size: 0.9rem; color: #666;
-    }
-    .status .badge {
-      display: inline-block; padding: 4px 12px; border-radius: 12px;
-      font-weight: 600; font-size: 0.8rem; margin: 0 4px;
-    }
-    .badge-poll { background: #cfe2ff; color: #0d6efd; }
-    .badge-ws { background: #e2d9f3; color: #6f42c1; }
-    .badge-off { background: #f8d7da; color: #dc3545; }
-    .badge-ok { background: #d1e7dd; color: #198754; }
-
-    .columns { display: flex; gap: 20px; }
-    .column { flex: 1; background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #ddd; }
-    .column h2 { font-size: 1rem; margin-bottom: 12px; text-align: center; }
-    .column.poll-col { border-color: #0d6efd; }
-    .column.ws-col { border-color: #6f42c1; }
-
-    .court { margin-bottom: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px; }
-    .court-title { font-weight: 700; margin-bottom: 6px; color: #333; }
-    .score-row { display: flex; gap: 8px; font-size: 0.9rem; }
-    .score-row span { background: #0d6efd; color: #fff; padding: 4px 8px; border-radius: 4px; min-width: 35px; text-align: center; }
-    .score-row .punkte { background: #7b1fa2; }
-    .score-row .label { background: none; color: #333; font-weight: 600; flex: 1; padding: 4px 0; }
-
-    .log { margin-top: 20px; background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #ddd; max-height: 300px; overflow-y: auto; }
-    .log h2 { font-size: 1rem; margin-bottom: 8px; }
-    .log-entry { font-size: 0.75rem; color: #666; padding: 2px 0; border-bottom: 1px solid #f0f0f0; font-family: monospace; }
-    .log-entry.push { color: #198754; font-weight: 600; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #f3f5f7; color: #24313d; font-family: Arial, sans-serif; }
+    h1 { margin: 0 0 20px; text-align: center; }
+    .controls, .status { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    button { padding: 10px 22px; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 700; }
+    #btnPoll { background: #0d6efd; }
+    #btnWs { background: #6f42c1; }
+    #btnStop { background: #dc3545; }
+    button.active { outline: 3px solid #198754; outline-offset: 2px; }
+    .badge { padding: 4px 12px; border-radius: 999px; background: #f8d7da; color: #9b1c2c; font-weight: 700; }
+    .badge.poll { background: #cfe2ff; color: #084298; }
+    .badge.push, .badge.ok { background: #d1e7dd; color: #0f5132; }
+    .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .column, .log { padding: 18px; border: 2px solid #d7dde3; border-radius: 12px; background: #fff; }
+    .column:first-child { border-color: #0d6efd; }
+    .column:last-child { border-color: #6f42c1; }
+    .column h2, .log h2 { margin: 0 0 12px; font-size: 1rem; text-align: center; }
+    .court { margin-bottom: 12px; padding: 10px; border-radius: 8px; background: #f7f8f9; }
+    .court-title { margin-bottom: 6px; font-weight: 700; }
+    .score-row { display: grid; grid-template-columns: minmax(80px, 1fr) repeat(4, 40px); gap: 7px; margin-top: 5px; }
+    .score-cell { padding: 4px; border-radius: 4px; background: #0d6efd; color: #fff; text-align: center; }
+    .score-cell.label { background: transparent; color: #24313d; text-align: left; font-weight: 700; }
+    .score-cell.points { background: #6f42c1; }
+    .log { max-height: 260px; margin-top: 20px; overflow-y: auto; }
+    .log-entry { padding: 3px 0; border-bottom: 1px solid #eef0f2; color: #68737d; font: 0.78rem monospace; }
+    .log-entry.push { color: #198754; }
     .log-entry.poll { color: #0d6efd; }
     .log-entry.error { color: #dc3545; }
+    @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } body { padding: 14px; } }
   </style>
 </head>
 <body>
-
-<h1>Court-Score-Test – Polling vs. WebSocket</h1>
-
-<div class="config">
-  <label>WebSocket URL:</label>
-  <input type="text" id="wsUrl" value="ws://localhost:8080" />
-</div>
-
-<div class="controls">
-  <button class="btn-poll" id="btnPoll">Polling starten</button>
-  <button class="btn-ws" id="btnWs">WebSocket verbinden</button>
-  <button class="btn-stop" id="btnStop">Alles stoppen</button>
-</div>
-
-<div class="status">
-  Modus: <span class="badge badge-off" id="statusBadge">Gestoppt</span>
-  Updates: <span id="updateCount">0</span>
-  | Letzte Aktualisierung: <span id="lastUpdate">—</span>
-</div>
-
-<div class="columns">
-  <div class="column poll-col">
-    <h2>Polling (direkt von CDN)</h2>
-    <div id="pollData">—</div>
+  <h1>Court-Score-Test - RPC vs. Subscription</h1>
+  <div class="controls">
+    <button id="btnPoll" type="button">RPC-Polling starten</button>
+    <button id="btnWs" type="button">Subscription starten</button>
+    <button id="btnStop" type="button">Alles stoppen</button>
   </div>
-  <div class="column ws-col">
-    <h2>WebSocket (vom Service)</h2>
-    <div id="wsData">—</div>
+  <div class="status" aria-live="polite">
+    <span>Modus:</span><span class="badge" id="statusBadge">Gestoppt</span>
+    <span>Updates: <strong id="updateCount">0</strong></span>
+    <span>Letzte Aktualisierung: <strong id="lastUpdate">-</strong></span>
   </div>
-</div>
-
-<div class="log">
-  <h2>Log</h2>
-  <div id="logContainer"></div>
-</div>
-
-<script>
-const COURT_URL = "https://scorer-tennis.b-cdn.net/json/24.voll.json";
-const POLL_INTERVAL = 2000;
-
-let pollTimer = null;
-let ws = null;
-let updateCount = 0;
-let mode = "off";
-
-const pollDataEl = document.getElementById("pollData");
-const wsDataEl = document.getElementById("wsData");
-const statusBadge = document.getElementById("statusBadge");
-const updateCountEl = document.getElementById("updateCount");
-const lastUpdateEl = document.getElementById("lastUpdate");
-const logContainer = document.getElementById("logContainer");
-
-function log(msg, cls = "") {
-  const el = document.createElement("div");
-  el.className = "log-entry " + cls;
-  el.textContent = new Date().toLocaleTimeString() + " — " + msg;
-  logContainer.prepend(el);
-  if (logContainer.children.length > 200) logContainer.lastChild.remove();
-}
-
-function renderCourts(container, data) {
-  if (!data || !data.courts) {
-    container.textContent = "Keine Daten";
-    return;
-  }
-  container.innerHTML = data.courts.map((c) => `
-    <div class="court">
-      <div class="court-title">Platz ${c.platz}</div>
-      <div class="score-row">
-        <span class="label">Heim</span>
-        <span>${c.satz1home || "-"}</span>
-        <span>${c.satz2home || "-"}</span>
-        <span>${c.satz3home || "-"}</span>
-        <span class="punkte">${c.punktehome || "-"}</span>
-      </div>
-      <div class="score-row">
-        <span class="label">Gast</span>
-        <span>${c.satz1gast || "-"}</span>
-        <span>${c.satz2gast || "-"}</span>
-        <span>${c.satz3gast || "-"}</span>
-        <span class="punkte">${c.punktegast || "-"}</span>
-      </div>
-    </div>
-  `).join("");
-}
-
-function setStatus(text, cls) {
-  statusBadge.textContent = text;
-  statusBadge.className = "badge " + cls;
-}
-
-function onUpdate() {
-  updateCount++;
-  updateCountEl.textContent = updateCount;
-  lastUpdateEl.textContent = new Date().toLocaleTimeString();
-}
-
-// ── Polling ──
-async function poll() {
-  try {
-    const res = await fetch(COURT_URL, { cache: "no-store" });
-    const data = await res.json();
-    renderCourts(pollDataEl, data);
-    onUpdate();
-    log("Poll OK — " + (data.courts?.length || 0) + " courts", "poll");
-  } catch (err) {
-    log("Poll Fehler: " + err.message, "error");
-  }
-}
-
-function startPolling() {
-  stopAll();
-  mode = "poll";
-  setStatus("Polling aktiv", "badge-poll");
-  document.getElementById("btnPoll").classList.add("active");
-  log("Polling gestartet (alle " + POLL_INTERVAL + "ms)");
-  poll();
-  pollTimer = setInterval(poll, POLL_INTERVAL);
-}
-
-// ── WebSocket ──
-function startWs() {
-  stopAll();
-  mode = "ws";
-  const url = document.getElementById("wsUrl").value.trim();
-  setStatus("Verbinde...", "badge-ws");
-  document.getElementById("btnWs").classList.add("active");
-  log("WebSocket verbinden: " + url);
-
-  ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    setStatus("WebSocket verbunden", "badge-ok");
-    log("WebSocket verbunden", "push");
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "scores") {
-        renderCourts(wsDataEl, msg.data);
-        onUpdate();
-        log("WS Push — " + (msg.data?.courts?.length || 0) + " courts", "push");
-      }
-    } catch (err) {
-      log("WS Parse Fehler: " + err.message, "error");
-    }
-  };
-
-  ws.onclose = () => {
-    if (mode === "ws") {
-      setStatus("WS getrennt — reconnect in 3s", "badge-off");
-      log("WebSocket getrennt, reconnect in 3s...", "error");
-      setTimeout(() => { if (mode === "ws") startWs(); }, 3000);
-    }
-  };
-
-  ws.onerror = (err) => {
-    log("WebSocket Fehler", "error");
-  };
-}
-
-// ── Stop ──
-function stopAll() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  if (ws) { mode = "off"; ws.close(); ws = null; }
-  mode = "off";
-  setStatus("Gestoppt", "badge-off");
-  document.getElementById("btnPoll").classList.remove("active");
-  document.getElementById("btnWs").classList.remove("active");
-  log("Gestoppt");
-}
-
-// ── Events ──
-document.getElementById("btnPoll").addEventListener("click", startPolling);
-document.getElementById("btnWs").addEventListener("click", startWs);
-document.getElementById("btnStop").addEventListener("click", stopAll);
-</script>
-
+  <div class="columns">
+    <section class="column">
+      <h2>RPC-Polling (vom Service)</h2>
+      <div id="pollData">Keine Daten</div>
+    </section>
+    <section class="column">
+      <h2>WebSocket-Subscription</h2>
+      <div id="wsData">Keine Daten</div>
+    </section>
+  </div>
+  <section class="log">
+    <h2>Log</h2>
+    <div id="logContainer" aria-live="polite"></div>
+  </section>
+  <script type="module" src="JS/courtScoreTest.js"></script>
 </body>
 </html>

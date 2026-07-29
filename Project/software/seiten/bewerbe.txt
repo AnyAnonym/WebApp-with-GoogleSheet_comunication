@@ -1,42 +1,33 @@
 ================================================================================
-Bewerbe-Uebersicht — Auflistung aller Bewerbe als Karten
+Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt alle Bewerbe in drei Kategorien als Karten-Grid an.
-  Klick auf eine Karte navigiert zur jeweiligen Detailansicht.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/Bewerbe.html
   JS:   Frontend/JS/bewerbeList.js
-  CSS:  (kein eigenes CSS)
+  Zeigt Bewerbe als Karten in "Aktive", "Bevorstehende" und "Beendete Bewerbe";
+  leere Gruppen entfallen. Sortierung: SortOrder, danach das relevante Datum.
 
--- Datenquellen --
-  bewerbe       – Liste aller Bewerbe
-  bewerbsart    – Bewerbstyp-Definitionen (Rangliste, RoundRobin, KO etc.)
-
--- Layout --
-  Karten gruppiert in 3 Kategorien:
-    1. "Aktive Bewerbe"       – gestartet, noch nicht beendet
-    2. "Bevorstehende Bewerbe" – noch nicht gestartet
-    3. "Beendete Bewerbe"     – bereits abgeschlossen
-  Leere Kategorien werden ausgeblendet. Grid-Layout fuer die Karten.
+-- Daten und Aktualisierung --
+  Oeffentliche Endpoints `bewerbe` und `bewerbsart`. Die Seite abonniert die
+  Invalidierungstopics `bewerbe` und `bewerbsart` und laedt danach beide Tabellen
+  neu. Ein Timer aktualisiert exakt an EntryStart-, EntryDeadline-, Bewerbsbeginn-
+  und Bewerbsende-Grenzen; bei erneut sichtbarer Seite wird ebenfalls neu geladen.
+  Ladeoverlay, begrenzte Read-Retries und ein dauerhaftes Fehleroverlay mit Retry
+  garantieren einen sichtbaren Ladeabschluss.
 
 -- Bedienung --
-  Keine URL-Parameter.
-  Klick auf Karte navigiert je nach Bewerbstyp:
-    Rangliste   -> rangliste.html?id=X
-    RoundRobin  -> RoundRobin.html?id=X
-    KO-Turnier  -> bewerbsRaster.html?id=X
-    EntryList   -> entryList.html?id=X (wenn Eintragung offen)
-  "Eintragen"-Button nur fuer eingeloggte Benutzer sichtbar.
+  Keine URL-Parameter. Ranglisten fuehren zu `rangliste.html?id=...`. Gestartete
+  Bewerbe fuehren je nach RoundRobin-Flag zu `RoundRobin.html?id=...` oder
+  `bewerbsRaster.html?id=...`; vor Beginn fuehrt eine offene EntryList zu
+  `entryList.html?id=...`. IDs werden mit encodeURIComponent in lokale Ziel-URLs
+  eingesetzt; Karten ohne gueltiges Ziel bleiben nicht klickbar. Die Session ist
+  fuer das Anzeigen der Uebersicht nicht erforderlich; Ein-/Austragen prueft die
+  Zielseite serverseitig.
 
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-  loadingHelper.js (Retry-Logik)
-
--- Besonderheiten --
-  Sortierung nach SortOrder-Spalte, dann nach Datum.
-  Datumsformate: YYMMDD oder YYYYMMDD, optional mit -HHMM.
-  Eintragungszeitraum wird erzwungen – Buttons nur waehrend offener Periode.
+-- Darstellung und Sicherheit --
+  Datumswerte YYMMDD/YYMMDD-HHMM sowie die vierstelligen Varianten werden lokal
+  formatiert. Bezeichnungen und Datumszeilen entstehen als DOM-Knoten mit
+  textContent, nicht als ungeprueftes HTML. Nach erfolgreichem Erstaufbau wird im
+  Monitorbetrieb Ready gemeldet, bei Initialfehler Failed.

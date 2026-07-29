@@ -7,11 +7,35 @@
   <link rel="stylesheet" href="./CSS/styles.css" />
 </head>
 <body class="monitor-body">
-  <iframe id="monitor-frame"></iframe>
-  <div id="monitor-overlay">Warte auf Navigation...</div>
+  <div id="monitor-stage" class="monitor-stage" aria-label="Monitorinhalt"></div>
+
+  <div id="monitor-overlay" class="monitor-overlay monitor-overlay-empty" data-state="waiting" role="status" aria-live="polite">
+    Monitor-Sitzung wird geprüft...
+  </div>
+
+  <section id="monitor-enrollment" class="monitor-enrollment" aria-labelledby="monitor-enrollment-title" hidden>
+    <form id="monitor-enrollment-form" class="monitor-enrollment-card">
+      <p class="monitor-enrollment-kicker">Geräteanmeldung</p>
+      <h1 id="monitor-enrollment-title">Monitor provisionieren</h1>
+      <p>Den einmaligen Token aus der Monitorsteuerung eingeben. Er wird direkt übertragen und nicht lokal gespeichert.</p>
+      <label for="monitor-token-input">Gerätetoken</label>
+      <input
+        id="monitor-token-input"
+        name="token"
+        type="password"
+        minlength="32"
+        maxlength="128"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        required
+      />
+      <button id="monitor-enroll-submit" type="submit">Gerät anmelden</button>
+      <p id="monitor-enrollment-status" class="monitor-enrollment-status" role="status" aria-live="polite"></p>
+    </form>
+  </section>
 
   <script src="JS/global.js"></script>
-  <script type="module" src="JS/SDK.js"></script>
   <script type="module" src="JS/monitorPolling.js"></script>
 </body>
 </html>

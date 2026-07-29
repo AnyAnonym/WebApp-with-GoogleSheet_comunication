@@ -1,53 +1,32 @@
 ================================================================================
-RoundRobin-Gruppenphase — Gruppenspiel-Ansicht
+RoundRobin-Gruppenphase - Tabellen und Paarungslisten
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt die Gruppenphase eines Bewerbs mit Tabellen und Paarungslisten.
-  Kann als eigenstaendige Seite oder eingebettet in bewerbsRaster.js
-  verwendet werden.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/RoundRobin.html
   JS:   Frontend/JS/RoundRobin.js
   CSS:  Frontend/CSS/RoundRobin.css
+  Eigenstaendige Seite und dynamisch importierbare Ansicht fuer bewerbsRaster.js.
+  Gruppenkarten zeigen Rang, Spiele, Siege, Saetze und Games sowie Paarungen;
+  Einzel und Doppel werden unterstuetzt.
 
--- Datenquellen --
-  matches     – Alle Matches des Bewerbs
-  players     – Spielernamen
-  bewerbe     – Bewerbsdaten
-  bewerbsart  – Bewerbstyp (Spezifikum fuer Auf-/Abstieg)
+-- Daten und Aktualisierung --
+  Oeffentliche Endpoints und Topics `matches`, `players`, `bewerbe`, `bewerbsart`.
+  Jede Invalidierung laedt alle vier Quellen und den Bewerbsnamen neu; es gibt kein
+  lokales Matchpolling. Loading-/Fehleroverlay mit Retry liefern einen definierten
+  Abschluss. Fehlender Pflichtparameter oder fehlgeschlagener Erstaufbau meldet
+  Monitor-Failed, erfolgreich gerenderte Daten Monitor-Ready.
 
--- Layout --
-  CSS-Grid mit Gruppen-Karten.
-  Jede Karte enthaelt:
-    Tabelle: Rang, Name, Sp (Spiele), S (Siege), Saetze, Games
-    Paarungsliste darunter
-  Responsive:
-    <500px: 1 Spalte
-    Sonst:  2-4 Spalten je nach Gruppenanzahl
-    >1500px: groessere Schrift
+-- Bedienung und Regeln --
+  Pflichtparameter `?id=<bewerbId>`. Optional `?paarungslayout=0..5`: 0 volles
+  Datum, 1 Uhrzeit, 2 ohne Datum; bei 3/4/5 bleiben offene Paarungen voll datiert,
+  gespielte verwenden entsprechend voll/Uhrzeit/ohne. Spezifikum-Regeln wie
+  `1G(A)/2G(A)/3G(1)` markieren Aufsteiger; Vergleich: Siege, Satzdifferenz,
+  Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet.
 
--- Bedienung --
-  URL-Parameter:
-    ?id=<bewerbId> (PFLICHT)
-    ?paarungslayout=<0-5> (optional) – steuert Datumsanzeige:
-      0 = volles Datum bei allen
-      1 = nur Uhrzeit
-      2 = kein Datum
-      3-5 = unterschiedliche Regeln fuer gespielte vs. offene Paarungen
-
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-  loadingHelper.js
-  Kann von bewerbsRaster.js importiert werden.
-
--- Besonderheiten --
-  Auf-/Abstieg ueber Spezifikum-Spalte (Format: "1G(A)/2G(A)/3G(1)").
-  Gruppenuebergreifender Vergleich fuer "Beste des Ranges X"
-  (sortiert nach Siege > Satz-Differenz > Game-Differenz).
-  Doppel unterstuetzt (Team1 / Team2).
-  Deduplizierung: Match-Version gewinnt ueber preMatch-Version.
-  Gewinner fett, Verlierer ausgeblendet in Paarungen.
-  Schriftart: Roboto Flex condensed fuer Namen.
+-- Darstellung und Sicherheit --
+  Das Grid waehlt je nach Gruppenzahl eine bis vier Spalten und wird mobil
+  einspaltig. Alle externen Namen, Resultate, Gruppen- und Statistikwerte werden
+  vor dem begrenzten Template-Markup HTML-escaped. Externe Webfonts wurden
+  entfernt; lokale/systemeigene Schrift-Fallbacks gelten.

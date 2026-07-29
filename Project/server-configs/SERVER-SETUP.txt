@@ -1,328 +1,308 @@
 ================================================================================
-SERVER-SETUP.txt — Server-Infrastruktur (ePiber Self-Hosted)
+SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Stand: v3.1.11
-Erstellt: 21.07.2026
-Letzte Aenderung: 27.07.2026
+Stand: v4.0.0
+Letzte Aenderung: 29.07.2026
 
-Dieses Dokument beschreibt die Server-Infrastruktur des ePiber-Projekts:
-Verzeichnisstruktur, Ports, Ersteinrichtung, Firewall und Status-Pruefung.
-
-Fuer Dokumentation, Versionierung und Git siehe: Project/DokuVersGit.txt
+Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
+PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 
 
 ================================================================================
-1. PROJEKTSTRUKTUR
+1. ARCHITEKTUR UND DATEIEN
 ================================================================================
 
-Repository-Root (R:\ lokal, /srv/http/ePiber/<system>/ am Server):
+/srv/http/ePiber/<system>/
+|-- Frontend/                    Statische, von Caddy gelieferte Anwendung
+|   `-- JS/dataClient.js         Same-origin WebSocket-Client fuer /ws
+|-- Backend/
+|   |-- server.js               HTTP-Server, Start, Readiness und Shutdown
+|   |-- config.js               Validierte Laufzeit-, Origin- und Grenzwerte
+|   |-- authService.js          Session-, Rollen- und Passwortlogik
+|   |-- contracts.js            Maschinenpruefbare RPC-Vertraege
+|   |-- security.js             Cookies, Originpruefung, Limits und Hashing
+|   |-- errors.js               Einheitliche Fehlercodes und Support-IDs
+|   |-- validators.js           Eingabevalidierung
+|   |-- dataProvider.js         WebSocket v2, RPCs, Topics und Zugriffsrollen
+|   |-- sheetService.js         Serialisierte/idempotente Google-Sheets-Writes
+|   |-- tableSchemas.js         Pflichtspalten und Tabellenvalidierung
+|   |-- tableUtils.js           Header- und Tabellenhilfen
+|   |-- dataPoller.js           Adaptives Google-Sheets-Polling
+|   |-- dataStore.js            Cache, Revisionen, Datenalter und Fencing
+|   |-- courtPoller.js          Courtquelle, Score-Push und Legacy-ScoreLog
+|   |-- matchRules.js           Forderungs- und Ranglistenregeln
+|   |-- monitorBroker.js        Adressierte Monitorcommands und ACK-Status
+|   |-- stateStore.js           Court- und Monitor-Anwendungsstate
+|   |-- stateRepository.js      Persistenter SQLite-State
+|   |-- package.json            Kanonische Version, Node/npm-Anforderungen
+|   |-- package-lock.json       Versioniertes npm-Lockfile (Lockfile v3)
+|   |-- .env.example            Geheimnisfreie Vorlage
+|   `-- .env                    Lokale, nicht versionierte Konfiguration
+`-- Project/server-configs/     Diese Dokumente sowie Caddy/systemd-Vorlagen
 
-├── Frontend/                    # Caddy liefert aus (statische Dateien)
-│   ├── index.html
-│   ├── Bewerbe.html
-│   ├── bewerbsRaster.html
-│   ├── entryList.html
-│   ├── Matches1.html
-│   ├── monitor.html
-│   ├── navigator.html
-│   ├── players.html
-│   ├── rangliste.html
-│   ├── RoundRobin.html
-│   ├── scoreboard.html
-│   ├── court-score-test.html
-│   ├── JS/
-│   │   ├── SDK.js               ← NICHT im Git! (pro System unterschiedlich)
-│   │   ├── SDK.js.example       ← Vorlage im Git
-│   │   ├── dataClient.js
-│   │   ├── global.js            ← laedt APP_VERSION vom Backend per fetch
-│   │   ├── clock.js
-│   │   ├── footer.js
-│   │   ├── navbar.js
-│   │   ├── modals.js
-│   │   ├── loadingHelper.js
-│   │   └── ... (alle weiteren JS-Dateien)
-│   └── CSS/
-│       ├── styles.css
-│       ├── Matches1.css
-│       ├── RoundRobin.css
-│       └── scoreboard.css
-│
-├── Backend/                     # Node.js ePiber-Backend (WebSocket + Google Sheets)
-│   ├── server.js                ← HTTP-Endpoints: /health, /status, /version, /set-active
-│   ├── config.js                ← liest SHEET_ID, PORT, COURT_URL aus Umgebungsvariablen
-│   ├── dataStore.js
-│   ├── dataPoller.js
-│   ├── courtPoller.js
-│   ├── dataProvider.js
-│   ├── stateStore.js
-│   ├── package.json             ← Kanonische Versionsnummer
-│   ├── .env.example             ← Vorlage im Git
-│   └── .env                     ← NICHT im Git! (pro System unterschiedlich)
-│
-├── Project/                     # Dokumentation, Konfigvorlagen, Serverconfig
-│   ├── DokuVersGit.txt          ← Dokumentation, Versionierung und Git
-│   ├── ChangeLogs/              ← Zentrale und temporaere Aenderungsprotokolle
-│   │   ├── ChangeLog-main.txt
-│   │   └── ChangeLog-<Branchname>.txt
-│   ├── server-configs/          ← Server-Infrastruktur
-│   │   ├── SERVER-DOKU.txt      ← Verzeichnis-Index
-│   │   ├── SERVER-SETUP.txt     ← Diese Datei
-│   │   ├── Caddyfile            ← Vorlage fuer /etc/caddy/Caddyfile
-│   │   └── systemd/
-│   │       ├── epiber-piber.service
-│   │       ├── epiber-paj.service
-│   │       └── epiber-pk.service
-│   ├── software/                ← Aktuelle Software-Dokumentation
-│   │   ├── SOFTWARE-DOKU.txt    ← Verzeichnis-Index
-│   │   ├── DATENBANK.txt
-│   │   ├── ARCHITEKTUR.txt
-│   │   ├── ENDPOINTS.txt
-│   │   └── seiten/
-│   ├── 2do/                     ← Analysen und offene Aufgaben
-│   └── archive/                 ← Historische, nicht gepflegte Dokumente
-│
-└── .gitignore
+Eine `Frontend/JS/SDK.js` oder SDK-Vorlage existiert nicht mehr. `dataClient.js`
+bildet bei HTTPS aus der aktuellen Browser-Origin automatisch
+`wss://<gleicher-host[:port]>/ws`.
+
+HTTP-Routen:
+
+  GET /version                 Paketversion
+  GET /live                    Prozess lebt; beim Shutdown 503
+  GET /ready, GET /health      initialisierte und aktuelle Abhaengigkeiten
+  GET /status                  Detailstatus, nur mit Admin-Session
+  GET/POST/DELETE /api/session Sessionstatus, Login und Logout
+  POST /api/password           Eigenes Passwort
+  POST /api/password-reset     Reset mit einmaligem Nachweis
+  POST /api/admin/password-reset Admin erzeugt Reset-Nachweis
+  POST /api/admin/password     Admin setzt Passwort direkt
+  GET/POST/DELETE /api/monitor/session Monitor-Session
+  GET /ws                      WebSocket-v2-Upgrade und RPC/Subscriptions
+
+Die WebSocket-RPCs decken oeffentliche Daten/Scoreboards, authentifizierte
+Profile/Forderungen/EntryList, Operator-Court-/Navigatorsteuerung,
+Admin-Monitorverwaltung und Geraete-ACKs ab. Cookies, Rollen und Origins werden
+serverseitig geprueft; localStorage ist keine Rollen- oder Sessionautoritaet.
 
 
 ================================================================================
-2. SERVER-VERZEICHNISSTRUKTUR
+2. SYSTEME, TLS UND PORTS
 ================================================================================
 
-/srv/http/ePiber/
-├── piber/                       # LIVE (epiber.at)
-│   ├── Frontend/                ← Git checkout
-│   ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
-│   └── Project/                 ← Git checkout
-│
-├── paj/                         # TEST PAJ (epiber.at:8081)
-│   ├── Frontend/                ← Git checkout
-│   ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
-│   └── Project/                 ← Git checkout
-│
-└── pk/                          # TEST PK (epiber.at:8082)
-    ├── Frontend/                ← Git checkout
-    ├── Backend/                 ← Git checkout + npm install + .env + service-account.json
-    └── Project/                 ← Git checkout
+System | Verzeichnis              | Externe Origin              | Backend
+-------|--------------------------|------------------------------|----------------
+Live   | /srv/http/ePiber/piber   | https://epiber.at            | 127.0.0.1:8080
+PAJ    | /srv/http/ePiber/paj     | https://epiber.at:8081       | 127.0.0.1:8083
+PK     | /srv/http/ePiber/pk      | https://epiber.at:8082       | 127.0.0.1:8084
 
+WebSockets verwenden entsprechend `wss://epiber.at/ws`,
+`wss://epiber.at:8081/ws` und `wss://epiber.at:8082/ws`. HTTP oder `ws://` ist
+fuer keines der drei Systeme ein freigegebener Browsertransport.
 
-================================================================================
-3. PORT-ZUORDNUNG
-================================================================================
-
-System   | Caddy (extern)  | Backend (intern) | WebSocket-URL
----------|-----------------|------------------|---------------------------
-piber    | 443 (HTTPS)     | 8080             | wss://epiber.at/ws
-paj      | 8081 (HTTP)     | 8083             | ws://epiber.at:8081/ws
-pk       | 8082 (HTTP)     | 8084             | ws://epiber.at:8082/ws
-
-Hinweis: Nur das Live-System (piber) laeuft ueber HTTPS mit automatischem
-Let's Encrypt Zertifikat. Die Testsysteme PAJ und PK laufen ueber HTTP.
+Caddy terminiert TLS fuer alle Origins. Nur Caddy ist extern erreichbar. Die
+Firewall gibt TCP 80 und 443 fuer Zertifikat/Redirect sowie TCP 8081 und 8082
+fuer die HTTPS-Testsysteme frei. TCP 8080, 8083 und 8084 bleibt gesperrt. DNS
+`epiber.at` zeigt auf den Server; Zertifikate muessen den Host an allen drei
+externen Ports ohne Browserwarnung abdecken.
 
 
 ================================================================================
-4. ERSTEINRICHTUNG AUF DEM SERVER
+3. LAUFZEIT UND DEPENDENCIES
 ================================================================================
 
-4.1 Pakete installieren
------------------------
+Erforderlich sind Node.js 26.x und npm 12.0.1. Andere Node-Major-Versionen sind
+durch `engines` nicht freigegeben. Vor jeder Installation pruefen:
 
-  pacman -S nodejs npm caddy git
+  node --version
+  npm --version
+
+Im jeweiligen Backend-Verzeichnis reproduzierbar installieren und pruefen:
+
+  npm ci --omit=dev
+  npm run build
+  npm audit --omit=dev
+
+`npm ci` muss das versionierte `package-lock.json` unveraendert verwenden. Der
+Build fuehrt den statischen Check und die Tests aus. Fuer 4.0.0 muessen
+`package.json`, `package-lock.json` und die spaetere `/version`-Antwort exakt
+uebereinstimmen. Ein Branchsuffix oder eine geaenderte Lockdatei stoppt den
+Rollout.
 
 
-4.2 Benutzer anlegen
---------------------
+================================================================================
+4. SYSTEMBENUTZER, VERZEICHNISSE UND RECHTE
+================================================================================
+
+Einmalig als root:
 
   useradd -r -U -s /bin/nologin piber
   useradd -r -U -s /bin/nologin paj
   useradd -r -U -s /bin/nologin pk
+  install -d -o root -g root -m 0755 /srv/http/ePiber
+  install -d -o root -g root -m 0755 /srv/http/ePiber/piber
+  install -d -o root -g root -m 0755 /srv/http/ePiber/paj
+  install -d -o root -g root -m 0755 /srv/http/ePiber/pk
+
+Deployments erfolgen kontrolliert; Service-User benoetigen Leserechte auf Code
+und `.env`, aber keine Schreibrechte im Checkout. Caddy benoetigt Leserechte auf
+Frontend-Dateien und Suchrecht auf den Elternverzeichnissen. Schreibbarer
+Laufzeitstate liegt ausschliesslich im jeweiligen systemd-StateDirectory.
+
+Empfohlene lokale Rechte pro Instanz:
+
+  Checkout/Code:                 root:root, Verzeichnisse 0755, Dateien 0644
+  Backend/.env:                  root:<service-user>, 0640
+  Credential-Quelldatei:         root:root, 0600
+  /var/lib/epiber-<system>/:      <service-user>:<service-user>, 0700
+  state.sqlite:                  <service-user>:<service-user>, 0600
+
+`StateDirectory=epiber-<system>` legt `/var/lib/epiber-<system>` mit dem in der
+Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite` mit WAL, Foreign Keys,
+`synchronous=FULL` und Modus 0600. SQLite enthaelt Sessions, gehashte Tokens,
+Resetnachweise, Monitorgeraete, idempotente Operationen, Loginlimits, Court-/
+Navigator-State und Metadata-Intents. SQLite-Datei, `-wal` und `-shm` nur bei
+gestopptem Dienst gemeinsam sichern oder mit einem SQLite-Onlinebackup sichern.
 
 
-4.3 Verzeichnisse anlegen
---------------------------
+================================================================================
+5. UMGEBUNG, SHEETS UND CREDENTIALS
+================================================================================
 
-  mkdir -p /srv/http/ePiber/{piber,paj,pk}
-  chown piber:piber /srv/http/ePiber/piber
-  chown paj:paj     /srv/http/ePiber/paj
-  chown pk:pk       /srv/http/ePiber/pk
+Aus `Backend/.env.example` je System eine lokale `.env` erstellen. Verbindliche
+systemspezifische Werte:
 
+System | SHEET_ID                                            | PORT
+-------|-----------------------------------------------------|------
+Live   | 1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04        | 8080
+PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | 8083
+PK     | vor Deployment festlegen                            | 8084
 
-4.4 Git-Repository klonen (3x)
--------------------------------
+`COURT_URL` muss HTTPS verwenden. `GOOGLE_APPLICATION_CREDENTIALS`,
+`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID` und `STATE_FILE` nicht in `.env`
+duplizieren; diese Werte setzt die systemd-Unit verbindlich.
 
-  cd /srv/http/ePiber/piber
-  git clone <REPO_URL> .
+Credential-Quelldateien:
 
-  cd /srv/http/ePiber/paj
-  git clone <REPO_URL> .
+  Live: /srv/http/ePiber/piber/Backend/service-account.json
+  PAJ:  /srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json
+  PK:   /srv/http/ePiber/pk/Backend/service-account.json
 
-  cd /srv/http/ePiber/pk
-  git clone <REPO_URL> .
+Die Quelldateien root:root mit 0600 bereitstellen und nie in Git aufnehmen. Die
+Service-Accounts benoetigen Bearbeiterzugriff auf ihr jeweiliges Spreadsheet und
+Zugriff auf Values, BatchUpdate und Developer Metadata. `LoadCredential` macht
+dem Prozess eine geschuetzte Laufzeitkopie namens `google-service-account`
+zugaenglich; der private Quellpfad gehoert nicht in `.env`.
 
-  # Durch den Clone als root erzeugte Dateien den Service-Benutzern zuweisen:
-  chown -R piber:piber /srv/http/ePiber/piber
-  chown -R paj:paj     /srv/http/ePiber/paj
-  chown -R pk:pk       /srv/http/ePiber/pk
-
-
-4.5 Backend Dependencies installieren (3x)
--------------------------------------------
-
-  cd /srv/http/ePiber/piber/Backend && npm install --production
-  cd /srv/http/ePiber/paj/Backend   && npm install --production
-  cd /srv/http/ePiber/pk/Backend    && npm install --production
-
-
-4.6 Konfigurationsdateien erstellen (pro System!)
---------------------------------------------------
-
-Jedes System benoetigt eine eigene .env und SDK.js. Diese Dateien
-sind NICHT im Git und muessen manuell erstellt werden.
-
-  # --- LIVE (piber) ---
-
-  # Backend/.env:
-  SHEET_ID=1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04
-  PORT=8080
-  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
-  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/piber/Backend/service-account.json
-
-  # Frontend/JS/SDK.js:
-  export const BACKEND_WS_URL = "wss://epiber.at/ws";
-
-  # --- PAJ ---
-
-  # Backend/.env:
-  SHEET_ID=1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo
-  PORT=8083
-  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
-  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/paj/Backend/service-account.json
-
-  # Frontend/JS/SDK.js:
-  export const BACKEND_WS_URL = "ws://epiber.at:8081/ws";
-
-  # --- PK ---
-
-  # Backend/.env:
-  SHEET_ID=<PK-Sheet-ID>
-  PORT=8084
-  COURT_URL=https://scorer-tennis.b-cdn.net/json/24.voll.json
-  GOOGLE_APPLICATION_CREDENTIALS=/srv/http/ePiber/pk/Backend/service-account.json
-
-  # Frontend/JS/SDK.js:
-  export const BACKEND_WS_URL = "ws://epiber.at:8082/ws";
+Vor dem ersten Start muessen Tabellen und Spalten gemaess
+ROLLOUT-CHECKLIST.md migriert sein. `epiberRecord`-Developer-Metadaten stabilisieren
+Updates/Deletes von Personen-, Matches1- und EntryList-Zeilen. Sie sind keine
+zusaetzlichen Sheet-Spalten.
 
 
-4.7 Google-Service-Account-Schluessel
---------------------------------------
+================================================================================
+6. CADDY INSTALLIEREN UND VALIDIEREN
+================================================================================
 
-  Die JSON-Schluesseldatei vom Google Cloud Projekt "e-piber" herunterladen:
-    Google Cloud Console → IAM → Service Accounts → Keys → Add Key → JSON
+Die aktuelle Vorlage verwendet fuer jede Origin:
 
-  Die Datei als "service-account.json" in jedes Backend/ legen:
-    /srv/http/ePiber/piber/Backend/service-account.json
-    /srv/http/ePiber/paj/Backend/service-account.json
-    /srv/http/ePiber/pk/Backend/service-account.json
+  - CSP, nosniff, SAMEORIGIN, Referrer- und Permissions-Policy sowie COOP.
+  - `connect-src` nur fuer die jeweilige HTTPS/WSS-Origin.
+  - Proxy nur fuer `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`,
+    `/status` auf den jeweiligen Loopback-Port.
+  - Statische Auslieferung aus dem systemspezifischen `Frontend/` mit no-cache.
 
-  Besitzer und Rechte der lokalen Backend-Konfiguration setzen:
-    chown piber:piber /srv/http/ePiber/piber/Backend/{.env,service-account.json}
-    chown paj:paj     /srv/http/ePiber/paj/Backend/{.env,service-account.json}
-    chown pk:pk       /srv/http/ePiber/pk/Backend/{.env,service-account.json}
-    chmod 600 /srv/http/ePiber/{piber,paj,pk}/Backend/{.env,service-account.json}
+Als root installieren, vor Reload validieren und Zertifikate kontrollieren:
 
-  WICHTIG: Der Service Account braucht Bearbeiter-Zugriff auf alle
-  3 Google Spreadsheets!
-
-
-4.8 Caddyfile installieren
----------------------------
-
-  cp /srv/http/ePiber/piber/Project/server-configs/Caddyfile /etc/caddy/Caddyfile
+  install -o root -g root -m 0644 Project/server-configs/Caddyfile /etc/caddy/Caddyfile
+  caddy validate --config /etc/caddy/Caddyfile
   systemctl enable --now caddy
-
-
-4.9 Systemd-Services installieren
-----------------------------------
-
-  cp /srv/http/ePiber/piber/Project/server-configs/systemd/*.service /etc/systemd/system/
-  systemctl daemon-reload
-  systemctl enable --now epiber-piber
-  systemctl enable --now epiber-paj
-  systemctl enable --now epiber-pk
-
-
-4.10 Firewall oeffnen
----------------------
-
-  Ports 443 (HTTPS), 80 (HTTP Redirect), 8081 und 8082 muessen offen sein.
-
-  # Bei iptables:
-  iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-  iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-  iptables -A INPUT -p tcp --dport 8081 -j ACCEPT
-  iptables -A INPUT -p tcp --dport 8082 -j ACCEPT
-
-  # Bei firewalld:
-  firewall-cmd --permanent --add-port=80/tcp
-  firewall-cmd --permanent --add-port=443/tcp
-  firewall-cmd --permanent --add-port=8081/tcp
-  firewall-cmd --permanent --add-port=8082/tcp
-  firewall-cmd --reload
-
-
-4.11 DNS
---------
-
-  A-Record: epiber.at → <Server-IP>
-
-  Caddy holt sich automatisch ein Let's Encrypt Zertifikat, sobald der
-  A-Record korrekt auf den Server zeigt und Port 80/443 erreichbar ist.
-
-
-================================================================================
-5. KONFIGURATIONSDATEIEN-UEBERSICHT
-================================================================================
-
-Die folgenden Dateien muessen pro System manuell erstellt werden und sind
-NICHT im Git:
-
-  Backend/.env                    → Sheet-ID, Port, Court-URL, Credentials-Pfad
-  Backend/service-account.json    → Google-Service-Account-Schluessel (JSON)
-  Frontend/JS/SDK.js              → WebSocket-URL (BACKEND_WS_URL)
-
-Vorlagen im Git:
-  Backend/.env.example
-  Frontend/JS/SDK.js.example
-
-
-================================================================================
-6. STATUS PRUEFEN
-================================================================================
-
-  # Systemd-Services
-  systemctl status epiber-piber
-  systemctl status epiber-paj
-  systemctl status epiber-pk
-
-  # Backend Health-Check (inkl. Version)
-  curl https://epiber.at/health
-  curl http://epiber.at:8081/health
-  curl http://epiber.at:8082/health
-
-  # Nur Versionsnummer
-  curl https://epiber.at/version
-  curl http://epiber.at:8081/version
-  curl http://epiber.at:8082/version
-
-  # Backend Detailstatus
-  curl https://epiber.at/status
-  curl http://epiber.at:8081/status
-  curl http://epiber.at:8082/status
-
-  # Caddy
+  systemctl reload caddy
   systemctl status caddy
+  journalctl -u caddy --since today
 
-  # Logs
-  journalctl -u epiber-piber -f
+Unbekannte Backendpfade duerfen nicht am Node-Prozess ankommen. Statische Pfade
+duerfen keine `.env`, Credentials, SQLite-Dateien oder Backendquellen ausliefern,
+weil jeder Caddy-Root exakt auf das jeweilige `Frontend/` zeigt.
+
+
+================================================================================
+7. SYSTEMD INSTALLIEREN UND VALIDIEREN
+================================================================================
+
+Die drei Vorlagen setzen je System:
+
+  User/WorkingDirectory/EnvironmentFile  systemspezifisch
+  INSTANCE_ID                            piber, paj oder pk
+  LISTEN_HOST                            127.0.0.1
+  PUBLIC_ORIGIN                          jeweilige HTTPS-Origin
+  STATE_FILE                             /var/lib/epiber-<system>/state.sqlite
+  GOOGLE_APPLICATION_CREDENTIALS         %d/google-service-account
+  LoadCredential                         root-kontrollierte Quelldatei
+  SHUTDOWN_GRACE_MS                      90000
+  KillSignal/TimeoutStopSec              SIGTERM / 95 Sekunden
+  StateDirectory/Mode                    epiber-<system> / 0700
+  UMask                                  0077
+
+Sandbox: NoNewPrivileges, PrivateTmp, PrivateDevices, ProtectSystem=strict,
+ProtectHome sowie Kernel-, ControlGroup- und Clock-Schutz; keine Capabilities,
+keine SUID/SGID-, Realtime-, Namespace- oder fremde Architekturfreigabe; nur
+AF_UNIX, AF_INET und AF_INET6.
+
+Vorlagen aus einem bestaetigten 4.0.0-Checkout installieren:
+
+  install -o root -g root -m 0644 Project/server-configs/systemd/*.service /etc/systemd/system/
+  systemd-analyze verify /etc/systemd/system/epiber-piber.service
+  systemd-analyze verify /etc/systemd/system/epiber-paj.service
+  systemd-analyze verify /etc/systemd/system/epiber-pk.service
+  systemctl daemon-reload
+  systemctl enable epiber-piber epiber-paj epiber-pk
+
+Nicht alle Systeme bei einer Versionspromotion gleichzeitig starten. Die
+Reihenfolge PAJ, PK, Live einhalten. Beim Stop sendet systemd SIGTERM. Der Server
+nimmt keine neue Arbeit an, setzt Liveness auf stopping, stoppt Poller, schliesst
+WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst SQLite. Nach 95
+Sekunden greift systemd ein; ein Timeout oder Exitcode ungleich null ist ein
+fehlgeschlagener Rollout und kein erfolgreicher Stop.
+
+
+================================================================================
+8. START, HEALTH UND STATUS
+================================================================================
+
+Jeweils nach Migration, Installation und Build starten, zunaechst nur PAJ:
+
+  systemctl restart epiber-paj
+  systemctl status epiber-paj
+  journalctl -u epiber-paj --since "10 minutes ago"
+
+Oeffentliche Checks pro Origin:
+
+  curl --fail --show-error https://epiber.at:8081/version
+  curl --fail --show-error https://epiber.at:8081/live
+  curl --fail --show-error https://epiber.at:8081/ready
+  curl --fail --show-error https://epiber.at:8081/health
+
+Fuer PK Port 8082, fuer Live keinen Port angeben. Erwartung:
+
+  /version    HTTP 200 und exakt {"version":"4.0.0"}
+  /live       HTTP 200, status ok, Version 4.0.0
+  /ready      HTTP 200, status ready, Version 4.0.0
+  /health     wie /ready; waehrend Initialisierung/Fehler HTTP 503
+
+`/status` ist absichtlich admin-geschuetzt. Es ist im Browser mit einer echten
+Admin-Session oder mit einem kontrolliert bereitgestellten Sessioncookie zu
+pruefen; ein anonymer Curl muss 401 liefern. Der Detailstatus muss Readiness,
+Poller, Tabellenalter/-fehler, Courtquelle, WebSocketprovider, Monitore,
+Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
+zeigen und darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
+akteursbezogen ueber den RPC `operationStatus` abgefragt. Es gibt im bestaetigten
+dreispaltigen ScoreLog-Vertrag keinen `scoreLogPending`-Status.
+
+Zusaetzliche Betriebschecks:
+
+  ss -ltnp
+  systemctl status caddy epiber-paj epiber-pk epiber-piber
   journalctl -u epiber-paj -f
-  journalctl -u epiber-pk -f
-  journalctl -u caddy -f
+
+Die Node-Ports duerfen nur auf 127.0.0.1 lauschen. Browser-DevTools muessen fuer
+alle Systeme HTTPS-Dokumente, einen WSS-Upgrade auf same-origin `/ws`, Welcome v2
+und keine Mixed-Content-, CSP-, Zertifikats- oder Originfehler zeigen.
+
+
+================================================================================
+9. ROLLOUT UND ROLLBACK
+================================================================================
+
+Die vollstaendige fachliche und technische Abnahme steht in
+ROLLOUT-CHECKLIST.md. Kurzregel:
+
+  1. Sheets und SQLite sichern, Schema/Credentials pruefen.
+  2. Exakten Release-Commit und Lockfile auf PAJ installieren und abnehmen.
+  3. Exakt denselben Commit auf PK installieren und Smoke-/Integrationscheck.
+  4. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.
+
+Vor jeder Stufe den vorherigen Commit/Release, `.env`, Credential-Zuordnung,
+Caddy-/systemd-Version und konsistente Backups festhalten. Rollback bedeutet
+Code und Vorlagen auf den dokumentierten vorherigen Stand zurueckzusetzen und,
+nur wenn das neue Schema oder der neue State nicht abwaertskompatibel ist, die
+zugehoerigen konsistenten Sheets-/SQLite-Backups wiederherzustellen. Niemals nur
+eine einzelne SQLite-WAL-Datei oder ein einzelnes Sheet-Tab zurueckspielen.

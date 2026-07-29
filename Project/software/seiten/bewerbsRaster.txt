@@ -1,42 +1,31 @@
 ================================================================================
-Turnierraster / KO-Baumansicht — Bracket-Darstellung eines KO-Turniers
+Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt den KO-Turnierbaum (Bracket) fuer einen bestimmten Bewerb.
-  Runden werden als Spalten dargestellt, Verbindungslinien via SVG.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/bewerbsRaster.html
-  JS:   Frontend/JS/bewerbsRaster.js
-  CSS:  (kein eigenes CSS)
+  JS:   Frontend/JS/bewerbsRaster.js, bei Gruppenansicht zusaetzlich RoundRobin.js
+  Zeigt dynamische Runden als CSS-Grid mit SVG-Verbindungen. Rastergroesse und
+  RoundRobin-Faehigkeit stammen aus der Bewerbsart; breite Raster sind horizontal
+  scrollbar und Spalten werden anhand von Namen und Ergebnissen bemessen.
 
--- Datenquellen --
-  matches     – Alle Matches des Bewerbs
-  players     – Spielerdaten
-  bewerbe     – Bewerbsdaten
-  bewerbsart  – Rasterfunktion (Draw-Groesse), RoundRobin-Flag
-
--- Layout --
-  CSS-Grid-Bracket mit 5 Spalten fuer Runden: R1, AF, VF, HF, F.
-  Dynamische Zeilenanzahl basierend auf Bewerbsart.Rasterfunktion.
-  SVG-Verbindungslinien zwischen den Slots.
-  Horizontal scrollbar bei grossem Bracket.
+-- Daten und Aktualisierung --
+  Oeffentliche Endpoints `matches`, `players`, `bewerbe` und `bewerbsart`.
+  Invalidierungen aller vier gleichnamigen Topics aktualisieren die aktive
+  Bracket- oder Gruppenansicht. Der obsolete Zwei-Sekunden-Timer existiert nicht
+  mehr. Loading-/Fehleroverlay mit Retry schliessen jeden Ladeversuch sichtbar ab;
+  ein erfolgreicher Erstaufbau meldet Monitor-Ready, Fehler oder fehlende ID
+  Monitor-Failed.
 
 -- Bedienung --
-  URL-Parameter: ?id=<bewerbId> (PFLICHT)
-  Zeigt das Bracket fuer den angegebenen Bewerb.
-  Klick auf Spielername oeffnet Profil-Modal.
-  Umschaltung zur RoundRobin-Ansicht moeglich, wenn bewerbsart.roundRobin=1.
+  Pflichtparameter `?id=<bewerbId>`, optional `?paarungslayout=<0-5>` fuer die
+  eingebettete RoundRobin-Ansicht. Bei RoundRobin-Bewerben kann zwischen Raster
+  und Gruppe gewechselt werden. Klick auf einen Spieler oeffnet das gemeinsame
+  Profilmodal: anonym nur ID/Name, angemeldet zusaetzlich E-Mail, Telefon und
+  Geburtsdatum; nur Admins sehen Reset-Code-Erstellung und direktes Passwortsetzen.
 
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-  loadingHelper.js
-
--- Besonderheiten --
-  Dynamische Spaltenbreiten (breitester Name+Score wird gemessen).
-  Unterstuetzt Doppel-Ansicht (Name1 / Name2).
-  Sonder-Tags: [wo], [ret], [gesetzt], BYE – jeweils speziell dargestellt.
-  Gewinner gruen hervorgehoben.
-  Polling alle 2 Sekunden fuer automatische Bracket-Aktualisierung.
+-- Darstellung und Sicherheit --
+  Einzel/Doppel, BYE/PRE, [wo], [ret], [gesetzt], Ergebnisse und Gewinner werden
+  speziell dargestellt. Namen, Resultate, Meldungen und Badges entstehen aus
+  sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes HTML eingesetzt.

@@ -148,7 +148,7 @@
 .rr-pairing-teams {
   flex: 1;
   white-space: nowrap;
-  font-family: "Roboto Flex", sans-serif;
+  font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
   font-stretch: 75%;
 }
 

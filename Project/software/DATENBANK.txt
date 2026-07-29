@@ -1,253 +1,292 @@
-==================================================================================
-  DATENBANK.txt — Spreadsheet-Schema (Google Sheets)
-  Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.1.11
-==================================================================================
+================================================================================
+  DATENBANK.txt - Google-Sheets- und SQLite-Datenhaltung
+  Projekt: ePiber / ASKOE Piberbach Tennis
+  Stand: v4.0.0
+================================================================================
+
+Dieses Dokument beschreibt die beiden produktiven Datenhaltungen. Google Sheets
+enthaelt Fach- und Stammdaten. SQLite enthaelt lokalen, sicherheitsrelevanten und
+technischen Laufzeitstate. Spaltennamen werden im Backend getrimmt und fuer den
+Vergleich kleingeschrieben. Zusaetzliche Sheet-Spalten duerfen vorhanden sein;
+oeffentliche Antworten enthalten nur explizit freigegebene Projektionen.
 
 
-Dieses Dokument beschreibt das im Projekt verwendete und dokumentierte Schema
-des Google Spreadsheets, das als zentrale Datenbank fuer das ePiber-System
-dient. Die Tabellen werden mit den fuer die Software relevanten Spalten,
-Formaten und Konventionen dokumentiert.
+================================================================================
+  1. GOOGLE SHEETS: GELADENE TABELLEN UND PFLICHTSPALTEN
+================================================================================
+
+Der Poller laedt sieben Tabellen. Schemafehler oder veraltete Daten machen die
+betroffene Tabelle fuer Fachoperationen unverfuegbar.
+
+  Interner Name   | Sheet-Tab       | Kategorie | Pflichtspalten
+  ----------------|-----------------|-----------|------------------------------
+  players         | Personen        | slow      | ID, Vorname, Nachname,
+                  |                 |           | E-Mail, PasswdHash, Aktiv, Role
+  bewerbe         | Bewerb          | slow      | ID, Bezeichnung, BewerbsartID
+  bewerbsart      | Bewerbsart      | slow      | ID, Bezeichnung
+  matches1        | Matches1        | fast      | ID, MatchDate, ForderungDate,
+                  |                 |           | BewerbID, BewerbRunde,
+                  |                 |           | Spieler1ID, Spieler3ID, Ergebnis
+  rlPlatzierung   | RL-Platzierung  | fast      | BewerbID, PersonID, Rang
+  navigator       | Navigator       | slow      | Name, Ziel
+  entryList       | EntryList       | fast      | ID, BewerbID, PersonenID,
+                  |                 |           | Entrydate
+
+Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
+Format `[A-Za-z0-9_.:-]{1,64}`. Personen-E-Mail-Adressen muessen, soweit gesetzt,
+ohne Beachtung der Gross-/Kleinschreibung eindeutig sein. Personen darf nicht
+leer sein.
 
 
-==================================================================================
-  1. TABELLE: Matches1
-==================================================================================
+================================================================================
+  2. MATCHES1
+================================================================================
 
-Enthaelt ALLE Matches (offene + gespielte) in einer einzigen Tabelle.
+Matches1 enthaelt offene und gespielte Matches.
 
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  Ignore          | "1" = Match wird in Anzeigen und Berechnungen ignoriert
-                  | leer = aktiv
-  ID              | Eindeutige Match-ID
-  MatchDate       | Format: YYMMDD-HHMM (z.B. 260518-1700)
-  ForderungDate   | Zeitstempel der Forderung, selbes Format
-  Dauer           | (reserviert) Match-Dauer, noch nicht verwendet
-  BewerbID        | Referenz auf die Bewerb-Tabelle (ID)
-  BewerbRunde     | Runden-Codierung:
-                  |   R1, R2, R3         = Runden
-                  |   AF                 = Achtelfinale
-                  |   VF                 = Viertelfinale
-                  |   HF                 = Halbfinale
-                  |   F                  = Finale
-                  |   G1, G2             = Gruppen
-                  | Kombiniert mit Partie: z.B. AF-P3 = 3. Match des
-                  | Achtelfinales
-  MatchtypID      | Match-Typ fuer Nicht-Bewerbs-Matches (Referenz auf
-                  | MatchTyp-Tabelle)
-  Spieler1ID      | Spieler 1 (Einzel: Gegner von Spieler3)
-                  | Suffixe: [wo] = Walkover, [ret] = Retired
-                  | BYE = spielfrei
-  Spieler2ID      | Spieler 2 (nur Doppel, Partner von Spieler1)
-  Spieler3ID      | Spieler 3 (Einzel: Gegner von Spieler1)
-                  | Selbe Suffixe wie Spieler1ID
-  Spieler4ID      | Spieler 4 (nur Doppel, Partner von Spieler3)
-  Ergebnis        | Ergebnis-Format: 6-3/6-4 (Saetze getrennt durch /)
-                  | Tiebreak: 7-6(5)/6-4
-                  | Bei [wo]-Matches nicht erforderlich
-  PTN-Wertung     | (reserviert) Skill-Rating, noch nicht verwendet
-  Bemerkung       | Freitext-Anmerkungen
----------------------------------------------------------------------------
+  Spalte          | Vertrag
+  ----------------|-------------------------------------------------------------
+  Ignore          | "1" blendet den Datensatz in fachlichen Anzeigen aus.
+  ID              | Eindeutige Match-ID. Neue Forderungen erhalten eine aus
+                  | Principal und operationId stabil abgeleitete ID `m-...`.
+  MatchDate       | Geplanter Termin, ueblich `YYMMDD-HHMM`.
+  ForderungDate   | Serverzeit Europe/Vienna im Format `YYMMDD-HHMM`.
+  Dauer           | Reservierte Matchdauer.
+  BewerbID        | Referenz auf Bewerb.ID.
+  BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
+  MatchtypID      | Optionale Referenz fuer Nicht-Bewerbs-Matches.
+  Spieler1ID      | Erste Heim-/Gegner-ID; Suffixe wie [wo] oder [ret] sind
+                  | in Altdaten moeglich.
+  Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
+  Spieler3ID      | Erste Gast-/Forderer-ID.
+  Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
+  Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
+  PTN-Wertung     | Reserviert.
+  Bemerkung       | Freitext.
 
-Gewinner-Logik:
-  Der Gewinner wird NICHT in der Datenbank gespeichert, sondern wird aus
-  dem Ergebnis berechnet. Es werden die gewonnenen Saetze gezaehlt.
-    - Spieler1-Seite = linke Zahl jedes Satzes
-    - Spieler3-Seite = rechte Zahl jedes Satzes
-
-Ignore-Logik:
-  Zeilen mit Ignore="1" werden in allen Abfragen herausgefiltert.
-  BYE-Matches werden vollstaendig gefiltert.
-
-Match-Status (implizit, nicht als Spalte gespeichert):
-  - Kein Ergebnis + kein [wo]  = offen
-  - Mit Ergebnis               = gespielt
-  - [wo]                       = gespielt (ohne Ergebnis)
-  - Kein MatchDate             = Datum noch nicht festgelegt
-
-Hinweis fuer Code:
-  Spaltennamen werden im Code lowercase verglichen.
-  BewerbRunde -> "bewerbrunde" (NICHT "bewerbsrunde").
+`Spieler2ID` und `Spieler4ID` bleiben optional. Der Gewinner wird aus Ergebnis
+und Walkover-Kennzeichnung berechnet, nicht in einer eigenen Spalte gespeichert.
+Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
+Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
 
 
-==================================================================================
-  2. TABELLE: Personen
-==================================================================================
+================================================================================
+  3. PERSONEN, ROLLEN, PASSWOERTER UND PROJEKTIONEN
+================================================================================
 
-Stammdaten aller Spieler.
+  Spalte             | Vertrag
+  -------------------|----------------------------------------------------------
+  ID                 | Eindeutige Personen-ID und serverseitige Principal-ID.
+  Vorname            | Vorname.
+  Nachname           | Nachname.
+  E-Mail             | Loginname; normalisiert kleingeschrieben und eindeutig.
+  PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
+                     | 64-stellige SHA-256-Werte lesbar.
+  KennwortVergessen  | Legacy-Feld; wird bei Passwortwrites geleert, ist aber
+                     | kein Berechtigungsnachweis fuer den neuen Resetablauf.
+  TelefonMobil       | Telefonnummer.
+  GeburtsDatum       | Geburtsdatum.
+  Geschlecht         | Fachwert, historisch 1/2.
+  Aktiv              | "1" = aktiv. Inaktive Personen koennen sich nicht
+                     | anmelden und erscheinen nicht im Mitgliederverzeichnis.
+  Role               | Pflichtspalte: player, operator oder admin.
 
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  ID              | Eindeutige Personen-ID
-  Vorname         | Vorname des Spielers
-  Nachname        | Nachname des Spielers
-  E-Mail          | E-Mail-Adresse
-  PasswdHash      | Passwort-Hash (SHA-256)
-  KennwortVergessen | "x" = Passwort-Reset durch Administrator freigegeben
-  TelefonMobil    | Telefonnummer
-  Geschlecht      | 1 = maennlich, 2 = weiblich
-  Aktiv           | "1" = aktiv und in Spielerlisten sichtbar
----------------------------------------------------------------------------
+Role-Vertrag:
+  - Die erlaubten normalisierten Werte sind `player`, `operator` und `admin`.
+  - Ein leerer Wert wird technisch als `player` behandelt. Beim Rollout muss
+    dennoch jede Zeile explizit migriert werden; mindestens ein aktiver Admin
+    ist erforderlich.
+  - Ein nichtleerer ungueltiger Wert erhaelt ebenfalls nur `player`-Rechte. Pro
+    normalisiertem ungueltigem Wert wird pro Backendprozess einmal gewarnt.
 
+Passwort-Vertrag:
+  - Der Browser uebertraegt nur den 64-stelligen SHA-256-Credential, niemals das
+    Klartextpasswort. Der SHA-256-Wert ist trotzdem ein Passwortaequivalent und
+    darf nur ueber HTTPS transportiert werden.
+  - Das Backend speichert neue Werte mit scrypt N=16384, r=8, p=1, 32-Byte-Key
+    und zufaelligem 16-Byte-Salt.
+  - Ein erfolgreicher Login mit einem alten SHA-256-Sheetwert migriert diesen
+    per Compare-and-set zu scrypt. Unbekannte Benutzer durchlaufen eine
+    Dummy-Verifikation gegen Timing-/Enumerationseffekte.
 
-==================================================================================
-  3. TABELLE: Bewerb
-==================================================================================
+Personenprojektionen:
+  - `players` ist oeffentlich: ID, Vorname, Nachname, Aktiv.
+  - `publicProfile` ist anonym: ID, Vorname, Nachname.
+  - `publicProfile` ist bei angemeldeter Session ein Mitgliederprofil: zusaetzlich
+    E-Mail, Telefon und Geburtsdatum.
+  - `memberDirectory` ist loginpflichtig: aktive Personen mit ID, Namen,
+    TelefonMobil und Aktiv.
+  - `myProfile` und die HTTP-Sessionantwort sind privat: ID, Namen, E-Mail,
+    Telefon, Geburtsdatum, Geschlecht und Rolle; nie PasswdHash.
+  - Nur die Admin-Oberflaeche darf fuer fremde Profile Resetnachweise erzeugen
+    oder ein Passwort direkt setzen. Diese Aktionen erweitern nicht die
+    Personenprojektion um Hashes oder Geheimnisse.
 
-Bewerbe (Turniere, Ranglisten etc.).
-
-Spalten:
----------------------------------------------------------------------------
-  Spalte              | Beschreibung
----------------------------------------------------------------------------
-  ID                  | Eindeutige Bewerb-ID
-  BewerbsartID        | Referenz auf Bewerbsart-Tabelle
-  MatchtypID Standard | Standard-Matchtyp fuer diesen Bewerb
-  Bezeichnung         | Name des Bewerbs (z.B. "Vereinsrangliste 2026")
-  Entrystart          | Beginn der Anmeldefrist
-  Entrydeadline       | Ende der Anmeldefrist
-  Bewerbsbeginn       | Startdatum des Bewerbs
-  Bewerbsende         | Enddatum des Bewerbs
-  Geschlecht          | 1 = Herren, 2 = Damen, 1,2 = Mixed
-  Alterskategorie     | z.B. 0+ = alle, 60+ = Senioren
-  SortOrder           | Optionale Ganzzahl; kleinere Werte werden zuerst
-                      | angezeigt, leere Werte nach allen Zahlen
----------------------------------------------------------------------------
-
-
-==================================================================================
-  4. TABELLE: Bewerbsart
-==================================================================================
-
-Typen von Bewerben.
-
-Spalten:
----------------------------------------------------------------------------
-  Spalte              | Beschreibung
----------------------------------------------------------------------------
-  ID                  | Eindeutige Bewerbsart-ID
-  Bezeichnung         | Name der Bewerbsart
-                      | z.B. "Rangliste", "KO-Turnier"
-  EntryListAvailable  | "1" = hat Meldeliste
-  Rasterfunktion      | Spieleranzahl fuer Turnierraster
-                      | z.B. 4, 8, 16
-  RoundRobin          | "1" = Gruppenformat
-  Spezifikum          | Aufstiegsregeln
-                      | z.B. "1G(A)/2G(A)/3G(1)"
----------------------------------------------------------------------------
+Beim eigenen Passwortwechsel, Reset und direkten Admin-Passwortsetzen werden
+alle Sessions der Zielperson vorsorglich vor dem Sheet-Write widerrufen. Beim
+eigenen erfolgreichen Wechsel wird danach genau eine neue Session erstellt.
+Schlaegt ein direkter Admin-Write fehl oder bleibt sein Ausgang unklar, bleiben
+die Ziel-Sessions widerrufen; das Sheetpasswort kann dabei unveraendert sein.
 
 
-==================================================================================
-  5. TABELLE: EntryList
-==================================================================================
+================================================================================
+  4. BEWERB, BEWERBSART, RL-PLATZIERUNG UND NAVIGATOR
+================================================================================
 
-Anmeldungen zu Bewerben.
+Bewerb:
+  ID, BewerbsartID, MatchtypID Standard, Bezeichnung, Entrystart,
+  Entrydeadline, Bewerbsbeginn, Bewerbsende, Geschlecht, Alterskategorie und
+  SortOrder. Datumsgrenzen akzeptieren `YYMMDD`, `YYYYMMDD` und optional
+  `-HHMM`. Kleinere numerische SortOrder-Werte stehen zuerst.
 
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  ID              | Eindeutige Anmeldungs-ID
-  BewerbID        | Referenz auf Bewerb-Tabelle
-  PersonenID      | Referenz auf Personen-Tabelle
-  Datum           | Anmeldedatum
-  GebuehrBezahlt  | Zahlungsstatus
----------------------------------------------------------------------------
+Bewerbsart:
+  ID, Bezeichnung, EntryListAvailable, Rasterfunktion, RoundRobin und Spezifikum.
+  Die Flags verwenden historisch "1" fuer aktiv.
 
+RL-Platzierung:
+  Optional ID, BewerbID, PersonID und Rang. Ranglistenwrites pruefen die aktuelle
+  Mitgliedschaft und den aktuellen Rang serverseitig.
 
-==================================================================================
-  6. TABELLE: RL-Platzierung
-==================================================================================
-
-Ranglistenplatzierungen.
-
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  BewerbID        | Referenz auf Bewerb-Tabelle
-  Rang            | Platzierung (Nummer)
-  PersonID        | Referenz auf Personen-Tabelle
----------------------------------------------------------------------------
+Navigator:
+  Optional ID, Name, Ziel und Profil. Profil ist standardmaessig "1". Ziele
+  werden serverseitig zu einer erlaubten lokalen Monitoraktion kompiliert;
+  ungueltige Ziele werden als deaktiviert geliefert.
 
 
-==================================================================================
-  7. TABELLE: Navigator
-==================================================================================
+================================================================================
+  5. ENTRYLIST UND ENTRYDATE
+================================================================================
 
-Steuerungs-Buttons fuer den Monitor/Navigator.
+  Spalte          | Vertrag
+  ----------------|-------------------------------------------------------------
+  ID              | Eindeutige Anmeldung; neue IDs sind stabil aus Principal und
+                  | operationId abgeleitet und beginnen mit `e-`.
+  BewerbID        | Referenz auf Bewerb.ID.
+  PersonenID      | Wird ausschliesslich aus der angemeldeten Session gesetzt.
+  Entrydate       | Kanonischer Spaltenname. Serverzeit Europe/Vienna im Format
+                  | `YYMMDD-HHMM`.
+  GebuehrBezahlt  | Optionaler fachlicher Zahlungsstatus; nicht oeffentlich
+                  | projiziert.
 
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  ID              | Eindeutige Navigator-ID
-  Name            | Anzeigename des Buttons
-  Ziel            | URL oder Overlay-Befehl:
-                  |   OL-Platz-1    = Overlay Platz 1
-                  |   OL-Platz-2    = Overlay Platz 2
-                  |   OL-Platzaktivierung
-                  |   OL-Ergebnis
-  Profil          | Gruppierung (Standard: 1)
----------------------------------------------------------------------------
-
-
-==================================================================================
-  8. TABELLE: MatchTyp
-==================================================================================
-
-Matchtypen.
-
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  ID              | Eindeutige Matchtyp-ID
-  Bezeichnung     | Name des Matchtyps
----------------------------------------------------------------------------
+`Datum` ist kein Alias und erfuellt das Schema nicht. Add/Remove pruefen Bewerb,
+aktive Person und Anmeldefrist. Wiederholtes Add kann `alreadyPresent` liefern;
+wiederholtes Remove ist ein erfolgreicher No-op und darf keine Nachbarzeile
+loeschen.
 
 
-==================================================================================
-  9. TABELLE: Logging
-==================================================================================
+================================================================================
+  6. STABILE SHEET-ZEILEN UND IDEMPOTENZ
+================================================================================
 
-Audit-Log fuer Systemereignisse.
-ACHTUNG: Diese Tabelle hat KEINE Kopfzeile.
+Personen-, Matches1- und EntryList-Zeilen werden vor zeilenbezogenen Updates
+oder Deletes ueber ID und Google-Developer-Metadaten neu aufgeloest. Der
+Metadatenschluessel ist `epiberRecord`, der Wert `<internerTabellenname>:<ID>`,
+die Sichtbarkeit DOCUMENT und die Position genau eine ROW.
 
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  Timestamp       | Zeitstempel des Eintrags
-  Source           | Quelle des Eintrags
-  Entry           | Inhalt / Beschreibung des Ereignisses
----------------------------------------------------------------------------
+Anforderungen:
+  - Fach-IDs und epiberRecord-Zuordnung muessen eindeutig bleiben.
+  - Doppelte Metadaten an derselben Zeile koennen bereinigt werden; Zuordnungen
+    zu verschiedenen Zeilen sind ein Schemafehler.
+  - Noch unklare Metadatenerstellungen stehen persistent als
+    `record-metadata-intent:*` in SQLite und duerfen nicht blind wiederholt
+    werden.
+  - Fachwrites mit operationId sind pro Actor und UUID gebunden. Gleiche UUID
+    mit anderem Endpoint oder Payload ergibt `OPERATION_ID_CONFLICT`.
+  - Eigene Append-IDs erlauben Bestaetigungsreads. Unklarer Ausgang wird als
+    `unknown` gespeichert; Wiederholung fuehrt nur Recovery/Bestaetigung aus.
 
-
-==================================================================================
-  10. TABELLE: ScoreLog
-==================================================================================
-
-Protokoll der Live-Score-Aenderungen.
-ACHTUNG: Diese Tabelle hat KEINE Kopfzeile.
-
-Spalten:
----------------------------------------------------------------------------
-  Spalte          | Beschreibung
----------------------------------------------------------------------------
-  Timestamp       | Zeitstempel der Score-Aenderung
-  PlatzNr         | Platznummer
-  Score           | Score-Format: Satz1/Satz2/Satz3/Punkte
-                  | z.B. 6-0/1-2/2-0/40-30
----------------------------------------------------------------------------
+Diese Semantik gilt nicht fuer das unten beschriebene Legacy-ScoreLog.
 
 
-==================================================================================
-  ENDE — DATENBANK.txt
-==================================================================================
+================================================================================
+  7. LEGACY-TABELLEN LOGGING UND SCORELOG
+================================================================================
+
+Beide Tabs sind dreispaltige Append-Ziele ohne EventID-Spalte. Writes verwenden
+`USER_ENTERED`. Keine EventID-, Readback-, Retry-, SQLite-Pending- oder
+Write-ahead-Queue-Migration durchfuehren. Das Backend liest keine Kopfzeile und
+schreibt die Werte ausschliesslich anhand ihrer Position.
+
+Logging:
+  Spalte 1 Timestamp | Spalte 2 Type | Spalte 3 Message
+
+Der derzeitige Ranglistenrueckzug schreibt Type `withdrawFromRanking`. Ein
+erfolgreicher Vorgang wird ueber seine operationId in SQLite dedupliziert. Ist
+der Legacy-Append mehrdeutig, gibt es mangels EventID und Tabellen-Readback
+keinen belastbaren Nachweis und keine sichere blinde Wiederholung.
+
+ScoreLog:
+  Spalte 1 Timestamp | Spalte 2 PlatzNr | Spalte 3 Score
+
+Timestamp hat das Wiener Format `YYMMDD-HHMM-SS`. Score hat das Format
+`S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`.
+Sobald mindestens ein Platz aktiv ist und das Polling laeuft, wird fuer jeden von
+der Quelle gelieferten Platz der erste semantische Stand protokolliert, danach
+jede semantische Scoreaenderung. Der Write ist bewusst
+Fire-and-forget: Fehler werden nur geloggt, nicht erneut versucht oder beim
+Shutdown drainiert. Es existieren insbesondere kein EventID, kein Readback,
+kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer ScoreLog.
+
+
+================================================================================
+  8. SQLITE-STATE
+================================================================================
+
+Datei: `STATE_FILE`, standardmaessig
+`Backend/.state/<INSTANCE_ID>.sqlite`; produktiv ueber StateDirectory. Das
+Verzeichnis erhaelt Modus 0700, die Datenbankdatei 0600. SQLite verwendet
+Foreign Keys, WAL und `synchronous=FULL`.
+
+Tabelle `app_state`:
+  key TEXT PRIMARY KEY, value_json TEXT, revision INTEGER, updated_at INTEGER.
+  Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
+  Monitorziele `monitor-target:<id>` und Metadaten-Intents. Compare-and-set
+  meldet bei falscher Revision `REVISION_CONFLICT`.
+
+Tabelle `sessions`:
+  sid_hash PRIMARY KEY, user_id, email, created_at, expires_at, last_seen_at.
+  Nur SHA-256-Hashes der zufaelligen Cookie-Tokens werden gespeichert. Index auf
+  user_id. Ablauf standardmaessig acht Stunden; abgelaufene und widerrufene
+  Sessions werden entfernt.
+
+Tabelle `password_reset_proofs`:
+  proof_hash PRIMARY KEY, person_id, created_by, created_at, expires_at,
+  consumed_at, payload_hash, stored_hash, claimed_at, completed_at.
+  Resetcodes werden nur gehasht gespeichert, laufen standardmaessig nach 15
+  Minuten ab, sind einmalig, an den neuen Passwort-Credential gebunden und gegen
+  parallele Verarbeitung geleast.
+
+Tabelle `monitor_devices`:
+  monitor_id PRIMARY KEY, label, token_hash UNIQUE, created_at, updated_at,
+  last_seen_at, revoked_at. Enrollmenttokens werden nur gehasht gespeichert;
+  Rotation und Widerruf beenden bestehende Geraeteverbindungen.
+
+Tabelle `operations`:
+  actor_key + operation_id PRIMARY KEY, endpoint, payload_hash, result_json,
+  created_at. Speichert idempotente Resultate sowie fachliche `unknown`-Marker.
+  Eintraege werden nach 24 Stunden bereinigt.
+
+Tabelle `login_failures`:
+  key_hash PRIMARY KEY, window_start, count, blocked_until. Schluessel aus IP und
+  E-Mail beziehungsweise IP werden nur gehasht gespeichert. Alte Eintraege
+  werden bereinigt und die Tabelle ist gegen unbeschraenktes Wachstum begrenzt.
+
+SQLite enthaelt keine Logging- oder ScoreLog-Queue und keinen ScoreLog-Pending-
+Zaehler. Der Adminstatus darf Tabellenalter und `pendingMetadataIntents`, aber
+keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
+
+
+================================================================================
+  9. ROLLOUT-PRUEFUNGEN
+================================================================================
+
+Vor v4.0.0 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
+genannten Pflichtspalten, `Entrydate`, Schreibrechte fuer Personen, Matches1,
+EntryList, Logging und ScoreLog sowie eindeutige IDs/Metadaten zu pruefen. Keine
+EventID-Spalten fuer Logging/ScoreLog anlegen. Die vollstaendige verbindliche
+Liste steht in `Project/server-configs/ROLLOUT-CHECKLIST.md`.
+
+
+================================================================================
+  ENDE DATENBANK.txt
+================================================================================

@@ -28,18 +28,20 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 ## Tech-Stack
 
 - Frontend: HTML, CSS und Vanilla JavaScript mit ES6-Modulen; kein Framework
-- Backend: Node.js mit HTTP und WebSocket; `server.js` plus 6 unterstuetzende Module
-- Persistenz: Google Sheets API
-- Proxy: Caddy fuer Live-TLS, statische Dateien sowie `/ws`, `/health`, `/status`,
-  `/version` und `/set-active`
+- Backend: Node.js 26 mit HTTP, WebSocket v2 und modularen Services
+- Persistenz: Google Sheets API fuer Fachdaten, SQLite fuer Anwendungsstate
+- Proxy: Caddy fuer HTTPS/WSS, statische Dateien sowie `/ws`, `/api/*`, `/live`,
+  `/ready`, `/health`, `/status` und `/version`
 - Prozessmanagement: systemd auf Arch Linux
-- Authentifizierung: clientseitiger SHA-256-Hash, Backend-Pruefung gegen den Cache,
-  Session nur in localStorage, kein JWT oder Server-Token
+- Authentifizierung: serverseitige Secure-/HttpOnly-Sitzungscookies, scrypt-
+  Passwortspeicherung und Rollen `player`, `operator`, `admin`; Monitorgeraete
+  verwenden eigene Secure-Cookies
 
 ## Aktuelle Version
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
+- Aktueller Main-Stand: `4.0.0`
 
 ## Dokumentierter Infrastruktur-Sollstand
 
@@ -49,8 +51,8 @@ nicht automatisch den aktuell installierten Zustand oder Laufzeitstatus.
 | System / Rolle | App- und API-Basis       | Caddy zu Backend | WebSocket                 |
 |----------------|---------------------------|------------------|---------------------------|
 | piber / Live   | https://epiber.at         | localhost:8080   | wss://epiber.at/ws        |
-| paj / Test     | http://epiber.at:8081     | localhost:8083   | ws://epiber.at:8081/ws    |
-| pk / Test      | http://epiber.at:8082     | localhost:8084   | ws://epiber.at:8082/ws    |
+| paj / Test     | https://epiber.at:8081    | localhost:8083   | wss://epiber.at:8081/ws   |
+| pk / Test      | https://epiber.at:8082    | localhost:8084   | wss://epiber.at:8082/ws   |
 
 TCP-Port 80 wird laut Setup zusaetzlich fuer ACME und HTTP-zu-HTTPS benoetigt.
 Server-Roots: `/srv/http/ePiber/{piber,paj,pk}/`
@@ -59,7 +61,7 @@ Server-Roots: `/srv/http/ePiber/{piber,paj,pk}/`
 
 ```text
 Frontend/    HTML, JavaScript und CSS; von Caddy statisch ausgeliefert
-Backend/     Node.js-Server: server.js plus 6 unterstuetzende Module
+Backend/     Node.js-Server, Services, Vertraege, SQLite und Tests
 Project/     Dokumentation und Konfigurationsvorlagen
 ```
 
@@ -91,9 +93,11 @@ nur bei einer ausdruecklich historischen oder Legacy-bezogenen Aufgabe gelesen.
 
 | Lokale Datei, nicht versionieren | Inhalt | Versionierte Vorlage |
 |----------------------------------|--------|-----------------------|
-| `Backend/.env` | Sheet-ID, Port, Court-URL, Credentials-Pfad | `Backend/.env.example` |
+| `Backend/.env` | Sheet-ID, Port, Court-URL und optionale Limits | `Backend/.env.example` |
 | Service-Account-JSON-Datei | Google-Service-Account-Schluessel | keine |
-| `Frontend/JS/SDK.js` | WebSocket-URL | `Frontend/JS/SDK.js.example` |
+
+WebSocket-URLs werden same-origin abgeleitet; `Frontend/JS/SDK.js` und dessen
+Vorlage existieren nicht mehr.
 
 ## Schnellreferenz: dokumentierte Anwendungsseiten
 
@@ -125,3 +129,33 @@ Umfang oder zusaetzlichen Schritten ist nachzufragen.
 
 Vor dem ersten solchen Schritt ist `Project/DokuVersGit.txt` zu lesen und der
 dort beschriebene Workflow zu befolgen.
+
+### Seitenbranch-Kurzregel
+
+1. Im sauberen Seitenbranch entspricht die sichtbare Paketversion exakt der
+   Branch-Commit-ID, zum Beispiel `3.1.12-paj-1-2`. Mit der ersten beabsichtigten
+   Aenderung wird sie auf die naechste ID plus `-x` gesetzt, zum Beispiel
+   `3.1.12-paj-1-3-x`. Dieser online testbare Wert kennzeichnet uncommittete
+   Entwicklung und steht gleichzeitig in package.json, Lockfile und offenem
+   Branch-Changelogabschnitt.
+2. Ein Seitenbranch darf beliebig viele aufeinanderfolgende Implementierungs-,
+   Test- und Korrekturcommits besitzen. Jeder Commit erhaelt die naechste
+   lueckenlose Nummer und einen eigenen Abschnitt im temporaeren Branch-Changelog.
+3. Neue Anwendungsstaende werden im Seitenbranch ausschliesslich im detaillierten
+   `Project/ChangeLogs/ChangeLog-<Branchname>.txt` beschrieben. Permanente
+   Software-, Seiten-, Datenbank- und Serverdokumentation bleibt bis zum
+   bestaetigten Main-Merge unveraendert.
+4. Das temporaere Changelog enthaelt eine dateigenaue Liste aller beim spaeteren
+   Main-Versionssprung zu aktualisierenden Dokumente und der jeweils zu
+   uebernehmenden Fakten. Es ist bis dahin die alleinige fachliche
+   Dokumentationsquelle fuer den Branchstand.
+5. `Project/DokuVersGit.txt` und `LLM-START.md` sind organisatorische Ausnahmen und
+   duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch angepasst
+   werden.
+6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
+   `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
+   Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.
+7. Vor einem Branch-Commit wird `-x` erst nach fachlichem Abschluss entfernt und
+   der Changelogabschnitt finalisiert. Scheitert die Finalisierung und folgen
+   weitere inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen.
+   Ein Commit darf niemals `-x` enthalten.

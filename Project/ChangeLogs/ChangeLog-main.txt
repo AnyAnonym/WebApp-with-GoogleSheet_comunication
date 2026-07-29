@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 3.1.12
+Stand: 4.0.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,227 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.0.0] - 2026-07-29
+Commit: 4.0.0 | Kommunikationsarchitektur und Bedienoberflaechen integriert
+Quelle: 3.1.12-paj-1
+
+  Added
+  - [Software] Serverseitige Authentifizierung mit Secure-/HttpOnly-/SameSite-
+    Sitzungscookies, scrypt-Passwortspeicherung, kontrollierter Legacy-
+    Hashmigration, Dummy-Verifikation, Loginlimits und den Rollen player,
+    operator und admin eingefuehrt.
+  - [Software] Einmalige, gehashte und ablaufende Passwort-Reset-Nachweise sowie
+    Admin-APIs fuer Reset-Codes und direktes Passwortsetzen mit vorsorglichem
+    Widerruf aller Sitzungen der Zielperson ergaenzt.
+  - [Software] Maschinenpruefbare RPC-Vertraege, zentrale Validatoren,
+    AppError-Codes und korrelierte Support-IDs fuer HTTP und WebSocket
+    eingefuehrt.
+  - [Software] Persistentes SQLite-StateRepository fuer Sitzungen, Loginlimits,
+    Resetnachweise, Monitorgeraete, Court-/Navigator-State, Idempotenz und
+    unbekannte externe Fachwrite-Ausgaenge eingefuehrt.
+  - [Software] SheetService mit tabellenweiser Serialisierung, stabilen
+    operationId-basierten Datensatz-IDs, Cacheabgleich, Compare-and-set und
+    Google-Developer-Metadaten fuer zeilenstabile Personen-, Matches1- und
+    EntryList-Writes angelegt.
+  - [Software] Abfragbarer Operationstatus `completed`/`unknown` fuer eigene
+    idempotente Fachwrites eingefuehrt; unklare externe Writes werden bestaetigt
+    statt blind erneut ausgefuehrt.
+  - [Software] WebSocket-Protokoll v2 mit Hello-/Welcome-Handshake,
+    Protokoll-/Appversion, Client-/Geraete-ID, Seitentyp, Rollenprincipal,
+    korrelierten Responses, Subscriptions und initialen Snapshots eingefuehrt.
+  - [Software] MonitorBroker mit gehashten Geraetetokens, Provisionierung,
+    Rotation, Widerruf, adressierten Navigationsbefehlen, Command-IDs,
+    Terminalstatus und persistiert deduplizierter Scrollqueue ergaenzt.
+  - [Software] Atomarer Scoreboard-Snapshot, Tabellenrevisionen sowie Topics fuer
+    Scores, Scoreboard-State, Tabelleninvalidierungen, Navigator, Monitore und
+    adressierte Monitorcommands eingefuehrt.
+  - [Software] Liveness unter `/live`, Readiness unter `/ready` und `/health`,
+    admin-geschuetzter `/status` sowie Session-, Passwort- und Monitor-HTTP-APIs
+    eingefuehrt.
+  - [Software] Reproduzierbares npm-Lockfile, festgeschriebene Node-26-/npm-12-
+    Laufzeit, statischer Build-/Sicherheitscheck und insgesamt 70 automatisierte
+    Unit-, Race-, Contract-, HTTP-, WebSocket-, Persistenz-, Shutdown- und
+    Sicherheitstests aufgebaut.
+  - [Infrastruktur] Content-Security-Policy, Security-Header, eingeschraenkte
+    Proxy-Pfade und HTTPS/WSS fuer Live, PAJ und PK in der Caddy-Vorlage
+    eingefuehrt.
+  - [Infrastruktur] Gehaertete systemd-Vorlagen mit Loopback-Bindung,
+    LoadCredential, StateDirectory, restriktiver UMask, Sandbox und abgestimmtem
+    Shutdown-Timeout ergaenzt.
+  - [Dokumentation] Verbindliche Rollout-Checkliste fuer Schema, Credentials,
+    Rollen, Browser/Kiosk, responsive Scoreboards, Monitor-/WebSocket-Lifecycle,
+    Last, Dauerbetrieb, SIGTERM, Pending-Metadaten und Rollback angelegt.
+
+  Changed
+  - [Software] Oeffentliche Personenlisten liefern minimale Projektionen.
+    Angemeldete Benutzer koennen Profile mit E-Mail, Telefon und Geburtsdatum
+    aufrufen; administrative Passwortaktionen bleiben Administratoren
+    vorbehalten.
+  - [Software] Endpointberechtigungen werden serverseitig fuer anonyme Clients,
+    Spieler, Operatoren, Administratoren und Monitorgeraete durchgesetzt.
+  - [Software] HTTP-Routing prueft Methode, Origin, Bodygroesse und Raten, liefert
+    korrekte 404-/405-/503-Antworten und lehnt neue Arbeit im Shutdown ab.
+  - [Software] Der WebSocket-Client arbeitet als Zustandsmaschine mit
+    Socketgeneration, Backoff und Jitter, Stale-Watchdog, Browser-Lifecycle,
+    sofortiger Pending-Ablehnung, Read-Retries ohne automatische Write-Retries
+    sowie Subscription- und Snapshot-Resynchronisierung.
+  - [Software] Datenpolling und Cache verwenden Revisionen, Datenalter,
+    Fehlerstatus und Fencing, sodass aeltere Pollergebnisse neuere Mutationen
+    nicht mehr ueberschreiben.
+  - [Software] Der Court-Poller verwendet Fetchabbruch und -timeout,
+    Antwortgroessen- und Strukturpruefung, semantischen Vergleich, Fehlerbackoff,
+    Heartbeats und dynamische Stale-Grenzen.
+  - [Software] Scoreboard-Polling wurde durch Snapshot, Subscriptions, Revisionen
+    und Resync ersetzt. Verbindungs-, Synchron- und Datenalterzustand werden
+    intern ausgewertet; die zwischenzeitlich eingefuehrten sichtbaren Status-
+    und Court-Quellen-Badges gehoeren nicht zum finalen Verhalten.
+  - [Software] Scoreboard-Layout, Datum, Bewerbsrunde, mobile Score-/Metadaten und
+    adaptive Einzel-/Doppelnamen wurden fuer die Bereiche ueber 1300, 1001 bis
+    1300 und bis 1000 Pixel ueberarbeitet.
+  - [Software] Navigator und Monitor verwenden adressierte Pushcommands,
+    korrelierte Lade-ACKs, Allowlists und sandboxed iframes statt intensivem
+    Polling; Navigator zeigt Verbindungs- und Terminalstatus, die reine
+    Monitorausgabe nur Lade- und Fehleroverlays.
+  - [Software] Fachseiten verwenden serverseitige Sessionidentitaet,
+    tabellenspezifische Invalidierungen, definierte Ladeabschluesse und sichere
+    DOM-Ausgabe fuer externe Daten.
+  - [Software] Graceful Shutdown stoppt Poller und Timer, schliesst WebSockets mit
+    Code 1012, drainiert akzeptierte HTTP-/Sheets-Arbeit und meldet eine
+    ueberschrittene Grace-Deadline als Fehler.
+  - [Software] `Logging` und `ScoreLog` behalten bewusst ihre dreispaltigen
+    Legacy-Vertraege mit `USER_ENTERED`: Timestamp/Type/Message beziehungsweise
+    Timestamp/PlatzNr/Score. Sie besitzen keine EventID-Spalte, keinen Readback,
+    keine Retry-/Write-ahead-Queue und keine SQLite-Pending-Semantik; ScoreLog
+    schreibt den ersten Stand und semantische Aenderungen weiterhin
+    fire-and-forget.
+  - [Software] SQLite verwendet WAL/FULL und restriktive Dateirechte fuer den
+    Anwendungsstate; dies ist kein ScoreLog-WAL oder Logging-Redesign.
+  - [Infrastruktur] Backends binden nur an Loopback. Service-Account-Credentials
+    werden als root-kontrollierte Dateien ueber systemd `LoadCredential`
+    eingebunden; die Umgebungsvorlage enthaelt nur Betriebskennungen und
+    `CHANGE_ME`-Werte.
+  - [Dokumentation] Kommunikations- und Logginganalysen um den datierten
+    Implementierungsstand und die verbleibenden Rolloutluecken ergaenzt.
+  - [Dokumentation] Architektur-, Endpoint-, Datenbank-, Seiten- und
+    Serverdokumentation vollstaendig auf den integrierten Stand 4.0.0
+    fortgeschrieben.
+  - [Dokumentation] Branchworkflow um commitweise Branch-Changelogs, identische
+    Branch-/Paketversionen, die sichtbare Arbeitsversion `-x` und eine
+    dateigenaue Uebernahmeliste fuer Main-Merges erweitert.
+  - [Repository] Ignore-Regeln fuer lokale SQLite-State-, Env-, Env-Backup- und
+    systemspezifische Service-Account-Dateien erweitert.
+
+  Fixed
+  - [Software] Frontend und Backend verwenden fuer Matchforderungen gemeinsam
+    `bewerbId` und `opponentId`; Profilantworten folgen konsistent ihren
+    oeffentlichen, Mitglieder- und privaten Vertraegen.
+  - [Datenbank] EntryList verwendet die reale Spreadsheet-Spalte `Entrydate`
+    statt `Datum`; neue Anmeldungen erhalten wieder den vorgesehenen Wiener
+    Zeitstempel.
+  - [Software] Stabile IDs, Metadaten und serialisierte Writes verhindern falsche
+    Deletes nach Zeilenverschiebungen, doppelte IDs bei parallelen Adds und
+    doppelte Fachmutationen bei derselben operationId.
+  - [Software] Unbekannte EntryList-Abmeldungen behalten die urspruengliche
+    Datensatz-ID und koennen bei Wiederholung keine spaetere Neuanmeldung
+    entfernen. Mehrdeutige Legacy-Logging-Appends werden als `unknown` fixiert
+    und nicht blind ein zweites Mal geschrieben.
+  - [Software] Login, Passwortreset und Passwortaenderung sind pro Benutzer,
+    Cross-Tab-Login/-Logout per Web Lock geordnet; alte Ergebnisse koennen neuere
+    Auth-Zustaende nicht mehr ueberholen.
+  - [Software] Erlaubte Cross-Origin-HTTP-Antworten enthalten vollstaendige
+    Credential-CORS-Header; nicht erlaubte Methoden liefern vor der Originpruefung
+    konsistent 405. Wiederholte Monitor-Navigationen behalten ein vollstaendiges
+    Delivery-Ergebnis, und die Admin-Eigenpasswortaktion synchronisiert die durch
+    Sessionwiderruf abgemeldete Oberflaeche sofort.
+  - [Software] Ungueltige Rollenwerte werden einmalig gewarnt und mit minimalen
+    player-Rechten behandelt, ohne die gesamte Personentabelle zu verwerfen.
+  - [Software] Protokoll-, Subscription-, Monitor- und Scroll-Races werden ueber
+    Korrelation, Generationen, Limits und Deduplizierung kontrolliert behandelt.
+  - [Software] Court-Deaktivierung bricht laufende Fetches ab; ungueltiges JSON
+    und irrelevante Zusatzfelder erzeugen weder Prozessabbruch noch Scheinpush.
+  - [Software] Dauerhafte Fehleroverlays bleiben bedienbar und behalten vorhandene
+    Support-IDs; ein alter Fade-out-Timer kann sie nicht mehr entfernen.
+  - [Software] Scoreboard formatiert Datum/Uhrzeit und Bewerbsrunde wieder
+    fachgerecht und berechnet gemeinsame Namens- und Feldgroessen anhand realer
+    Glyphenbreite und verfuegbarer Platzhoehe.
+
+  Removed
+  - [Software] Globale Navigatorziel-/Scroll-Endpunkte, 150-ms-/2-s-
+    Monitorpolling sowie Scoreboard-Ein-/Fuenf-Sekunden-Polling entfernt.
+  - [Software] localStorage-Login als Berechtigungsnachweis entfernt;
+    localStorage enthaelt keine Sitzungstokens oder Rollenautoritaet.
+  - [Software] Sichtbare Scoreboard-Verbindungs-, Synchronisations- und Court-
+    Quellen-Badges sowie Geraete-/Verbindungsanzeige und Abmeldebutton der
+    Monitor-Ausgabeseite aus dem finalen Bedienkonzept entfernt.
+  - [Software] Sichtbaren `Raushaengen`-Button aus der Ranglistenlegende entfernt;
+    Modal, Clientfunktion und Backend-Endpoint bleiben fuer eine spaetere
+    fachliche Ueberarbeitung vorhanden.
+  - [Software] Externe Font-/Script-Abhaengigkeiten entfernt, soweit sie CSP oder
+    reproduzierbarem Betrieb widersprachen.
+  - [Repository] Obsolete `Frontend/JS/SDK.js.example` und nicht mehr verwendete
+    `Frontend/JS/rankingSidebar.js` entfernt; die WebSocket-URL wird aus dem
+    Browser-Origin abgeleitet.
+  - [Dokumentation] Temporaeres Branch-Changelog und die nach Uebernahme in die
+    Rollout-Checkliste redundante Kommunikations-Testarbeitsliste entfernt;
+    `abc.txt` bleibt auf ausdruecklichen Wunsch als nicht-kanonische Kurznotiz
+    erhalten.
+  - [Software] Das zwischenzeitliche ScoreLog-Redesign mit EventID, Readback,
+    Retry-/Write-ahead-Queue, Persistenz, Pendingwerten und Shutdown-Drain
+    vollstaendig zurueckgenommen; ebenso fuehrt `Logging` keine EventID.
+
+  Security and migration/compatibility
+  - Vor dem Rollout Google-Sheets-Backup erstellen, `Personen.Role` anlegen und
+    alle Zeilen explizit mit player, operator oder admin befuellen; mindestens ein
+    aktiver Admin ist erforderlich. Leere oder ungueltige Werte fallen technisch
+    auf player zurueck, sind aber kein abgeschlossener Migrationszustand.
+  - Pflichtspalten und Schreibrechte fuer Personen, Matches1, EntryList, Logging
+    und ScoreLog sowie eindeutige `epiberRecord`-Metadaten pruefen.
+  - Fuer Logging und ScoreLog keine EventID-Spalte und keine Tabellenmigration
+    einfuehren. Mehrdeutige Legacy-Appends duerfen mangels Readback nicht blind
+    wiederholt werden.
+  - Service-Account-Schluessel vor Deployment rotieren, root:root mit Modus 0600
+    bereitstellen und ausschliesslich ueber `LoadCredential` einbinden. Lokale
+    Env-, State-, Backup- und Service-Account-Dateien bleiben ignoriert.
+  - Node.js 26.x und npm 12.0.1, `npm ci --omit=dev`, SQLite-StateDirectory,
+    HTTPS/WSS, Caddy-Routen und systemd-Haertung sind Rolloutvoraussetzungen.
+
+  Verification performed on branch
+  - `npm run build` einschliesslich statischer Pruefungen und 68 Tests wurde in
+    den beiden letzten Branch-Commits erfolgreich ausgefuehrt; zusaetzliche
+    fokussierte Testlaeufe mit 19, 20 und 15 Tests waren erfolgreich.
+  - `npm audit --omit=dev` dokumentierte keine bekannte
+    Produktionsabhaengigkeitsluecke.
+  - Die Caddy-Vorlage wurde mit `caddy validate`, alle drei systemd-Units wurden
+    mit `systemd-analyze verify` erfolgreich geprueft; die danach angepasste
+    finale PAJ-Unit wurde erneut separat erfolgreich verifiziert.
+  - `git diff --check` war in den letzten beiden Branch-Commits erfolgreich.
+  - Dies sind Branch-Pruefungen; abschliessende Checks des offenen Main-Merges
+    sind hiermit nicht behauptet.
+
+  Final merge verification
+  - `npm run build`: statische Pruefungen und 70 Tests erfolgreich.
+  - `npm audit --omit=dev`: keine bekannte Produktionsabhaengigkeitsluecke.
+  - `caddy validate --config Project/server-configs/Caddyfile`: erfolgreich.
+  - Alle drei systemd-Units gemeinsam mit `systemd-analyze verify`: erfolgreich.
+  - Fokussierte Regressionen fuer SheetService, MonitorBroker und HTTP/CORS:
+    erfolgreich.
+  - `git diff --check`, Versionsabgleich und vorhandener offener Mergezustand:
+    erfolgreich.
+
+  Remaining manual rollout tests
+  - Kanonische Checkliste: `Project/server-configs/ROLLOUT-CHECKLIST.md`.
+  - Auf PAJ sind noch Sheetsmigration und Backup, Browser-/Kiosk- und Rollentests,
+    Scoreboard-Abnahme aller Breiten und Orientierungen, Profile und Admin-
+    Passwortfunktionen, Standby/BFCache/WLAN/Reconnect, mehrere Monitore,
+    Serverrestart/SIGTERM/SQLite-State sowie Google-Sheets-Fehlerfaelle praktisch
+    abzunehmen.
+  - Erwartete und doppelte Spitzenlast, ein vollstaendiger Veranstaltungstag im
+    Dauerbetrieb und ein dokumentierter praktischer Rollback sind noch offen.
+  - Danach in der Reihenfolge PAJ, PK und Live ausrollen und Version, `/live`,
+    `/ready`, `/health`, geschuetzten `/status`, Zertifikate und Datenalter
+    kontrollieren.
 
 
 [3.1.12] - 2026-07-27

@@ -1,5 +1,7 @@
-import { createEndpoint } from "./dataClient.js";
-import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { createEndpoint, getOperationId, releaseOperationId, subscribeInvalidations } from "./dataClient.js";
+import { ready, getUser, subscribeAuth } from "./authClient.js";
+import { callWithRetry, errorMessage, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
 const readEntryList     = createEndpoint("entryList");
 const readPlayersList   = createEndpoint("players");
@@ -15,6 +17,16 @@ let entryStartDate = null;
 let entryDeadlineDate = null;
 let entryStartRaw = "";
 let entryDeadlineRaw = "";
+let entriesLoaded = false;
+let entryBoundaryTimer = null;
+
+function errorMessage(value, fallback) {
+  if (value instanceof Error && value.message) return value.message;
+  if (value?.error?.message) return value.error.message;
+  if (typeof value?.error === "string") return value.error;
+  if (value?.message) return value.message;
+  return fallback;
+}
 
 // Parst Datumsformat: "YYMMDD", "YYMMDD-HHMM", "YYYYMMDD", "YYYYMMDD-HHMM"
 // Bei nur Datum: Start → 00:00, Deadline → 23:59
@@ -99,22 +111,20 @@ function isEntryPeriodActive() {
   return true;
 }
 
-function formatDateTime(date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-  return `${yyyy}.${mm}.${dd} – ${hh}:${mi}`;
-}
-
-function formatTimestampForStorage(date) {
-  const yy = String(date.getFullYear()).slice(-2);
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-  return `${yy}${mm}${dd}-${hh}${mi}`;
+function scheduleEntryBoundary() {
+  if (entryBoundaryTimer) clearTimeout(entryBoundaryTimer);
+  entryBoundaryTimer = null;
+  const now = Date.now();
+  const next = [entryStartDate, entryDeadlineDate]
+    .map((value) => value?.getTime())
+    .filter((value) => Number.isFinite(value) && value > now)
+    .sort((left, right) => left - right)[0];
+  if (!next) return;
+  entryBoundaryTimer = setTimeout(() => {
+    entryBoundaryTimer = null;
+    initToolbar();
+    scheduleEntryBoundary();
+  }, Math.min(2147483647, Math.max(1, next - now + 50)));
 }
 
 function formatStoredDate(raw) {
@@ -149,15 +159,23 @@ function formatStoredDate(raw) {
 
 async function loadEntries() {
   const container = document.getElementById("entryListContainer");
-  if (!container) return;
+  if (!container) {
+    const error = new Error("Entrylist-Container fehlt.");
+    error.code = "ENTRY_LIST_CONTAINER_MISSING";
+    throw error;
+  }
 
-  container.innerHTML = "";
+  container.replaceChildren();
   showLoadingOverlay("Lade Einträge...");
 
   if (!BEWERB_ID) {
     hideLoadingOverlay();
-    container.innerHTML = "<p>Keine Bewerb-ID übergeben.</p>";
-    return;
+    const message = document.createElement("p");
+    message.textContent = "Keine Bewerb-ID übergeben.";
+    container.appendChild(message);
+    const error = new Error("Keine Bewerb-ID übergeben.");
+    error.code = "COMPETITION_ID_MISSING";
+    throw error;
   }
 
   try {
@@ -168,7 +186,11 @@ async function loadEntries() {
       callWithRetry(readBewerbe),
     ]);
 
-    if (!entryRes.data?.success) throw new Error("Fehler beim Laden");
+    const failedResponse = [entryRes, playerRes, rlRes, bewerbeRes]
+      .find((response) => !response.data?.success);
+    if (failedResponse) {
+      throw new Error(errorMessage(failedResponse.data, "Fehler beim Laden der Entrylist."));
+    }
 
     const entryValues = entryRes.data.values || [];
     const playerValues = playerRes.data?.values || [];
@@ -179,7 +201,7 @@ async function loadEntries() {
     let bewerbGeschlecht = "";
     let rlBewerbId = "";
     if (bewerbeValues.length > 1) {
-      const bHeader = bewerbeValues[0].map((h) => h.trim().toLowerCase());
+      const bHeader = bewerbeValues[0].map((h) => String(h || "").trim().toLowerCase());
       const bIdIdx = bHeader.indexOf("id");
       const bBaIdx = bHeader.indexOf("bewerbsartid");
       const bGeschIdx = bHeader.indexOf("geschlecht");
@@ -204,7 +226,7 @@ async function loadEntries() {
     // Ranglisten-Map: personId → Rang (gefiltert nach passendem RL-Bewerb)
     const rlMap = new Map();
     if (rlValues.length > 1 && rlBewerbId) {
-      const rlHeader = rlValues[0].map((h) => h.trim().toLowerCase());
+      const rlHeader = rlValues[0].map((h) => String(h || "").trim().toLowerCase());
       const rlPersonIdx = rlHeader.indexOf("personid");
       const rlRangIdx = rlHeader.indexOf("rang");
       const rlBewerbIdx = rlHeader.indexOf("bewerbid");
@@ -221,14 +243,14 @@ async function loadEntries() {
 
     const playerMap = new Map();
     if (playerValues.length > 1) {
-      const pHeader = playerValues[0].map((h) => h.trim().toLowerCase());
+      const pHeader = playerValues[0].map((h) => String(h || "").trim().toLowerCase());
       const pIdIdx = pHeader.indexOf("id");
       const pFnIdx = pHeader.indexOf("vorname");
       const pLnIdx = pHeader.indexOf("nachname");
       playerValues.slice(1).forEach((r) => {
         const id = String(r[pIdIdx] || "").trim();
-        const vorname = (r[pFnIdx] || "").trim();
-        const nachname = (r[pLnIdx] || "").trim();
+        const vorname = String(r[pFnIdx] || "").trim();
+        const nachname = String(r[pLnIdx] || "").trim();
         const display = `${nachname} ${vorname}`.trim();
         if (id) playerMap.set(id, { display, nachname });
       });
@@ -236,7 +258,7 @@ async function loadEntries() {
 
     let entries = [];
     if (entryValues.length > 1) {
-      const eHeader = entryValues[0].map((h) => h.trim().toLowerCase());
+      const eHeader = entryValues[0].map((h) => String(h || "").trim().toLowerCase());
       const eIdIdx = eHeader.indexOf("id");
       const eBewerbIdIdx = eHeader.findIndex((h) =>
         ["bewerbid", "bewerb id", "bewerb-id", "bewerb", "bewerbsid", "bewerbs id"].includes(h));
@@ -246,11 +268,6 @@ async function loadEntries() {
         ["datum", "date", "eingetragen", "timestamp", "zeitpunkt", "entrydate", "entry date"].includes(h));
       const eGebuehrIdx = eHeader.findIndex((h) =>
         ["gebuehrbezahlt", "gebuehr bezahlt", "gebühr bezahlt", "gebuehr", "gebühr"].includes(h));
-
-      console.log("[loadEntries] header:", JSON.stringify(eHeader));
-      console.log("[loadEntries] eIdIdx:", eIdIdx, "eBewerbIdIdx:", eBewerbIdIdx, "ePersonenIdIdx:", ePersonenIdIdx, "eDatumIdx:", eDatumIdx);
-      console.log("[loadEntries] BEWERB_ID:", BEWERB_ID);
-      console.log("[loadEntries] first data row:", JSON.stringify(entryValues[1]));
 
       entries = entryValues.slice(1)
         .filter((r) => {
@@ -274,12 +291,14 @@ async function loadEntries() {
         .sort((a, b) => a.nachname.localeCompare(b.nachname));
     }
 
-    console.log("[loadEntries] filtered entries count:", entries.length);
     currentEntries = entries;
     initToolbar();
 
     if (entries.length === 0) {
-      container.innerHTML = "<p>Noch keine Einträge für diesen Bewerb.</p>";
+      const message = document.createElement("p");
+      message.textContent = "Noch keine Einträge für diesen Bewerb.";
+      container.appendChild(message);
+      hideLoadingOverlay();
       return;
     }
 
@@ -287,35 +306,48 @@ async function loadEntries() {
     table.className = "players-table";
 
     const thead = document.createElement("thead");
-    thead.innerHTML = "<tr><th>#</th><th>ID</th><th>RL</th><th>Name</th><th>Eingetragen am</th></tr>";
+    const headerRow = document.createElement("tr");
+    ["#", "ID", "RL", "Name", "Eingetragen am"].forEach((label) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
     entries.forEach((entry, idx) => {
       const tr = document.createElement("tr");
       if (entry.gebuehrBezahlt) tr.classList.add("entry-paid");
-      tr.innerHTML = `
-        <td>${idx + 1}</td>
-        <td>${entry.personenId}</td>
-        <td>${entry.rlRang || "—"}</td>
-        <td>${entry.name || "Unbekannt"}</td>
-        <td>${formatStoredDate(entry.datum)}</td>
-      `;
+      [
+        idx + 1,
+        entry.personenId,
+        entry.rlRang || "—",
+        entry.name || "Unbekannt",
+        formatStoredDate(entry.datum),
+      ].forEach((value) => {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
 
-    container.innerHTML = "";
+    container.replaceChildren();
     container.appendChild(table);
     hideLoadingOverlay();
   } catch (err) {
     console.error("Fehler beim Laden der Einträge:", err);
-    showErrorOverlay("Fehler beim Laden der Einträge", loadEntries);
+    showErrorOverlay(errorMessage(err, "Fehler beim Laden der Einträge"), () => {
+      loadEntries().catch(() => {});
+    });
+    throw err;
   }
 }
 
 async function handleEntrySubmit(btn) {
-  const personenId = localStorage.getItem("currentUserId");
+  const personenId = String(getUser()?.id || "").trim();
   if (!personenId) {
     showToast("Bitte vorher einloggen!", "error");
     return;
@@ -333,23 +365,23 @@ async function handleEntrySubmit(btn) {
 
   btn.disabled = true;
   btn.textContent = "Sende...";
+  const operationKey = `entry:add:${BEWERB_ID}:${personenId}`;
 
   try {
-    const datum = window.getStorageTimestamp ? window.getStorageTimestamp() : formatTimestampForStorage(new Date());
-
     const res = await addEntryList({
+      operationId: getOperationId(operationKey),
       bewerbId: BEWERB_ID,
-      personenId,
-      datum,
     });
 
     if (res.data?.success) {
+      releaseOperationId(operationKey);
       showToast("Erfolgreich eingetragen!", "success");
       await loadEntries();
     } else {
-      throw new Error(res.data?.error || "Fehler beim Eintragen");
+      throw new Error(errorMessage(res.data, "Fehler beim Eintragen"));
     }
   } catch (err) {
+    releaseOperationId(operationKey, err);
     console.error("Fehler beim Eintragen:", err);
     showToast("Fehler: " + (err.message || err), "error");
   }
@@ -360,37 +392,41 @@ async function handleEntrySubmit(btn) {
 
 async function loadBewerbsName() {
   const heading = document.getElementById("entryListHeading");
-  if (!heading || !BEWERB_ID) return;
+  if (!BEWERB_ID) return;
 
-  heading.textContent = `Entrylist für`;
+  if (heading) heading.textContent = "Entrylist für";
 
-  try {
-    const res = await readBewerbe();
-    const bewerbeValues = res.data?.values || [];
-    if (bewerbeValues.length < 2) return;
-
-    const bHeader = bewerbeValues[0].map((h) => h.trim().toLowerCase());
-    const bIdIdx = bHeader.indexOf("id");
-    const bBezIdx = bHeader.indexOf("bezeichnung");
-    const bEntryStartIdx = bHeader.indexOf("entrystart");
-    const bEntryDeadlineIdx = bHeader.indexOf("entrydeadline");
-    const bewerbRow = bewerbeValues.slice(1).find((r) => String(r[bIdIdx] || "").trim() === String(BEWERB_ID).trim());
-    if (bewerbRow) {
-      if (bewerbRow[bBezIdx]) {
-        heading.textContent = `Entrylist für ${bewerbRow[bBezIdx]}`;
-      }
-      entryStartRaw = bEntryStartIdx !== -1 ? String(bewerbRow[bEntryStartIdx] || "").trim() : "";
-      entryDeadlineRaw = bEntryDeadlineIdx !== -1 ? String(bewerbRow[bEntryDeadlineIdx] || "").trim() : "";
-      entryStartDate = parseSheetDate(entryStartRaw, false);
-      entryDeadlineDate = parseSheetDate(entryDeadlineRaw, true);
-    }
-  } catch (err) {
-    console.warn("Bewerbsname konnte nicht geladen werden:", err);
+  const res = await callWithRetry(readBewerbe);
+  if (!res.data?.success) {
+    throw new Error(errorMessage(res.data, "Bewerb konnte nicht geladen werden."));
   }
+  const bewerbeValues = res.data.values || [];
+  if (bewerbeValues.length < 2) return;
+
+  const bHeader = bewerbeValues[0].map((h) => String(h || "").trim().toLowerCase());
+  const bIdIdx = bHeader.indexOf("id");
+  const bBezIdx = bHeader.indexOf("bezeichnung");
+  const bEntryStartIdx = bHeader.indexOf("entrystart");
+  const bEntryDeadlineIdx = bHeader.indexOf("entrydeadline");
+  const bewerbRow = bewerbeValues.slice(1).find((r) => String(r[bIdIdx] || "").trim() === String(BEWERB_ID).trim());
+  entryStartRaw = "";
+  entryDeadlineRaw = "";
+  entryStartDate = null;
+  entryDeadlineDate = null;
+  if (bewerbRow) {
+    if (heading && bewerbRow[bBezIdx]) {
+      heading.textContent = `Entrylist für ${bewerbRow[bBezIdx]}`;
+    }
+    entryStartRaw = bEntryStartIdx !== -1 ? String(bewerbRow[bEntryStartIdx] || "").trim() : "";
+    entryDeadlineRaw = bEntryDeadlineIdx !== -1 ? String(bewerbRow[bEntryDeadlineIdx] || "").trim() : "";
+    entryStartDate = parseSheetDate(entryStartRaw, false);
+    entryDeadlineDate = parseSheetDate(entryDeadlineRaw, true);
+  }
+  scheduleEntryBoundary();
 }
 
 async function handleEntryRemove(btn) {
-  const personenId = localStorage.getItem("currentUserId");
+  const personenId = String(getUser()?.id || "").trim();
   if (!personenId) {
     showToast("Bitte vorher einloggen!", "error");
     return;
@@ -398,20 +434,23 @@ async function handleEntryRemove(btn) {
 
   btn.disabled = true;
   btn.textContent = "Entferne...";
+  const operationKey = `entry:remove:${BEWERB_ID}:${personenId}`;
 
   try {
     const res = await removeEntryList({
+      operationId: getOperationId(operationKey),
       bewerbId: BEWERB_ID,
-      personenId,
     });
 
     if (res.data?.success) {
+      releaseOperationId(operationKey);
       showToast("Erfolgreich ausgetragen!", "success");
       await loadEntries();
     } else {
-      throw new Error(res.data?.error || "Fehler beim Austragen");
+      throw new Error(errorMessage(res.data, "Fehler beim Austragen"));
     }
   } catch (err) {
+    releaseOperationId(operationKey, err);
     console.error("Fehler beim Austragen:", err);
     showToast("Fehler: " + (err.message || err), "error");
   }
@@ -424,7 +463,7 @@ function initToolbar() {
   const toolbar = document.getElementById("entryListToolbar");
   if (!toolbar) return;
 
-  toolbar.innerHTML = "";
+  toolbar.replaceChildren();
   if (!BEWERB_ID) return;
 
   const active = isEntryPeriodActive();
@@ -446,12 +485,13 @@ function initToolbar() {
     toolbar.appendChild(msg);
   }
 
-  const personenId = localStorage.getItem("currentUserId");
+  const personenId = String(getUser()?.id || "").trim();
   if (!personenId) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "btn-login loggedIn";
-    btn.textContent = "Anmelden";
+    btn.className = "btn-login";
+    btn.textContent = "Zum Eintragen anmelden";
+    btn.addEventListener("click", () => window.openLoginModal?.());
     toolbar.appendChild(btn);
     return;
   }
@@ -475,7 +515,27 @@ function initToolbar() {
   }
 }
 
+subscribeAuth(() => {
+  if (entriesLoaded) initToolbar();
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadBewerbsName();
-  await loadEntries();
+  try {
+    await ready;
+    await loadBewerbsName();
+    await loadEntries();
+    entriesLoaded = true;
+    subscribeInvalidations(["entryList", "players", "bewerbe", "ranking"], async () => {
+      await loadBewerbsName();
+      await loadEntries();
+    });
+    signalMonitorReady();
+  } catch (error) {
+    console.error("Entrylist konnte nicht initialisiert werden:", error);
+    signalMonitorFailed(error.code || "ENTRY_LIST_LOAD_FAILED");
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && entriesLoaded) initToolbar();
 });

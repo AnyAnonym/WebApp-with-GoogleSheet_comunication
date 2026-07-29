@@ -1,355 +1,347 @@
-==================================================================================
-  ARCHITEKTUR.txt — Backend-Module, Datenfluss, Shared Frontend
-  Projekt:  ePiber / ASKÖ Piberbach Tennis
-  Stand:    v3.1.12
-==================================================================================
+================================================================================
+  ARCHITEKTUR.txt - Module, Datenfluss und Sicherheitsarchitektur
+  Projekt: ePiber / ASKOE Piberbach Tennis
+  Stand: v4.0.0
+================================================================================
 
 
-==================================================================================
-  1. GESAMTARCHITEKTUR
-==================================================================================
+================================================================================
+  1. SYSTEMBILD
+================================================================================
 
-  Browser
-    |-- HTTP: HTML, CSS, JavaScript ueber Caddy (statisch)
-    |-- HTTP: GET /version, /health, /status
-    `-- WebSocket: /ws
-         |-- Request/Response (Fachdaten)
-         |-- Schreiboperationen (Google Sheets)
-         |-- Navigator-/Scoreboard-State
-         |-- Ping/Pong Keepalive (30s/90s)
-         `-- Live-Score Push
+  Browser/Kiosk
+    |-- HTTPS: statische HTML-, CSS- und ES-Modul-Dateien
+    |-- HTTPS: Health-, Session-, Passwort- und Monitor-APIs
+    `-- WSS /ws: Protokoll v2, RPCs, Subscriptions, Monitorcommands
+             |
+  Caddy      |  TLS, Security-Header/CSP, erlaubte Proxy-Pfade
+             v
+  Node.js Backend auf Loopback
+    |-- HTTP/WS-Routing, Contracts, Origin-/Rate-/Groessenlimits
+    |-- Cookie-/Rollenauthentifizierung und Datenprojektionen
+    |-- Polling + revisionierter In-Memory-Cache
+    |-- serialisierte/idempotente Google-Sheets-Writes
+    |-- persistenter SQLite-State
+    |-- externes Court-Polling + dreispaltiges Legacy-ScoreLog
+    `-- adressierter MonitorBroker
+             |                         |
+             v                         v
+       Google Sheets             externe Court-Quelle (HTTPS)
 
-  Caddy
-    |-- Statische Frontend-Dateien aus Frontend/
-    `-- Reverse Proxy: /ws + HTTP-Endpoints -> Node.js Backend
-
-  Node.js Backend (server.js + 6 unterstuetzende Module)
-    |-- server.js         HTTP-Server, Startup-Orchestrierung
-    |-- config.js         Umgebungsvariablen, Polling-Intervalle, Tabellen
-    |-- dataStore.js      In-Memory-Cache aller Spreadsheet-Daten
-    |-- dataPoller.js     Periodisches Google Sheets Polling
-    |-- courtPoller.js    Externes Court-Score-Polling + ScoreLog
-    |-- dataProvider.js   WebSocket-Server, Endpoints, Sheet-Writes
-    `-- stateStore.js     Fluechtiger In-Memory-State
+Produktive Backends binden ausschliesslich an Loopback. Service-Account-
+Credentials werden ueber systemd LoadCredential bereitgestellt. Der Browser
+leitet die WebSocket-URL aus seinem same-origin Standort ab; es gibt kein SDK-
+Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 
 
-==================================================================================
+================================================================================
   2. BACKEND-MODULE
-==================================================================================
-
-
------ server.js -----
-
-Zweck:
-  HTTP-Server und zentrale Startup-Orchestrierung.
-
-Endpoints:
-  - GET /health    -> System-Gesundheitsstatus
-  - GET /version   -> Aktuelle Version
-  - GET /status    -> Detaillierter Systemstatus
-  - POST /set-active -> Court-Polling Steuerung
-
-Startup-Reihenfolge:
-  1. initialLoad (alle Tabellen parallel laden)
-  2. WebSocket-Server initialisieren
-  3. Poller starten
-  4. HTTP-Server listen
-
-Wichtige Details:
-  Der Server startet erst, wenn der initiale Datenload abgeschlossen ist.
-  Alle HTTP-Endpoints liefern JSON zurueck.
-
-
------ config.js -----
-
-Zweck:
-  Zentrale Konfiguration aus Umgebungsvariablen und Konstanten.
-
-Umgebungsvariablen:
-  - SHEET_ID    -> Google Spreadsheet ID
-  - PORT        -> Server-Port
-  - COURT_URL   -> Externe URL fuer Court-Score-Abfrage
-
-Polling-Intervalle:
-  - POLL_BASE   = 5 Sekunden (Basis-Tick)
-  - Fast        = 2x Basis = 10 Sekunden
-  - Slow        = 6x Basis = 30 Sekunden
-  - Court       = 2 Sekunden
-
-TABLE_CONFIG:
-  Definiert 8 Tabellen mit ihren Kategorien (fast/slow).
-  Jede Tabelle hat: Sheet-Name und Polling-Kategorie.
-
-
------ dataStore.js -----
-
-Zweck:
-  In-Memory-Cache aller Spreadsheet-Daten.
-
-Datenstruktur:
-  Einfaches JavaScript-Objekt. Speichert rohe 2D-Arrays pro Tabelle
-  (exakt so, wie sie von Google Sheets kommen).
-
-API:
-  - set(table, data)    -> Daten fuer eine Tabelle setzen
-  - get(table)          -> Daten einer Tabelle lesen
-  - getMeta(table)      -> Metadaten (letztes Update, Zeilenanzahl)
-  - getAll()            -> Alle Tabellen
-  - isReady()           -> true wenn alle Tabellen geladen
-
-Wichtig:
-  Keine Filterung in diesem Modul. Der dataStore liefert immer die
-  vollstaendigen Rohdaten. Filterung geschieht in dataProvider.js.
-
-
------ dataPoller.js -----
-
-Zweck:
-  Periodisches Polling der Google Sheets API.
-
-Tick-basiertes System:
-  - Fast-Tabellen (alle 10s): matches1, rlPlatzierung, entryList
-  - Slow-Tabellen (alle 30s): players, bewerbe, bewerbsart, matchTyp,
-    navigator
-
-Funktionsweise:
-  - Basis-Tick alle 5 Sekunden
-  - Fast-Tabellen bei jedem 2. Tick
-  - Slow-Tabellen bei jedem 6. Tick
-  - Overlap-Guard: Verhindert parallele Polls derselben Tabelle
-
-Initialer Load:
-  Alle Tabellen werden beim Start parallel geladen (Promise.all).
-
-
------ courtPoller.js -----
-
-Zweck:
-  Polling einer externen URL fuer Live-Court-Scores und Protokollierung
-  in der ScoreLog-Tabelle.
-
-Polling:
-  - Intervall: alle 2 Sekunden
-  - Roher JSON-Textvergleich fuer Aenderungserkennung
-  - Score-Format pro Court
-
-ScoreLog:
-  - Fire-and-Forget Schreiboperationen in die ScoreLog-Tabelle
-  - Keine Bestaetigung abgewartet
-
-Court-Aktivierung:
-  - Steuert ob Polling aktiv oder inaktiv ist
-  - Kann ueber /set-active HTTP-Endpoint und ueber
-    setScoreboardCourt WebSocket-Endpoint gesteuert werden
-
-
------ dataProvider.js -----
-
-Zweck:
-  WebSocket-Server mit 25+ Endpoints fuer Lese-, Schreib- und
-  State-Operationen.
-
-Funktionen:
-  - WebSocket-Server Verwaltung
-  - Client-Tracking (Map mit Client-Informationen)
-  - Ping/Pong Keepalive (Ping alle 30s, Dead nach 90s ohne Pong)
-  - Score-Broadcasting an alle verbundenen Clients
-  - Endpoint-Routing und Parameterverarbeitung
-
-Hilfs-Funktionen:
-  - getHeader(table)            -> Kopfzeile einer Tabelle
-  - filterIgnored(rows)         -> Filtert Ignore="1" und BYE
-  - buildPlayerMap(players)     -> Spieler-ID -> Name Map
-  - determineWinnerFromResult() -> Gewinner aus Ergebnis berechnen
-
-
------ stateStore.js -----
-
-Zweck:
-  Fluechtiger In-Memory-State (geht bei Neustart verloren).
-
-State-Bereiche:
-  - Courts: matchId, bewerb, players, dateTime, runde, aktiv
-  - Navigator: target (path + status)
-  - Scroll: amount + Zeitstempel (ts)
-
-Wichtig:
-  Dieser State wird NICHT persistiert. Bei einem Server-Neustart
-  gehen alle State-Daten verloren.
-
-
-==================================================================================
-  3. DATENFLUSS
-==================================================================================
-
-  Lesen (periodisch):
-    Google Sheets  -->  dataPoller  -->  dataStore (Cache)
-
-  Lesen (Client-Anfrage):
-    Client Request  -->  dataProvider  -->  dataStore (Read)  -->  Response
-
-  Schreiben:
-    Client Write  -->  dataProvider  -->  Google Sheets API (Write)
-
-  Live-Score:
-    Externe URL  -->  courtPoller  -->  Score Push  -->  Alle Clients
-
-  State:
-    State Read/Write  -->  stateStore (In-Memory, verloren bei Neustart)
-
-
-==================================================================================
-  4. FRONTEND SHARED MODULES
-==================================================================================
-
-
------ dataClient.js -----
-  Zentraler WebSocket-Client fuer alle Frontend-Seiten.
-  - createEndpoint()      -> Erzeugt einen benannten Endpoint-Caller
-  - request()             -> Sendet Request und wartet auf Response
-  - setOnScoreChange()    -> Callback fuer Live-Score-Push
-  - Auto-Connect beim Laden
-  - Auto-Reconnect nach 3 Sekunden bei Verbindungsverlust
-  - Request-Timeout: 15 Sekunden
-  - Connect-Wait: 10 Sekunden
-
------ navbar.js -----
-  Header-Navigation fuer alle Seiten.
-  - Desktop- und Mobile-Ansicht (Hamburger-Menue)
-  - Nav-Links: Dashboard, Spieler, Matches, Bewerbe, Scoreboard
-
------ modals.js -----
-  Modale Dialoge (groesstes Frontend-Modul).
-  - Login-Modal (SHA-256; Web Crypto mit JavaScript-Fallback)
-  - Passwort-vergessen-Modal
-  - Profil-Modal
-  - Match-Forderungs-Modal
-  - Zurueckziehen-Modal
-  - Setzt window-Globals fuer seitenuebergreifenden Zugriff
-
------ global.js -----
-  Globale Initialisierung.
-  - Ruft /version Endpoint ab
-  - Setzt window.APP_VERSION
-  - Aktualisiert Footer mit Versionsnummer
-
------ clock.js -----
-  Zeitbezogene Hilfsfunktionen.
-  - getCurrentDateTimeString()  -> Aktuelles Datum/Zeit als String
-  - getCurrentYear()            -> Aktuelles Jahr
-  - getStorageTimestamp()       -> Zeitstempel fuer localStorage
-
------ footer.js -----
-  Footer-Rendering.
-  - Datum, Copyright, Version
-
------ loadingHelper.js -----
-  Lade- und Fehlerbehandlung.
-  - callWithRetry()  -> 3 Versuche, 10s Verzoegerung
-  - Loading-Overlay anzeigen/verstecken
-  - Error-Overlay anzeigen
-
------ SDK.js -----
-  Einzelner Export: BACKEND_WS_URL
-  - Systemspezifisch (pro Installation unterschiedlich)
-  - Nicht im Git-Repository enthalten
-
-
-==================================================================================
-  5. CSS-ARCHITEKTUR
-==================================================================================
-
-
------ styles.css -----
-  Globales Stylesheet fuer alle Seiten.
-  CSS-Variablen:
-    --bg, --fg, --muted, --accent, --table-border
-  Breakpoints:
-    480px, 600px, 768px, 900px
-
------ scoreboard.css -----
-  Scoreboard-spezifische Styles.
-  - 2-Spalten Grid-Layout
-  - Court-Anzeigen
-  - Roboto Flex Schrift
-  Breakpoints:
-    1000px, 1300px
-
------ RoundRobin.css -----
-  Gruppenphasen-Styling.
-  - CSS Grid mit --rr-cols Variable
-  - Roboto Flex Schrift
-  Breakpoints:
-    499px, 1501px
-
------ Matches1.css -----
-  Match-Uebersicht mit Filtern und Karten.
-  Breakpoints:
-    600px
-
-
-==================================================================================
-  6. AUTHENTIFIZIERUNG
-==================================================================================
-
-  Hashing:
-    SHA-256 Hash, clientseitig berechnet:
-    - In sicheren Browser-Kontexten ueber die Web Crypto API
-    - Bei fehlendem crypto.subtle ueber einen kompatiblen JavaScript-Fallback;
-      dies betrifft insbesondere die per HTTP betriebenen Testsysteme
-    - Login und Passwort-Reset fangen Fehler beim Hashing ab
-
-  Verifikation:
-    Verglichen mit Passwort-Hash-Spalte in der Personen-Tabelle
-
-  Session-Speicherung (localStorage):
-    - isLoggedIn
-    - currentUserEmail
-    - currentUserId
-    - currentUserName
-
-  Einschraenkungen:
-    - Kein Server-Token
-    - Kein JWT
-    - Keine Sitzung serverseitig
-    - Authentifizierung basiert ausschliesslich auf clientseitigem
-      localStorage
-    - Der JavaScript-Fallback stellt auf HTTP nur die Funktion bereit; die
-      Transportverbindung wird dadurch nicht verschluesselt
-
-
-==================================================================================
-  7. WEBSOCKET-PROTOKOLL
-==================================================================================
-
-  Request (Client -> Server):
-    {
-      type:     "request",
-      id:       "req-N",
-      endpoint: "name",
-      params:   {}
-    }
-
-  Response (Server -> Client):
-    {
-      type:     "response",
-      id:       "req-N",
-      endpoint: "name",
-      data:     {}
-    }
-
-  Push (Server -> alle Clients):
-    {
-      type: "scores",
-      data: { courts: [...] }
-    }
-
-  Keepalive:
-    - Server sendet { type: "ping" } alle 30 Sekunden
-    - Client antwortet mit { type: "pong" }
-    - Client gilt als tot nach 90 Sekunden ohne Pong-Antwort
-
-
-==================================================================================
-  ENDE — ARCHITEKTUR.txt
-==================================================================================
+================================================================================
+
+`server.js`
+  Erstellt SQLite-Repository, StateStore, SheetService, AuthService und
+  MonitorBroker; konfiguriert HTTP und WebSocket. Der Port wird vor dem
+  asynchronen Initialload geoeffnet, aber Readiness bleibt bis zu aktuellem
+  Initialstate false. HTTP kennt korrekte 404/405/503, Body-/Header-/Requestlimits
+  und die Session-/Passwort-/Monitor-APIs.
+
+`config.js`
+  Validiert Instanz, Loopback, Origins, HTTPS-Modus, absolute SQLite-Datei,
+  Court-HTTPS-URL, Poll-/Stale-/Timeoutrelationen und alle Kapazitaetsgrenzen.
+  `TABLE_CONFIG` enthaelt die sieben produktiv gepollten Sheet-Tabs.
+
+`contracts.js`, `validators.js`, `errors.js`
+  Geschlossene maschinenpruefbare RPC-Parameterobjekte, UUID-operationIds,
+  ID-/Text-/Integer-/Booleanvertraege, Monitorziel-Allowlist und gemeinsamer
+  `AppError` mit Code, HTTP-Status, optionalen Details und Support-ID.
+
+`security.js`
+  Erzeugt und hasht Tokens, serialisiert Secure-/HttpOnly-/SameSite-Cookies,
+  vergleicht Credentials timing-safe, prueft Origins und JSON-Groessen und stellt
+  begrenzte Token-Bucket-Limiter bereit.
+
+`authService.js`
+  Liest Personen nur aus aktuellem Cache, erstellt kontextabhaengige sichere
+  Projektionen, prueft scrypt/Legacy-Credentials mit Dummy-Verifikation,
+  serialisiert Operationen je Benutzer und orchestriert Login, Migration,
+  Logout, Eigenwechsel, Resetnachweis und Admin-Passwortsetzung.
+
+`stateRepository.js`
+  Kapselt SQLite mit WAL/FULL, Dateirechten, Transaktionen, revisioniertem
+  app_state, Sessions, Resetnachweisen, Monitorgeraeten, Operationsergebnissen
+  und Loginlimits. Tokens werden nur gehasht persistiert. Cleanup entfernt
+  abgelaufene beziehungsweise alte Eintraege.
+
+`dataPoller.js`
+  Laedt beim Start alle sieben Tabellen parallel. Danach Basis-Tick 5 Sekunden,
+  Fast-Kategorie standardmaessig alle 10 Sekunden und Slow-Kategorie alle
+  30 Sekunden. Pro Tick gibt es keinen Overlap; Google-Requests besitzen
+  Timeouts und jede Antwort wird gegen `tableSchemas.js` validiert.
+
+`tableSchemas.js`, `tableUtils.js`
+  Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs und E-Mails und
+  normalisieren Rollen. Leere oder ungueltige Rollen werden als player behandelt;
+  jeder nichtleere ungueltige normalisierte Wert wird pro Prozess einmal gewarnt.
+
+`dataStore.js`
+  Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Alter, Pollfehler,
+  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler. Ein Poll,
+  der vor einem neueren Write startete, darf weder dessen Daten noch dessen
+  Fehlerzustand ueberholen. Listener publizieren nur Aenderung/Recovery.
+
+`sheetService.js`
+  Zentralisiert Google-Reads und alle fachlichen Writes. Queues serialisieren pro
+  Tabelle beziehungsweise Operation; Stop nimmt keine neue Arbeit an und wartet
+  auf aktive Sheetarbeit. Fachwrites verwenden stabile IDs, operationId-
+  Deduplizierung, Cache-Refresh/Fallback, Compare-and-set und Developer-Metadaten.
+
+`stateStore.js`
+  Fachliche Sicht auf persistente Court- und Monitorzielwerte. Court 1/2 werden
+  initial mit Revision 1 angelegt. Mutationen pruefen expectedRevision und
+  speichern Operation und State atomar in SQLite.
+
+`matchRules.js`
+  Berechnet Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
+  Sperrzeiten serverseitig. Der Browser ist nicht Autoritaet fuer Fachregeln.
+
+`courtPoller.js`
+  Pollt nur wenn mindestens ein Court aktiv ist. AbortController, Fetch-Timeout,
+  Antwortgroessenlimit, JSON-/Strukturvalidierung, semantische Score-
+  Normalisierung, exponentieller Backoff mit Jitter, Heartbeats, Revisionen und
+  dynamische Stale-Grenze schuetzen die externe Quelle.
+
+`monitorBroker.js`
+  Provisioniert, rotiert und widerruft gehashte Geraetetokens; erzwingt genau eine
+  aktive Verbindung je Monitor; sendet adressierte Navigation und geordnete
+  Scrollcommands; korreliert ACKs, Timeouts, Terminalstatus und Presence.
+  Persistierte operationIds verhindern doppeltes Scrollen ueber Wiederholungen.
+
+`dataProvider.js`
+  Implementiert WebSocket-Upgrade, v2-Handshake, Principal-Refresh, Rollenmatrix,
+  RPC-Routing, Support-ID-Korrelation, Ping/Pong, Kapazitaets-/Rate-/Backpressure-
+  Limits, Topiczugriff, initiale Subscription-Snapshots und Shutdown mit 1012.
+
+
+================================================================================
+  3. AUTHENTIFIZIERUNG, ROLLEN UND PROJEKTIONEN
+================================================================================
+
+Der Browser hasht das eingegebene Passwort zu einem 64-stelligen SHA-256-
+Credential. HTTPS schuetzt den Transport. Das Backend speichert neue Credentials
+mit scrypt v1 (N=16384, r=8, p=1, Salt 16 Byte, Key 32 Byte). Ein erfolgreicher
+Login migriert einen alten SHA-256-Sheetwert per Compare-and-set; unbekannte oder
+inaktive Benutzer durchlaufen eine Dummy-scrypt-Pruefung und erhalten denselben
+Loginfehler. Loginlimits gelten kombiniert fuer IP/E-Mail und IP.
+
+Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
+Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash. Rollen werden
+bei jedem HTTP-/RPC-Zugriff aus der aktuellen Personenzeile ermittelt:
+
+  Rolle/Principal | Rechte
+  ----------------|-------------------------------------------------------------
+  anonymous       | oeffentliche Projektionen, Scoreboard und Public Topics
+  player          | zusaetzlich Mitglieder-/Eigenprofil und eigene Fachwrites
+  operator        | zusaetzlich Court-, Navigator- und Monitorsteuerung
+  admin           | zusaetzlich Status, Reset/Passwort und Geraeteverwaltung
+  device          | nur eigenes Monitorziel, ACK und monitor-command
+
+Leere und ungueltige Personenrollen erhalten minimal `player`. localStorage
+enthaelt hoechstens eine nicht geheime Browser-deviceId; keine Sessiontokens und
+keine Rollenautoritaet.
+
+Datenprojektionen:
+  - Anonymes Spielerprofil: ID und Name.
+  - Angemeldetes fremdes Profil: zusaetzlich E-Mail, Telefon, Geburtsdatum.
+  - Eigenprofil: zusaetzlich Geschlecht und Rolle.
+  - Admin erhaelt keine fremden Passwortdaten. Reset-Code-Erzeugung und direktes
+    Setzen sind separate Adminaktionen.
+
+Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
+Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
+ein alter Login/Write Reset oder Logout nicht ueberholen kann. Sie bleiben auch
+bei fehlgeschlagenem oder unbekanntem Write ungueltig. Nur nach erfolgreichem
+Eigenwechsel wird eine neue Session erstellt. Ein Resetnachweis ist gehasht,
+ablaufend, einmalig und fest an den Credential des ersten Versuchs gebunden.
+
+`authClient.js` unterscheidet loading, authenticated, anonymous und unavailable.
+Auth-Mutationen sind dokumentintern und ueber einen same-origin Web Lock auch
+tabuebergreifend serialisiert. BroadcastChannel synchronisiert Tabs; Session-
+aenderungen starten den WebSocket neu.
+
+
+================================================================================
+  4. SHEETS, CACHE UND UNKNOWN-WRITES
+================================================================================
+
+Lesepfad:
+  Google Sheets -> dataPoller -> Schema-Pruefung -> dataStore
+  RPC -> Current-/Access-Pruefung -> Projektion -> Response
+
+Schreibpfad:
+  Sessionprincipal + geschlossene Parameter -> Fachregeln -> operationId-Lookup
+  -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
+
+IDs fuer neue Matches/Anmeldungen werden stabil aus Principal und operationId
+abgeleitet. Vor Update/Delete werden Personen-, Matches1- und EntryList-Zeilen
+ueber ID und `epiberRecord`-Developer-Metadaten unmittelbar neu aufgeloest. Ein
+Write kann dadurch keine durch Sortieren/Verschieben benachbarte Zeile treffen.
+
+SQLite bindet operationId an Actor, Endpoint und Payload. Ein bekanntes Resultat
+wird wiedergegeben. Nach verlorener Append-Antwort bestaetigt SheetService die
+stabile Record-ID. Ist der Ausgang nicht feststellbar, speichert es Status
+`unknown`; ein erneuter Aufruf macht nur Recovery/Bestaetigung. Unklare
+Metadatenerstellungen bleiben als `record-metadata-intent:*` sichtbar und werden
+nicht blind neu erstellt. Eindeutige 4xx-Ablehnungen duerfen kontrolliert neu
+angesetzt werden.
+
+Cache-Fencing verhindert, dass ein vor dem Write gestarteter Pollerfolg oder
+Pollfehler den neueren Cache ueberschreibt. Jede Tabelle besitzt Revision und
+maximales Alter. Fast ist standardmaessig nach 30 Sekunden, Slow nach 90 Sekunden
+nicht mehr current; betroffene Fachreads liefern 503 statt stale Rohdaten.
+
+Legacy-Grenze:
+  - Logging schreibt Timestamp, Type, Message mit USER_ENTERED. Ein erfolgreiches
+    Fachresultat ist operationId-dedupliziert, aber ein mehrdeutiger Append kann
+    ohne EventID/Readback nicht sicher wiederholt werden.
+  - ScoreLog schreibt Timestamp, PlatzNr, Score mit USER_ENTERED. Der erste
+    gelesene Stand und jede semantische Aenderung werden Fire-and-forget
+    angehaengt. Es gibt ausdruecklich keine EventID, keinen Retry, keinen
+    Readback, keine Write-ahead-/SQLite-Queue, keinen Pendingstatus und keinen
+    Shutdown-Drain. Dieses Legacyverhalten darf nicht mit der allgemeinen
+    SheetService-Unknown-Semantik gleichgesetzt werden.
+
+
+================================================================================
+  5. WEBSOCKET V2 UND BROWSER-LIFECYCLE
+================================================================================
+
+Nach same-origin Upgrade muss der Client `hello` mit Protokoll 2, Appversion,
+clientId, deviceId und pageType senden. `welcome` liefert Serverversion,
+Connection-ID, Timing und den serverseitigen Principal. Jede weitere Nachricht
+traegt `v:2`.
+
+RPC-Responses spiegeln id und endpoint und tragen eine Support-ID. Der Client
+weist einen falschen Responseendpoint als Protokollfehler ab. Ungueltige JSON-,
+Message-, Endpoint- oder Parameterfehler erhalten nach Moeglichkeit genau eine
+korrelierte Response. Rollen werden vor jedem geschuetzten Request und Topic
+erneut geprueft.
+
+Topics:
+  - public: scores, scoreboard-state, matches, players, bewerbe, bewerbsart,
+    entryList, ranking
+  - operator/admin: navigator, monitors, monitor-status:<monitorId>
+  - device: monitor-command
+
+Jede Subscription erhaelt sofort einen Snapshot. Tabellenereignisse sind
+revisionierte Invalidierungen; Clients lesen kontrolliert neu. Scoreboard startet
+mit einem atomaren Snapshot und resynchronisiert nach Reconnect. Maximal 20
+Topics werden pro Subscribe-Nachricht akzeptiert, insgesamt standardmaessig 32;
+der Client stellt groessere Mengen nach Reconnect in Batches wieder her.
+
+`dataClient.js` ist eine explizite Zustandsmaschine: idle, connecting, connected,
+stale, backoff, offline, stopped. Socketgenerationen sperren alte Events aus;
+Reconnect verwendet exponentiellen Backoff mit Jitter, Stale-Watchdog und einen
+stabilen 30-Sekunden-Zeitraum. Pendingrequests werden bei Disconnect sofort
+abgelehnt. Terminalcodes werden nicht automatisch umgangen.
+
+Online/offline, Visibility, pagehide/pageshow und BFCache werden behandelt.
+Reconnect stellt Subscriptions wieder her und meldet Resync. Nur sichere Reads
+werden begrenzt bei Timeout/Shutdown wiederholt. Writes werden nie automatisch
+wiederholt; operationIds bleiben bei unklarem Ausgang erhalten.
+
+
+================================================================================
+  6. MONITOR- UND COURT-ARCHITEKTUR
+================================================================================
+
+Ein Admin provisioniert einen Monitor und uebergibt den einmalig sichtbaren
+Enrollmenttoken lokal. HTTP tauscht ihn nicht gegen ein lesbares Browsertoken,
+sondern speichert ihn in einem HttpOnly-Monitorcookie; SQLite haelt nur den Hash.
+Rotation/Revoke trennt mit Code 4003. Eine neue Verbindung desselben Monitors
+ersetzt die alte mit 4009.
+
+Navigator (operator/admin) liest Monitorliste und Presence, abonniert pro Monitor
+Status und sendet adressierte Befehle:
+  - Navigation persistiert Ziel, commandId und Revision in SQLite, prueft lokale
+    Pfad-/Parameter-Allowlist und erwartet received/loading/loaded/failed.
+  - Scrollcommands sind pro Verbindung geordnet, maximal 50, 30 Sekunden gueltig
+    und in `operations` idempotent nachgewiesen. Wiederholungen behalten dieselbe
+    commandId; Probe/Replays verhindern unkontrolliertes erneutes Scrollen.
+
+Die Monitorseite verwendet Candidate-/Active-iframes, same-origin-Pruefung und
+sandbox. Kindseiten signalisieren Ready/Failed ueber `monitorReady.js`; Navigation
+hat eine 20-Sekunden-Loaddeadline. Disconnect beendet auch received/loading mit
+`MONITOR_OFFLINE`. Es gibt kein globales Navigatorziel und kein 150-ms-/2-s-
+Polling mehr.
+
+Court-Zuweisung und Aktivierung sind operationId-idempotent, revisioniert und in
+SQLite persistent. Aktivierung steuert den externen Poller. Dessen normalisierter
+Snapshot enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler; nur
+semantische Aenderungen erhoehen die Revision und erzeugen Scoreevents.
+
+
+================================================================================
+  7. READINESS, STATUS UND SHUTDOWN
+================================================================================
+
+`/live` prueft nur den Prozess. `/ready` und `/health` verlangen:
+  - Initialisierung abgeschlossen und kein Shutdown,
+  - offene SQLite-Datenbank,
+  - alle sieben Tabellen innerhalb ihrer Altersgrenze,
+  - laufenden Sheetpoller,
+  - bei aktivem Court eine frische externe Courtquelle.
+
+`/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
+SheetService- und Statewerte, einschliesslich `pendingMetadataIntents`, aber keine
+Secrets. Es existiert kein `scoreLogPending`.
+
+Graceful Shutdown:
+  1. Neue HTTP-/WS-Operationen werden mit 503 abgelehnt; Upgrades stoppen.
+  2. Daten- und Courtpoller/Timer stoppen; laufender Courtfetch wird abgebrochen.
+  3. MonitorBroker beendet Geraete und WebSockets schliessen mit 1012.
+  4. Aktive WS-Handler, HTTP-Requests und SheetService-Arbeit werden drainiert.
+  5. SQLite schliesst erst danach.
+
+Standard-Grace ist 90 Sekunden. Eine ueberschrittene Deadline ist
+`SHUTDOWN_TIMEOUT`, schliesst Verbindungen hart und fuehrt zu Fehlerexit. ScoreLog
+ist Fire-and-forget und gehoert bewusst nicht zum Drain.
+
+
+================================================================================
+  8. SHARED FRONTEND-MODULE UND SEITENBEREITSCHAFT
+================================================================================
+
+`dataClient.js`       WebSocket-v2-Zustandsmaschine, RPC, Topics, Resync,
+                      operationId-Lebenszyklus.
+`authClient.js`       HTTP-Cookiesession, SHA-256-Credential, Web Locks,
+                      Cross-Tab- und WS-Synchronisation.
+`navbar.js`           Navigation und sessiongetriebene Login-/Profilanzeige.
+`modals.js`           Profil, Login, Passwort/Reset und Fachdialoge; sichere
+                      kontextabhaengige Profilprojektionen.
+`loadingHelper.js`    Abschlussgarantien sowie fokussierbare, schliessbare
+                      Fehleranzeigen mit erhaltener Support-ID.
+`staticReady.js`      Bereitschaft statischer Seiten im Monitorkontext.
+`monitorReady.js`     Child-Ready-/Failed-Signalisierung.
+`global.js`/`footer.js` Version und gemeinsame Initialisierung/Darstellung.
+
+Fachseiten abonnieren tabellenspezifische Invalidierungen statt kurzer Polltimer.
+Externe Daten werden ueber sichere DOM-Knoten oder begrenztes Escaping gerendert.
+Externe Font-/Script-Abhaengigkeiten, SDK.js und rankingSidebar.js sind entfernt.
+Die elf fachlichen Seitendokumente sind in `SOFTWARE-DOKU.txt` indiziert.
+
+
+================================================================================
+  9. BETRIEBSGRENZE UND ROLLOUT
+================================================================================
+
+Node.js 26 und npm 12.0.1 sind festgeschrieben. Vor Produktion muessen Role und
+Entrydate, Pflichtspalten, Sheet-Rechte, epiberRecord-Metadaten, geschuetzte
+Credentials, SQLite-StateDirectory, HTTPS/WSS, Browser/Kiosk, responsive
+Scoreboards, Standby/Reconnect, Last, SIGTERM, Dauerbetrieb und Rollback praktisch
+abgenommen werden. Kanonische Liste:
+`Project/server-configs/ROLLOUT-CHECKLIST.md`.
+
+
+================================================================================
+  ENDE ARCHITEKTUR.txt
+================================================================================

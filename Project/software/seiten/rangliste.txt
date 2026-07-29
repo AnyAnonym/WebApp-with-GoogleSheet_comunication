@@ -1,48 +1,39 @@
 ================================================================================
-Ranglisten-Pyramide — Interaktive Ranglistenleiter
+Ranglisten-Pyramide - Interaktive Forderungsrangliste
 ================================================================================
-Stand: v3.0.2
+Stand: v4.0.0
 
--- Funktion --
-  Zeigt die Rangliste als Pyramide an. Spieler koennen andere Spieler
-  fordern (challengen). Komplexes Regelwerk fuer Forderungslogik.
-
--- Dateien --
+-- Funktion und Dateien --
   HTML: Frontend/rangliste.html
-  JS:   Frontend/JS/rangliste.js
-  CSS:  (kein eigenes CSS)
+  JS:   Frontend/JS/rangliste.js sowie Profil-/Aktionsmodale in modals.js
+  Parameter `?id=<bewerbId>`, Standard aus dem Container oder `2`. Zeigt die
+  Rangliste als Pyramide mit Legende und minutenaktualisierten Sperrzeit-Timern.
 
--- Datenquellen --
-  rlPlatzierung         – Ranglistendaten
-  players               – Spielernamen
-  preMatches            – Offene Matches (Forderungen)
-  readMatchRestrictions – Schutz-/Sperrzeiten
-  bewerbe               – Bewerbsdaten
+-- Daten und Aktualisierung --
+  Reads: `rlPlatzierung`, minimale `players`-Projektion, `preMatches`, `bewerbe`
+  und `readMatchRestrictions`. Letzteres muss vollstaendige Schutz- und Sperrdaten
+  bestaetigen; andernfalls werden Forderungen sichtbar deaktiviert. Invalidierungen
+  `ranking`, `matches`, `players`, `bewerbe`, Sessionaenderungen und das naechste
+  Restriktionsende serialisieren einen kompletten Refresh. Initialer Erfolg meldet
+  Monitor-Ready, Fehler werden im Inhalt gezeigt und als Monitor-Failed gemeldet.
 
--- Layout --
-  Pyramiden-Reihen: Jede Box zeigt Rang-Nummer + Spielername.
-  Legende als Sidebar mit Farb-Erklaerungen.
+-- Sitzung, Profile und Aktionen --
+  Die eigene Position kommt aus der serverseitigen Sitzung, nicht aus Browserdaten.
+  Profilklick verwendet `publicProfile` beziehungsweise fuer das eigene Profil
+  `myProfile`: anonym nur ID/Name, angemeldet E-Mail/Telefon/Geburtsdatum, eigenes
+  Profil zusaetzlich Geschlecht/Passwortaenderung. Nur Admins erhalten bei fremden
+  Profilen Reset-Code und direktes Passwortsetzen. Forderungen senden stabile
+  `operationId`, `bewerbId` und `opponentId`; der Server prueft Identitaet und Regeln.
 
--- Bedienung --
-  URL-Parameter: ?id=<bewerbId> (Standard: "2")
-  Bestimmt, welche Rangliste angezeigt wird.
-  Klick auf Box oeffnet Profil-Modal (modals.js).
-  "Fordern"-Button im Profil, wenn Ziel gruen markiert ist.
-  Nach erfolgreicher Forderung: 1.5s Verzoegerung, dann Seite neu laden.
+-- Fachlogik --
+  Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schutzzeit;
+  lila: Sperrzeit. Forderbar sind links in derselben Reihe und ab eigener Spalte in
+  der Reihe darueber; Rang 3 darf Rang 1 fordern. Eigene/offene/geschuetzte oder
+  gesperrte Konstellationen begrenzen Aktionen.
 
--- Shared Module --
-  navbar.js, modals.js, global.js, clock.js, footer.js
-
--- Besonderheiten --
-  KOMPLEXES REGELWERK (applyAllRules):
-  Farben:
-    Blau   = eigene Position
-    Gruen  = herausforderbar
-    Gelb   = hat offene Forderung
-    Pink   = Schutzzeit (geschuetzt nach Sieg, 7 Tage)
-    Lila   = Sperrzeit  (gesperrt nach Niederlage, 7 Tage)
-  Forderungsregeln:
-    - Gleiche Reihe: alle links vom eigenen Platz
-    - Reihe darueber: alle rechts der eigenen Spalte
-    - Sonderregel Rang 3: darf auch Rang 1 fordern
-  Countdown-Timer in geschuetzten/gesperrten Boxen.
+-- Verdeckte Funktion und Sicherheit --
+  Der sichtbare `Raushaengen`-Button ist entfernt. Modal, Clientfunktion und
+  `withdrawFromRanking`-Endpoint mit `operationId`, Bewerb, Rang und Grund bleiben
+  technisch vorhanden, werden derzeit aber nicht angeboten. Namen und Pyramide
+  entstehen als sichere DOM-Knoten; das statische Legenden-Markup enthaelt keine
+  externen Werte.

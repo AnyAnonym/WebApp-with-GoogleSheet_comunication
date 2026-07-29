@@ -1,7 +1,7 @@
 ================================================================================
 DokuVersGit.txt - Dokumentation, Versionierung und Git
 ================================================================================
-Stand: 3.1.11
+Stand: 4.0.0
 
 Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
@@ -57,8 +57,11 @@ Die einzige kanonische Quelle ist:
 
 Die laufende Version wird je System ueber GET /version ausgegeben. Auf main
 muessen Paketversion und Versionsnummer im letzten Versionscommit uebereinstimmen.
-Eine Abweichung blockiert weitere Versionierungen, bis der User die Korrektur
-bestaetigt hat.
+In einem sauberen, committed Seitenbranch muessen Paketversion und vollstaendige
+Branch-Commit-ID uebereinstimmen. Waehrend beabsichtigte, noch nicht committe
+Branch-Arbeit existiert, muss die Paketversion stattdessen die naechste
+Branch-Commit-ID mit dem Zusatz `-x` ausweisen. Andere Abweichungen blockieren
+weitere Commits oder Versionierungen, bis der User die Korrektur bestaetigt hat.
 
 Abgeschlossene Migration mit Version 3.1.11:
 
@@ -70,9 +73,52 @@ Abgeschlossene Migration mit Version 3.1.11:
   - Seit 3.1.11 stimmen Paket-, Commit- und Changelog-Version wieder ueberein.
   - Die Bootstrap-Ausnahme ist abgeschlossen und darf nicht wiederholt werden.
 
-In Seitenbranches wird die Paketversion niemals erhoeht. Sie bleibt auf der vom
-Main-Stand geerbten Version. Der Entwicklungsstand wird dort ueber Branchname und
-Branch-Commit identifiziert, nicht ueber GET /version.
+In Seitenbranches wird keine neue Main-SemVer-Version vergeben. Stattdessen wird
+vor jedem Branch-Commit die Paketversion auf die vollstaendige Commit-ID gesetzt:
+
+  <Branchname>-<laufendeNummer>
+
+Beispiel:
+
+  Branch:        3.1.12-paj-1
+  zweiter Commit 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
+  Paketversion:  3.1.12-paj-1-2
+
+Backend/package.json und das Root-Paket in Backend/package-lock.json muessen vor
+dem Commit denselben Wert erhalten. GET /version weist dadurch auf Testsystemen
+exakt den installierten Branch-Commit aus. Beim naechsten Branch-Commit wird die
+laufende Nummer in Commit-Nachricht und Paketdateien gemeinsam erhoeht.
+
+Entwicklungsstand vor dem Commit:
+
+  <Branchname>-<naechsteLaufendeNummer>-x
+
+Beispiel nach dem abgeschlossenen Commit `3.1.12-paj-1-2`:
+
+  beabsichtigte uncommittete Arbeit  3.1.12-paj-1-3-x
+  geplanter finaler Commit          3.1.12-paj-1-3
+
+Der literale Zusatz `-x` signalisiert einen veraenderten, testbaren, aber noch
+nicht commitfaehigen Arbeitsstand. Er wird gleichzeitig in package.json, im
+Root-Paket des package-lock.json und im offenen Abschnitt des temporaeren
+Branch-Changelogs gesetzt. Nach Deployment beziehungsweise Prozessneustart muss
+GET /version diesen `-x`-Stand auf dem Testsystem anzeigen.
+
+Die naechste laufende Nummer wird durch `-x` nur reserviert und erst durch den
+finalen Commit verbraucht. Werden die Aenderungen vollstaendig verworfen, werden
+Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID zurueckgestellt und
+der offene Changelogabschnitt entfernt.
+
+Unmittelbar vor dem finalen Commit wird `-x` in package.json, package-lock.json
+und Changelog entfernt. Danach duerfen nur noch Abschlusspruefung, Staging und der
+freigegebene Commit folgen. Scheitert der Commit und sind weitere inhaltliche
+Aenderungen erforderlich, muss vor deren Beginn wieder auf den `-x`-Stand
+zurueckgestellt werden. Kein Commit und keine Main-Version darf `-x` enthalten.
+
+Uebergangsausnahme fuer den bei Einfuehrung dieser Regel bereits vorhandenen
+Commit `3.1.12-paj-1-1`: Er erbte noch die Main-Paketversion 3.1.12. Die neue
+Branch-Paketversion gilt verbindlich ab `3.1.12-paj-1-2`; der historische Commit
+wird weder umgeschrieben noch amended.
 
 
 ================================================================================
@@ -207,6 +253,55 @@ Regeln:
    selben zentralen Changelog. Es gibt keine weiteren aktiven Changelogs.
 7. Leere Kategorien werden weggelassen. Doppelte Eintraege werden beim Uebertrag
    zusammengefuehrt, ohne Informationen zu verlieren.
+8. Das Branch-Log wird commitweise gefuehrt. Jeder Abschnitt nennt mindestens
+   Branch-Commit-ID, Datum und die tatsaechlichen Added-, Changed-, Fixed- und
+   Removed-Punkte dieses Commits. Spaetere Korrekturen ersetzen die Historie eines
+   frueheren Branch-Commits nicht, sondern werden im neuen Abschnitt ergaenzt.
+9. Solange der Branch nicht als Main-Version integriert ist, ist das Branch-Log
+   die einzige fachliche Dokumentation des neuen Anwendungsstands. Es muss deshalb
+   auch Migrationen, Sicherheitsfolgen, Betriebsanforderungen, manuelle Restarbeit
+   und bekannte Einschraenkungen nachvollziehbar enthalten.
+10. Jeder Branch mit Auswirkungen auf permanente Dokumentation fuehrt am Ende des
+    Logs einen Abschnitt "Dokumentationsuebernahme beim Main-Versionssprung". Dort
+    werden fuer jede Zieldatei der exakte Pfad und die zu uebernehmenden Fakten,
+    Ersetzungen, Entfernungen und neuen Abschnitte festgehalten. Sammelangaben wie
+    "Doku aktualisieren" sind unzulaessig.
+11. Die Uebernahmeliste ist vor jedem Branch-Commit gegen den aktuellen Gesamtdiff
+    zu pruefen und fortzuschreiben. Dadurch darf zwischen Branch-Implementierung
+    und spaeterer Main-Dokumentation keine Information verloren gehen.
+12. Mit der ersten beabsichtigten Aenderung nach einem Branch-Commit wird ein
+    offener Abschnitt fuer `<naechste-Commit-ID>-x` angelegt und waehrend der
+    Entwicklung laufend fortgeschrieben. Er enthaelt bereits Zwischenstaende,
+    Tests, Migrationen, offene Punkte und Anpassungen der Uebernahmeliste.
+13. Der offene Abschnitt verwendet `In Arbeit`, `Zielcommit` und
+    `Status: uncommitted`. Bei der Finalisierung werden Ueberschrift und
+    Zielcommit auf die Commit-ID ohne `-x` vereinheitlicht, das Abschlussdatum und
+    der konkrete Commit-Betreff gesetzt und der Statusvermerk entfernt.
+
+Format eines Branch-Abschnitts:
+
+  [3.1.12-paj-1-3-x] - In Arbeit seit <YYYY-MM-DD>
+  Zielcommit: 3.1.12-paj-1-3
+  Status: uncommitted
+
+    Changed
+    - [Software] ...
+
+Finalisiert:
+
+  [3.1.12-paj-1-2] - <YYYY-MM-DD>
+  Commit: 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
+
+    Added
+    - [Software] ...
+
+    Changed
+    - [Infrastruktur] ...
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/ARCHITEKTUR.txt
+    - Authentifizierung, Rollen und persistente Sitzungen dokumentieren.
 
 Format eines Main-Eintrags:
 
@@ -242,8 +337,12 @@ nicht die einzelnen Changelog-Punkte.
 
 1. Aktuellen Branch, Arbeitsbaum, Diff und vorhandene Testergebnisse pruefen.
 2. Tatsaechliche Aenderungen nach Added, Changed, Fixed und Removed einordnen.
-3. Nur das passende temporaere Changelog aktualisieren.
-4. Noch keine permanente Fachdokumentation und keine Paketversion aendern.
+3. Nur das passende temporaere Changelog und dessen dateigenaue
+   Dokumentationsuebernahmeliste aktualisieren.
+4. Noch keine permanente Fachdokumentation und keine Main-Version anlegen. Die
+   Branch-Paketversion traegt waehrend der Arbeit die naechste Commit-ID plus
+   `-x` und wird erst im Finalisierungsfenster auf die vollstaendige Commit-ID
+   gesetzt.
 5. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
    getestet, committed, sauber und gepusht sein. Fehlen Commit oder Push, werden
    zuerst die jeweils gesonderten Freigaben eingeholt und ausgefuehrt.
@@ -269,6 +368,12 @@ Die temporaeren Changelog-Dateien sind waehrend der Arbeit die einzige
 fortlaufende Dokumentation. Fachliche Dokumentationsdateien werden erst bei der
 bestaetigten Main-Version aktualisiert und beschreiben danach den neuen
 aktuellen Main-Stand.
+
+Organisatorische Ausnahmen sind Project/DokuVersGit.txt und LLM-START.md. Sie
+duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch aktualisiert
+werden, damit Workflow- und Arbeitsregeln sofort fuer alle weiteren Commits
+gelten. Diese Ausnahme erstreckt sich nicht auf Software-, Seiten-, Datenbank-
+oder Server-Fachdokumentation.
 
 Funktionale Code- und Konfigurationsdateien werden waehrend der Umsetzung normal
 geaendert. Die Aufschubregel betrifft beschreibende Dokumentation, nicht
@@ -316,13 +421,27 @@ Start:
 
 Arbeit im Seitenbranch:
 
-1. Implementieren und relevante Pruefungen ausfuehren.
-2. Branch-Changelog aktualisieren.
-3. Vor jedem Commit git status, Diff und die letzten Commits pruefen.
-4. Nur beauftragte Dateien stagen; Secrets ausschliessen.
-5. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
-6. Push nur nach ausdruecklicher Freigabe ausfuehren.
-7. Kein Rebase oder Force-Push eines veroeffentlichten Branches.
+1. Vor der ersten beabsichtigten Aenderung Status und letzte Commit-ID pruefen und
+   die naechste lueckenlose Branch-Commitnummer bestimmen.
+2. Backend/package.json und Backend/package-lock.json auf
+   `<naechste-Branch-Commit-ID>-x` setzen.
+3. Den offenen `-x`-Abschnitt im Branch-Changelog anlegen.
+4. Implementieren, online beziehungsweise lokal testen und den offenen
+   Changelogabschnitt samt dateigenauer Uebernahmeliste laufend fortschreiben.
+5. Permanente Fachdokumentation unveraendert lassen; nur ausdruecklich
+   freigegebene organisatorische Ausnahmen duerfen angepasst werden.
+6. Nach fachlichem Abschluss alle vorgesehenen Pruefungen im `-x`-Stand
+   ausfuehren.
+7. Erst im unmittelbaren Finalisierungsfenster `-x` aus package.json,
+   package-lock.json und Changelog entfernen sowie Datum und Commit-Betreff
+   finalisieren.
+8. Git-Status, Gesamtdiff, Changelog, Uebernahmeliste und letzte Commits pruefen.
+9. Nur beauftragte Dateien stagen; Secrets ausschliessen.
+10. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
+11. Nach dem Commit pruefen, dass Commit-ID, package.json, package-lock.json und
+   GET-/version-Wert logisch uebereinstimmen.
+12. Push nur nach ausdruecklicher Freigabe ausfuehren.
+13. Kein Rebase oder Force-Push eines veroeffentlichten Branches.
 
 Vor der Integration:
 
@@ -340,12 +459,17 @@ Integration:
      git merge --no-ff --no-commit <Branchname>
 
 2. Bei unerwarteten Konflikten oder unklarem Umfang abbrechen und nachfragen.
-3. Branch-Changelog in ChangeLog-main.txt uebertragen und Branch-Log entfernen.
-4. Betroffene Fachdokumentation aktualisieren.
-5. Backend/package.json auf die bestaetigte Version setzen.
-6. Status, Diff, Changelog, Paketversion und Tests pruefen.
-7. Sicherstellen, dass MERGE_HEAD existiert.
-8. Merge-Commit mit exakt folgendem Format erstellen:
+3. Branch-Changelog in ChangeLog-main.txt uebertragen und zusammenfassen.
+4. Jeden Punkt der Dokumentationsuebernahmeliste in die genannten permanenten
+   Fach-, Seiten-, Server- und Uebersichtsdokumente einarbeiten und gegen den
+   gesamten Branch-Diff pruefen.
+5. Erst nach vollstaendiger Uebernahme das temporaere Branch-Log entfernen.
+6. Backend/package.json und Backend/package-lock.json auf die bestaetigte
+   Main-Version setzen; die Branch-Praerelease-Version darf nicht verbleiben.
+7. Status, Diff, Changelog, permanente Dokumentation, Paketversion und Tests
+   pruefen.
+8. Sicherstellen, dass MERGE_HEAD existiert.
+9. Merge-Commit mit exakt folgendem Format erstellen:
 
      <NeueVersion> | <Kurzkommentar>
 

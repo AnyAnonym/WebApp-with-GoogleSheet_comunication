@@ -4,7 +4,9 @@ Stand der Analyse: 25.07.2026
 Analysierter Stand: ePiber v3.0.2  
 Gegenstand: Frontend, Backend, Caddy, WebSocket, Seitenwechsel, Navigator und Monitor
 
-Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die beschriebenen Verbesserungsvorschlaege wurden nicht umgesetzt.
+Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die
+Verbesserungsvorschlaege waren damals nicht umgesetzt; der aktuelle Stand steht
+im Schlussabschnitt "Implementierungsstatus 2026-07-29".
 
 ## 1. Gesamtarchitektur
 
@@ -746,3 +748,34 @@ Abhaengigkeiten: Abschluss der jeweils auszurollenden Arbeitspakete.
 12. K12 Tests und Rollout
 
 Die Sicherheitsaufgaben aus K10 sollten unabhaengig von der Reihenfolge sofort vorgezogen werden, wenn das System aus nicht vertrauenswuerdigen Netzen erreichbar ist.
+
+## 17. Implementierungsstatus 2026-07-29
+
+Die Abschnitte 1 bis 16 bleiben als historische Analyse des damaligen Stands und
+als Begruendung des Umbaus erhalten. Fuer Version 4.0.0 wurden die
+Kommunikationsarbeitspakete K1 bis K11 sowie die automatisierbaren Teile von K12
+im Branch `3.1.12-paj-1` umgesetzt und getestet. Dazu gehoeren insbesondere
+Vertraege und Datenprojektionen, Cookie-/Rollenauthentifizierung, persistenter
+Anwendungsstate, WebSocket-v2, Clientzustandsmaschine und Browser-Lifecycle,
+Subscriptions und Resync, adressierte Monitorsteuerung, stabile Sheets-Writes,
+Court-Poller-Haertung, Liveness/Readiness und Graceful Shutdown.
+
+Der finale Scoreboard-Stand wertet Verbindung, Synchronisation und Datenalter
+intern aus und verwendet Lade-/Fehleroverlays, zeigt aber keine separaten
+Verbindungs-, Synchronisations- oder Court-Quellen-Badges. `Logging` und
+`ScoreLog` gehoeren ebenfalls nicht zu einem EventID-/Queue-Redesign; beide
+behalten ihre dreispaltigen Legacy-Vertraege.
+
+Automatisch beziehungsweise statisch wurden auf dem Branch unter anderem zwei
+Buildlaeufe mit jeweils 68 Tests, fokussierte Regressionstests, `npm audit
+--omit=dev`, Caddy-Validierung und systemd-Verifikation dokumentiert. Daraus folgt
+keine Aussage ueber noch nicht ausgefuehrte Abschlusspruefungen des offenen
+Main-Merges.
+
+Offen sind die manuellen K12-Anteile: Google-Sheets-Backup und Migration,
+Browser-/Kiosk- und Rollenmatrix, responsive Scoreboard-Abnahme, Standby,
+BFCache, WLAN-Wechsel und Reconnect, Mehrmonitorbetrieb, Serverrestart/SIGTERM,
+Google-Sheets-Fehlerfaelle, erwartete und doppelte Spitzenlast, ein kompletter
+Veranstaltungstag im Dauerbetrieb sowie der praktische Rollback. Verbindliche
+Reihenfolge, Voraussetzungen und Abnahmekriterien stehen in der
+[Rollout-Checkliste](../server-configs/ROLLOUT-CHECKLIST.md).

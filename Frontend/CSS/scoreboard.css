@@ -34,6 +34,13 @@
   font-size: 1.2rem;
   color: var(--muted);
 }
+#scoreboard-loader.failed .loader-spinner {
+  display: none;
+}
+#scoreboard-loader.failed .loader-text {
+  color: #dc3545;
+  font-weight: 700;
+}
 
 /* ── WebSocket-Fehler Overlay ── */
 .ws-error-overlay {
@@ -66,6 +73,7 @@
 #scoreboard-content {
   display: none;
   height: 100vh;
+  height: 100dvh;
   grid-template-columns: 3fr 1fr;
   grid-template-rows: 1fr 1fr;
 }
@@ -75,6 +83,7 @@
 
 .scoreboard-body {
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg);
   color: var(--fg);
@@ -100,6 +109,7 @@
   overflow: hidden;
 }
 .platz-header {
+  flex-shrink: 0;
   font-size: 6rem;
   font-weight: bold;
   text-align: center;
@@ -113,6 +123,7 @@
   color: #dc3545;
 }
 .platz-sub {
+  flex-shrink: 0;
   font-size: 3rem;
   text-align: center;
   color: var(--muted);
@@ -121,6 +132,7 @@
   line-height: 1.15;
 }
 .platz-row {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -156,13 +168,20 @@
 }
 .platz-cell.label {
   flex: 1;
+  display: grid;
+  place-content: center;
   font-size: 5.5rem;
   padding: 2px 2px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .platz-cell.label.platz-cell-double {
-  font-size: 3.3rem;
   padding: 0 2px;
   line-height: 1.1;
+}
+.platz-cell.label.platz-cell-double > div {
+  overflow: hidden;
+  white-space: nowrap;
 }
 .platz-scores {
   display: flex;
@@ -239,8 +258,8 @@
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.3;
-  font-family: "Roboto Flex", sans-serif;
-  font-stretch: 20%;
+  font-family: "Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif;
+  font-stretch: condensed;
 }
 .ae-players span {
   white-space: nowrap;
@@ -267,8 +286,8 @@
   color: var(--accent);
   text-align: right;
   white-space: nowrap;
-  font-family: "Roboto Flex", sans-serif;
-  font-stretch: 5%;
+  font-family: "Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif;
+  font-stretch: condensed;
 }
 
 .pre-entry {
@@ -302,31 +321,37 @@
 
 /* ── Responsive: unter 1400px kleinere Schriftgrößen ── */
 @media (max-width: 1000px) {
+  #platz1,
+  #platz2 {
+    justify-content: flex-start;
+    padding-top: 16px;
+  }
   .platz-header {
     font-size: 2rem;
   }
   .platz-sub {
-    font-size: 0.9rem;
+    font-size: 1.17rem;
   }
   .platz-cell {
     font-size: 0.8rem;
   }
   .platz-cell.label {
-    font-size: 1.3rem;
+    flex: none;
+    width: 100%;
+    font-size: 2.6rem;
     padding: 1px 2px;
   }
   .platz-cell.label.platz-cell-double {
-    font-size: 0.78rem;
     padding: 0 2px;
     line-height: 1.1;
   }
   .platz-scores .platz-cell {
-    font-size: 1.3rem;
+    font-size: 2.6rem;
     padding: 2px 2px;
-    width: 40px;
+    width: 54px;
   }
   .platz-scores .platz-cell:last-child {
-    width: 60px;
+    width: 80px;
   }
   .platz-vs {
     font-size: 1rem;

@@ -1,60 +1,186 @@
-import { createEndpoint } from "./dataClient.js";
+import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
+import { ready, getUser, subscribeAuth } from "./authClient.js";
+import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
-const readPlayersList = createEndpoint("players");
+const readMemberDirectory = createEndpoint("memberDirectory");
+let directoryRenderGeneration = 0;
 
-function formatTelefon(val) {
-  if (!val || String(val).trim() === "") return "---";
-  return String(val).trim().replace(/^0043/, "+43");
+function formatTelefon(value) {
+  return String(value || "").trim().replace(/^0043/, "+43") || "---";
 }
 
-async function main() {
+function getElements() {
+  return {
+    table: document.getElementById("tbl"),
+    tbody: document.querySelector("#tbl tbody"),
+    message: document.getElementById("playerDirectoryMessage"),
+  };
+}
+
+function renderAnonymous() {
+  const { table, tbody, message } = getElements();
+  if (!table || !tbody || !message) return;
+
+  table.hidden = true;
+  tbody.replaceChildren();
+  message.hidden = false;
+  message.replaceChildren();
+
+  const text = document.createElement("p");
+  text.textContent = "Bitte melden Sie sich an, um das Spielerverzeichnis zu sehen.";
+
+  const loginButton = document.createElement("button");
+  loginButton.type = "button";
+  loginButton.className = "btn-login";
+  loginButton.textContent = "Anmelden";
+  loginButton.addEventListener("click", () => window.openLoginModal?.());
+
+  message.appendChild(text);
+  message.appendChild(loginButton);
+}
+
+function renderError(error) {
+  const { table, tbody, message } = getElements();
+  if (!table || !tbody || !message) return;
+
+  table.hidden = true;
+  tbody.replaceChildren();
+  message.hidden = false;
+  message.textContent = error?.message || "Spielerverzeichnis konnte nicht geladen werden.";
+}
+
+function appendCell(row, value) {
+  const cell = document.createElement("td");
+  cell.textContent = String(value || "");
+  row.appendChild(cell);
+}
+
+async function renderDirectory(user = getUser()) {
+  const generation = ++directoryRenderGeneration;
+
+  if (!user) {
+    renderAnonymous();
+    return;
+  }
+
+  const { table, tbody, message } = getElements();
+  if (!table || !tbody || !message) {
+    const error = new Error("Spielerverzeichnis-Elemente fehlen.");
+    error.code = "PLAYER_DIRECTORY_CONTAINER_MISSING";
+    throw error;
+  }
+
+  table.hidden = true;
+  message.hidden = false;
+  message.textContent = "Spieler werden geladen...";
+
+  let result;
   try {
-    console.log("⏳ Spieler werden geladen...");
+    result = await readMemberDirectory();
+  } catch (error) {
+    if (generation !== directoryRenderGeneration) return;
+    throw error;
+  }
+  if (generation !== directoryRenderGeneration) return;
 
-    const result = await readPlayersList();
-
-    const data = result.data?.values;
-    if (!data) throw new Error("Backend lieferte keine gültigen Daten!");
-
-    console.log("✅ Empfangene Spieler-Rohdaten:", data);
-
-    const tbody = document.querySelector("#tbl tbody");
-    if (!tbody) return;
-    tbody.innerHTML = "";
-
-    if (data.length < 2) {
-      tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>Keine Spieler gefunden.</td></tr>";
+  if (!result.data?.success) {
+    if (result.data?.error?.code === "AUTH_REQUIRED") {
+      renderAnonymous();
       return;
     }
-
-    const header = data[0].map((h) => h.trim().toLowerCase());
-    const fnIdx = header.indexOf("vorname");
-    const lnIdx = header.indexOf("nachname");
-    const telIdx = header.indexOf("telefonmobil");
-    const aktIdx = header.indexOf("aktiv");
-
-    const rows = data.slice(1).filter((row) => {
-      return String(row[aktIdx] || "").trim() === "1";
-    });
-
-    rows.sort((a, b) => {
-      const lnA = (a[lnIdx] || "").trim().toLowerCase();
-      const lnB = (b[lnIdx] || "").trim().toLowerCase();
-      return lnA.localeCompare(lnB);
-    });
-
-    rows.forEach((row) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${(row[lnIdx] || "").trim()}</td>
-        <td>${(row[fnIdx] || "").trim()}</td>
-        <td>${formatTelefon(row[telIdx])}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error("❌ Fehler beim Laden der Daten:", err);
+    const error = new Error(result.data?.error?.message || "Spielerverzeichnis konnte nicht geladen werden.");
+    error.code = result.data?.error?.code || "PLAYER_DIRECTORY_LOAD_FAILED";
+    throw error;
   }
+
+  const values = result.data.values || [];
+  tbody.replaceChildren();
+
+  if (values.length < 2) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.style.textAlign = "center";
+    cell.textContent = "Keine Spieler gefunden.";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  } else {
+    const header = values[0].map((value) => String(value || "").trim().toLowerCase());
+    const firstNameIndex = header.indexOf("vorname");
+    const lastNameIndex = header.indexOf("nachname");
+    const phoneIndex = header.indexOf("telefonmobil");
+    const activeIndex = header.indexOf("aktiv");
+    const idIndex = header.indexOf("id");
+
+    const rows = values.slice(1)
+      .filter((row) => activeIndex < 0 || String(row[activeIndex] || "").trim() === "1")
+      .sort((a, b) => {
+        const lastNameA = String(a[lastNameIndex] || "").trim().toLocaleLowerCase("de");
+        const lastNameB = String(b[lastNameIndex] || "").trim().toLocaleLowerCase("de");
+        return lastNameA.localeCompare(lastNameB, "de");
+      });
+
+    rows.forEach((valuesRow) => {
+      const row = document.createElement("tr");
+      const playerId = String(valuesRow[idIndex] || "").trim();
+      appendCell(row, String(valuesRow[lastNameIndex] || "").trim());
+      appendCell(row, String(valuesRow[firstNameIndex] || "").trim());
+      appendCell(row, formatTelefon(valuesRow[phoneIndex]));
+      if (playerId) {
+        const openProfile = () => window.openProfileModal?.({ playerId });
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-label", `Profil von ${String(valuesRow[firstNameIndex] || "").trim()} ${String(valuesRow[lastNameIndex] || "").trim()} öffnen`);
+        row.addEventListener("click", openProfile);
+        row.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openProfile();
+        });
+      }
+      tbody.appendChild(row);
+    });
+  }
+
+  message.hidden = true;
+  message.replaceChildren();
+  table.hidden = false;
 }
 
-window.addEventListener("load", main);
+let directoryInitialized = false;
+let observedUserId = null;
+
+subscribeAuth((user) => {
+  const nextUserId = String(user?.id || "");
+  const authChanged = directoryInitialized && nextUserId !== observedUserId;
+  observedUserId = nextUserId;
+  if (!authChanged) return;
+
+  if (!user) {
+    renderDirectory(null);
+    return;
+  }
+
+  queueMicrotask(() => {
+    if (String(getUser()?.id || "") !== nextUserId) return;
+    renderDirectory(getUser()).catch((error) => {
+      console.error("Spielerverzeichnis konnte nicht aktualisiert werden:", error);
+      renderError(error);
+    });
+  });
+});
+
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const user = await ready;
+    observedUserId = String(user?.id || "");
+    directoryInitialized = true;
+    await renderDirectory(user);
+    subscribeInvalidations(["players"], () => renderDirectory(getUser()));
+    signalMonitorReady();
+  } catch (error) {
+    console.error("Spielerverzeichnis konnte nicht initialisiert werden:", error);
+    renderError(error);
+    signalMonitorFailed(error.code || "PLAYER_DIRECTORY_LOAD_FAILED");
+  }
+});

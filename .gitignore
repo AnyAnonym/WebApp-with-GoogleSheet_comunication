@@ -4,6 +4,7 @@
 
 # ── Umgebungsspezifische Konfigdateien (NICHT einchecken!) ──
 Backend/.env
+Backend/.env.bak
 Backend/service-account.json
 
 # ── Node.js ──

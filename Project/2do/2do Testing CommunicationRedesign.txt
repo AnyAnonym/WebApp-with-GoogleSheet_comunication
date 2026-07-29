@@ -1,0 +1,21 @@
+Kommunikationsredesign - verbleibende manuelle Tests
+====================================================
+
+Diese Datei ist eine nicht-kanonische Arbeitsliste. Verbindliche Migrationen,
+Risiken und Main-Uebernahmen stehen im Branch-Changelog.
+
+- Browser-/Kiosk-Matrix fuer Desktop, Tablet und Mobilgeraete pruefen.
+- Scoreboard ueber 1300px, zwischen 1001px und 1300px sowie bis 1000px testen.
+- Einzel- und Doppelpaarungen, Hoch-/Querformat und mobile Browserleisten testen.
+- Anonymous-, player-, operator- und admin-Berechtigungen praktisch abnehmen.
+- Profilkontakte, Geburtsdatum, Reset-Code und direktes Admin-Passwortsetzen
+  einschliesslich Sessionwiderruf pruefen.
+- WebSocket-Reconnect, Offline/Online, BFCache, Standby und WLAN-Wechsel testen.
+- Monitor-Provisionierung, Rotation, Revoke, Navigation, Lade-ACK und Scrollqueue
+  mit mehreren Monitoren pruefen.
+- Serverneustart, SIGTERM-Grace-Deadline und persistierten SQLite-State pruefen.
+- Google-Sheets-Fehler, unklare Fachwrites und manuelle Klaerung ohne blinde
+  Wiederholung testen.
+- Erwartete sowie doppelte Spitzenlast und einen Veranstaltungstag Dauerbetrieb
+  abnehmen.
+- Praktischen Rollback auf den vorherigen PAJ-Stand dokumentiert durchfuehren.

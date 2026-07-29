@@ -354,6 +354,44 @@ Commit: 3.1.12-paj-1-3 | Fachvertraege und Oberflaechen korrigiert
     `/health` zu bestaetigen.
 
 
+[3.1.12-paj-1-4] - 2026-07-29
+Commit: 3.1.12-paj-1-4 | PAJ-Konfiguration und Testnotizen aktualisiert
+
+  Changed
+  - [Infrastruktur] Geheimnisfreie Umgebungsvorlage um die bekannten
+    Spreadsheet-IDs fuer Live und PAJ sowie die systemspezifischen
+    Credential-Quelldateien ergaenzt; Laufzeitwerte bleiben weiterhin
+    `CHANGE_ME` beziehungsweise systemd-gesteuert.
+  - [Infrastruktur] PAJ-systemd-Vorlage bindet die vorhandene
+    Credential-Quelldatei `epiberpaj-5032a34639bf.json` ueber `LoadCredential`
+    ein. Der Prozess verwendet weiterhin nur die geschuetzte Laufzeitkopie.
+  - [Repository] `Backend/.env.bak` als lokale Geheimnissicherung zusaetzlich
+    explizit ausgeschlossen. Der generische Schutz fuer
+    `Backend/service-account.json` und die systemspezifischen
+    Service-Account-Dateinamen bleiben parallel erhalten.
+  - [Dokumentation] Historische Root-Rolloutnotiz `abc.txt` auf die aktuellen
+    Rollen-, Entrydate-, dreispaltigen Logging-/ScoreLog-, Credential-, Test- und
+    Versionsvertraege korrigiert und als nicht-kanonische Kurzcheckliste markiert.
+
+  Added
+  - [Dokumentation] Nicht-kanonische manuelle Testliste fuer Browser/Kiosk,
+    responsive Scoreboards, Rollen, Profile, WebSocket-Lifecycle, Monitore,
+    Neustart/SQLite, Sheets-Fehler, Last, Dauerbetrieb und Rollback ergaenzt.
+
+  Verification
+  - `npm run build`: statische Pruefungen und 68 Tests erfolgreich.
+  - `systemd-analyze verify Project/server-configs/systemd/epiber-paj.service`:
+    erfolgreich.
+  - `git diff --check`: erfolgreich.
+
+  Security and compatibility
+  - `Backend/.env.bak` wird nicht gelesen und nicht versioniert. Die Datei kann
+    Zugangsdaten enthalten und bleibt unabhaengig von ihrem lokalen Inhalt aus
+    Git ausgeschlossen.
+  - Spreadsheet-IDs und Credential-Dateinamen sind Betriebskennungen; private
+    Schluesselinhalte oder Umgebungswerte werden nicht in die Vorlagen uebernommen.
+
+
 Dokumentationsuebernahme beim Main-Versionssprung
 ================================================================================
 
@@ -530,6 +568,8 @@ Project/server-configs/SERVER-SETUP.txt
   Shutdown sowie StateDirectory/SQLite-Rechte und Sandbox dokumentieren.
 - HTTPS/WSS, Caddy-Security-/Proxyregeln, Liveness/Readiness, Adminstatus und
   PAJ-PK-Live-Reihenfolge dokumentieren; SDK- und `.env`-Credentialpfad entfernen.
+- Bekannte systemspezifische Spreadsheet-IDs und Credential-Quelldateinamen mit
+  klarer Trennung von geheimen Schluesselinhalten aufnehmen.
 
 Project/server-configs/ROLLOUT-CHECKLIST.md
 - Als neue permanente Datei anlegen.
@@ -549,6 +589,15 @@ Project/2do/KOMMUNIKATION-ANALYSE.md
   ergaenzen: K0-K11 und automatisierbare K12-Teile umgesetzt/getestet;
   Sheetsmigration, Browser/Kiosk, Last/Dauer und Rollback noch vor Ort offen.
 - Auf die neue Rollout-Checkliste verweisen.
+
+Project/2do/2do Testing CommunicationRedesign.txt
+- Manuelle Browser-, Rollen-, Monitor-, Lifecycle-, Last-, Dauer- und
+  Rollbacktests gegen die finale Rollout-Checkliste konsolidieren; danach ueber
+  Beibehaltung oder Entfernung der nicht-kanonischen Arbeitsliste entscheiden.
+
+abc.txt
+- Aktuelle Kurzcheckpunkte in die kanonische Rollout-Checkliste uebernehmen und
+  die nicht-kanonische Root-Notiz beim Main-Merge entfernen.
 
 Project/2do/LOGGING-ANALYSE.md
 - Historische Analyse unveraendert lassen und einen datierten Status ergaenzen:

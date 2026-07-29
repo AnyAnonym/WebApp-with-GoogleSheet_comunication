@@ -61,6 +61,7 @@ class AuthService {
       email: headerIndex(header, "e-mail", "email"),
       passwordHash: headerIndex(header, "passwdhash"),
       phone: headerIndex(header, "telefonmobil"),
+      birthDate: headerIndex(header, "geburtsdatum"),
       gender: headerIndex(header, "geschlecht"),
       active: headerIndex(header, "aktiv"),
       role: headerIndex(header, "role"),
@@ -75,6 +76,7 @@ class AuthService {
       email: indexes.email < 0 ? "" : String(row[indexes.email] || "").trim().toLowerCase(),
       storedPasswordHash: indexes.passwordHash < 0 ? "" : String(row[indexes.passwordHash] || "").trim(),
       phone: indexes.phone < 0 ? "" : String(row[indexes.phone] || "").trim(),
+      birthDate: indexes.birthDate < 0 ? "" : String(row[indexes.birthDate] || "").trim(),
       gender: indexes.gender < 0 ? "" : String(row[indexes.gender] || "").trim(),
       active: indexes.active < 0 || String(row[indexes.active] || "").trim() === "1",
       role: roleValue(indexes.role < 0 ? "player" : row[indexes.role]),
@@ -118,6 +120,19 @@ class AuthService {
     return { id: person.id, firstName: person.firstName, lastName: person.lastName };
   }
 
+  memberProfile(id) {
+    const person = this.findById(id);
+    if (!person) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+    return {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName,
+      email: person.email,
+      phone: person.phone,
+      birthDate: person.birthDate,
+    };
+  }
+
   privateProfile(person) {
     return {
       id: person.id,
@@ -125,6 +140,7 @@ class AuthService {
       lastName: person.lastName,
       email: person.email,
       phone: person.phone,
+      birthDate: person.birthDate,
       gender: person.gender,
       role: person.role,
     };
@@ -283,6 +299,25 @@ class AuthService {
     if (!person) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
     const proof = this.repository.createPasswordResetProof(person.id, admin.principal.id, PASSWORD_RESET_TTL_MS);
     return { success: true, resetToken: proof.token, expiresAt: proof.expiresAt, personId: person.id };
+  }
+
+  async setPasswordAsAdmin(token, personId, newPasswordHash) {
+    this.requireRole(token, ["admin"]);
+    return this.runForUser(personId, async () => {
+      this.requireRole(token, ["admin"]);
+      const person = this.findById(personId);
+      if (!person) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+      const storedHash = await this.createStoredPasswordHash(newPasswordHash);
+      this.repository.revokeUserSessions(person.id);
+      try {
+        await this.sheetService.setPasswordHash(person.id, storedHash, { expectedHash: person.storedPasswordHash });
+      } catch (error) {
+        error.details = { ...(error.details || {}), sessionsRevoked: true };
+        throw error;
+      }
+      this.repository.revokeUserSessions(person.id);
+      return { success: true, personId: person.id };
+    });
   }
 
   async resetPassword(resetToken, newPasswordHash) {

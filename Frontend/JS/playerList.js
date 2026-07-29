@@ -110,6 +110,7 @@ async function renderDirectory(user = getUser()) {
     const lastNameIndex = header.indexOf("nachname");
     const phoneIndex = header.indexOf("telefonmobil");
     const activeIndex = header.indexOf("aktiv");
+    const idIndex = header.indexOf("id");
 
     const rows = values.slice(1)
       .filter((row) => activeIndex < 0 || String(row[activeIndex] || "").trim() === "1")
@@ -121,9 +122,22 @@ async function renderDirectory(user = getUser()) {
 
     rows.forEach((valuesRow) => {
       const row = document.createElement("tr");
+      const playerId = String(valuesRow[idIndex] || "").trim();
       appendCell(row, String(valuesRow[lastNameIndex] || "").trim());
       appendCell(row, String(valuesRow[firstNameIndex] || "").trim());
       appendCell(row, formatTelefon(valuesRow[phoneIndex]));
+      if (playerId) {
+        const openProfile = () => window.openProfileModal?.({ playerId });
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-label", `Profil von ${String(valuesRow[firstNameIndex] || "").trim()} ${String(valuesRow[lastNameIndex] || "").trim()} öffnen`);
+        row.addEventListener("click", openProfile);
+        row.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openProfile();
+        });
+      }
       tbody.appendChild(row);
     });
   }

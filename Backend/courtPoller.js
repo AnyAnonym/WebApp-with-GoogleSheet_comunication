@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const { google } = require("googleapis");
 const {
   COURT_FETCH_TIMEOUT_MS,
@@ -6,7 +5,6 @@ const {
   COURT_MAX_RESPONSE_BYTES,
   COURT_POLL_INTERVAL,
   COURT_URL,
-  GOOGLE_REQUEST_TIMEOUT_MS,
   SHEET_ID,
 } = require("./config.js");
 
@@ -29,25 +27,7 @@ let lastAttemptAt = 0;
 let lastSuccessAt = 0;
 let lastError = null;
 let onUpdate = null;
-let logQueue = Promise.resolve();
-let pendingLogWrites = 0;
-let failedLogWrites = [];
-let scoreLogSuccessCount = 0;
-let scoreLogRetryCount = 0;
-let scoreLogFailureCount = 0;
-let scoreLogDropCount = 0;
-let lastScoreLogError = null;
 let lastNotificationAt = 0;
-let stopping = false;
-let stateRepository = null;
-const SCORELOG_FAILURES_STATE_KEY = "scorelog-failures";
-const activeLogEventIds = new Set();
-
-function persistFailedLogWrites() {
-  if (!stateRepository?.status().open) return;
-  const current = stateRepository.getState(SCORELOG_FAILURES_STATE_KEY, []);
-  stateRepository.setState(SCORELOG_FAILURES_STATE_KEY, failedLogWrites, current.revision);
-}
 
 async function getSheetsClient() {
   if (sheetsClient) return sheetsClient;
@@ -138,94 +118,18 @@ async function readBoundedText(response) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function appendScoreLog(item) {
-  let lastFailure;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const sheets = await getSheetsClient();
-      const existing = await sheets.spreadsheets.values.get({
-        spreadsheetId: SHEET_ID,
-        range: "ScoreLog!D:D",
-      }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-      if ((existing.data.values || []).some((row) => row[0] === item.eventId)) return;
-      if (item.uncertain) {
-        lastFailure ||= new Error("ScoreLog-Append ist noch nicht nachweisbar");
-      } else {
-        item.uncertain = true;
-        item.uncertainSince = Date.now();
-        persistFailedLogWrites();
-        try {
-          await sheets.spreadsheets.values.append({
-            spreadsheetId: SHEET_ID,
-            range: "ScoreLog",
-            valueInputOption: "RAW",
-            requestBody: { values: [[timestamp(), item.platz, item.score, item.eventId]] },
-          }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-          return;
-        } catch (error) {
-          const status = Number(error?.response?.status || error?.status || 0);
-          if (status >= 400 && status < 500 && status !== 408) {
-            item.uncertain = false;
-            item.uncertainSince = 0;
-            persistFailedLogWrites();
-          }
-          lastFailure = error;
-        }
-      }
-    } catch (error) {
-      lastFailure = error;
-    }
-    if (attempt < 3) {
-      scoreLogRetryCount++;
-      await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
-    }
+async function writeScoreLog(platz, score) {
+  try {
+    const sheets = await getSheetsClient();
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: "ScoreLog",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[timestamp(), platz, score]] },
+    });
+  } catch (error) {
+    console.error("ScoreLog Fehler:", error.message);
   }
-  throw lastFailure || new Error("ScoreLog fehlgeschlagen");
-}
-
-function queueScoreLog(platz, score, eventId = crypto.randomUUID(), retainedItem = null) {
-  const item = retainedItem || { platz, score, eventId, uncertain: false };
-  if (!failedLogWrites.some((entry) => entry.eventId === item.eventId)) {
-    if (failedLogWrites.length >= 100) {
-      scoreLogDropCount++;
-      lastScoreLogError = { at: Date.now(), message: "ScoreLog-Persistenzwarteschlange ist voll" };
-      return false;
-    }
-    failedLogWrites.push(item);
-    persistFailedLogWrites();
-  }
-  if (stopping || pendingLogWrites >= 100) {
-    lastScoreLogError = { at: Date.now(), message: "ScoreLog-Warteschlange nicht verfuegbar" };
-    console.error("courtPoller: ScoreLog zur spaeteren Verarbeitung behalten");
-    return false;
-  }
-  if (activeLogEventIds.has(item.eventId)) return true;
-  activeLogEventIds.add(item.eventId);
-  pendingLogWrites++;
-  logQueue = logQueue.catch(() => {}).then(async () => {
-    try {
-      await appendScoreLog(item);
-      scoreLogSuccessCount++;
-      lastScoreLogError = null;
-      failedLogWrites = failedLogWrites.filter((entry) => entry.eventId !== item.eventId);
-      persistFailedLogWrites();
-    } catch (error) {
-      scoreLogFailureCount++;
-      lastScoreLogError = { at: Date.now(), message: String(error?.message || error).slice(0, 300), eventId: item.eventId };
-      persistFailedLogWrites();
-      console.error("courtPoller: ScoreLog endgueltig fehlgeschlagen:", lastScoreLogError.message);
-    }
-  }).finally(() => {
-    pendingLogWrites--;
-    activeLogEventIds.delete(item.eventId);
-  });
-  return true;
-}
-
-function retryFailedScoreLog() {
-  if (!failedLogWrites.length || stopping || pendingLogWrites >= 100) return;
-  const item = failedLogWrites.find((entry) => !activeLogEventIds.has(entry.eventId));
-  if (item) queueScoreLog(item.platz, item.score, item.eventId, item);
 }
 
 function detectScoreChanges(courts) {
@@ -233,7 +137,7 @@ function detectScoreChanges(courts) {
     const current = scoreString(court);
     const previous = lastCourtScores[court.platz];
     lastCourtScores[court.platz] = current;
-    if (previous !== undefined && previous !== current) queueScoreLog(court.platz, current);
+    if (previous !== current) void writeScoreLog(court.platz, current);
   }
 }
 
@@ -304,7 +208,6 @@ async function poll(myGeneration = generation) {
       revision++;
       pushCount++;
     }
-    retryFailedScoreLog();
     if (changed || recovered || Date.now() - lastNotificationAt >= 10000) notify(changed);
     schedule(myGeneration, COURT_POLL_INTERVAL);
   } catch (error) {
@@ -332,7 +235,6 @@ function updatePollingState() {
   running = shouldRun;
   failureCount = 0;
   if (running) {
-    stopping = false;
     lastSuccessAt = 0;
     lastError = null;
     console.log("courtPoller: Polling gestartet");
@@ -364,14 +266,6 @@ function getStatus() {
     courtActive: { ...courtActive },
     pollCount,
     pushCount,
-    pendingLogWrites,
-    failedLogWrites: failedLogWrites.length,
-    scoreLogSuccessCount,
-    scoreLogRetryCount,
-    scoreLogFailureCount,
-    scoreLogDropCount,
-    lastScoreLogError,
-    scoreLogPending: failedLogWrites.map(({ eventId, platz, score, uncertain }) => ({ eventId, platz, score, uncertain })),
     lastAttemptAt,
     lastSuccessAt,
     lastError,
@@ -380,24 +274,11 @@ function getStatus() {
 }
 
 async function stop() {
-  stopping = true;
   generation++;
   running = false;
   if (timer) clearTimeout(timer);
   timer = null;
   if (controller) controller.abort(new Error("Shutdown"));
-  await logQueue.catch(() => {});
-  persistFailedLogWrites();
-}
-
-function setRepository(repository) {
-  stateRepository = repository;
-  if (!repository?.status().open) return;
-  const persisted = repository.getState(SCORELOG_FAILURES_STATE_KEY, []).value;
-  const known = new Set(failedLogWrites.map((item) => item.eventId));
-  for (const item of Array.isArray(persisted) ? persisted : []) {
-    if (item?.eventId && !known.has(item.eventId)) failedLogWrites.push(item);
-  }
 }
 
 function setDependenciesForTests({ fetch: nextFetch, sheetsFactory } = {}) {
@@ -415,7 +296,6 @@ module.exports = {
   setCourtActive,
   setDependenciesForTests,
   setOnUpdate,
-  setRepository,
   stop,
   updatePollingState,
 };

@@ -20,7 +20,6 @@ const enrollment = document.getElementById("monitor-enrollment");
 const enrollmentForm = document.getElementById("monitor-enrollment-form");
 const tokenInput = document.getElementById("monitor-token-input");
 const enrollmentStatus = document.getElementById("monitor-enrollment-status");
-const disconnectButton = document.getElementById("monitor-disconnect");
 
 let device = null;
 let activeFrame = null;
@@ -30,7 +29,6 @@ let sessionRequest = null;
 let queuedNavigation = null;
 let queuedScrollCommands = [];
 let scrollChain = Promise.resolve();
-let connectionSnapshot = { state: "idle", connected: false };
 
 const appliedScrollIds = new Map();
 const highestScrollSequence = new Map();
@@ -63,26 +61,6 @@ function restoreAppliedScrolls() {
   }
 }
 
-function setConnectionText(message, state) {
-  const node = document.getElementById("monitor-connection");
-  if (!node) return;
-  node.textContent = message;
-  node.dataset.state = state;
-}
-
-function renderConnection() {
-  const labels = {
-    connected: device ? `Verbunden: ${device.label}` : "Verbindung hergestellt",
-    connecting: "Verbindung wird hergestellt",
-    backoff: "Verbindung wird wiederhergestellt",
-    stale: "Verbindung ist veraltet",
-    offline: "Browser offline",
-    idle: "Nicht verbunden",
-    stopped: "Verbindung beendet",
-  };
-  setConnectionText(labels[connectionSnapshot.state] || "Nicht verbunden", connectionSnapshot.state);
-}
-
 function setOverlay(message = "", state = "info") {
   if (!overlay) return;
   overlay.textContent = message;
@@ -104,11 +82,6 @@ function setDevice(nextDevice) {
   device = { id, label: String(nextDevice?.label || id) };
   if (changed) restoreAppliedScrolls();
   if (enrollment) enrollment.hidden = true;
-  const bar = document.getElementById("monitor-device-bar");
-  if (bar) bar.hidden = false;
-  const label = document.getElementById("monitor-device-label");
-  if (label) label.textContent = device.label;
-  renderConnection();
   flushQueuedCommands();
   return true;
 }
@@ -136,10 +109,7 @@ function clearDevice({ removeFrame = true } = {}) {
     activeFrame = null;
     activeCommandId = "";
   }
-  const bar = document.getElementById("monitor-device-bar");
-  if (bar) bar.hidden = true;
   if (enrollment) enrollment.hidden = false;
-  renderConnection();
   setOverlay("Monitor ist noch nicht provisioniert.", "waiting");
 }
 
@@ -566,21 +536,6 @@ async function enrollMonitor(event) {
   }
 }
 
-async function disconnectMonitor() {
-  if (!window.confirm("Dieses Monitorgerät wirklich abmelden?")) return;
-  if (disconnectButton) disconnectButton.disabled = true;
-  try {
-    await monitorSession("DELETE");
-    clearDevice();
-    setEnrollmentStatus("Gerät wurde abgemeldet.", "success");
-    restartConnection({ allowTerminal: true }).catch(() => {});
-  } catch (error) {
-    setOverlay(error?.message || "Gerät konnte nicht abgemeldet werden", "failed");
-  } finally {
-    if (disconnectButton) disconnectButton.disabled = false;
-  }
-}
-
 window.addEventListener("message", (event) => {
   const job = navigationJob;
   if (!job?.frame || job.finished || job.cancelled) return;
@@ -599,8 +554,6 @@ window.addEventListener("message", (event) => {
 subscribe("monitor-command", handleMonitorCommand);
 
 onConnectionState((snapshot) => {
-  connectionSnapshot = snapshot;
-  renderConnection();
   if (snapshot.state === "stopped" && snapshot.closeCode === 4003) checkMonitorSession();
   if (snapshot.state === "stopped" && snapshot.closeCode === 4009) {
     setOverlay("Dieser Monitor ist bereits in einem anderen Fenster verbunden.", "failed");
@@ -617,5 +570,4 @@ onResync(({ welcome }) => {
 });
 
 enrollmentForm?.addEventListener("submit", enrollMonitor);
-disconnectButton?.addEventListener("click", disconnectMonitor);
 checkMonitorSession();

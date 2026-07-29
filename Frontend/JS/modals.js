@@ -8,6 +8,7 @@ import {
   getUser,
   isAuthenticated,
   resetPassword,
+  setPasswordForPerson,
   subscribeAuth,
 } from "./authClient.js";
 
@@ -16,6 +17,7 @@ const readMyProfile = createEndpoint("myProfile");
 const addMatch = createEndpoint("addMatch");
 const withdrawFromRanking = createEndpoint("withdrawFromRanking");
 let withdrawContext = null;
+let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
 let modalAuthIdentity = null;
 
@@ -67,6 +69,10 @@ function closeModal(modal) {
   if (modal?.id === "withdrawModal") withdrawContext = null;
   if (modal?.id === "profileModal") profileRequestGeneration += 1;
   if (modal?.id === "resetPasswordModal") document.getElementById("resetPasswordForm")?.reset();
+  if (modal?.id === "adminPasswordModal") {
+    adminPasswordTarget = null;
+    document.getElementById("adminPasswordForm")?.reset();
+  }
   if (modal?.id === "resetProofModal") {
     const token = document.getElementById("resetProofValue");
     const target = document.getElementById("resetProofTarget");
@@ -138,10 +144,22 @@ const resetProofModal = createModal("resetProofModal", `
   <button type="button" id="copyResetProof" class="btn-login">Code kopieren</button>
 `);
 
+const adminPasswordModal = createModal("adminPasswordModal", `
+  <h2>Passwort direkt setzen</h2>
+  <p id="adminPasswordTarget"></p>
+  <form id="adminPasswordForm">
+    <label for="adminNewPassword">Neues Passwort:</label>
+    <input type="password" id="adminNewPassword" name="newPassword" autocomplete="new-password" minlength="6" required>
+    <label for="adminConfirmPassword">Passwort bestätigen:</label>
+    <input type="password" id="adminConfirmPassword" name="confirmPassword" autocomplete="new-password" minlength="6" required>
+    <button type="submit" class="btn-login">Passwort setzen</button>
+  </form>
+`);
+
 const profileModal = createModal("profileModal", `
   <h2 id="profileName">Profil</h2>
   <div id="profileText">Lade Profildaten...</div>
-  <div id="profileActions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;"></div>
+  <div id="profileActions" style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 16px;"></div>
 `);
 
 const withdrawModal = createModal("withdrawModal", `
@@ -160,6 +178,15 @@ function formatPhone(value) {
   return String(value || "").trim().replace(/^0043/, "+43") || "---";
 }
 
+function formatBirthDate(value) {
+  const raw = String(value || "").trim();
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[3]}.${compact[2]}.${compact[1]}`;
+  const short = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (short) return `${short[3]}.${short[2]}.${Number(short[1]) >= 50 ? "19" : "20"}${short[1]}`;
+  return raw || "---";
+}
+
 function profileName(profile) {
   return [profile?.firstName, profile?.lastName]
     .map((part) => String(part || "").trim())
@@ -174,6 +201,12 @@ function appendProfileField(container, label, value) {
   row.appendChild(strong);
   row.appendChild(document.createTextNode(String(value || "---")));
   container.appendChild(row);
+}
+
+function appendContactFields(container, profile) {
+  appendProfileField(container, "E-Mail", profile.email);
+  appendProfileField(container, "Telefon", formatPhone(profile.phone));
+  appendProfileField(container, "Geburtsdatum", formatBirthDate(profile.birthDate));
 }
 
 function openPasswordModal() {
@@ -234,8 +267,7 @@ window.openProfileModal = async (options = {}) => {
     nameElement.textContent = profileName(profile);
 
     if (ownProfile) {
-      appendProfileField(textElement, "E-Mail", profile.email);
-      appendProfileField(textElement, "Telefon", formatPhone(profile.phone));
+      appendContactFields(textElement, profile);
       appendProfileField(textElement, "Geschlecht", profile.gender);
 
       const passwordButton = document.createElement("button");
@@ -248,7 +280,8 @@ window.openProfileModal = async (options = {}) => {
       return;
     }
 
-    textElement.textContent = "Öffentliches Spielerprofil";
+    if (sessionUser) appendContactFields(textElement, profile);
+    else textElement.textContent = "Öffentliches Spielerprofil";
     const canChallenge = options.canChallenge === true
       || options.boxElement?.classList.contains("challengeable");
     const bewerbId = String(options.bewerbId || "").trim();
@@ -276,6 +309,20 @@ window.openProfileModal = async (options = {}) => {
         }
       });
       actionsElement.appendChild(resetButton);
+
+      const setPasswordButton = document.createElement("button");
+      setPasswordButton.type = "button";
+      setPasswordButton.className = "btn-login";
+      setPasswordButton.textContent = "Passwort direkt setzen";
+      setPasswordButton.addEventListener("click", () => {
+        adminPasswordTarget = { id: profile.id, name: profileName(profile) };
+        document.getElementById("adminPasswordForm")?.reset();
+        document.getElementById("adminPasswordTarget").textContent = `Für ${adminPasswordTarget.name}`;
+        closeModal(profileModal);
+        openModal(adminPasswordModal);
+        document.getElementById("adminNewPassword")?.focus();
+      });
+      actionsElement.appendChild(setPasswordButton);
       actionsElement.style.setProperty("display", "flex", "important");
     }
 
@@ -333,11 +380,16 @@ window.openProfileModal = async (options = {}) => {
 
 subscribeAuth((user) => {
   const identity = user ? `${user.id || ""}:${user.role || ""}` : "anonymous";
-  if (modalAuthIdentity !== null && modalAuthIdentity !== identity) closeModal(resetProofModal);
+  if (modalAuthIdentity !== null && modalAuthIdentity !== identity) {
+    closeModal(profileModal);
+    closeModal(resetProofModal);
+    closeModal(adminPasswordModal);
+  }
   modalAuthIdentity = identity;
   if (user) return;
   withdrawContext = null;
   closeModal(passwordModal);
+  closeModal(adminPasswordModal);
   closeModal(resetProofModal);
   closeModal(withdrawModal);
   if (profileModal.dataset.profileScope === "private") closeModal(profileModal);
@@ -462,6 +514,38 @@ document.getElementById("resetPasswordForm").addEventListener("submit", async (e
   }
 });
 
+document.getElementById("adminPasswordForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const newPassword = form.elements.newPassword.value;
+  const confirmation = form.elements.confirmPassword.value;
+  if (!adminPasswordTarget || getUser()?.role !== "admin") {
+    window.showToast("Administratorberechtigung fehlt.", "error");
+    closeModal(adminPasswordModal);
+    return;
+  }
+  if (newPassword.length < 6 || newPassword !== confirmation) {
+    window.showToast(
+      newPassword.length < 6 ? "Das neue Passwort muss mindestens 6 Zeichen lang sein." : "Die Passwörter stimmen nicht überein.",
+      "error",
+    );
+    return;
+  }
+
+  submitButton.disabled = true;
+  const target = { ...adminPasswordTarget };
+  try {
+    await setPasswordForPerson(target.id, newPassword);
+    window.showToast(`Passwort für ${target.name} wurde gesetzt.`, "success");
+    closeModal(adminPasswordModal);
+  } catch (error) {
+    window.showToast(errorMessage(error, "Passwort konnte nicht gesetzt werden."), "error");
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
 document.getElementById("copyResetProof").addEventListener("click", async () => {
   const token = document.getElementById("resetProofValue").textContent;
   if (!token) return;
@@ -574,6 +658,7 @@ document.addEventListener("click", async (event) => {
     await endSession();
     closeModal(profileModal);
     closeModal(passwordModal);
+    closeModal(adminPasswordModal);
     window.showToast("Erfolgreich abgemeldet.", "success");
   } catch (error) {
     console.error("Fehler beim Abmelden:", error);

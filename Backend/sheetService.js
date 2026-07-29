@@ -552,7 +552,7 @@ class SheetService {
         dataStore.set("entryList", values, { source: "write" });
         return { success: true, alreadyPresent: true };
       }
-      const newRow = rowForHeader(header, { id: newId, bewerbid: params.bewerbId, personenid: principal.id, datum: viennaTimestamp() });
+      const newRow = rowForHeader(header, { id: newId, bewerbid: params.bewerbId, personenid: principal.id, entrydate: viennaTimestamp() });
       const sheets = await this.getClient();
       try {
         await sheets.spreadsheets.values.append({
@@ -652,31 +652,24 @@ class SheetService {
 
   async withdrawFromRanking(principal, params) {
     const payload = { reason: params.reason, rank: params.rank, bewerbId: params.bewerbId };
-    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("logging", async () => {
+    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, () => this.enqueue("logging", async () => {
       const sheets = await this.getClient();
-      const eventId = stableRecordId("log", principal, params.operationId);
-      const existing = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: "Logging" }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-      if ((existing.data.values || []).some((row) => row.includes(eventId))) return { success: true, eventId, recovered: true };
-      if (recoveryOnly) {
-        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Logging-Write ist noch nicht nachweisbar", 503, { operationId: params.operationId, eventId });
-      }
       this.assertRankingMembership(principal, params.bewerbId, params.rank);
       try {
         await sheets.spreadsheets.values.append({
           spreadsheetId: SHEET_ID,
           range: "Logging",
-          valueInputOption: "RAW",
+          valueInputOption: "USER_ENTERED",
           requestBody: { values: [[
             viennaTimestamp(true),
             "withdrawFromRanking",
-            `Rueckzug: ${principal.name} (Rang ${params.rank}, Bewerb ${params.bewerbId}) - ${params.reason}`,
-            eventId,
+            `Rückzug: ${principal.name} (Rang ${params.rank}, Bewerb ${params.bewerbId}) — ${params.reason}`,
           ]] },
-        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-      } catch {
-        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang des Logging-Writes ist unklar", 503, { operationId: params.operationId, eventId });
+        });
+      } catch (error) {
+        throw new AppError("SHEET_WRITE_FAILED", `Logging-Write fehlgeschlagen: ${error.message}`, 503);
       }
-      return { success: true, eventId };
+      return { success: true };
     }));
   }
 

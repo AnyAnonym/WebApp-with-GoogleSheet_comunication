@@ -8,7 +8,6 @@ process.env.COURT_POLL_INTERVAL_MS = "500";
 process.env.COURT_MAX_BACKOFF_MS = "2000";
 
 const courtPoller = require("../courtPoller.js");
-const { StateRepository } = require("../stateRepository.js");
 
 async function waitFor(predicate, timeoutMs, message) {
   const deadline = Date.now() + timeoutMs;
@@ -53,7 +52,10 @@ test("Court-Poller begrenzt haengende Calls, verkraftet ungueltiges JSON und pus
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
 
-  courtPoller.setDependenciesForTests({ fetch: fetchStub });
+  courtPoller.setDependenciesForTests({
+    fetch: fetchStub,
+    sheetsFactory: async () => ({ spreadsheets: { values: { append: async () => ({ data: {} }) } } }),
+  });
   courtPoller.setOnUpdate((snapshot, metadata) => notifications.push({ snapshot, metadata }));
   t.after(async () => {
     courtPoller.setCourtActive({ "1": false, "2": false });
@@ -117,14 +119,10 @@ test("Court-Poller begrenzt haengende Calls, verkraftet ungueltiges JSON und pus
   await waitFor(() => abortCount > abortMarker, 300, "Deaktivierung hat den laufenden Court-Fetch nicht abgebrochen");
 });
 
-test("ScoreLog behaelt fehlgeschlagene Eintraege und verwendet dieselbe Event-ID erneut", async (t) => {
-  const repository = new StateRepository(":memory:");
-  repository.init();
-  courtPoller.setRepository(repository);
-  let score = "6";
-  let appendFailure = "ambiguous";
-  const appendEventIds = [];
-  const loggedEventIds = new Set();
+test("ScoreLog verwendet den dreispaltigen Legacy-Write ohne Retry", async (t) => {
+  let score = "3";
+  let appendFails = false;
+  const appendCalls = [];
   const fetchStub = async () => new Response(JSON.stringify({
     courts: [{
       platz: "1",
@@ -142,18 +140,11 @@ test("ScoreLog behaelt fehlgeschlagene Eintraege und verwendet dieselbe Event-ID
     spreadsheets: {
       values: {
         async get() {
-          return { data: { values: [...loggedEventIds].map((eventId) => [eventId]) } };
+          throw new Error("Legacy-ScoreLog darf keinen Readback ausfuehren");
         },
-        async append({ requestBody }) {
-          const eventId = requestBody.values[0][3];
-          appendEventIds.push(eventId);
-          if (appendFailure === "ambiguous") throw new Error("temporary ScoreLog outage");
-          if (appendFailure === "definite") {
-            const error = new Error("ScoreLog permission denied");
-            error.response = { status: 403 };
-            throw error;
-          }
-          loggedEventIds.add(eventId);
+        async append(params) {
+          appendCalls.push(structuredClone(params));
+          if (appendFails) throw new Error("ScoreLog permission denied");
           return { data: {} };
         },
       },
@@ -164,39 +155,23 @@ test("ScoreLog behaelt fehlgeschlagene Eintraege und verwendet dieselbe Event-ID
   t.after(async () => {
     courtPoller.setCourtActive({ "1": false, "2": false });
     await courtPoller.stop();
-    repository.close();
   });
   courtPoller.setCourtActive({ "1": true, "2": false });
-  await waitFor(() => courtPoller.getStatus().lastSuccessAt > 0, 1200, "Initialer Score wurde nicht gelesen");
-  const initialRevision = courtPoller.getStatus().revision;
-  const initialPollCount = courtPoller.getStatus().pollCount;
+  await waitFor(() => appendCalls.length === 1, 1200, "Initialer Score wurde nicht geloggt");
+  assert.equal(appendCalls[0].range, "ScoreLog");
+  assert.equal(appendCalls[0].valueInputOption, "USER_ENTERED");
+  assert.equal(appendCalls[0].requestBody.values[0].length, 3);
+  assert.match(appendCalls[0].requestBody.values[0][0], /^\d{6}-\d{4}-\d{2}$/);
+  assert.deepEqual(appendCalls[0].requestBody.values[0].slice(1), ["1", "3-4/0-0/0-0/15-0"]);
 
-  score = "06";
-  await waitFor(() => courtPoller.getStatus().pollCount > initialPollCount, 1200, "Semantischer Vergleich wurde nicht ausgefuehrt");
-  assert.equal(courtPoller.getStatus().revision, initialRevision);
+  appendFails = true;
+  score = "4";
+  await waitFor(() => appendCalls.length === 2, 1200, "Geaenderter Score wurde nicht geschrieben");
+  const pollMarker = courtPoller.getStatus().pollCount;
+  await waitFor(() => courtPoller.getStatus().pollCount > pollMarker, 1200, "Folgepoll blieb aus");
+  assert.equal(appendCalls.length, 2);
 
-  score = "7";
-  await waitFor(() => courtPoller.getStatus().scoreLogFailureCount > 0, 3000, "ScoreLog-Fehler wurde nicht behalten");
-  assert.equal(courtPoller.getStatus().failedLogWrites, 1);
-  assert.equal(new Set(appendEventIds).size, 1);
-  assert.equal(repository.getState("scorelog-failures", []).value.length, 1);
-
-  appendFailure = null;
-  loggedEventIds.add(appendEventIds[0]);
-  await waitFor(() => courtPoller.getStatus().scoreLogSuccessCount > 0, 3000, "ScoreLog-Eintrag wurde nicht erneut geschrieben");
-  assert.equal(courtPoller.getStatus().failedLogWrites, 0);
-  assert.equal(new Set(appendEventIds).size, 1);
-  assert.equal(loggedEventIds.size, 1);
-  assert.equal(appendEventIds.length, 1);
-  assert.deepEqual(repository.getState("scorelog-failures", []).value, []);
-
-  const successMarker = courtPoller.getStatus().scoreLogSuccessCount;
-  const failureMarker = courtPoller.getStatus().scoreLogFailureCount;
-  appendFailure = "definite";
-  score = "8";
-  await waitFor(() => courtPoller.getStatus().scoreLogFailureCount > failureMarker, 3000, "Definitiver ScoreLog-Fehler wurde nicht behalten");
-  assert.equal(repository.getState("scorelog-failures", []).value[0].uncertain, false);
-  appendFailure = null;
-  await waitFor(() => courtPoller.getStatus().scoreLogSuccessCount > successMarker, 3000, "Definitiv fehlgeschlagener Append wurde nicht erneut versucht");
-  assert.equal(loggedEventIds.size, 2);
+  appendFails = false;
+  score = "5";
+  await waitFor(() => appendCalls.length === 3, 1200, "Naechste Scoreaenderung wurde nicht geschrieben");
 });

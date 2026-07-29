@@ -113,9 +113,31 @@ test("Web Lock serialisiert Auth-Mutationen auch ueber zwei Dokumente", async ()
 
   const login = firstTab.login("player@example.test", "secret");
   const logout = secondTab.logout();
-  await new Promise((resolve) => setImmediate(resolve));
+  for (let attempt = 0; attempt < 20 && calls.length === 0; attempt++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   assert.deepEqual(calls, ["POST /api/session"]);
   releaseLogin();
   await Promise.all([login, logout]);
   assert.deepEqual(calls, ["POST /api/session", "DELETE /api/session"]);
+});
+
+test("Admin-Passwortsetzen sendet nur Ziel-ID und clientseitigen Hash", async () => {
+  let request = null;
+  const response = (body) => ({ ok: true, status: 200, json: async () => body });
+  const api = loadAuthClient(async (url, options = {}) => {
+    if ((options.method || "GET") === "GET") {
+      return response({ success: true, authenticated: false, user: null, expiresAt: null, serverTime: Date.now() });
+    }
+    request = { url, options };
+    return response({ success: true, personId: "p2" });
+  });
+  await api.ready;
+
+  await api.setPasswordForPerson("p2", "temporary-secret");
+  assert.equal(request.url, "/api/admin/password");
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.personId, "p2");
+  assert.match(body.newPasswordHash, /^[0-9a-f]{64}$/);
+  assert.equal(request.options.body.includes("temporary-secret"), false);
 });

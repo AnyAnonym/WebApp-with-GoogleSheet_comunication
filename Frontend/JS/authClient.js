@@ -263,6 +263,14 @@ export async function createPasswordReset(personId) {
   });
 }
 
+export async function setPasswordForPerson(personId, newPassword) {
+  const newPasswordHash = await hashPassword(newPassword);
+  return jsonRequest("/api/admin/password", {
+    method: "POST",
+    body: JSON.stringify({ personId, newPasswordHash }),
+  });
+}
+
 export async function resetPassword(resetToken, newPassword) {
   const newPasswordHash = await hashPassword(newPassword);
   return jsonRequest("/api/password-reset", {

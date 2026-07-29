@@ -128,9 +128,12 @@ dort beschriebene Workflow zu befolgen.
 
 ### Seitenbranch-Kurzregel
 
-1. Die sichtbare Paketversion eines Seitenbranches entspricht immer exakt der
-   Branch-Commit-ID, zum Beispiel `3.1.12-paj-1-2`. `package.json`, Lockfile,
-   Commit-Nachricht und `/version` muessen zusammenpassen.
+1. Im sauberen Seitenbranch entspricht die sichtbare Paketversion exakt der
+   Branch-Commit-ID, zum Beispiel `3.1.12-paj-1-2`. Mit der ersten beabsichtigten
+   Aenderung wird sie auf die naechste ID plus `-x` gesetzt, zum Beispiel
+   `3.1.12-paj-1-3-x`. Dieser online testbare Wert kennzeichnet uncommittete
+   Entwicklung und steht gleichzeitig in package.json, Lockfile und offenem
+   Branch-Changelogabschnitt.
 2. Ein Seitenbranch darf beliebig viele aufeinanderfolgende Implementierungs-,
    Test- und Korrekturcommits besitzen. Jeder Commit erhaelt die naechste
    lueckenlose Nummer und einen eigenen Abschnitt im temporaeren Branch-Changelog.
@@ -148,3 +151,7 @@ dort beschriebene Workflow zu befolgen.
 6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
    `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
    Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.
+7. Vor einem Branch-Commit wird `-x` erst nach fachlichem Abschluss entfernt und
+   der Changelogabschnitt finalisiert. Scheitert die Finalisierung und folgen
+   weitere inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen.
+   Ein Commit darf niemals `-x` enthalten.

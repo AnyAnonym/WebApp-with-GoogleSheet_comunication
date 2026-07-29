@@ -12,9 +12,9 @@ function setTestEnvironment() {
 
 function peopleFixture(role = "admin", storedHash = "a".repeat(64)) {
   return [
-    ["ID", "Vorname", "Nachname", "E-Mail", "PasswdHash", "KennwortVergessen", "TelefonMobil", "Geschlecht", "Aktiv", "Role"],
-    ["p1", "Ada", "Admin", "ada@example.test", storedHash, "", "+43123", "2", "1", role],
-    ["p2", "Peter", "Player", "peter@example.test", "b".repeat(64), "", "+43456", "1", "1", "player"],
+    ["ID", "Vorname", "Nachname", "E-Mail", "PasswdHash", "KennwortVergessen", "TelefonMobil", "Geschlecht", "Aktiv", "Role", "GeburtsDatum"],
+    ["p1", "Ada", "Admin", "ada@example.test", storedHash, "", "+43123", "2", "1", role, "19900102"],
+    ["p2", "Peter", "Player", "peter@example.test", "b".repeat(64), "", "+43456", "1", "1", "player", "19850304"],
   ];
 }
 

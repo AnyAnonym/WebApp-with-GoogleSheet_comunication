@@ -27,8 +27,8 @@ function fakeSheets(initialTables) {
         async get({ range }) {
           return { data: { values: structuredClone(tables[range] || []) } };
         },
-        async append({ range, requestBody }) {
-          calls.append.push({ range, values: structuredClone(requestBody.values) });
+        async append({ range, requestBody, valueInputOption }) {
+          calls.append.push({ range, valueInputOption, values: structuredClone(requestBody.values) });
           tables[range].push(...structuredClone(requestBody.values));
           return { data: {} };
         },
@@ -172,8 +172,8 @@ function fixtures() {
       ["r1", "cup-1", "p2", "1"], ["r2", "cup-1", "p1", "2"],
       ["r3", "cup-2", "p4", "1"], ["r4", "cup-2", "p3", "2"],
     ],
-    EntryList: [["ID", "BewerbID", "PersonenID", "Datum"]],
-    Logging: [["Timestamp", "Type", "Message", "EventID"]],
+    EntryList: [["ID", "BewerbID", "PersonenID", "Entrydate"]],
+    Logging: [["Timestamp", "Type", "Message"]],
   };
 }
 
@@ -225,7 +225,7 @@ test("EntryList-Delete loest die stabile Zeile frisch auf und ist wiederholbar",
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(initial);
-  seedStore({ ...fake.tables, EntryList: [["ID", "BewerbID", "PersonenID", "Datum"], ["stale", "cup-1", "p1", ""]] });
+  seedStore({ ...fake.tables, EntryList: [["ID", "BewerbID", "PersonenID", "Entrydate"], ["stale", "cup-1", "p1", ""]] });
   const service = new SheetService({ repository, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const operationId = "00000000-0000-4000-8000-000000000103";
@@ -361,6 +361,24 @@ test("EntryList-Add lehnt unbekannte Bewerbe vor dem Write ab", async () => {
   repository.close();
 });
 
+test("EntryList-Add schreibt den Zeitstempel in Entrydate", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  const added = await service.addEntry(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000116", bewerbId: "cup-1" },
+  );
+  const row = fake.tables.EntryList.find((entry) => entry[0] === added.entryId);
+  assert.match(row[3], /^\d{6}-\d{4}$/);
+
+  await service.stop();
+  repository.close();
+});
+
 test("parallele Passwortwrites verwenden Compare-and-set", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -481,7 +499,7 @@ test("erfolgreiche EntryList-No-ops synchronisieren einen veralteten Cache", asy
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(initial);
-  seedStore({ ...fake.tables, EntryList: [["ID", "BewerbID", "PersonenID", "Datum"]] });
+  seedStore({ ...fake.tables, EntryList: [["ID", "BewerbID", "PersonenID", "Entrydate"]] });
   const service = new SheetService({ repository, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
 
@@ -542,6 +560,37 @@ test("Shutdown fuehrt bereits angenommene Queue-Eintraege noch aus", async () =>
   await stopping;
   assert.deepEqual(calls, ["first-start", "first-end", "second"]);
   await assert.rejects(service.enqueue("test", async () => {}), { code: "SHUTTING_DOWN" });
+  repository.close();
+});
+
+test("Ranglistenrueckzug verwendet das dreispaltige Legacy-Logging", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000117",
+    bewerbId: "cup-1",
+    rank: 2,
+    reason: "Test rueckzug",
+  };
+
+  assert.deepEqual(await service.withdrawFromRanking(principal, params), { success: true });
+  const loggingCalls = fake.calls.append.filter((call) => call.range === "Logging");
+  assert.equal(loggingCalls.length, 1);
+  assert.equal(loggingCalls[0].valueInputOption, "USER_ENTERED");
+  assert.equal(loggingCalls[0].values[0].length, 3);
+  assert.match(loggingCalls[0].values[0][0], /^\d{6}-\d{4}-\d{2}$/);
+  assert.equal(loggingCalls[0].values[0][1], "withdrawFromRanking");
+  assert.match(loggingCalls[0].values[0][2], /Ada Admin.*Rang 2.*cup-1.*Test rueckzug/);
+
+  const repeated = await service.withdrawFromRanking(principal, params);
+  assert.equal(repeated.repeated, true);
+  assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 1);
+
+  await service.stop();
   repository.close();
 });
 

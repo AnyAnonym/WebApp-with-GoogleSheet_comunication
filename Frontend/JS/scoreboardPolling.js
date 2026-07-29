@@ -18,6 +18,7 @@ let snapshotRetryAttempt = 0;
 let snapshotInFlight = false;
 let snapshotQueued = false;
 let snapshotGeneration = 0;
+let playerNameSizingFrame = null;
 const requiredRevisions = { players: null, bewerbe: null, matches1: null };
 
 let courtEventSequence = 0;
@@ -73,10 +74,18 @@ function buildBewerbMap(values) {
 
 function parseSheetDate(raw) {
   if (!raw) return "";
-  const m = String(raw).trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
-  if (!m) return raw;
-  const [, yy, mm, dd, hh, mi] = m;
-  return `${dd}.${mm}. - ${hh}:${mi}`;
+  const value = String(raw).trim();
+  const sheetMatch = value.match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (sheetMatch) {
+    const [, , mm, dd, hh, mi] = sheetMatch;
+    return `${dd}.${mm}. - ${hh}:${mi}`;
+  }
+  const displayMatch = value.match(/^(\d{2})\.(\d{2})\.(?:,)?\s*(\d{2}):(\d{2})$/);
+  if (displayMatch) {
+    const [, dd, mm, hh, mi] = displayMatch;
+    return `${dd}.${mm}. - ${hh}:${mi}`;
+  }
+  return value;
 }
 
 function dateToTs(raw) {
@@ -350,6 +359,70 @@ function setPlayerName(id, value) {
   element.replaceChildren(...names);
 }
 
+function playerNamesFit(elements) {
+  return elements.every((element) => {
+    const style = getComputedStyle(element);
+    const availableWidth = element.clientWidth
+      - parseFloat(style.paddingLeft)
+      - parseFloat(style.paddingRight)
+      - 4;
+    if (availableWidth <= 0) return false;
+    const lines = element.classList.contains("platz-cell-double") ? [...element.children] : [element];
+    return lines.every((line) => {
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return range.getBoundingClientRect().width <= availableWidth;
+    });
+  });
+}
+
+function applyCourtPlayerNameSize(elements, fontSize) {
+  elements.forEach((element) => {
+    element.style.fontSize = `${fontSize}px`;
+    element.style.minHeight = "";
+  });
+  const commonHeight = Math.max(...elements.map((element) => element.offsetHeight));
+  elements.forEach((element) => { element.style.minHeight = `${commonHeight}px`; });
+}
+
+function sizeCourtPlayerNames(courtKey) {
+  const court = document.getElementById(`platz${courtKey}`);
+  const elements = [
+    document.getElementById(`p${courtKey}-name-h`),
+    document.getElementById(`p${courtKey}-name-g`),
+  ].filter(Boolean);
+  if (!court || elements.length !== 2 || elements.some((element) => element.clientWidth <= 0)) return;
+
+  elements.forEach((element) => {
+    element.style.fontSize = "";
+    element.style.minHeight = "";
+  });
+  const maximum = Math.min(...elements.map((element) => parseFloat(getComputedStyle(element).fontSize)));
+  let lower = Math.min(8, maximum);
+  let upper = maximum;
+  const fits = () => playerNamesFit(elements) && court.scrollHeight <= court.clientHeight + 1;
+
+  applyCourtPlayerNameSize(elements, upper);
+  if (!fits()) {
+    for (let iteration = 0; iteration < 10; iteration++) {
+      const candidate = (lower + upper) / 2;
+      applyCourtPlayerNameSize(elements, candidate);
+      if (fits()) lower = candidate;
+      else upper = candidate;
+    }
+    applyCourtPlayerNameSize(elements, lower);
+  }
+}
+
+function schedulePlayerNameSizing() {
+  if (playerNameSizingFrame !== null) cancelAnimationFrame(playerNameSizingFrame);
+  playerNameSizingFrame = requestAnimationFrame(() => {
+    playerNameSizingFrame = null;
+    sizeCourtPlayerNames("1");
+    sizeCourtPlayerNames("2");
+  });
+}
+
 function clearCourtScores(courtKey) {
   SCORE_CELL_SUFFIXES.forEach((suffix) => {
     const element = document.getElementById(`p${courtKey}-${suffix}`);
@@ -509,9 +582,10 @@ function updateScoreboardCourt(courtKey, value) {
   const prefix = `p${courtKey}`;
   setPlayerName(`${prefix}-name-h`, courtData.homePlayer);
   setPlayerName(`${prefix}-name-g`, courtData.guestPlayer);
-  setText(`${prefix}-datetime`, courtData.dateTime);
+  setText(`${prefix}-datetime`, parseSheetDate(courtData.dateTime));
 
-  let runde = courtData.runde || "";
+  const rawRunde = String(courtData.runde || "").trim();
+  let runde = parseRunde(rawRunde) || rawRunde;
   if (!runde && courtData.matchId) {
     const rasterRaw = matchRasterMap.get(String(courtData.matchId)) || "";
     runde = parseRunde(rasterRaw);
@@ -534,6 +608,7 @@ function applyScoreboardCourts(courts) {
   ["1", "2"].forEach((courtKey) => {
     updateScoreboardCourt(courtKey, Object.prototype.hasOwnProperty.call(values, courtKey) ? values[courtKey] : {});
   });
+  schedulePlayerNameSizing();
 }
 
 function handleScoreboardStateEvent(data) {
@@ -777,6 +852,8 @@ try {
   subscribe("bewerbe", (data) => handleTableInvalidation("bewerbe", data));
   onConnectionState(handleConnectionState);
   onResync(handleResync);
+  window.addEventListener("resize", schedulePlayerNameSizing);
+  window.visualViewport?.addEventListener("resize", schedulePlayerNameSizing);
   const statusTimer = setInterval(updateStatus, 5000);
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) clearInterval(statusTimer);

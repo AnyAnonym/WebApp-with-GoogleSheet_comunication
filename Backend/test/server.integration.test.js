@@ -104,7 +104,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   ], ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "secret-note"]], { source: "test" });
   dataStore.set("rlPlatzierung", [["ID", "BewerbID", "PersonID", "Rang"], ["r1", "cup-1", "p1", "1"]], { source: "test" });
   dataStore.set("navigator", [["ID", "Name", "Ziel", "Profil"], ["n1", "Scoreboard", "/scoreboard.html", "1"]], { source: "test" });
-  dataStore.set("entryList", [["ID", "BewerbID", "PersonenID", "Datum", "PaymentStatus"], ["e1", "cup-1", "p1", "260101-1200", "paid"]], { source: "test" });
+  dataStore.set("entryList", [["ID", "BewerbID", "PersonenID", "Entrydate", "PaymentStatus"], ["e1", "cup-1", "p1", "260101-1200", "paid"]], { source: "test" });
 
   const repository = new StateRepository(":memory:");
   const sheetService = {
@@ -161,6 +161,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const authenticatedSession = await fetch(`${httpBase}/api/session`, { headers: { Cookie: cookie } });
   assert.equal((await authenticatedSession.json()).user.email, "ada@example.test");
 
+  const adminPasswordResponse = await fetch(`${httpBase}/api/admin/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({ personId: "p2", newPasswordHash: "c".repeat(64) }),
+  });
+  assert.equal(adminPasswordResponse.status, 200);
+  assert.deepEqual(await adminPasswordResponse.json(), { success: true, personId: "p2" });
+
   const resetProofResponse = await fetch(`${httpBase}/api/admin/password-reset`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
@@ -214,10 +222,15 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     const response = await publicClient.request(endpoint, params);
     assert.equal(response.data.success, true, endpoint);
   }
+  const anonymousProfile = await publicClient.request("publicProfile", { id: "p1" });
+  assert.equal(anonymousProfile.data.profile.email, undefined);
+  assert.equal(anonymousProfile.data.profile.phone, undefined);
+  assert.equal(anonymousProfile.data.profile.birthDate, undefined);
   const projectedMatches = await publicClient.request("matches1", {});
   assert.equal(projectedMatches.data.values[0].includes("InternalNote"), false);
   assert.equal(JSON.stringify(projectedMatches.data).includes("secret-note"), false);
   const projectedEntries = await publicClient.request("entryList", {});
+  assert.equal(projectedEntries.data.values[0].includes("Entrydate"), true);
   assert.equal(projectedEntries.data.values[0].includes("PaymentStatus"), false);
 
   const protectedEndpoints = [
@@ -253,8 +266,23 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal((await playerClient.handshake()).principal.role, "player");
   assert.equal((await playerClient.request("memberDirectory")).data.success, true);
+  const memberProfile = await playerClient.request("publicProfile", { id: "p1" });
+  assert.equal(memberProfile.data.profile.email, "ada@example.test");
+  assert.equal(memberProfile.data.profile.phone, "+43123");
+  assert.equal(memberProfile.data.profile.birthDate, "19900102");
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+
+  const forbiddenAdminPassword = await fetch(`${httpBase}/api/admin/password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://test.local",
+      Cookie: `epiber_test_session=${playerSession.token}`,
+    },
+    body: JSON.stringify({ personId: "p1", newPasswordHash: "f".repeat(64) }),
+  });
+  assert.equal(forbiddenAdminPassword.status, 403);
 
   const operatorSession = repository.createSession({ userId: "p3", email: "operator@example.test", ttlMs: 60000 });
   const operatorClient = createSocketClient(`${wsBase}/ws`, {

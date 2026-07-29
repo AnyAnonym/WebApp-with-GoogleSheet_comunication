@@ -1,6 +1,9 @@
 const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 
+const VALID_ROLES = new Set(["player", "operator", "admin"]);
+const warnedInvalidRoles = new Set();
+
 const REQUIRED_HEADERS = {
   players: ["id", "vorname", "nachname", "e-mail", "passwdhash", "aktiv", "role"],
   bewerbe: ["id", "bezeichnung", "bewerbsartid"],
@@ -8,7 +11,7 @@ const REQUIRED_HEADERS = {
   matches1: ["id", "matchdate", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler3id", "ergebnis"],
   rlPlatzierung: ["bewerbid", "personid", "rang"],
   navigator: ["name", "ziel"],
-  entryList: ["id", "bewerbid", "personenid", "datum"],
+  entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
 
 function validateTableValues(tableName, values) {
@@ -42,8 +45,9 @@ function validateTableValues(tableName, values) {
     const emails = new Set();
     for (const row of values.slice(1)) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
-      if (role && !["player", "operator", "admin"].includes(role)) {
-        throw new AppError("SHEET_SCHEMA", "Personen-Tabelle enthaelt eine ungueltige Rolle", 503);
+      if (role && !VALID_ROLES.has(role) && !warnedInvalidRoles.has(role)) {
+        warnedInvalidRoles.add(role);
+        console.warn(`tableSchemas: Ungueltige Personenrolle ${JSON.stringify(role)} wird als player behandelt`);
       }
       const email = String(row[emailIndex] || "").trim().toLowerCase();
       if (!email) continue;

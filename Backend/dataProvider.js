@@ -51,7 +51,7 @@ const PUBLIC_COLUMNS = {
   bewerbsart: ["id", "bezeichnung", "entrylistavailable", "roundrobin", "rasterfunktion", "spezifikum"],
   matches1: ["ignore", "id", "matchdate", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler2id", "spieler3id", "spieler4id", "ergebnis"],
   rlPlatzierung: ["id", "bewerbid", "personid", "rang"],
-  entryList: ["id", "bewerbid", "personenid", "datum"],
+  entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
 
 function requireCurrentTables(...tableNames) {
@@ -246,9 +246,13 @@ const endpoints = {
   },
   publicProfile: {
     access: "public",
-    handler: (params) => {
+    handler: (params, context) => {
       requireCurrentTables("players");
-      return { success: true, profile: dependencies.authService.publicProfile(idValue(params?.id, "id")) };
+      const id = idValue(params?.id, "id");
+      const profile = context.auth
+        ? dependencies.authService.memberProfile(id)
+        : dependencies.authService.publicProfile(id);
+      return { success: true, profile };
     },
   },
   bewerbe: {

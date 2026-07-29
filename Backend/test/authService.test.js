@@ -23,6 +23,23 @@ test("Oeffentliche Spielerprojektion enthaelt keine privaten Felder", () => {
   repository.close();
 });
 
+test("Mitgliederprofil enthaelt Kontaktdaten und Geburtsdatum", () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  assert.deepEqual(auth.publicProfile("p2"), { id: "p2", firstName: "Peter", lastName: "Player" });
+  assert.deepEqual(auth.memberProfile("p2"), {
+    id: "p2",
+    firstName: "Peter",
+    lastName: "Player",
+    email: "peter@example.test",
+    phone: "+43456",
+    birthDate: "19850304",
+  });
+  repository.close();
+});
+
 test("Login migriert Legacy-Hash und erzeugt serverseitige Session", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -92,6 +109,27 @@ test("eigene Passwortaenderung rotiert die Sitzung", async () => {
   assert.equal(repository.getSession(oldSession.token), null);
   assert.equal(repository.getSession(result.session.token).userId, "p1");
   assert.notEqual(result.session.token, oldSession.token);
+  repository.close();
+});
+
+test("nur Admin setzt das Passwort einer anderen Person und widerruft deren Sitzungen", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const adminSession = repository.createSession({ userId: "p1", email: "ada@example.test", ttlMs: 60000 });
+  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  let passwordWrite = null;
+  const auth = new AuthService({
+    repository,
+    sheetService: { async setPasswordHash(personId, storedHash, options) { passwordWrite = { personId, storedHash, options }; } },
+  });
+
+  await assert.rejects(auth.setPasswordAsAdmin(playerSession.token, "p1", "c".repeat(64)), { code: "FORBIDDEN" });
+  assert.deepEqual(await auth.setPasswordAsAdmin(adminSession.token, "p2", "c".repeat(64)), { success: true, personId: "p2" });
+  assert.equal(passwordWrite.personId, "p2");
+  assert.equal(passwordWrite.options.expectedHash, "b".repeat(64));
+  assert.match(passwordWrite.storedHash, /^scrypt\$v1\$/);
+  assert.equal(repository.getSession(playerSession.token), null);
+  assert.equal(repository.getSession(adminSession.token).userId, "p1");
   repository.close();
 });
 

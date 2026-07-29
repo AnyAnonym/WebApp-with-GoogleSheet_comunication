@@ -42,46 +42,6 @@
   font-weight: 700;
 }
 
-/* ── Non-blocking connection status ── */
-.scoreboard-status {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  z-index: 7000;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 5px;
-  max-width: calc(100vw - 16px);
-  pointer-events: none;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 0.72rem;
-  line-height: 1.2;
-}
-.scoreboard-status-item {
-  padding: 4px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 999px;
-  background: rgba(20, 20, 20, 0.82);
-  color: #fff;
-  white-space: nowrap;
-}
-.scoreboard-status-item.is-connected,
-.scoreboard-status-item.is-synchronized,
-.scoreboard-status-item.is-source-current {
-  border-color: #198754;
-}
-.scoreboard-status-item.is-reconnecting,
-.scoreboard-status-item.is-unsynchronized,
-.scoreboard-status-item.is-source-inactive,
-.scoreboard-status-item.is-source-unknown {
-  border-color: #d39e00;
-}
-.scoreboard-status-item.is-stale {
-  border-color: #dc3545;
-  background: rgba(90, 12, 20, 0.9);
-}
-
 /* ── WebSocket-Fehler Overlay ── */
 .ws-error-overlay {
   position: fixed;
@@ -113,6 +73,7 @@
 #scoreboard-content {
   display: none;
   height: 100vh;
+  height: 100dvh;
   grid-template-columns: 3fr 1fr;
   grid-template-rows: 1fr 1fr;
 }
@@ -122,6 +83,7 @@
 
 .scoreboard-body {
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg);
   color: var(--fg);
@@ -147,6 +109,7 @@
   overflow: hidden;
 }
 .platz-header {
+  flex-shrink: 0;
   font-size: 6rem;
   font-weight: bold;
   text-align: center;
@@ -160,6 +123,7 @@
   color: #dc3545;
 }
 .platz-sub {
+  flex-shrink: 0;
   font-size: 3rem;
   text-align: center;
   color: var(--muted);
@@ -168,6 +132,7 @@
   line-height: 1.15;
 }
 .platz-row {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -203,13 +168,20 @@
 }
 .platz-cell.label {
   flex: 1;
+  display: grid;
+  place-content: center;
   font-size: 5.5rem;
   padding: 2px 2px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .platz-cell.label.platz-cell-double {
-  font-size: 3.3rem;
   padding: 0 2px;
   line-height: 1.1;
+}
+.platz-cell.label.platz-cell-double > div {
+  overflow: hidden;
+  white-space: nowrap;
 }
 .platz-scores {
   display: flex;
@@ -349,41 +321,37 @@
 
 /* ── Responsive: unter 1400px kleinere Schriftgrößen ── */
 @media (max-width: 1000px) {
-  .scoreboard-status {
-    top: 4px;
-    left: 4px;
-    gap: 3px;
-    max-width: calc(100vw - 8px);
-    font-size: 0.58rem;
-  }
-  .scoreboard-status-item {
-    padding: 2px 5px;
+  #platz1,
+  #platz2 {
+    justify-content: flex-start;
+    padding-top: 16px;
   }
   .platz-header {
     font-size: 2rem;
   }
   .platz-sub {
-    font-size: 0.9rem;
+    font-size: 1.17rem;
   }
   .platz-cell {
     font-size: 0.8rem;
   }
   .platz-cell.label {
-    font-size: 1.3rem;
+    flex: none;
+    width: 100%;
+    font-size: 2.6rem;
     padding: 1px 2px;
   }
   .platz-cell.label.platz-cell-double {
-    font-size: 0.78rem;
     padding: 0 2px;
     line-height: 1.1;
   }
   .platz-scores .platz-cell {
-    font-size: 1.3rem;
+    font-size: 2.6rem;
     padding: 2px 2px;
-    width: 40px;
+    width: 54px;
   }
   .platz-scores .platz-cell:last-child {
-    width: 60px;
+    width: 80px;
   }
   .platz-vs {
     font-size: 1rem;

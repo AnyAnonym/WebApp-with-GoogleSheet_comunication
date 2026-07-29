@@ -762,6 +762,16 @@ input[type="date"] {
 .players-table tr:hover {
   background: #fafafa;
 }
+
+.players-table tbody tr[role="button"] {
+  cursor: pointer;
+}
+
+.players-table tbody tr[role="button"]:focus-visible {
+  outline: 3px solid var(--focus-color, #1f6feb);
+  outline-offset: -3px;
+}
+
 .players-table tr.entry-paid td {
   color: #198754;
   font-weight: 600;
@@ -2698,84 +2708,6 @@ input[type="date"] {
   pointer-events: none;
 }
 
-.monitor-connection {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  z-index: 40;
-  max-width: min(70vw, 420px);
-  padding: 6px 10px;
-  border: 1px solid #4b5563;
-  border-radius: 999px;
-  color: #e5e7eb;
-  background: rgba(17, 24, 39, 0.88);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.24);
-  font-size: 0.76rem;
-  pointer-events: none;
-  backdrop-filter: blur(8px);
-}
-
-.monitor-connection[data-state="connected"] {
-  color: #bbf7d0;
-  border-color: #24764a;
-  background: rgba(15, 73, 42, 0.9);
-}
-
-.monitor-connection[data-state="stale"],
-.monitor-connection[data-state="backoff"],
-.monitor-connection[data-state="connecting"] {
-  color: #fef3c7;
-  border-color: #8a6412;
-  background: rgba(83, 58, 10, 0.92);
-}
-
-.monitor-connection[data-state="offline"],
-.monitor-connection[data-state="stopped"] {
-  color: #fecaca;
-  border-color: #8f3340;
-  background: rgba(81, 23, 32, 0.92);
-}
-
-.monitor-device-bar {
-  position: fixed;
-  top: 8px;
-  right: 8px;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 48vw;
-  padding: 4px 5px 4px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  border-radius: 999px;
-  color: #dbeafe;
-  background: rgba(17, 24, 39, 0.82);
-  font-size: 0.72rem;
-  backdrop-filter: blur(8px);
-}
-
-.monitor-device-bar[hidden] {
-  display: none !important;
-}
-
-.monitor-device-bar span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.monitor-device-bar button {
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 999px;
-  color: #fecaca;
-  background: #632b35;
-  font: inherit;
-  cursor: pointer;
-}
-
 .monitor-overlay {
   position: fixed;
   top: 54px;
@@ -2913,13 +2845,6 @@ input[type="date"] {
 }
 
 @media (max-width: 640px) {
-  .monitor-device-bar {
-    top: auto;
-    right: 8px;
-    bottom: 8px;
-    max-width: calc(100vw - 16px);
-  }
-
   .monitor-overlay {
     top: 50px;
   }

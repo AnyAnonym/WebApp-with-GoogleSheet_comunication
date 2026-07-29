@@ -226,11 +226,139 @@ Commit: 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
     bereinigt werden.
 
 
+[3.1.12-paj-1-3] - 2026-07-29
+Commit: 3.1.12-paj-1-3 | Fachvertraege und Oberflaechen korrigiert
+
+  Changed
+  - [Dokumentation] Entwicklungsworkflow um die sichtbare `-x`-Version fuer
+    begonnene, noch nicht committe Branch-Arbeit einschliesslich Oeffnen,
+    Testbetrieb, Verwerfen und Finalisieren erweitert.
+  - [Software] Nichtleere ungueltige Personenrollen versetzen die Tabelle nicht
+    mehr in den Fehlerzustand. Jeder normalisierte ungueltige Rollenwert wird pro
+    Prozess einmal geloggt und mit den minimalen Rechten von `player` behandelt.
+  - [Software] Die Spreadsheet-Writer fuer `Logging` und `ScoreLog` wurden auf
+    den Stand vor dem Seitenbranch zurueckgefuehrt. Beide schreiben wieder drei
+    Spalten mit `USER_ENTERED`; ScoreLog protokolliert den ersten gelesenen Stand
+    sowie jede nachfolgende semantische Scoreaenderung als Fire-and-forget-Write.
+    Authentifizierung, Fachregeln, die Idempotenz der uebrigen Fachwrites und die
+    uebrige Court-Poller-Haertung bleiben bestehen. Der dreispaltige Legacy-
+    Logging-Append selbst besitzt bei einem unklaren Ausgang keinen belastbaren
+    Readback- oder Deduplizierungsnachweis.
+  - [Software] Angemeldete Benutzer koennen Spielerprofile aus der Spielerliste,
+    Rangliste und Bewerbsrastern mit E-Mail, Telefonnummer und Geburtsdatum
+    oeffnen. Anonyme Profilabrufe bleiben auf ID und Name beschraenkt.
+  - [Software] Nur Administratoren erhalten in fremden Profilen Aktionen zum
+    Erzeugen eines Reset-Codes oder direkten Setzen eines Passworts. Player und
+    Operator koennen weiterhin ausschliesslich ihr eigenes Passwort mit Kenntnis
+    des bisherigen Passworts aendern.
+  - [Software] Sichtbaren `Raushaengen`-Button aus der Ranglistenlegende entfernt;
+    Modal, Clientfunktion und Backend-Endpoint bleiben fuer die spaetere
+    fachliche Ueberarbeitung unveraendert erhalten.
+  - [Software] Beim zweiten Scoreboard-Breakpoint unterhalb von 1000 Pixeln sind
+    Platz 1 und Platz 2 oben statt vertikal zentriert ausgerichtet; die mobile
+    maximale Schriftgroesse der Einzelnamen wurde auf 2.6rem verdoppelt. Die
+    separate 0.78rem-Begrenzung fuer Doppelnamen entfiel, sodass Einzel- und
+    Doppelpaarungen denselben adaptiven Maximalwert verwenden.
+    Pro Platz wird die tatsaechliche Namensgroesse nun in allen drei Layoutbreiten
+    gemeinsam anhand des laengsten Namens bestimmt und fuer Heim und Gast mit
+    gleicher Feldhoehe verwendet. Satz- und Punkteziffern sind im mobilen Layout
+    doppelt, Datum und Bewerb 30 Prozent groesser. Dynamische Viewporthoehe
+    verhindert, dass mobile Browserleisten die gleich hohen Platzbereiche
+    ueberdecken. Das Seitenpanel mit naechsten und letzten Spielen verschwindet
+    weiterhin bereits beim ersten Breakpoint unterhalb von 1300 Pixeln.
+  - [Software] Doppelpaarungen verwenden keine kuenstlich reduzierte maximale
+    Namensgroesse mehr. Die adaptive Berechnung misst die tatsaechliche Textbreite
+    aller Einzelnamen statt der immer containerbreiten Blockelemente und begrenzt
+    die Schrift gleichzeitig anhand der verfuegbaren Platzhoehe. Heim und Gast
+    erhalten die groesstmoegliche gemeinsame Schrift- und blaue Feldhoehe ohne
+    pauschalen Leerraumaufschlag.
+
+  Fixed
+  - [Datenbank] EntryList-Vertrag, oeffentliche Projektion und Add-Write verwenden
+    die reale Google-Sheets-Spalte `Entrydate` statt der nicht vorhandenen Spalte
+    `Datum`. Neue Anmeldungen schreiben ihren Wiener Zeitstempel dadurch wieder in
+    die vorgesehene Spalte.
+  - [Software] Die beiden Scoreboard-Plaetze formatieren Datum/Uhrzeit wieder als
+    `TT.MM. - HH:MM` und normalisieren die Bewerbsrunde in der zweiten Zeile, zum
+    Beispiel `VM 2026 Frauen Vorrunde | 2.Gruppe` statt roher Sheetwerte.
+  - [Software] Die erste adaptive Doppelnamensberechnung verglich die intrinsisch
+    mindestens containerbreiten Blockelemente mit einer kleineren Nutzbreite und
+    stufte deshalb jede Schriftgroesse als zu breit ein. Die Suche fiel dadurch
+    auf etwa 8 Pixel zurueck. Gemessen wird nun die reale Glyphenbreite jeder
+    Namenszeile; Breite und verbleibende Platzhoehe begrenzen gemeinsam die
+    groesstmoegliche einheitliche Schrift- und Feldhoehe.
+
+  Added
+  - [Software] Regressionstest fuer Tabellenannahme, `player`-Fallback und
+    Warnungs-Deduplizierung bei ungueltigen Personenrollen ergaenzt.
+  - [Software] Regressionen fuer den kanonischen `Entrydate`-Schema-Vertrag, die
+    oeffentliche Projektion und den geschriebenen Anmeldezeitstempel ergaenzt.
+  - [Software] Legacy-Vertragstests fuer dreispaltige `Logging`- und
+    `ScoreLog`-Writes, `USER_ENTERED`, initiales Score-Logging und ausbleibende
+    ScoreLog-Retries ergaenzt.
+  - [Software] Admin-only HTTP-Route `/api/admin/password` zum direkten Setzen
+    eines fremden Passworts ergaenzt. Der Client sendet nur den SHA-256-Credential,
+    das Backend speichert scrypt und widerruft alle Sitzungen der Zielperson.
+  - [Software] Spielerverzeichniszeilen als per Maus und Tastatur bedienbare
+    Profilaktionen sowie Regressionen fuer Profildatenschutz, Rollenabgrenzung,
+    Sessionwiderruf und fehlende Klartextuebertragung ergaenzt.
+  - [Test] Web-Lock-Regression fuer parallele Auth-Mutationen zweier Dokumente um
+    ein begrenztes Warten auf den asynchron gestarteten Login stabilisiert.
+
+  Removed
+  - [Software] Event-ID-Spalte, Readback, Retry-/Write-ahead-Queue,
+    SQLite-Persistenz, Pendingwerte und Shutdown-Drain des vorzeitig eingefuehrten
+    ScoreLog-Redesigns entfernt. Auch `Logging` fuehrt keine Event-ID und keinen
+    Tabellen-Readback mehr aus. Das umfassende Logging-Redesign bleibt einem
+    eigenen spaeteren Branch vorbehalten.
+  - [Software] Sichtbare Verbindungs-, Synchronisations- und Court-Quellen-Badges
+    vom Scoreboard sowie Geraete-/Verbindungsanzeige und Abmeldebutton von der
+    Monitor-Ausgabeseite entfernt. Lade- und Fehleroverlays bleiben erhalten.
+
+  Verification
+  - `node --test test/tableSchemas.test.js test/sheetService.test.js
+    test/server.integration.test.js`: 19 Tests erfolgreich.
+  - `node --test test/courtPoller.test.js test/sheetService.test.js
+    test/shutdown.test.js test/server.integration.test.js`: 20 Tests erfolgreich.
+  - `node --test test/authClient.test.js test/authService.test.js
+    test/server.integration.test.js`: 15 Tests erfolgreich.
+  - `npm run build`: statische Pruefungen und 68 Tests erfolgreich.
+  - `git diff --check`: erfolgreich.
+
+  Migration and compatibility
+  - `Logging` behaelt die drei Spalten Timestamp, Type und Message.
+  - `ScoreLog` behaelt die drei Spalten Timestamp, PlatzNr und Score.
+  - Keine Event-ID-Spalte und keine Tabellenmigration fuer Logging oder ScoreLog
+    durchfuehren.
+  - Ein erfolgreich gespeicherter `Logging`-Vorgang wird ueber `operationId`
+    dedupliziert. Nach einem mehrdeutigen Legacy-Append darf derselbe Vorgang
+    nicht blind wiederholt werden, weil ohne Event-ID und Readback nicht sicher
+    feststellbar ist, ob die Zeile bereits geschrieben wurde.
+  - Beim direkten Admin-Passwortsetzen werden die Sitzungen der Zielperson vor
+    dem Sheet-Write vorsorglich widerrufen. Sie bleiben deshalb auch bei einem
+    fehlgeschlagenen oder unklaren Passwortwrite widerrufen; das Passwort kann in
+    diesem Fall unveraendert geblieben sein.
+  - `Spieler2ID` und `Spieler4ID` bleiben weiterhin optionale Matchspalten; dieser
+    Commit aendert ihren Schema- oder Schreibvertrag nicht.
+
+  Manual acceptance and rollout
+  - Die finale Scoreboard-Darstellung ist auf den drei Breitenbereichen ueber
+    1300, von 1001 bis 1300 und bis 1000 Pixel sowie auf mobilen Hoch-/Querformaten
+    mit realen Einzel- und Doppelpaarungen zu pruefen. Besonders kleine
+    Querformate bleiben Teil der Browser-/Kiosk-Abnahme vor dem Main-Merge.
+  - Spielerliste, Kontakt-/Geburtsdatumsanzeige, Admin-Reset und direktes
+    Passwortsetzen sind im Browser mit anonymous, player, operator und admin
+    praktisch abzunehmen.
+  - Nach Installation dieses Backendstands ist `epiber-paj.service` neu zu
+    starten und die finale Version ueber `/version` sowie `/live`, `/ready` und
+    `/health` zu bestaetigen.
+
+
 Dokumentationsuebernahme beim Main-Versionssprung
 ================================================================================
 
 Project/ChangeLogs/ChangeLog-main.txt
-- Den gesamten Branchumfang aus beiden Commitabschnitten nach Added, Changed,
+- Den gesamten Branchumfang aus allen Branch-Commitabschnitten nach Added, Changed,
   Fixed und Removed konsolidieren.
 - Quelle als `3.1.12-paj-1` und den bestaetigten Main-Merge-Commit eintragen.
 - Migrationen, Sicherheitsfolgen, Verifikation und verbleibende manuelle
@@ -251,9 +379,19 @@ Project/DokuVersGit.txt
 Project/software/DATENBANK.txt
 - `Personen.Role` als Pflichtspalte und erlaubte Rollen player/operator/admin
   dokumentieren; erlaeutern, dass leere Werte technisch zu player normalisiert,
-  im Rollout aber explizit migriert werden.
+  im Rollout aber explizit migriert werden. Nichtleere ungueltige Werte werden
+  ebenfalls mit einer einmaligen Warnung pro normalisiertem Wert und pro Prozess
+  als player behandelt.
+- In der EntryList-Spaltenbeschreibung `Datum` durch den realen Spaltennamen
+  `Entrydate` ersetzen und das Format `YYMMDD-HHMM` festhalten.
+- `Logging` und `ScoreLog` weiterhin mit ihren dreispaltigen Legacyvertraegen
+  dokumentieren. Keine Event-ID-, Retry-, Readback- oder SQLite-Pending-Semantik
+  aus diesem Seitenbranch uebernehmen; das Redesign erfolgt gesondert.
 - Oeffentliche, Mitglieder- und private Personenprojektionen sowie die
   SHA-256-Legacy-zu-scrypt-Migration beschreiben.
+- Geburtsdatum, E-Mail und Telefon als nur fuer angemeldete Benutzer freigegebene
+  Profilfelder sowie den Sessionwiderruf beim direkten Admin-Passwortsetzen
+  aufnehmen.
 - `epiberRecord`-Developer-Metadaten fuer stabile Personen-, Matches1- und
   EntryList-Zeilen und deren Pflege-/Eindeutigkeitsanforderung aufnehmen.
 - SQLite-Schema mit app_state, sessions, password_reset_proofs, monitor_devices,
@@ -265,24 +403,37 @@ Project/software/ENDPOINTS.txt
 - HTTP-Routen `/version`, `/live`, `/ready`, `/health`, Admin-`/status`, Session-,
   Passwort-/Reset- und Monitor-Session-APIs inklusive Methoden, Origins, Cookies,
   Rollen, Limits und Fehlerformat dokumentieren; `/set-active` entfernen.
+- `/api/admin/password` als admin-only Passwortsetzung fuer eine Zielperson mit
+  scrypt-Speicherung und Widerruf ihrer Sitzungen dokumentieren.
 - Hello-/Welcome-v2-Handshake, id/endpoint-Korrelation, Support-ID und alle
   zentralen Parametervertraege dokumentieren.
 - RPCs nach public, authenticated, operator/admin, admin und device auflisten;
   operationId, expectedRevision, monitorId und opponentId exakt ausweisen.
 - Topics und Snapshotverhalten fuer public, operator und device sowie
   Idempotenz-/unknown-Write-Semantik dokumentieren.
+- Beim dreispaltigen Legacy-Logging klarstellen, dass abgeschlossene Operationen
+  dedupliziert werden, ein mehrdeutiger Append ohne Event-ID/Readback aber nicht
+  sicher wiederholbar ist.
 
 Project/software/ARCHITEKTUR.txt
 - Backendmodule und Verantwortungen fuer Auth, Contracts, Security,
   SheetService, SQLite, MonitorBroker, Poller und State aktualisieren.
 - Cookie-/scrypt-Authentifizierung, Rollenmatrix, sichere Datenprojektionen und
   fehlende localStorage-Autoritaet beschreiben.
+- Kontextabhaengige Spielerprofile dokumentieren: anonym nur ID/Name,
+  authentifiziert zusaetzlich E-Mail/Telefon/Geburtsdatum, Admin zusaetzlich
+  Reset-Code und direktes Passwortsetzen.
+- Vorsorglichen Sessionwiderruf vor eigenem, Reset- und Admin-Passwortwrite sowie
+  die auch bei fehlgeschlagenem/unklarem Write invalid bleibenden Sitzungen
+  beschreiben.
 - WS-v2, Clientzustandsmaschine, Limits, Subscriptions, Resync und
   Browser-Lifecycle dokumentieren.
 - Cache-Revisionen/Fencing, serialisierte/idempotente Sheets-Writes,
   Developer-Metadaten und unknown-Operationen aufnehmen.
-- Court-/ScoreLog-Haertung, persistente Statebereiche, Monitorprotokoll,
-  Readiness und Graceful Shutdown dokumentieren.
+- Court-Poller-Haertung, persistente Anwendungsstatebereiche, Monitorprotokoll,
+  Readiness und Graceful Shutdown dokumentieren. ScoreLog ausdruecklich als
+  unveraenderten dreispaltigen Fire-and-forget-Writer ohne Retry/Persistenz
+  ausweisen.
 
 Project/software/SOFTWARE-DOKU.txt
 - Indexbeschreibungen fuer Architektur, Endpoints und Datenbank auf den neuen
@@ -305,6 +456,8 @@ Project/software/seiten/matches1.txt
 Project/software/seiten/bewerbsRaster.txt
 - Obsoleten Zwei-Sekunden-Timer entfernen; Subscriptionrefresh, RoundRobin-
   Layoutparameter, sichere Badges/Namen und Monitorbereitschaft aufnehmen.
+- Profilaufrufe aus dem Raster fuer angemeldete Benutzer mit Kontakt- und
+  Geburtsdaten sowie Adminaktionen dokumentieren.
 
 Project/software/seiten/roundRobin.txt
 - Vier Quelltopics, Escaping externer Werte, Missing-ID-Fehler,
@@ -314,26 +467,47 @@ Project/software/seiten/players.txt
 - `memberDirectory` statt oeffentlicher Rohpersonentabelle, Loginpflicht,
   sessiongetriebene Neudarstellung, Namens-/Telefonprojektion und
   Player-Invalidierung dokumentieren.
+- Anklickbare und tastaturbedienbare Spielerzeilen, das gemeinsame Profilmodal,
+  Kontaktdaten fuer angemeldete Benutzer und die beiden exklusiven Adminaktionen
+  fuer Reset-Code und direktes Passwortsetzen aufnehmen.
 
 Project/software/seiten/entryList.txt
 - Serveridentitaet, operationId-basierte Add-/Remove-Vertraege, serverseitige
   Personen-/Zeitwerte, Subscriptions, Fristrefresh und Login-CTA dokumentieren.
+- `Entrydate` als kanonischen Namen des serverseitig gesetzten
+  Anmeldezeitstempels verwenden; bestehende Aussagen zu `Datum` entsprechend
+  ersetzen.
 
 Project/software/seiten/rangliste.txt
 - Sessionidentitaet, publicProfile/myProfile, vollstaendige Restriction-Daten,
   Challenge-/Withdraw-operationIds, Subscriptions und Fristrefresh dokumentieren.
+- Profilaufrufe mit den kontextabhaengigen Mitglieds-/Adminfeldern aufnehmen.
+- Sichtbaren `Raushaengen`-Button entfernen; Modal, Clientfunktion und Endpoint als
+  vorhandene, derzeit aber nicht angebotene Fachfunktion kennzeichnen.
 
 Project/software/seiten/scoreboard.txt
 - Ein-/Fuenf-Sekunden-Polling durch scoreboardSnapshot und Subscriptions ersetzen.
-- Revisionen, Resync/Retry, sichtbare Connection-/Sync-/Stale-Zustaende,
-  Monitorbereitschaft und CSP-kompatible lokale Ressourcen dokumentieren.
+- Revisionen, Resync/Retry, interne Connection-/Sync-/Stale-Auswertung,
+  Monitorbereitschaft und CSP-kompatible lokale Ressourcen dokumentieren; die
+  sichtbaren Connection-, Synchronisations- und Court-Quellen-Badges entfallen.
+- Datum/Uhrzeit als `TT.MM. - HH:MM`, normalisierte Bewerbsrunde sowie die beiden
+  getrennten Platz-Unterzeilen dokumentieren.
+- Responsive Bereiche ueber 1300, von 1001 bis 1300 und bis 1000 Pixel,
+  Ausblendung des Seitenpanels, mobile Topausrichtung, `100dvh`, vergroesserte
+  Score-/Metadatenwerte und adaptive gemeinsame Namens-/Feldgroesse beschreiben.
+- Bei Doppelpaarungen reale Glyphenbreite jeder Namenszeile und verfuegbare
+  Platzhoehe als gemeinsame Begrenzung fuer Heim und Gast dokumentieren.
 
 Project/software/seiten/monitor.txt
 - Enrollmenttoken und Secure-Monitorcookie, monitor-command/monitorTarget,
   korrelierte Navigationsstatus, Timeout, Same-Origin-Pruefung, sandboxed
   Candidate-/Active-iframes und Child-Ready-Meldungen dokumentieren.
 - Geordnete, ablaufende, persistiert deduplizierte Scrollcommands und
-  Device-Disconnect-/Duplicate-Verhalten aufnehmen; Legacy-Polling entfernen.
+  serverseitiges Device-Disconnect-/Duplicate-Verhalten aufnehmen; Legacy-Polling
+  entfernen.
+- Lokale Geraete-/Verbindungsanzeige und Abmeldeaktion der Ausgabeseite entfernen;
+  Enrollment, Lade-/Fehleroverlays sowie administrative Rotation und Revoke ueber
+  den Navigator bleiben erhalten.
 
 Project/software/seiten/navigator.txt
 - Operator-/Adminschutz, Monitorauswahl, Presence und per-Monitor-Status-
@@ -364,8 +538,11 @@ Project/server-configs/ROLLOUT-CHECKLIST.md
   Reihenfolge aufnehmen.
 - Rollen-, Browser-/Kiosk-, Standby-/Reconnect-, Last-, SIGTERM-, Dauer- und
   Rollbackabnahme sowie messbare Erfolgskriterien dokumentieren.
-- pendingMetadataIntents/scoreLogPending und die manuelle Klaerung unbekannter
-  Writes ohne blinde Wiederholung aufnehmen.
+- Scoreboard-Abnahme in allen drei Breitenbereichen und mobilen Hoch-/Querformaten
+  mit Einzel- und Doppelpaarungen aufnehmen.
+- pendingMetadataIntents und die manuelle Klaerung unbekannter fachlicher Writes
+  ohne blinde Wiederholung aufnehmen. Keine ScoreLog-Pending-Pruefung oder
+  Logging-/ScoreLog-Event-ID-Migration vorsehen.
 
 Project/2do/KOMMUNIKATION-ANALYSE.md
 - Historische Analyse unveraendert lassen und nur einen datierten Umsetzungsstatus
@@ -380,3 +557,6 @@ Project/2do/LOGGING-ANALYSE.md
 - Verbleibende Luecken explizit nennen: kein zentraler strukturierter Logger,
   keine konfigurierbaren Loglevel, kein Metrikexport und kein eingerichtetes
   Caddy-Accesslog.
+- Festhalten, dass die dreispaltigen Spreadsheet-Writer `Logging` und `ScoreLog`
+  in diesem Branch bewusst unveraendert bleiben und ihr umfassendes Redesign in
+  einem eigenen spaeteren Branch erfolgt.

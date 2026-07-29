@@ -428,7 +428,7 @@ export async function loadRanking() {
 // ═══════════════════════════════════════════════════════════════════════════
 //  PYRAMIDE AUFBAUEN
 // ═══════════════════════════════════════════════════════════════════════════
-function renderRankingLegend(myState = null) {
+function renderRankingLegend() {
   const section = document.getElementById("rankingSection");
   if (!section) return;
 
@@ -458,7 +458,6 @@ function renderRankingLegend(myState = null) {
   }
 
   const authenticated = isAuthenticated();
-  const canWithdraw = authenticated && Number.isInteger(myState?.myRank);
 
   const itemsBox = [];
   const itemsFrame = [];
@@ -488,15 +487,7 @@ function renderRankingLegend(myState = null) {
   legend.innerHTML = `
     <div class="legend-label">Legende:</div>
     ${sections.join("\n")}
-    <button id="withdrawBtn" class="btn-login" style="margin-top: 12px; width: 100%; display: ${canWithdraw ? 'block' : 'none'};">Raushängen</button>
   `;
-
-  const withdrawButton = document.getElementById("withdrawBtn");
-  withdrawButton?.style.setProperty("display", canWithdraw ? "block" : "none", "important");
-  withdrawButton?.addEventListener("click", () => {
-    if (!canWithdraw) return;
-    window.openWithdrawModal?.({ rank: myState.myRank, bewerbId: BEWERB_ID });
-  });
 }
 
 export async function renderRanking() {
@@ -607,7 +598,7 @@ export async function renderRanking() {
 
   // Alle Regeln anwenden (Daten zuerst, dann DOM)
   const myState = await applyAllRules(container, pyramid, rankedList);
-  renderRankingLegend(myState);
+  renderRankingLegend();
 }
 
 let rankingInitialized = false;

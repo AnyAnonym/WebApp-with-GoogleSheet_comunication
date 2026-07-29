@@ -79,7 +79,6 @@ function readiness({ repository, sheetService = null, initialized, shuttingDown 
 function createApplication(overrides = {}) {
   const repository = overrides.repository || new StateRepository(STATE_FILE);
   repository.init();
-  courtPoller.setRepository(repository);
   stateStore.init(repository);
   const sheetService = overrides.sheetService || new SheetService({ repository });
   const authService = overrides.authService || new AuthService({ repository, sheetService });
@@ -226,6 +225,20 @@ function createApplication(overrides = {}) {
         return sendJson(response, 200, result);
       }
 
+      if (pathname === "/api/admin/password") {
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        assertAllowedOrigin(request, ALLOWED_ORIGINS);
+        const auth = authService.requireRole(sessionToken, ["admin"]);
+        limitHttpWrite(request, auth.principal.id);
+        const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        const result = await authService.setPasswordAsAdmin(
+          sessionToken,
+          idValue(body.personId, "personId"),
+          passwordHashValue(body.newPasswordHash, "newPasswordHash"),
+        );
+        return sendJson(response, 200, result);
+      }
+
       if (pathname === "/api/monitor/session") {
         if (request.method === "GET") {
           const device = repository.authenticateMonitor(cookies[MONITOR_COOKIE]);
@@ -328,7 +341,6 @@ function createApplication(overrides = {}) {
             () => reject(new AppError("SHUTDOWN_TIMEOUT", "Shutdown-Drain hat die Grace-Deadline ueberschritten", 503, {
               activeRequests,
               sheets: sheetService.status(),
-              scoreLog: courtPoller.getStatus(),
             })),
             Math.max(0, deadline - Date.now()),
           );

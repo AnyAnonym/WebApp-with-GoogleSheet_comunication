@@ -155,7 +155,29 @@ dort beschriebene Workflow zu befolgen.
 6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
    `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
    Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.
-7. Vor einem Branch-Commit wird `-x` erst nach fachlichem Abschluss entfernt und
-   der Changelogabschnitt finalisiert. Scheitert die Finalisierung und folgen
-   weitere inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen.
-   Ein Commit darf niemals `-x` enthalten.
+7. Erst auf Aufforderung `dokumentieren` wird `-x` nach fachlichem Abschluss
+   entfernt und der Changelogabschnitt finalisiert. Folgen danach weitere
+   inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen. Ein
+   Commit darf niemals `-x` enthalten.
+
+### Verpflichtender Arbeits- und Commitablauf
+
+1. Jede neue Aufgabe aus einem vollstaendig committeden Arbeitsbaum beginnt vor
+   jeder anderen Aenderung zwingend mit dem naechsten `-x`-Entwicklungsstand in
+   package.json, Lockfile und offenem Branch-Changelogabschnitt. Auf main ist
+   vorher ein freigegebener Seitenbranch anzulegen.
+2. Ist diese Vorbereitung nicht ausdruecklich beauftragt, muss vor Arbeitsbeginn
+   danach gefragt werden. Ohne Bestaetigung wird nicht implementiert; Arbeit ohne
+   `-x` ist nicht zulaessig.
+3. Erst auf Aufforderung `dokumentieren` werden Dokumentation und Changelog
+   finalisiert und die Version von `<Commit-ID>-x` auf `<Commit-ID>` gesetzt.
+   Dadurch wird kein Commit autorisiert.
+4. Commit und Push benoetigen jeweils eine eigene ausdrueckliche Aufforderung.
+   Sie werden niemals selbststaendig ausgefuehrt.
+5. Jeder Commit muss alle auftragsbezogenen neuen, geaenderten, geloeschten und
+   umbenannten Dateien einschliesslich Paket-, Lockfile-, Versions-, Doku- und
+   Changelog-Dateien enthalten. Unabhaengige Aenderungen bleiben unberuehrt.
+6. Vor und nach dem Commit werden Status, staged Diff, unstaged Diff und untracked
+   Dateien gegen den Auftragsumfang geprueft. Verbleibende auftragsbezogene
+   Dateien machen den Commit unvollstaendig und blockieren Abschlussmeldung und
+   Push.

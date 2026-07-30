@@ -1,0 +1,29 @@
+================================================================================
+CHANGELOG - Seitenbranch 4.1.1-paj-1
+================================================================================
+
+[4.1.1-paj-1-1] - 2026-07-30
+Zielcommit: 4.1.1-paj-1-1
+Commit: 4.1.1-paj-1-1 | Arbeits- und Commitablauf verbindlich festgelegt
+
+  Changed
+  - [Dokumentation] Jede neue Aufgabe aus einem committeden Arbeitsbaum beginnt
+    verbindlich mit dem naechsten `-x`-Entwicklungsstand; ohne ausdrueckliche
+    Freigabe muss vor allen Aenderungen danach gefragt werden.
+  - [Dokumentation] Dokumentation und Entfernung von `-x`, Commit und Push als
+    getrennte, jeweils ausdruecklich freizugebende Schritte festgelegt.
+  - [Dokumentation] Vollstaendige Erfassung aller auftragsbezogenen Dateien vor
+    und nach jedem Commit sowie Blockierung unvollstaendiger Commits und Pushes
+    vorgeschrieben.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/DokuVersGit.txt
+    - Den verpflichtenden Ablauf fuer neue Aufgaben aus sauberem Arbeitsbaum,
+      Dokumentation, Finalisierung, Commit und Push eindeutig festlegen.
+    - Vor und nach jedem Commit die Vollstaendigkeit aller auftragsbezogenen
+      Dateien verbindlich pruefen.
+
+    AGENTS.md
+    - Die Kurzregeln fuer verpflichtende `-x`-Vorbereitung, vollstaendige Commits
+      sowie getrennte Commit- und Push-Freigaben ergaenzen.

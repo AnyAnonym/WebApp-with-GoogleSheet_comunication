@@ -42,6 +42,26 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
    veroeffentlichten Branches, kein Amend und kein Ueberspringen von Pruefungen
    ohne gesonderten ausdruecklichen Auftrag.
 
+Verpflichtender Beginn jeder neuen Arbeit:
+
+1. Jede neue Aufgabe oder Aenderung beginnt bei einem vollstaendig committeden
+   Arbeitsbaum zwingend mit einem neuen `-x`-Entwicklungsstand. Fachliche,
+   organisatorische oder technische Dateien duerfen vorher nicht geaendert werden.
+2. Zuerst werden Branch, Status, letzte Branch-Commit-ID und die naechste
+   lueckenlose Branch-Commitnummer bestimmt. Falls die Arbeit noch auf main
+   beginnen wuerde, muss vorher der freigegebene Seitenbranch angelegt werden.
+3. Backend/package.json, das Root-Paket in Backend/package-lock.json und der
+   offene Abschnitt des Branch-Changelogs werden gemeinsam auf
+   `<naechste-Branch-Commit-ID>-x` gesetzt.
+4. Enthaelt der Auftrag diese Versionsvorbereitung nicht ausdruecklich, muss vor
+   jeder Aenderung gefragt werden, ob der verpflichtende `-x`-Entwicklungsstand
+   angelegt werden soll. Ohne Bestaetigung wird die Aufgabe nicht umgesetzt.
+5. Ein Verzicht auf den `-x`-Stand ist nicht zulaessig. Die Rueckfrage dient der
+   notwendigen Freigabe fuer Versionierungs- und Dokumentationsdateien, nicht der
+   Wahl zwischen Arbeit mit oder ohne `-x`.
+6. Erst nach dem vollstaendig angelegten und geprueften `-x`-Stand beginnen die
+   eigentlichen Aenderungen.
+
 
 ================================================================================
 2. VERSION UND MIGRATIONSBASIS
@@ -109,11 +129,12 @@ finalen Commit verbraucht. Werden die Aenderungen vollstaendig verworfen, werden
 Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID zurueckgestellt und
 der offene Changelogabschnitt entfernt.
 
-Unmittelbar vor dem finalen Commit wird `-x` in package.json, package-lock.json
-und Changelog entfernt. Danach duerfen nur noch Abschlusspruefung, Staging und der
-freigegebene Commit folgen. Scheitert der Commit und sind weitere inhaltliche
-Aenderungen erforderlich, muss vor deren Beginn wieder auf den `-x`-Stand
-zurueckgestellt werden. Kein Commit und keine Main-Version darf `-x` enthalten.
+Erst auf die ausdrueckliche Aufforderung `dokumentieren` wird `-x` in package.json,
+package-lock.json und Changelog entfernt. Danach duerfen nur noch
+Abschlusspruefung, Vollstaendigkeitskontrolle, Staging und der freigegebene Commit
+folgen. Scheitert der Commit oder sind davor weitere inhaltliche Aenderungen
+erforderlich, muss vor deren Beginn wieder auf den `-x`-Stand zurueckgestellt
+werden. Kein Commit und keine Main-Version darf `-x` enthalten.
 
 Uebergangsausnahme fuer den bei Einfuehrung dieser Regel bereits vorhandenen
 Commit `3.1.12-paj-1-1`: Er erbte noch die Main-Paketversion 3.1.12. Die neue
@@ -337,16 +358,30 @@ nicht die einzelnen Changelog-Punkte.
 
 1. Aktuellen Branch, Arbeitsbaum, Diff und vorhandene Testergebnisse pruefen.
 2. Tatsaechliche Aenderungen nach Added, Changed, Fixed und Removed einordnen.
-3. Nur das passende temporaere Changelog und dessen dateigenaue
-   Dokumentationsuebernahmeliste aktualisieren.
-4. Noch keine permanente Fachdokumentation und keine Main-Version anlegen. Die
-   Branch-Paketversion traegt waehrend der Arbeit die naechste Commit-ID plus
-   `-x` und wird erst im Finalisierungsfenster auf die vollstaendige Commit-ID
-   gesetzt.
-5. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
+3. Die fachliche Umsetzung und ihre Pruefungen erfolgen im `-x`-Stand.
+4. Dokumentation und Finalisierung erfolgen erst auf ausdrueckliche Aufforderung
+   des Users.
+5. Bei dieser Aufforderung werden der offene Branch-Changelogabschnitt und alle
+   fuer diesen Branch ausdruecklich erlaubten Dokumentationsdateien vollstaendig
+   aktualisiert.
+6. Gleichzeitig wird die vorbereitete Version in Backend/package.json,
+   Backend/package-lock.json und Branch-Changelog von
+   `<naechste-Branch-Commit-ID>-x` auf `<naechste-Branch-Commit-ID>` finalisiert.
+7. Diese Finalisierung erstellt noch keinen Commit und autorisiert weder Commit
+   noch Push.
+8. Nach der Finalisierung duerfen nur noch Abschlusspruefung, Vollstaendigkeits-
+   kontrolle, ein ausdruecklich beauftragter Commit und ein gesondert
+   beauftragter Push folgen.
+9. Werden vor dem Commit weitere inhaltliche Aenderungen notwendig, muss zuerst
+   wieder der zugehoerige `-x`-Stand in Paketdateien und Branch-Changelog
+   hergestellt werden. Danach ist eine erneute Dokumentations- und
+   Finalisierungsaufforderung erforderlich.
+10. Kein Commit darf eine `-x`-Version enthalten.
+11. Noch keine permanente Fachdokumentation und keine Main-Version anlegen.
+12. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
    getestet, committed, sauber und gepusht sein. Fehlen Commit oder Push, werden
    zuerst die jeweils gesonderten Freigaben eingeholt und ausgefuehrt.
-6. Erst danach aktuelle Main-Version und Main-SHA neu pruefen und ausgeben:
+13. Erst danach aktuelle Main-Version und Main-SHA neu pruefen und ausgeben:
 
      Aktuelle Main-Version: <version>
      Erkannte Aenderungsart: <MAJOR|MINOR|PATCH>
@@ -355,8 +390,8 @@ nicht die einzelnen Changelog-Punkte.
 
      Soll Version <neue-version> erstellt werden?
 
-7. Antwortet der User mit Nein, bleiben nur die temporaeren Eintraege bestehen.
-8. Bestaetigt oder aendert der User die konkrete Version, beginnt die
+14. Antwortet der User mit Nein, bleiben nur die temporaeren Eintraege bestehen.
+15. Bestaetigt oder aendert der User die konkrete Version, beginnt die
    Release-/Merge-Vorbereitung.
 
 
@@ -421,26 +456,27 @@ Start:
 
 Arbeit im Seitenbranch:
 
-1. Vor der ersten beabsichtigten Aenderung Status und letzte Commit-ID pruefen und
-   die naechste lueckenlose Branch-Commitnummer bestimmen.
-2. Backend/package.json und Backend/package-lock.json auf
-   `<naechste-Branch-Commit-ID>-x` setzen.
-3. Den offenen `-x`-Abschnitt im Branch-Changelog anlegen.
-4. Implementieren, online beziehungsweise lokal testen und den offenen
-   Changelogabschnitt samt dateigenauer Uebernahmeliste laufend fortschreiben.
-5. Permanente Fachdokumentation unveraendert lassen; nur ausdruecklich
-   freigegebene organisatorische Ausnahmen duerfen angepasst werden.
-6. Nach fachlichem Abschluss alle vorgesehenen Pruefungen im `-x`-Stand
+1. Den verpflichtenden Beginn jeder neuen Arbeit aus Abschnitt 1 vollstaendig
    ausfuehren.
-7. Erst im unmittelbaren Finalisierungsfenster `-x` aus package.json,
-   package-lock.json und Changelog entfernen sowie Datum und Commit-Betreff
-   finalisieren.
-8. Git-Status, Gesamtdiff, Changelog, Uebernahmeliste und letzte Commits pruefen.
-9. Nur beauftragte Dateien stagen; Secrets ausschliessen.
+2. Implementieren, online beziehungsweise lokal testen und den offenen
+   Changelogabschnitt samt dateigenauer Uebernahmeliste laufend fortschreiben.
+3. Permanente Fachdokumentation unveraendert lassen; nur ausdruecklich
+   freigegebene organisatorische Ausnahmen duerfen angepasst werden.
+4. Nach fachlichem Abschluss alle vorgesehenen Pruefungen im `-x`-Stand
+   ausfuehren.
+5. Dokumentation und Finalisierung ausschliesslich nach Abschnitt 7 ausfuehren.
+6. Git-Status, Gesamtdiff, Changelog, Uebernahmeliste und letzte Commits pruefen.
+7. Die vollstaendige Menge aller auftragsbezogenen Dateien bestimmen und nach
+   den Vollstaendigkeitsregeln aus Abschnitt 11 pruefen.
+8. Alle und nur die auftragsbezogenen Dateien stagen; Secrets ausschliessen.
+9. Staged Diff, unstaged Diff und untracked Dateien gemeinsam gegen den
+   vollstaendigen Auftragsumfang pruefen.
 10. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
 11. Nach dem Commit pruefen, dass Commit-ID, package.json, package-lock.json und
-   GET-/version-Wert logisch uebereinstimmen.
-12. Push nur nach ausdruecklicher Freigabe ausfuehren.
+    GET-/version-Wert logisch uebereinstimmen und keine auftragsbezogene Datei
+    im Arbeitsbaum zurueckblieb.
+12. Push nur nach eigener ausdruecklicher Freigabe ausfuehren. Eine
+    Commit-Freigabe beinhaltet keine Push-Freigabe.
 13. Kein Rebase oder Force-Push eines veroeffentlichten Branches.
 
 Vor der Integration:
@@ -512,6 +548,36 @@ ausdruecklich als Ausnahme freigibt.
 11. SICHERHEIT UND GIT-HYGIENE
 ================================================================================
 
+Vollstaendigkeit eines Commits:
+
+1. Vor dem Staging werden Git-Status, Gesamtdiff, untracked Dateien, Loeschungen
+   und Umbenennungen geprueft.
+2. Aus dem freigegebenen Auftrag und dem Gesamtdiff wird die vollstaendige Menge
+   aller auftragsbezogenen Dateien bestimmt.
+3. Zu dieser Menge gehoeren auch neue, geloeschte, umbenannte und automatisch
+   angepasste Dateien sowie verpflichtende Paket-, Lockfile-, Versions-,
+   Dokumentations- und Changelog-Dateien.
+4. Alle auftragsbezogenen Dateien muessen in denselben dafuer vorgesehenen Commit
+   aufgenommen werden. Keine davon darf versehentlich unstaged oder untracked
+   zurueckbleiben.
+5. Unabhaengige Aenderungen des Users oder anderer Bearbeiter duerfen nicht
+   aufgenommen, veraendert oder zurueckgesetzt werden.
+6. Vor dem Commit werden staged Diff, unstaged Diff und untracked Dateien
+   gemeinsam gegen den vollstaendigen Auftragsumfang geprueft. Secrets bleiben
+   ausgeschlossen.
+7. Der Commit wird ausschliesslich auf ausdrueckliche Aufforderung erstellt.
+8. Nach dem Commit werden Git-Status und Commit-Diff erneut geprueft. Bleibt eine
+   auftragsbezogene Datei zurueck oder fehlt sie im Commit, gilt der Commit als
+   unvollstaendig.
+9. Ein unvollstaendiger Commit darf nicht als abgeschlossen gemeldet und nicht
+   gepusht werden. Der sichere Zustand und die fehlenden Dateien werden dem User
+   gemeldet; eine Korrektur erfolgt nur im freigegebenen Workflow und niemals
+   eigenmaechtig per Amend.
+10. Ein Push wird ausschliesslich nach einer eigenen ausdruecklichen Aufforderung
+    ausgefuehrt. Eine Commit-Freigabe beinhaltet keine Push-Freigabe.
+
+Sicherheit:
+
 Folgende Dateien und Inhalte duerfen niemals committed oder vollstaendig
 ausgegeben werden:
 
@@ -545,3 +611,6 @@ Nach Dokumentations-, Versions- oder Git-Arbeiten wird knapp berichtet:
 3. Aktueller Branch und Arbeitsbaumstatus.
 4. Erstellte Commit- und Versionsnummer, falls vorhanden.
 5. Ob Push, Merge oder Branch-Loeschung noch ausstehen.
+6. Ob alle auftragsbezogenen Dateien im Commit enthalten sind und ob noch
+   auftragsbezogene Aenderungen im Arbeitsbaum verbleiben. Unabhaengige vorhandene
+   Aenderungen werden getrennt benannt.

@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.0
+Stand: 4.1.1
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,15 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.1.1] - 2026-07-30
+Commit: 4.1.1 | Veralteten LLM-Einstiegspunkt entfernt
+Quelle: direkte Main-Ausnahme
+
+  Removed
+  - [Repository] Den durch `AGENTS.md` ersetzten Einstiegspunkt `LLM-START.md`
+    entfernt, damit nur noch eine aktuelle Regel- und Routingdatei im Root liegt.
 
 
 [4.1.0] - 2026-07-30

@@ -41,7 +41,7 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
-- Aktueller Main-Stand: `4.1.0`
+- Aktueller Main-Stand: `4.1.1`
 
 ## Dokumentierter Infrastruktur-Sollstand
 

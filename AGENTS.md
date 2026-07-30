@@ -41,7 +41,7 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
-- Aktueller Main-Stand: `4.1.1`
+- Aktueller Main-Stand: `4.1.2`
 
 ## Dokumentierter Infrastruktur-Sollstand
 
@@ -155,7 +155,43 @@ dort beschriebene Workflow zu befolgen.
 6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
    `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
    Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.
-7. Vor einem Branch-Commit wird `-x` erst nach fachlichem Abschluss entfernt und
-   der Changelogabschnitt finalisiert. Scheitert die Finalisierung und folgen
-   weitere inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen.
-   Ein Commit darf niemals `-x` enthalten.
+7. Integrierte Seitenbranches bleiben lokal und remote dauerhaft als historische
+   Staende erhalten. Sie werden weder geloescht noch fuer neue Arbeiten
+   wiederverwendet.
+8. Erst auf Aufforderung `dokumentieren` wird `-x` nach fachlichem Abschluss
+   entfernt und der Changelogabschnitt finalisiert. Folgen danach weitere
+   inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen. Ein
+   Commit darf niemals `-x` enthalten.
+
+### Verpflichtender Arbeits- und Commitablauf
+
+1. Jede neue Aufgabe aus einem vollstaendig committeden Arbeitsbaum beginnt vor
+   jeder anderen Aenderung zwingend mit einem neuen `-x`-Entwicklungsstand.
+2. In einem Seitenbranch wird dafuer nur die laufende Branch-Commitnummer erhoeht,
+   zum Beispiel von `4.1.1-paj-1-1` auf `4.1.1-paj-1-2-x`. Der noch unbekannte
+   fachliche Umfang beeinflusst diese Nummer nicht.
+3. Auf main muss vor jedem `-x`-Stand gefragt werden, ob ein Seitenbranch angelegt
+   werden soll. Bei Zustimmung wird zuerst der Seitenbranch angelegt und dessen
+   erste Commit-ID plus `-x` vorbereitet.
+4. Lehnt der User den Seitenbranch ab, ist eine ausdrueckliche Freigabe als
+   direkte Main-Ausnahme erforderlich. Dann wird die naechste Patchversion plus
+   `-x` als vorlaeufiger Arbeitsstand verwendet, zum Beispiel `4.1.2-x` nach
+   `4.1.1`; die endgueltige SemVer-Stufe wird erst spaeter bestimmt.
+5. Der jeweilige `-x`-Stand muss gleichzeitig in package.json, Lockfile und dem
+   offenen Branch-Changelogabschnitt beziehungsweise ChangeLog-main.tmp stehen.
+6. Ist diese Vorbereitung nicht ausdruecklich beauftragt, muss vor Arbeitsbeginn
+   danach gefragt werden. Ohne Bestaetigung wird nicht implementiert; Arbeit ohne
+   `-x` ist nicht zulaessig.
+7. Erst auf Aufforderung `dokumentieren` werden Dokumentation und Changelog
+   finalisiert. Im Seitenbranch wird `<Commit-ID>-x` zu `<Commit-ID>`; bei einer
+   direkten Main-Ausnahme wird nach bestaetigter SemVer-Zielversion der
+   vorlaeufige Patch-`-x`-Stand durch die endgueltige Version ersetzt.
+8. Commit und Push benoetigen jeweils eine eigene ausdrueckliche Aufforderung.
+   Sie werden niemals selbststaendig ausgefuehrt.
+9. Jeder Commit muss alle auftragsbezogenen neuen, geaenderten, geloeschten und
+   umbenannten Dateien einschliesslich Paket-, Lockfile-, Versions-, Doku- und
+   Changelog-Dateien enthalten. Unabhaengige Aenderungen bleiben unberuehrt.
+10. Vor und nach dem Commit werden Status, staged Diff, unstaged Diff und untracked
+   Dateien gegen den Auftragsumfang geprueft. Verbleibende auftragsbezogene
+   Dateien machen den Commit unvollstaendig und blockieren Abschlussmeldung und
+   Push.

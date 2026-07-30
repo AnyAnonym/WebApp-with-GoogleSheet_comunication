@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.1
+Stand: 4.1.2
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,30 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.1.2] - 2026-07-30
+Commit: 4.1.2 | Arbeits- und Integrationsworkflow praezisiert
+Quelle: 4.1.1-paj-1
+
+  Changed
+  - [Dokumentation] Jede neue Aufgabe aus einem vollstaendig committeden
+    Arbeitsbaum beginnt verbindlich mit einem `-x`-Entwicklungsstand. Im
+    Seitenbranch wird nur die naechste Branch-Commitnummer reserviert; auf main
+    wird zuerst zwischen neuem Seitenbranch und ausdruecklicher direkter
+    Main-Ausnahme entschieden.
+  - [Dokumentation] Direkte Main-Arbeit beginnt mit der naechsten Patchversion
+    plus `-x` als vorlaeufiger Arbeitsversion. Die endgueltige PATCH-, MINOR- oder
+    MAJOR-Version wird erst nach bekanntem Umfang vorgeschlagen und bestaetigt.
+  - [Dokumentation] Dokumentationsfinalisierung, Versionsbestaetigung, Commit und
+    Push sind getrennte, jeweils ausdruecklich freizugebende Schritte; kein
+    Commit darf einen `-x`-Stand enthalten.
+  - [Dokumentation] Vor und nach jedem Commit werden staged, unstaged und
+    untracked Dateien gegen den gesamten Auftragsumfang geprueft. Zurueckbleibende
+    auftragsbezogene Dateien blockieren Abschlussmeldung und Push.
+  - [Dokumentation] Integrierte Seitenbranches bleiben lokal und remote dauerhaft
+    als historische Staende erhalten, werden nicht geloescht und nicht fuer neue
+    Arbeiten wiederverwendet.
 
 
 [4.1.1] - 2026-07-30

@@ -1,7 +1,7 @@
 ================================================================================
 DokuVersGit.txt - Dokumentation, Versionierung und Git
 ================================================================================
-Stand: 4.1.0
+Stand: 4.1.2
 
 Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
@@ -18,7 +18,7 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
 1. Dokumentation, Versionierung sowie Git-Aktionen werden nur auf ausdruecklichen
    Auftrag des Users ausgefuehrt.
 2. Ein Implementierungsauftrag allein autorisiert keine Dokumentation, keinen
-   Commit, keinen Push, keinen Merge und keine Branch-Loeschung.
+   Commit, keinen Push und keinen Merge.
 3. Ein eindeutiger Auftrag gilt fuer genau die genannten Schritte. Bei unklarem
    oder erweitertem Umfang ist vor der Ausfuehrung nachzufragen.
 4. Wenn der User "dokumentieren" anfordert, wird zuerst nur das temporaere
@@ -31,16 +31,47 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
 6. Die Bestaetigung einer konkreten Version autorisiert:
    - Uebernahme der temporaeren Changelog-Eintraege,
    - Aktualisierung der betroffenen Fachdokumentation,
-   - Aktualisierung von Backend/package.json,
-   - den zugehoerigen Main- oder Merge-Commit.
-7. Push und Branch-Loeschung benoetigen auch nach einer Versionsbestaetigung eine
-   eigene ausdrueckliche Freigabe.
+   - Aktualisierung von Backend/package.json und Backend/package-lock.json.
+   Ein Commit wird dadurch nicht autorisiert und benoetigt immer eine eigene
+   ausdrueckliche Aufforderung.
+7. Push benoetigt auch nach einer Versionsbestaetigung eine eigene ausdrueckliche
+   Freigabe. Seitenbranches werden weder lokal noch remote geloescht.
 8. Aendert sich nach der Bestaetigung der Main-Stand, der Aenderungsumfang oder
    eine konfliktbedingte Loesung, verfaellt die Bestaetigung. Version und Umfang
    muessen erneut vorgeschlagen und bestaetigt werden.
 9. Keine destruktiven Git-Aktionen, kein Force-Push, kein Rebase eines
    veroeffentlichten Branches, kein Amend und kein Ueberspringen von Pruefungen
    ohne gesonderten ausdruecklichen Auftrag.
+
+Verpflichtender Beginn jeder neuen Arbeit:
+
+1. Jede neue Aufgabe oder Aenderung beginnt bei einem vollstaendig committeden
+   Arbeitsbaum zwingend mit einem neuen `-x`-Entwicklungsstand. Fachliche,
+   organisatorische oder technische Dateien duerfen vorher nicht geaendert werden.
+2. Zuerst werden Branch, Status und letzter Commit bestimmt.
+3. In einem Seitenbranch wird unabhaengig vom noch unbekannten Aenderungsumfang
+   nur die laufende Branch-Commitnummer erhoeht. Backend/package.json, das
+   Root-Paket in Backend/package-lock.json und der offene Abschnitt des
+   Branch-Changelogs werden gemeinsam auf
+   `<naechste-Branch-Commit-ID>-x` gesetzt.
+4. Auf main muss vor jedem `-x`-Stand und vor jeder sonstigen Aenderung gefragt
+   werden, ob ein Seitenbranch angelegt werden soll.
+5. Bestaetigt der User den Seitenbranch, wird zuerst der freie Branchname nach
+   Abschnitt 4 bestimmt und der Branch angelegt. Danach wird dessen erste
+   Branch-Commit-ID plus `-x` nach Punkt 3 vorbereitet.
+6. Lehnt der User den Seitenbranch ab, darf nur nach ausdruecklicher Freigabe der
+   direkten Main-Ausnahme weitergearbeitet werden. Dann wird die aktuelle
+   Main-Patchversion um eins erhoeht und mit `-x` als vorlaeufiger Arbeitsstand
+   in package.json, package-lock.json und ChangeLog-main.tmp gesetzt.
+7. Enthaelt der Auftrag die jeweils erforderliche Versionsvorbereitung nicht
+   ausdruecklich, muss vor jeder Aenderung gefragt werden, ob der verpflichtende
+   `-x`-Entwicklungsstand angelegt werden soll. Ohne Bestaetigung wird die Aufgabe
+   nicht umgesetzt.
+8. Ein Verzicht auf den `-x`-Stand ist nicht zulaessig. Die Rueckfrage dient der
+   notwendigen Freigabe fuer Versionierungs- und Dokumentationsdateien, nicht der
+   Wahl zwischen Arbeit mit oder ohne `-x`.
+9. Erst nach dem vollstaendig angelegten und geprueften `-x`-Stand beginnen die
+   eigentlichen Aenderungen.
 
 
 ================================================================================
@@ -104,15 +135,34 @@ Root-Paket des package-lock.json und im offenen Abschnitt des temporaeren
 Branch-Changelogs gesetzt. Nach Deployment beziehungsweise Prozessneustart muss
 GET /version diesen `-x`-Stand auf dem Testsystem anzeigen.
 
-Die naechste laufende Nummer wird durch `-x` nur reserviert und erst durch den
-finalen Commit verbraucht. Werden die Aenderungen vollstaendig verworfen, werden
-Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID zurueckgestellt und
-der offene Changelogabschnitt entfernt.
+In einem Seitenbranch reserviert `-x` ausschliesslich die naechste laufende
+Branch-Commitnummer. Der fachliche Umfang der bevorstehenden Aenderung und eine
+spaetere Main-SemVer-Stufe spielen dafuer keine Rolle.
 
-Unmittelbar vor dem finalen Commit wird `-x` in package.json, package-lock.json
-und Changelog entfernt. Danach duerfen nur noch Abschlusspruefung, Staging und der
-freigegebene Commit folgen. Scheitert der Commit und sind weitere inhaltliche
-Aenderungen erforderlich, muss vor deren Beginn wieder auf den `-x`-Stand
+Bei einer ausdruecklich freigegebenen direkten Main-Ausnahme wird als
+vorlaeufiger Arbeitsstand immer die naechste Patchversion verwendet:
+
+  aktuelle Main-Version  4.1.1
+  vorlaeufige Arbeit      4.1.2-x
+
+Dieser Wert nimmt die spaetere SemVer-Bewertung nicht vorweg. Nach bekanntem
+Aenderungsumfang kann er bei der Finalisierung beispielsweise zu 4.1.2, 4.2.0
+oder 5.0.0 werden.
+
+In einem Seitenbranch wird die naechste laufende Nummer durch `-x` nur reserviert
+und erst durch den finalen Commit verbraucht. Werden die Aenderungen vollstaendig
+verworfen, werden Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID
+zurueckgestellt und der offene Changelogabschnitt entfernt. Bei einer direkten
+Main-Ausnahme werden stattdessen die Paketdateien auf die aktuelle Main-Version
+zurueckgestellt und ChangeLog-main.tmp entfernt.
+
+Im Seitenbranch wird `-x` erst auf die ausdrueckliche Aufforderung
+`dokumentieren` in package.json, package-lock.json und Changelog entfernt. Bei
+einer direkten Main-Ausnahme geschieht dies nach `dokumentieren` erst mit der
+Bestaetigung der konkreten SemVer-Zielversion. Danach duerfen nur noch
+Abschlusspruefung, Vollstaendigkeitskontrolle, Staging und der freigegebene Commit
+folgen. Scheitert der Commit oder sind davor weitere inhaltliche Aenderungen
+erforderlich, muss vor deren Beginn wieder auf den passenden `-x`-Stand
 zurueckgestellt werden. Kein Commit und keine Main-Version darf `-x` enthalten.
 
 Uebergangsausnahme fuer den bei Einfuehrung dieser Regel bereits vorhandenen
@@ -169,13 +219,14 @@ Regeln:
 1. Basisversion ist die aktuelle Main-Version beim Anlegen des Branches.
 2. BranchId ist eine positive Ganzzahl. Fuer dieselbe Kombination aus
    Basisversion und Kuerzel wird die naechste historisch noch nie verwendete ID
-   eingesetzt. Bereits geloeschte Branches geben ihre ID nicht wieder frei.
+   eingesetzt. Jede einmal verwendete ID bleibt dauerhaft vergeben.
 3. Vor dem Anlegen werden lokale und Remote-Branches, die Git-Historie und
    ChangeLog-main.txt auf bereits verwendete Namen geprueft.
 4. Der Branchname bleibt unveraendert, wenn main waehrend der Arbeit fortschreitet.
 5. Mehrere Seitenbranches derselben Basisversion sind erlaubt. Sie werden
    nacheinander integriert; vor jedem Merge wird die Version neu berechnet.
-6. Ein integrierter Branch wird nicht fuer neue Arbeiten wiederverwendet.
+6. Ein integrierter Branch bleibt lokal und remote dauerhaft als historischer
+   Stand erhalten. Er wird weder geloescht noch fuer neue Arbeiten wiederverwendet.
 7. Liegen noch uncommittete Aenderungen auf main, werden sie vor dem ersten
    Commit auf einen freigegebenen Seitenbranch uebernommen.
 
@@ -337,16 +388,31 @@ nicht die einzelnen Changelog-Punkte.
 
 1. Aktuellen Branch, Arbeitsbaum, Diff und vorhandene Testergebnisse pruefen.
 2. Tatsaechliche Aenderungen nach Added, Changed, Fixed und Removed einordnen.
-3. Nur das passende temporaere Changelog und dessen dateigenaue
-   Dokumentationsuebernahmeliste aktualisieren.
-4. Noch keine permanente Fachdokumentation und keine Main-Version anlegen. Die
-   Branch-Paketversion traegt waehrend der Arbeit die naechste Commit-ID plus
-   `-x` und wird erst im Finalisierungsfenster auf die vollstaendige Commit-ID
-   gesetzt.
-5. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
+3. Die fachliche Umsetzung und ihre Pruefungen erfolgen im `-x`-Stand.
+4. Dokumentation und Finalisierung erfolgen erst auf ausdrueckliche Aufforderung
+   des Users.
+5. In einem Seitenbranch werden bei dieser Aufforderung der offene
+   Branch-Changelogabschnitt und alle
+   fuer diesen Branch ausdruecklich erlaubten Dokumentationsdateien vollstaendig
+   aktualisiert.
+6. Im Seitenbranch wird gleichzeitig die vorbereitete Version in
+   Backend/package.json, Backend/package-lock.json und Branch-Changelog von
+   `<naechste-Branch-Commit-ID>-x` auf `<naechste-Branch-Commit-ID>` finalisiert.
+7. Diese Finalisierung erstellt noch keinen Commit und autorisiert weder Commit
+   noch Push.
+8. Nach der Finalisierung duerfen nur noch Abschlusspruefung, Vollstaendigkeits-
+   kontrolle, ein ausdruecklich beauftragter Commit und ein gesondert
+   beauftragter Push folgen.
+9. Werden vor dem Commit weitere inhaltliche Aenderungen notwendig, muss zuerst
+   wieder der zugehoerige `-x`-Stand in Paketdateien und Branch-Changelog
+   hergestellt werden. Danach ist eine erneute Dokumentations- und
+   Finalisierungsaufforderung erforderlich.
+10. Kein Commit darf eine `-x`-Version enthalten.
+11. Noch keine permanente Fachdokumentation und keine Main-Version anlegen.
+12. Ein Seitenbranch muss vor einer verbindlichen Versionsfrage vollstaendig,
    getestet, committed, sauber und gepusht sein. Fehlen Commit oder Push, werden
    zuerst die jeweils gesonderten Freigaben eingeholt und ausgefuehrt.
-6. Erst danach aktuelle Main-Version und Main-SHA neu pruefen und ausgeben:
+13. Erst danach aktuelle Main-Version und Main-SHA neu pruefen und ausgeben:
 
      Aktuelle Main-Version: <version>
      Erkannte Aenderungsart: <MAJOR|MINOR|PATCH>
@@ -355,9 +421,11 @@ nicht die einzelnen Changelog-Punkte.
 
      Soll Version <neue-version> erstellt werden?
 
-7. Antwortet der User mit Nein, bleiben nur die temporaeren Eintraege bestehen.
-8. Bestaetigt oder aendert der User die konkrete Version, beginnt die
+14. Antwortet der User mit Nein, bleiben nur die temporaeren Eintraege bestehen.
+15. Bestaetigt oder aendert der User die konkrete Version, beginnt die
    Release-/Merge-Vorbereitung.
+16. Bei einer direkten Main-Ausnahme ersetzt der Ablauf aus Abschnitt 10 die
+   Punkte 5 bis 15 dieses Abschnitts.
 
 
 ================================================================================
@@ -421,26 +489,27 @@ Start:
 
 Arbeit im Seitenbranch:
 
-1. Vor der ersten beabsichtigten Aenderung Status und letzte Commit-ID pruefen und
-   die naechste lueckenlose Branch-Commitnummer bestimmen.
-2. Backend/package.json und Backend/package-lock.json auf
-   `<naechste-Branch-Commit-ID>-x` setzen.
-3. Den offenen `-x`-Abschnitt im Branch-Changelog anlegen.
-4. Implementieren, online beziehungsweise lokal testen und den offenen
-   Changelogabschnitt samt dateigenauer Uebernahmeliste laufend fortschreiben.
-5. Permanente Fachdokumentation unveraendert lassen; nur ausdruecklich
-   freigegebene organisatorische Ausnahmen duerfen angepasst werden.
-6. Nach fachlichem Abschluss alle vorgesehenen Pruefungen im `-x`-Stand
+1. Den verpflichtenden Beginn jeder neuen Arbeit aus Abschnitt 1 vollstaendig
    ausfuehren.
-7. Erst im unmittelbaren Finalisierungsfenster `-x` aus package.json,
-   package-lock.json und Changelog entfernen sowie Datum und Commit-Betreff
-   finalisieren.
-8. Git-Status, Gesamtdiff, Changelog, Uebernahmeliste und letzte Commits pruefen.
-9. Nur beauftragte Dateien stagen; Secrets ausschliessen.
+2. Implementieren, online beziehungsweise lokal testen und den offenen
+   Changelogabschnitt samt dateigenauer Uebernahmeliste laufend fortschreiben.
+3. Permanente Fachdokumentation unveraendert lassen; nur ausdruecklich
+   freigegebene organisatorische Ausnahmen duerfen angepasst werden.
+4. Nach fachlichem Abschluss alle vorgesehenen Pruefungen im `-x`-Stand
+   ausfuehren.
+5. Dokumentation und Finalisierung ausschliesslich nach Abschnitt 7 ausfuehren.
+6. Git-Status, Gesamtdiff, Changelog, Uebernahmeliste und letzte Commits pruefen.
+7. Die vollstaendige Menge aller auftragsbezogenen Dateien bestimmen und nach
+   den Vollstaendigkeitsregeln aus Abschnitt 11 pruefen.
+8. Alle und nur die auftragsbezogenen Dateien stagen; Secrets ausschliessen.
+9. Staged Diff, unstaged Diff und untracked Dateien gemeinsam gegen den
+   vollstaendigen Auftragsumfang pruefen.
 10. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
 11. Nach dem Commit pruefen, dass Commit-ID, package.json, package-lock.json und
-   GET-/version-Wert logisch uebereinstimmen.
-12. Push nur nach ausdruecklicher Freigabe ausfuehren.
+    GET-/version-Wert logisch uebereinstimmen und keine auftragsbezogene Datei
+    im Arbeitsbaum zurueckblieb.
+12. Push nur nach eigener ausdruecklicher Freigabe ausfuehren. Eine
+    Commit-Freigabe beinhaltet keine Push-Freigabe.
 13. Kein Rebase oder Force-Push eines veroeffentlichten Branches.
 
 Vor der Integration:
@@ -478,14 +547,14 @@ Nach der Integration:
 1. Pruefen, dass der Merge-Commit zwei Eltern besitzt.
 2. Pruefen, dass Paketversion, Changelog und Commit-Version identisch sind.
 3. Push von main separat freigeben lassen.
-4. Erst nach erfolgreichem und verifiziertem Main-Push die Branch-Loeschung
-   separat freigeben lassen.
-5. Remote-Branch zuerst, lokalen Branch danach sicher mit git branch -d loeschen.
-   Nie -D verwenden, solange keine gesonderte Freigabe vorliegt.
-6. Wird ein Push abgelehnt, im sicheren Stop-Zustand bleiben: den lokalen
+4. Nach erfolgreichem und verifiziertem Main-Push bleiben Remote- und lokaler
+   Seitenbranch dauerhaft erhalten. Der integrierte Branch wird nicht fuer neue
+   Arbeiten wiederverwendet.
+5. Wird ein Push abgelehnt, im sicheren Stop-Zustand bleiben: den lokalen
    Merge-Commit nicht veraendern, nicht pullen, nicht resetten, nicht rebasen,
-   nicht force-pushen und nichts loeschen. Status und Abweichung melden.
-7. Eine Wiederherstellung, zum Beispiel Sicherungsbranch plus erneute Integration
+   nicht force-pushen und keine Branches oder Referenzen veraendern. Status und
+   Abweichung melden.
+6. Eine Wiederherstellung, zum Beispiel Sicherungsbranch plus erneute Integration
    auf aktuellem origin/main, wird als separater Plan vorgelegt und benoetigt
    eine neue ausdrueckliche Freigabe sowie eine neue Versionsbestaetigung.
 
@@ -497,20 +566,66 @@ Nach der Integration:
 Direkte Main-Arbeit ist nur erlaubt, wenn der User sie vor der Aenderung
 ausdruecklich als Ausnahme freigibt.
 
-1. Alle Aenderungen werden bis zur Versionierung in ChangeLog-main.tmp erfasst.
-2. Es gibt keinen Zwischencommit ohne Versionsnummer.
-3. Vor dem Versionscommit werden SemVer-Vorschlag und konkrete Zielversion wie
-   beim Merge bestaetigt.
-4. Danach werden Changelog, Fachdokumentation und package.json aktualisiert.
-5. Der normale Main-Commit lautet <NeueVersion> | <Kurzkommentar>.
-6. Im zentralen Changelog lautet das Quellenfeld "direkte Main-Ausnahme".
-7. Ist die Arbeit zu gross fuer einen einzelnen Versionscommit, muss stattdessen
+1. Bei sauberem main muss zuerst gefragt werden, ob ein Seitenbranch angelegt
+   werden soll. Erst wenn der User dies ablehnt und die direkte Main-Ausnahme
+   ausdruecklich freigibt, darf deren Vorbereitung beginnen.
+2. Vor jeder inhaltlichen Aenderung wird die aktuelle Main-Patchversion um eins
+   erhoeht und mit `-x` versehen. Dieser vorlaeufige Wert wird gemeinsam in
+   Backend/package.json, Backend/package-lock.json und ChangeLog-main.tmp gesetzt.
+3. ChangeLog-main.tmp erhaelt fuer diesen Stand einen offenen Abschnitt mit
+   `In Arbeit`, der vorlaeufigen `Arbeitsversion`, `Zielversion: offen` und
+   `Status: uncommitted`.
+4. Der Patch-`-x`-Stand ist nur eine Arbeitsversion und keine vorweggenommene
+   SemVer-Entscheidung. Alle Aenderungen werden darin bis zur ausdruecklichen
+   Aufforderung `dokumentieren` erfasst und getestet.
+5. Bei `dokumentieren` werden tatsaechlicher Umfang und SemVer-Stufe bewertet und
+   die konkrete PATCH-, MINOR- oder MAJOR-Zielversion vorgeschlagen.
+6. Erst nach Bestaetigung dieser Zielversion werden ChangeLog-main.txt,
+   Fachdokumentation, package.json und package-lock.json finalisiert sowie
+   ChangeLog-main.tmp uebertragen und entfernt.
+7. Die Versionsbestaetigung autorisiert keinen Commit. Der normale Main-Commit
+   lautet nach gesonderter Commit-Aufforderung
+   `<NeueVersion> | <Kurzkommentar>`.
+8. Es gibt keinen Zwischencommit und kein Commit mit `-x`.
+9. Im zentralen Changelog lautet das Quellenfeld "direkte Main-Ausnahme".
+10. Push bleibt ein eigener, ausdruecklich freizugebender Schritt.
+11. Ist die Arbeit zu gross fuer einen einzelnen Versionscommit, muss stattdessen
    ein Seitenbranch verwendet werden.
 
 
 ================================================================================
 11. SICHERHEIT UND GIT-HYGIENE
 ================================================================================
+
+Vollstaendigkeit eines Commits:
+
+1. Vor dem Staging werden Git-Status, Gesamtdiff, untracked Dateien, Loeschungen
+   und Umbenennungen geprueft.
+2. Aus dem freigegebenen Auftrag und dem Gesamtdiff wird die vollstaendige Menge
+   aller auftragsbezogenen Dateien bestimmt.
+3. Zu dieser Menge gehoeren auch neue, geloeschte, umbenannte und automatisch
+   angepasste Dateien sowie verpflichtende Paket-, Lockfile-, Versions-,
+   Dokumentations- und Changelog-Dateien.
+4. Alle auftragsbezogenen Dateien muessen in denselben dafuer vorgesehenen Commit
+   aufgenommen werden. Keine davon darf versehentlich unstaged oder untracked
+   zurueckbleiben.
+5. Unabhaengige Aenderungen des Users oder anderer Bearbeiter duerfen nicht
+   aufgenommen, veraendert oder zurueckgesetzt werden.
+6. Vor dem Commit werden staged Diff, unstaged Diff und untracked Dateien
+   gemeinsam gegen den vollstaendigen Auftragsumfang geprueft. Secrets bleiben
+   ausgeschlossen.
+7. Der Commit wird ausschliesslich auf ausdrueckliche Aufforderung erstellt.
+8. Nach dem Commit werden Git-Status und Commit-Diff erneut geprueft. Bleibt eine
+   auftragsbezogene Datei zurueck oder fehlt sie im Commit, gilt der Commit als
+   unvollstaendig.
+9. Ein unvollstaendiger Commit darf nicht als abgeschlossen gemeldet und nicht
+   gepusht werden. Der sichere Zustand und die fehlenden Dateien werden dem User
+   gemeldet; eine Korrektur erfolgt nur im freigegebenen Workflow und niemals
+   eigenmaechtig per Amend.
+10. Ein Push wird ausschliesslich nach einer eigenen ausdruecklichen Aufforderung
+    ausgefuehrt. Eine Commit-Freigabe beinhaltet keine Push-Freigabe.
+
+Sicherheit:
 
 Folgende Dateien und Inhalte duerfen niemals committed oder vollstaendig
 ausgegeben werden:
@@ -544,4 +659,7 @@ Nach Dokumentations-, Versions- oder Git-Arbeiten wird knapp berichtet:
 2. Welche Pruefungen erfolgreich waren oder nicht ausgefuehrt werden konnten.
 3. Aktueller Branch und Arbeitsbaumstatus.
 4. Erstellte Commit- und Versionsnummer, falls vorhanden.
-5. Ob Push, Merge oder Branch-Loeschung noch ausstehen.
+5. Ob Push oder Merge noch ausstehen.
+6. Ob alle auftragsbezogenen Dateien im Commit enthalten sind und ob noch
+   auftragsbezogene Aenderungen im Arbeitsbaum verbleiben. Unabhaengige vorhandene
+   Aenderungen werden getrennt benannt.

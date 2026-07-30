@@ -27,3 +27,39 @@ Commit: 4.1.1-paj-1-1 | Arbeits- und Commitablauf verbindlich festgelegt
     AGENTS.md
     - Die Kurzregeln fuer verpflichtende `-x`-Vorbereitung, vollstaendige Commits
       sowie getrennte Commit- und Push-Freigaben ergaenzen.
+
+
+[4.1.1-paj-1-2] - 2026-07-30
+Zielcommit: 4.1.1-paj-1-2
+Commit: 4.1.1-paj-1-2 | Main-Arbeitsstand und Branchaufbewahrung festgelegt
+
+  Changed
+  - [Dokumentation] Die Wahl zwischen Seitenbranch und direkter Main-Ausnahme
+    sowie deren jeweilige verpflichtende `-x`-Vorbereitung wird praezisiert.
+  - [Dokumentation] Die naechste Patchversion dient bei direkter Main-Arbeit nur
+    als vorlaeufige Arbeitsversion; Zielversion und SemVer-Stufe bleiben bis zur
+    Aufforderung `dokumentieren` und anschliessenden Bestaetigung offen.
+  - [Dokumentation] Versionsbestaetigung, Commit und Push sind auch bei direkter
+    Main-Arbeit getrennte Freigaben.
+  - [Dokumentation] Integrierte Seitenbranches bleiben lokal und remote dauerhaft
+    als historische Staende erhalten, werden nie geloescht und nicht fuer neue
+    Arbeiten wiederverwendet.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/DokuVersGit.txt
+    - Fuer neue Arbeit auf main zuerst die Branchentscheidung und danach den
+      passenden vorlaeufigen `-x`-Stand verbindlich festlegen.
+    - Direkte Main-Arbeit mit der naechsten Patchversion plus `-x` beginnen und
+      spaeter anhand des tatsaechlichen Umfangs auf die endgueltige SemVer-Version
+      finalisieren.
+    - Auch nach Bestaetigung einer Main-Version Commit und Push nur mit jeweils
+      eigener ausdruecklicher Freigabe ausfuehren.
+    - Nach der Integration lokale und Remote-Seitenbranches dauerhaft erhalten,
+      nicht loeschen und nicht fuer neue Arbeiten wiederverwenden.
+
+    AGENTS.md
+    - Die Kurzregel fuer Seitenbranch- und direkte Main-`-x`-Vorbereitung
+      entsprechend praezisieren.
+    - Dauerhafte Aufbewahrung und Nichtwiederverwendung integrierter
+      Seitenbranches festhalten.

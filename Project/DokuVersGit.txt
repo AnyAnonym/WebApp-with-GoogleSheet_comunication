@@ -1,7 +1,7 @@
 ================================================================================
 DokuVersGit.txt - Dokumentation, Versionierung und Git
 ================================================================================
-Stand: 4.0.0
+Stand: 4.1.0
 
 Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
@@ -369,7 +369,7 @@ fortlaufende Dokumentation. Fachliche Dokumentationsdateien werden erst bei der
 bestaetigten Main-Version aktualisiert und beschreiben danach den neuen
 aktuellen Main-Stand.
 
-Organisatorische Ausnahmen sind Project/DokuVersGit.txt und LLM-START.md. Sie
+Organisatorische Ausnahmen sind Project/DokuVersGit.txt und AGENTS.md. Sie
 duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch aktualisiert
 werden, damit Workflow- und Arbeitsregeln sofort fuer alle weiteren Commits
 gelten. Diese Ausnahme erstreckt sich nicht auf Software-, Seiten-, Datenbank-
@@ -388,12 +388,12 @@ sind.
   Architektur, Cache, State, Auth   | Project/software/ARCHITEKTUR.txt
   Bestehende HTML-Seite             | Exakte Zuordnung aus SOFTWARE-DOKU.txt;
                                     | Project/software/seiten/<dokumentname>.txt
-  Neue/entfernte Seite              | Seitendoku, SOFTWARE-DOKU.txt, LLM-START.md
+  Neue/entfernte Seite              | Seitendoku, SOFTWARE-DOKU.txt, AGENTS.md
   Software-Dokumentstruktur         | Project/software/SOFTWARE-DOKU.txt
   Serverbetrieb                     | Project/server-configs/SERVER-SETUP.txt,
                                     | ggf. Project/server-configs/SERVER-DOKU.txt
   Caddy/systemd-Vorlagen            | Betroffene Vorlage und Serverdokumentation
-  Projektueberblick oder Routing    | LLM-START.md
+  Projektueberblick oder Routing    | AGENTS.md
   Workflowregel                     | Project/DokuVersGit.txt
 
 Project/2do/ wird nur bei direktem fachlichem Bezug aktualisiert.

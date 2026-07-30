@@ -1,6 +1,6 @@
 ================================================================================
   SOFTWARE-DOKU.txt - Index der Software-Dokumentation
-  Stand: v4.0.0
+  Stand: v4.1.0, 2026-07-30
 ================================================================================
 
 Dieses Verzeichnis dokumentiert den in Main integrierten Softwarestand. Code und
@@ -23,6 +23,8 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/ENDPOINTS.txt       | Aktuelle HTTP-Routen, WebSocket-v2-Vertrag,
                                | RPC-Berechtigungen/Parameter, Topics und
                                | Unknown-Write-Semantik.
+  software/WEBSOCKET-CLOSE-    | WebSocket-Schliesscodes, Ursachen,
+  CODES.txt                    | Reconnect-Bewertung und Diagnosehinweise.
 
 
 ================================================================================
@@ -66,6 +68,9 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
 
   `Project/DokuVersGit.txt`
       Dokumentations-, Versions- und Git-Regeln.
+
+  `AGENTS.md`
+      OpenCode-Einstiegspunkt mit Projektkontext und gezieltem Doku-Routing.
 
   `Project/2do/KOMMUNIKATION-ANALYSE.md`
       Kommunikationsanalyse und verbleibende manuelle Risiken.

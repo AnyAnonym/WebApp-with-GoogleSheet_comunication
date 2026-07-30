@@ -1,7 +1,7 @@
 ================================================================================
 Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   HTML: Frontend/scoreboard.html
@@ -19,6 +19,25 @@ Stand: v4.0.0
   Protokoll-Resync, Luecken oder veraltete Invalidierungsrevisionen erzwingen einen
   neuen Snapshot; Fehler werden mit exponentiellem Retry bis 30 Sekunden erneut
   versucht. Neuere Pushes waehrend eines Snapshots gewinnen gegen dessen Stand.
+
+-- Court-Aktivitaet und Score-Uebernahme --
+  Scores inaktiver Plaetze bleiben auf ihrem letzten Stand eingefroren und werden
+  aus externen Antworten nicht uebernommen. Eine neue Court-Zuweisung setzt den
+  betreffenden Score auf Null (alle Satz- und Punktwerte 0) und behaelt den
+  Aktivstatus bei. Aktivierung und Reset starten jeweils mit einer externen
+  Baseline: Der erste danach gelesene
+  externe Stand wird nur als Baseline gespeichert; erst die naechste davon
+  abweichende externe Aenderung wird angezeigt, publiziert und protokolliert. Ein
+  Reset setzt zuvor alle Saetze und Punkte sichtbar auf 0. Nach einem
+  Backendneustart uebernehmen in SQLite bereits aktive Plaetze ihren ersten
+  externen Stand sofort; dieser Wiederanlaufstand erzeugt keinen ScoreLog-Eintrag.
+
+  Sind beide Plaetze inaktiv, laeuft kein Court-Polling. Wird mindestens einer
+  aktiviert, startet es wieder; deaktiviert sich der letzte aktive Platz, werden
+  Timer beendet und ein laufender Fetch abgebrochen. Aktivstatus und eine pro
+  Platz erhoehte Epoch bilden ein Fetch-Fencing: Antworten eines Fetches, der vor
+  Deaktivierung, Reaktivierung oder Reset begann, duerfen den neueren Zustand
+  nicht ueberschreiben.
 
 -- Lade- und Statusverhalten --
   Inhalt wird erst nach validiertem Erst-Snapshot eingeblendet und dann als

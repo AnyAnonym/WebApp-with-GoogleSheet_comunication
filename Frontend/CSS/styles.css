@@ -76,6 +76,18 @@ body {
   font: inherit;
 }
 
+.password-manager-username {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 #resetProofValue {
   display: block;
   margin: 16px 0;
@@ -182,6 +194,16 @@ body {
   font-size: 1.3rem;
   color: #555;
   cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.modal-content .modal-cancel {
+  margin-top: 8px;
+  background: #e8eaed;
+  color: var(--fg);
 }
 
 @keyframes fadeIn {
@@ -413,9 +435,18 @@ nav a.active {
 }
 
 /* Mobile Navigation Content */
+#mobileNavModal {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+}
+
 .mobile-nav-content {
-  width: 90%;
+  width: min(320px, calc(100vw - 32px));
   max-width: 320px;
+  margin: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -741,9 +772,15 @@ input[type="date"] {
 }
 
 .players-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   margin-top: 16px;
+}
+
+.players-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .players-table th,
@@ -751,6 +788,7 @@ input[type="date"] {
   padding: 8px 6px;
   text-align: left;
   border-bottom: 1px solid var(--table-border, #e0e0e0);
+  white-space: nowrap;
 }
 
 .players-table th {
@@ -770,6 +808,10 @@ input[type="date"] {
 .players-table tbody tr[role="button"]:focus-visible {
   outline: 3px solid var(--focus-color, #1f6feb);
   outline-offset: -3px;
+}
+
+.players-table tbody tr.current-player td {
+  font-weight: 800;
 }
 
 .players-table tr.entry-paid td {
@@ -1662,8 +1704,13 @@ input[type="date"] {
 /*  BRACKET / TURNIERRASTER                           */
 /* -------------------------------------------------- */
 
-.bracket {
+body.bracket-page {
   overflow-x: auto;
+}
+
+.bracket {
+  width: max-content;
+  min-width: 100%;
   padding: 16px 40px;
   display: flex;
   flex-direction: column;
@@ -1675,7 +1722,7 @@ input[type="date"] {
   grid-template-columns: repeat(var(--cols, 4), minmax(200px, 1fr));
   gap: 56px;
   justify-items: center;
-  margin-bottom: 24px;
+  margin: 0 auto 24px;
   padding: 0;
   width: fit-content;
 }
@@ -1753,6 +1800,11 @@ input[type="date"] {
 }
 .bracket-player.winner .player-result {
   color: #2e7d32;
+}
+
+.bracket-player.current-user,
+.bracket-player.current-user .player-result {
+  color: #0b57d0;
 }
 
 .bracket-player:last-child {

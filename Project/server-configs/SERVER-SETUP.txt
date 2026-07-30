@@ -1,8 +1,8 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Stand: v4.0.0
-Letzte Aenderung: 29.07.2026
+Stand: v4.1.0
+Letzte Aenderung: 30.07.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -18,7 +18,7 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |-- Backend/
 |   |-- server.js               HTTP-Server, Start, Readiness und Shutdown
 |   |-- config.js               Validierte Laufzeit-, Origin- und Grenzwerte
-|   |-- authService.js          Session-, Rollen- und Passwortlogik
+|   |-- authService.js          Session-, Rollen-, Passwort- und Setuplogik
 |   |-- contracts.js            Maschinenpruefbare RPC-Vertraege
 |   |-- security.js             Cookies, Originpruefung, Limits und Hashing
 |   |-- errors.js               Einheitliche Fehlercodes und Support-IDs
@@ -29,7 +29,7 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- tableUtils.js           Header- und Tabellenhilfen
 |   |-- dataPoller.js           Adaptives Google-Sheets-Polling
 |   |-- dataStore.js            Cache, Revisionen, Datenalter und Fencing
-|   |-- courtPoller.js          Courtquelle, Score-Push und Legacy-ScoreLog
+|   |-- courtPoller.js          Courtquelle, Freeze/Reset/Baseline und ScoreLog
 |   |-- matchRules.js           Forderungs- und Ranglistenregeln
 |   |-- monitorBroker.js        Adressierte Monitorcommands und ACK-Status
 |   |-- stateStore.js           Court- und Monitor-Anwendungsstate
@@ -53,7 +53,9 @@ HTTP-Routen:
   GET/POST/DELETE /api/session Sessionstatus, Login und Logout
   POST /api/password           Eigenes Passwort
   POST /api/password-reset     Reset mit einmaligem Nachweis
+  POST /api/password-setup     Erstvergabe nach KennwortVergessen-Freigabe
   POST /api/admin/password-reset Admin erzeugt Reset-Nachweis
+  POST /api/admin/password-setup Admin setzt/entfernt Erstvergabe-Freigabe
   POST /api/admin/password     Admin setzt Passwort direkt
   GET/POST/DELETE /api/monitor/session Monitor-Session
   GET /ws                      WebSocket-v2-Upgrade und RPC/Subscriptions
@@ -62,6 +64,14 @@ Die WebSocket-RPCs decken oeffentliche Daten/Scoreboards, authentifizierte
 Profile/Forderungen/EntryList, Operator-Court-/Navigatorsteuerung,
 Admin-Monitorverwaltung und Geraete-ACKs ab. Cookies, Rollen und Origins werden
 serverseitig geprueft; localStorage ist keine Rollen- oder Sessionautoritaet.
+Die verbindliche Bedeutung terminaler und temporaerer WebSocket-Schliesscodes
+steht in `Project/software/WEBSOCKET-CLOSE-CODES.txt`.
+
+Die oeffentliche Passwort-Erstvergabe verlangt eine aktive Person und den Wert
+`x` in `Personen.KennwortVergessen`. Der Admin schaltet diese Freigabe mit
+`allowed: true|false`; ein erfolgreicher Setup-Write setzt das Passwort, leert
+die Freigabe atomar und widerruft alle Sitzungen der Zielperson vor und nach dem
+Write. Aktivstatus und Freigabe werden unmittelbar vor dem Write erneut geprueft.
 
 
 ================================================================================
@@ -102,7 +112,7 @@ Im jeweiligen Backend-Verzeichnis reproduzierbar installieren und pruefen:
   npm audit --omit=dev
 
 `npm ci` muss das versionierte `package-lock.json` unveraendert verwenden. Der
-Build fuehrt den statischen Check und die Tests aus. Fuer 4.0.0 muessen
+Build fuehrt den statischen Check und die Tests aus. Fuer 4.1.0 muessen
 `package.json`, `package-lock.json` und die spaetere `/version`-Antwort exakt
 uebereinstimmen. Ein Branchsuffix oder eine geaenderte Lockdatei stoppt den
 Rollout.
@@ -162,7 +172,7 @@ duplizieren; diese Werte setzt die systemd-Unit verbindlich.
 
 Credential-Quelldateien:
 
-  Live: /srv/http/ePiber/piber/Backend/service-account.json
+  Live: /srv/http/ePiber/piber/Backend/epiberpiber-31aebe556ced.json
   PAJ:  /srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json
   PK:   /srv/http/ePiber/pk/Backend/service-account.json
 
@@ -227,7 +237,7 @@ ProtectHome sowie Kernel-, ControlGroup- und Clock-Schutz; keine Capabilities,
 keine SUID/SGID-, Realtime-, Namespace- oder fremde Architekturfreigabe; nur
 AF_UNIX, AF_INET und AF_INET6.
 
-Vorlagen aus einem bestaetigten 4.0.0-Checkout installieren:
+Vorlagen aus einem bestaetigten 4.1.0-Checkout installieren:
 
   install -o root -g root -m 0644 Project/server-configs/systemd/*.service /etc/systemd/system/
   systemd-analyze verify /etc/systemd/system/epiber-piber.service
@@ -242,6 +252,8 @@ nimmt keine neue Arbeit an, setzt Liveness auf stopping, stoppt Poller, schliess
 WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst SQLite. Nach 95
 Sekunden greift systemd ein; ein Timeout oder Exitcode ungleich null ist ein
 fehlgeschlagener Rollout und kein erfolgreicher Stop.
+Die Bewertung aller dabei beobachteten Codes, insbesondere 1012, erfolgt nach
+`Project/software/WEBSOCKET-CLOSE-CODES.txt`.
 
 
 ================================================================================
@@ -263,9 +275,9 @@ Oeffentliche Checks pro Origin:
 
 Fuer PK Port 8082, fuer Live keinen Port angeben. Erwartung:
 
-  /version    HTTP 200 und exakt {"version":"4.0.0"}
-  /live       HTTP 200, status ok, Version 4.0.0
-  /ready      HTTP 200, status ready, Version 4.0.0
+  /version    HTTP 200 und exakt {"version":"4.1.0"}
+  /live       HTTP 200, status ok, Version 4.1.0
+  /ready      HTTP 200, status ready, Version 4.1.0
   /health     wie /ready; waehrend Initialisierung/Fehler HTTP 503
 
 `/status` ist absichtlich admin-geschuetzt. Es ist im Browser mit einer echten
@@ -276,6 +288,17 @@ Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
 zeigen und darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
 akteursbezogen ueber den RPC `operationStatus` abgefragt. Es gibt im bestaetigten
 dreispaltigen ScoreLog-Vertrag keinen `scoreLogPending`-Status.
+
+Bei der Courtsteuerung friert das Deaktivieren eines Platzes den zuletzt
+akzeptierten Score ein. Ein expliziter Reset setzt nur diesen Platz sofort auf
+Null. Aktivierung und Reset setzen eine neue Court-Epoch und warten auf eine
+gegenueber der ersten externen Baseline geaenderte Quelle; dadurch koennen weder
+die unveraenderte externe Vorreset-Anzeige noch ein vor dem Zustandswechsel
+gestarteter Poll den Nullstand ueberschreiben. Nur danach akzeptierte semantische
+Scoreaenderungen werden in das dreispaltige Fire-and-forget-`ScoreLog` geschrieben;
+Reset und Baseline selbst erzeugen keinen ScoreLog-Eintrag. Bei Prozessstart
+uebernimmt ein in SQLite bereits aktiver Platz den ersten externen Stand sofort in
+die Anzeige, ohne diesen Wiederanlaufstand zu protokollieren.
 
 Zusaetzliche Betriebschecks:
 

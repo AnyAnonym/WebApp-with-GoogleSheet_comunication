@@ -36,7 +36,7 @@ const {
 } = require("./security.js");
 const { SheetService } = require("./sheetService.js");
 const { StateRepository } = require("./stateRepository.js");
-const { canonicalizeMonitorPath, idValue, passwordHashValue, stringValue } = require("./validators.js");
+const { booleanValue, canonicalizeMonitorPath, idValue, passwordHashValue, stringValue } = require("./validators.js");
 
 function sendJson(response, status, body, headers = {}) {
   const text = JSON.stringify(body);
@@ -219,6 +219,19 @@ function createApplication(overrides = {}) {
         return sendJson(response, 200, result);
       }
 
+      if (pathname === "/api/password-setup") {
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        assertAllowedOrigin(request, ALLOWED_ORIGINS);
+        const ip = getRequestIp(request);
+        if (!passwordResetLimiter.take(`setup:${ip}`)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Versuche", 429);
+        const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        const result = await authService.setupPassword(
+          body.email,
+          passwordHashValue(body.newPasswordHash, "newPasswordHash"),
+        );
+        return sendJson(response, 200, result);
+      }
+
       if (pathname === "/api/admin/password-reset") {
         if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
@@ -228,6 +241,20 @@ function createApplication(overrides = {}) {
         const result = authService.createPasswordReset(
           sessionToken,
           idValue(body.personId, "personId"),
+        );
+        return sendJson(response, 200, result);
+      }
+
+      if (pathname === "/api/admin/password-setup") {
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        assertAllowedOrigin(request, ALLOWED_ORIGINS);
+        const auth = authService.requireRole(sessionToken, ["admin"]);
+        limitHttpWrite(request, auth.principal.id);
+        const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        const result = await authService.setPasswordSetupAllowed(
+          sessionToken,
+          idValue(body.personId, "personId"),
+          booleanValue(body.allowed, "allowed"),
         );
         return sendJson(response, 200, result);
       }
@@ -309,7 +336,10 @@ function createApplication(overrides = {}) {
       if (shuttingDown) return { ...result, aborted: true };
       dataPoller.start();
       const courts = stateStore.getScoreboardCourts();
-      courtPoller.setCourtActive({ "1": courts["1"].aktiv === 1, "2": courts["2"].aktiv === 1 });
+      courtPoller.setCourtActive(
+        { "1": courts["1"].aktiv === 1, "2": courts["2"].aktiv === 1 },
+        { initial: true },
+      );
       initialized = true;
       cleanupTimer = setInterval(() => repository.cleanup(), 300000);
       cleanupTimer.unref?.();

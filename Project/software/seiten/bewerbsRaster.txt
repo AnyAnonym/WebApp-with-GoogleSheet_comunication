@@ -1,14 +1,15 @@
 ================================================================================
 Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   HTML: Frontend/bewerbsRaster.html
   JS:   Frontend/JS/bewerbsRaster.js, bei Gruppenansicht zusaetzlich RoundRobin.js
   Zeigt dynamische Runden als CSS-Grid mit SVG-Verbindungen. Rastergroesse und
-  RoundRobin-Faehigkeit stammen aus der Bewerbsart; breite Raster sind horizontal
-  scrollbar und Spalten werden anhand von Namen und Ergebnissen bemessen.
+  RoundRobin-Faehigkeit stammen aus der Bewerbsart; Spalten werden anhand von Namen
+  und Ergebnissen bemessen. Fuer breite Raster scrollt das gesamte Dokument
+  horizontal, nicht nur ein innerer Rastercontainer.
 
 -- Daten und Aktualisierung --
   Oeffentliche Endpoints `matches`, `players`, `bewerbe` und `bewerbsart`.
@@ -16,16 +17,23 @@ Stand: v4.0.0
   Bracket- oder Gruppenansicht. Der obsolete Zwei-Sekunden-Timer existiert nicht
   mehr. Loading-/Fehleroverlay mit Retry schliessen jeden Ladeversuch sichtbar ab;
   ein erfolgreicher Erstaufbau meldet Monitor-Ready, Fehler oder fehlende ID
-  Monitor-Failed.
+  Monitor-Failed. Der Erstaufbau wartet auf `authClient.ready`. Aendert sich die
+  Session-ID, wird die aktive Raster- oder Gruppenansicht neu gerendert, damit die
+  Hervorhebung der aktuellen Person unmittelbar dem Sessionstand entspricht.
 
 -- Bedienung --
   Pflichtparameter `?id=<bewerbId>`, optional `?paarungslayout=<0-5>` fuer die
   eingebettete RoundRobin-Ansicht. Bei RoundRobin-Bewerben kann zwischen Raster
   und Gruppe gewechselt werden. Klick auf einen Spieler oeffnet das gemeinsame
   Profilmodal: anonym nur ID/Name, angemeldet zusaetzlich E-Mail, Telefon und
-  Geburtsdatum; nur Admins sehen Reset-Code-Erstellung und direktes Passwortsetzen.
+  Geburtsdatum. Nur Admins sehen bei fremden Profilen die statusabhaengige Aktion
+  zum Freigeben beziehungsweise Aufheben der erstmaligen Passwortvergabe sowie
+  Reset-Code-Erstellung und direktes Passwortsetzen.
 
 -- Darstellung und Sicherheit --
   Einzel/Doppel, BYE/PRE, [wo], [ret], [gesetzt], Ergebnisse und Gewinner werden
-  speziell dargestellt. Namen, Resultate, Meldungen und Badges entstehen aus
-  sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes HTML eingesetzt.
+  speziell dargestellt. Enthaelt ein Einzelspieler oder einer der beiden
+  Doppelpartner die aktuelle Session-ID, werden Name und gegebenenfalls Ergebnis
+  des gesamten Slots blau dargestellt. Namen, Resultate, Meldungen und Badges
+  entstehen aus sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes
+  HTML eingesetzt.

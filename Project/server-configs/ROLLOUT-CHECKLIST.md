@@ -1,4 +1,6 @@
-# ePiber 4.0.0 Rollout-Checkliste
+# ePiber 4.1.0 Rollout-Checkliste
+
+Stand: 30.07.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> Live**. Jede Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
@@ -9,7 +11,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Zweite pruefende Person: `____________________________`
 - [ ] Wartungsfenster und Kommunikationsweg festgelegt.
 - [ ] Vorheriger freigegebener Commit/Release fuer Rollback notiert: `____________________________`
-- [ ] `Backend/package.json`, `Backend/package-lock.json` und Release-Commit melden exakt `4.0.0`.
+- [ ] `Backend/package.json`, `Backend/package-lock.json` und Release-Commit melden exakt `4.1.0`.
 - [ ] `git status` des Deploymentstands ist sauber; keine lokalen Code-/Vorlagenaenderungen werden ausgerollt.
 
 ## 1. Google-Sheets-Backup und Schema
@@ -18,12 +20,14 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Backup-ID, Zeitpunkt und verantwortliche Person dokumentiert; Backup ist lesbar und gegen versehentliche Bearbeitung geschuetzt.
 - [ ] Service-Account hat Bearbeiterzugriff auf genau das richtige systemspezifische Spreadsheet.
 - [ ] Alle von `Backend/tableSchemas.js` verlangten Tabs und Pflichtspalten vorhanden.
-- [ ] `Personen`: `ID`, `Vorname`, `Nachname`, `E-Mail`, `PasswdHash`, `Aktiv`, `Role`.
+- [ ] `Personen` besitzt die Poller-Pflichtspalten `ID`, `Vorname`, `Nachname`, `E-Mail`, `PasswdHash`, `Aktiv`, `Role`.
+- [ ] Die fuer die Erstvergabe benoetigte Zusatzspalte `KennwortVergessen` ist vorhanden und fuer den Service-Account beschreibbar.
 - [ ] `Bewerb`: `ID`, `Bezeichnung`, `BewerbsartID`; `Bewerbsart`: `ID`, `Bezeichnung`.
 - [ ] `Matches1`: `ID`, `Matchdate`, `Forderungdate`, `BewerbID`, `BewerbRunde`, `Spieler1ID`, `Spieler3ID`, `Ergebnis`.
 - [ ] `RL-Platzierung`: `BewerbID`, `PersonID`, `Rang`; `Navigator`: `Name`, `Ziel`.
 - [ ] Jede relevante Personenzeile besitzt explizit `player`, `operator` oder `admin` in `Role`; Gross-/Kleinschreibung wurde vereinheitlicht.
 - [ ] Mindestens eine aktive, praktisch getestete Adminperson vorhanden.
+- [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
 - [ ] `EntryList` verwendet die Spalten `ID`, `BewerbID`, `PersonenID`, `Entrydate`; neue Werte haben das Format `YYMMDD-HHMM` (Wiener Zeit).
 - [ ] `Logging` bleibt exakt dreispaltig: `Timestamp`, `Type`, `Message`.
@@ -46,7 +50,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 - [ ] Private Service-Account-Schluessel vor dem Deployment nach der geltenden Rotationpolicy erneuert beziehungsweise bestaetigt.
 - [ ] Credential-Quelldatei ist nicht in Git und enthaelt einen gueltigen privaten Schluessel.
-- [ ] Live-Datei: `/srv/http/ePiber/piber/Backend/service-account.json`.
+- [ ] Live-Datei: `/srv/http/ePiber/piber/Backend/epiberpiber-31aebe556ced.json`.
 - [ ] PAJ-Datei: `/srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json`.
 - [ ] PK-Datei: `/srv/http/ePiber/pk/Backend/service-account.json`.
 - [ ] Jede Credential-Quelldatei gehoert `root:root` und hat Modus `0600`.
@@ -67,12 +71,13 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Im `Backend/` des Releasecheckouts ist `npm ci --omit=dev` erfolgreich.
 - [ ] `npm run build` ist erfolgreich; statischer Check und vollstaendige Testsuite sind gruen.
 - [ ] `npm audit --omit=dev` meldet keine nicht akzeptierte Produktionsluecke.
-- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der installierten 4.0.0-Vorlage erfolgreich.
+- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der installierten 4.1.0-Vorlage erfolgreich.
 - [ ] Alle drei installierten Units bestehen `systemd-analyze verify`.
 - [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Loopbackports.
 - [ ] Caddy-Roots zeigen exakt auf die jeweiligen `Frontend/`-Verzeichnisse; Backend, `.env`, Credentials und SQLite sind nicht statisch erreichbar.
 - [ ] CSP und Security-Header sind vorhanden; alle drei Origins und WebSockets verwenden HTTPS/WSS ohne Mixed Content.
 - [ ] Es existiert keine systemspezifische `SDK.js`; der Browser verbindet same-origin auf `/ws`.
+- [ ] Beobachtete WebSocket-Schliesscodes und Reconnectentscheidungen stimmen mit `Project/software/WEBSOCKET-CLOSE-CODES.txt` ueberein.
 
 ## 5. systemd, SQLite und Prozessgrenzen
 
@@ -88,7 +93,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 ## 6. Health, Status und Transport
 
-- [ ] `/version` liefert HTTP 200 und exakt Version `4.0.0`.
+- [ ] `/version` liefert HTTP 200 und exakt Version `4.1.0`.
 - [ ] `/live` liefert HTTP 200 mit `status: ok`.
 - [ ] `/ready` und `/health` liefern nach Initialisierung HTTP 200 mit `status: ready`.
 - [ ] Anonymes `/status` wird mit 401 abgewiesen.
@@ -104,15 +109,28 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `player` kann sich anmelden/abmelden, eigenes Profil und Mitgliederprofil sehen, eigenes Passwort aendern, Forderung und EntryList fachregelkonform bedienen.
 - [ ] `operator` kann zusaetzlich Navigator und Courtsteuerung bedienen, aber keine Admin-Monitorverwaltung oder fremde Passwortsetzung.
 - [ ] `admin` kann Resetnachweis erzeugen, Passwort direkt setzen sowie Monitore provisionieren, rotieren und widerrufen.
+- [ ] Nur `admin` kann ueber `POST /api/admin/password-setup` die Erstvergabe freigeben oder aufheben; Profilanzeige und Sheetwert `KennwortVergessen` wechseln dabei konsistent zwischen `x` und leer.
+- [ ] `POST /api/password-setup` akzeptiert nur E-Mail plus neues Passwort einer aktiven, mit `KennwortVergessen = x` freigegebenen Person; unbekannte, inaktive, nicht freigegebene und nachtraeglich deaktivierte Personen werden ohne Passwortwrite abgewiesen.
+- [ ] Erfolgreiche Erstvergabe verbraucht die Freigabe atomar: `KennwortVergessen` ist danach leer und ein zweiter Setupversuch wird abgewiesen.
+- [ ] Aktivstatus und Freigabe werden auch bei einem konkurrierenden Aenderungsversuch unmittelbar vor dem Setup-Write erneut geprueft.
+- [ ] Erstvergabe widerruft alle bestehenden Sitzungen der Zielperson vor und nach dem Write; offene Tabs wechseln in den abgemeldeten Zustand und das alte Passwort funktioniert nicht mehr.
 - [ ] Falsche Rolle, abgelaufene/ungueltige Session und widerrufenes Monitorgeraet werden serverseitig abgewiesen.
 - [ ] Passwortaenderung/-reset widerruft die vorgesehenen Sitzungen; Cross-Tab Login/Logout bleibt konsistent.
 - [ ] Personenprofile zeigen anonym nur ID/Name und angemeldet die vorgesehenen Kontakt-/Geburtsdaten; Adminaktionen sind nur fuer Admin sichtbar und wirksam.
+- [ ] Login, eigene Passwortaenderung und Erstvergabe funktionieren mit mindestens einem freigegebenen Browser-Passwortmanager; `username`, `current-password`, `new-password` und `one-time-code` werden passend erkannt, ohne Passwortwerte in URL, Logs oder Storage zu schreiben.
+- [ ] Login-, Passwortaenderungs-, Reset-, Erstvergabe- und Admin-Passwortmodale schliessen nicht durch Backdropklick oder Escape, sondern nur explizit ueber Abbrechen/Schliessen; waehrend eines Requests sind Schliessen und Doppel-Submit gesperrt, danach werden Formulare und sichtbare Passwoerter zurueckgesetzt.
 - [ ] Matches/Forderungen, EntryList Add/Remove, Ranglistenrestriktionen und Loggingwrite wurden mit realistischen Daten geprueft.
 - [ ] Unklare fachliche Writes werden als `unknown` behandelt und nicht automatisch erneut ausgefuehrt.
 
 ## 8. Browser, Kiosk, Monitor und Scoreboards auf PAJ
 
 - [ ] Aktuelle freigegebene Browser auf Desktop und Mobilgeraeten getestet.
+- [ ] Mobile Navigation oeffnet ueber den Hamburger, zeigt je Sessionzustand korrekt Anmelden oder Profil/Abmelden sowie `Spieler` nur angemeldet und schliesst bei Navigation beziehungsweise Authaktion ohne verdecktes Folgemodal.
+- [ ] Mobile Navigation wurde mit Touch, Tastatur, schmalem Hochformat und kleinem Querformat getestet; Links, Schliessen, Fokus und Scrollen bleiben erreichbar und es entstehen keine doppelten Authaktionen.
+- [ ] `players.html` zeigt anonym die Anmeldeaufforderung und angemeldet die erlaubte Spielerliste; Authwechsel, Invalidierung, Leerzustand und Fehlerzustand rendern ohne alte oder fremde Profildaten.
+- [ ] `bewerbsRaster.html?id=...` rendert Einzel und Doppel, BYE, `[w.o.]`, `[ret]`, `[gesetzt]`, Ergebnisse und Gewinner korrekt; fehlende/ungueltige Bewerb-ID, leere Daten, Reload, Authwechsel und Topic-Invalidierung wurden geprueft.
+- [ ] Raster-/Gruppenumschaltung bei RoundRobin-Bewerben funktioniert wiederholt ohne doppelte Inhalte oder Handler; breite Raster bleiben horizontal bedienbar und die eingebettete Gruppenansicht entspricht der Einzelansicht.
+- [ ] `RoundRobin.html?id=...&paarungslayout=0-5` rendert Einzel/Doppel, Gruppenrang, Aufstiegsmarkierung, offene und gespielte Paarungen sowie Datum/Uhrzeit je Layout korrekt; manipulierte Namen/Ergebnisse werden nicht als HTML ausgefuehrt.
 - [ ] Kiosk-Hardware mit der echten Bildschirmaufloesung, Vollbildmodus und Autostart getestet.
 - [ ] Scoreboard ueber 1300 px mit Einzel- und Doppelpaarungen abgenommen.
 - [ ] Scoreboard von 1001 bis 1300 px mit Einzel- und Doppelpaarungen abgenommen.
@@ -120,6 +138,12 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Mobile Hoch- und Querformate, einschliesslich kleiner Querformate, mit Einzel- und Doppelpaarungen abgenommen.
 - [ ] Namen, gemeinsame Heim-/Gast-Feldhoehen, Scores, Satzwerte, Datum/Bewerb, Seitenpanel, Topausrichtung und `100dvh` sind ohne Abschneiden oder Ueberlagerung korrekt.
 - [ ] Scoreboard-Snapshot, Score-/Tabellen-Subscriptions, Revisionen und Resync liefern nach Reload und Reconnect konsistente Daten.
+- [ ] Deaktivieren eines Platzes friert dessen letzten akzeptierten Score ein; spaete oder weitere externe Pollantworten dieses Platzes erzeugen keine Scoreaenderung und keine dadurch ausgeloeste Revision.
+- [ ] Expliziter Nullreset setzt ausschliesslich den gewaehlten Platz sofort auf `0-0/0-0/0-0/0-0`, erhoeht Revision/Push genau einmal und bleibt fuer Abonnenten nach Resync sichtbar.
+- [ ] Nach Aktivierung oder Nullreset wird der erste externe Stand nur als Baseline erfasst; ein unveraenderter Vorreset-Stand hebt den Nullreset nicht auf, erst eine spaetere semantische externe Aenderung wird uebernommen.
+- [ ] Court-Epoch-Fencing wurde mit einer vor Deaktivierung, Reaktivierung oder Reset gestarteten und erst danach eintreffenden Pollantwort getestet; die alte Antwort wird verworfen.
+- [ ] Eine akzeptierte externe Scoreaenderung erzeugt genau einen dreispaltigen `ScoreLog`-Append (`Timestamp`, `PlatzNr`, `Score`); Freeze, Nullreset, Baseline und unveraenderte Polls erzeugen keinen Eintrag.
+- [ ] ScoreLog-Fehler veraendern den sichtbaren Score nicht und loesen weder Retry noch SQLite-/Pendingstatus aus; erfolgreicher Wiederanlauf schreibt erst die naechste semantische Aenderung.
 - [ ] Monitor-Enrollment mit Secure-Cookie funktioniert; Token erscheint danach weder in URL noch Storage/Logs.
 - [ ] Navigator kann mehrere Monitore getrennt auswaehlen, navigieren und scrollen; Status durchlaeuft die erwarteten ACK-/Load-Zustaende.
 - [ ] Monitorrotation und Revoke wirken sofort; Offline-, Timeout- und Terminalfehler sind sichtbar und korrekt korreliert.
@@ -200,7 +224,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 ## Erfolgskriterien
 
-- [ ] Alle drei Systeme liefern exakt Version `4.0.0` und verwenden den identischen freigegebenen Commit.
+- [ ] Alle drei Systeme liefern exakt Version `4.1.0` und verwenden den identischen freigegebenen Commit.
 - [ ] Alle drei Systeme sind ausschliesslich ueber HTTPS/WSS erreichbar; Backends lauschen nur an Loopback.
 - [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets und keine pending Metadata.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.

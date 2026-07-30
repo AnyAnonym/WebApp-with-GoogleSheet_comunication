@@ -20,7 +20,7 @@ class AuthService {
   constructor({ repository, sheetService }) {
     this.repository = repository;
     this.sheetService = sheetService;
-    this.activeVerifications = 0;
+    this.activeScryptOperations = 0;
     this.userQueues = new Map();
   }
 
@@ -34,14 +34,18 @@ class AuthService {
     return operation;
   }
 
-  async verifyCredential(credential, storedHash) {
-    if (this.activeVerifications >= 4) throw new AppError("AUTH_BUSY", "Authentifizierung ist ausgelastet", 503);
-    this.activeVerifications++;
+  async runScrypt(callback) {
+    if (this.activeScryptOperations >= 4) throw new AppError("AUTH_BUSY", "Authentifizierung ist ausgelastet", 503);
+    this.activeScryptOperations++;
     try {
-      return await this.verifyStoredPassword(credential, storedHash);
+      return await callback();
     } finally {
-      this.activeVerifications--;
+      this.activeScryptOperations--;
     }
+  }
+
+  verifyCredential(credential, storedHash) {
+    return this.runScrypt(() => this.verifyStoredPassword(credential, storedHash));
   }
 
   ensurePeopleAvailable() {
@@ -65,6 +69,7 @@ class AuthService {
       gender: headerIndex(header, "geschlecht"),
       active: headerIndex(header, "aktiv"),
       role: headerIndex(header, "role"),
+      passwordSetup: headerIndex(header, "kennwortvergessen"),
     };
     if ([indexes.id, indexes.firstName, indexes.lastName].some((index) => index < 0)) {
       throw new AppError("SHEET_SCHEMA", "Pflichtspalten der Personen-Tabelle fehlen", 503);
@@ -80,6 +85,7 @@ class AuthService {
       gender: indexes.gender < 0 ? "" : String(row[indexes.gender] || "").trim(),
       active: indexes.active < 0 || String(row[indexes.active] || "").trim() === "1",
       role: roleValue(indexes.role < 0 ? "player" : row[indexes.role]),
+      passwordSetupAllowed: indexes.passwordSetup >= 0 && String(row[indexes.passwordSetup] || "").trim().toLowerCase() === "x",
       rowNumber: offset + 2,
     })).filter((person) => person.id);
   }
@@ -109,9 +115,11 @@ class AuthService {
       person.firstName,
       person.lastName,
       person.phone,
+      person.email,
+      person.birthDate,
       "1",
     ]);
-    return [["ID", "Vorname", "Nachname", "TelefonMobil", "Aktiv"], ...rows];
+    return [["ID", "Vorname", "Nachname", "TelefonMobil", "E-Mail", "GeburtsDatum", "Aktiv"], ...rows];
   }
 
   publicProfile(id) {
@@ -120,7 +128,7 @@ class AuthService {
     return { id: person.id, firstName: person.firstName, lastName: person.lastName };
   }
 
-  memberProfile(id) {
+  memberProfile(id, { includeAdminFields = false } = {}) {
     const person = this.findById(id);
     if (!person) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
     return {
@@ -130,6 +138,7 @@ class AuthService {
       email: person.email,
       phone: person.phone,
       birthDate: person.birthDate,
+      ...(includeAdminFields ? { passwordSetupAllowed: person.passwordSetupAllowed } : {}),
     };
   }
 
@@ -148,14 +157,16 @@ class AuthService {
 
   async createStoredPasswordHash(clientHash) {
     const credential = passwordHashValue(clientHash);
-    const salt = crypto.randomBytes(16);
-    const derived = await scryptAsync(credential, salt, SCRYPT_KEY_LENGTH, {
-      N: SCRYPT_N,
-      r: SCRYPT_R,
-      p: SCRYPT_P,
-      maxmem: 64 * 1024 * 1024,
+    return this.runScrypt(async () => {
+      const salt = crypto.randomBytes(16);
+      const derived = await scryptAsync(credential, salt, SCRYPT_KEY_LENGTH, {
+        N: SCRYPT_N,
+        r: SCRYPT_R,
+        p: SCRYPT_P,
+        maxmem: 64 * 1024 * 1024,
+      });
+      return `scrypt$v1$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString("base64url")}$${derived.toString("base64url")}`;
     });
-    return `scrypt$v1$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString("base64url")}$${derived.toString("base64url")}`;
   }
 
   async verifyStoredPassword(clientHash, storedHash) {
@@ -301,6 +312,17 @@ class AuthService {
     return { success: true, resetToken: proof.token, expiresAt: proof.expiresAt, personId: person.id };
   }
 
+  async setPasswordSetupAllowed(token, personId, allowed) {
+    this.requireRole(token, ["admin"]);
+    return this.runForUser(personId, async () => {
+      this.requireRole(token, ["admin"]);
+      const person = this.findById(personId);
+      if (!person) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+      await this.sheetService.setPasswordSetupAllowed(person.id, allowed);
+      return { success: true, personId: person.id, allowed };
+    });
+  }
+
   async setPasswordAsAdmin(token, personId, newPasswordHash) {
     this.requireRole(token, ["admin"]);
     return this.runForUser(personId, async () => {
@@ -347,6 +369,37 @@ class AuthService {
       }
       this.repository.revokeUserSessions(currentPerson.id);
       this.repository.completePasswordResetProof(resetToken, payloadHash);
+      return { success: true };
+    });
+  }
+
+  async setupPassword(email, newPasswordHash) {
+    const normalizedEmail = emailValue(email);
+    const credential = passwordHashValue(newPasswordHash, "newPasswordHash");
+    this.ensurePeopleAvailable();
+    const initialPerson = this.findByEmail(normalizedEmail);
+    if (!initialPerson?.active || !initialPerson.passwordSetupAllowed) {
+      await this.createStoredPasswordHash(credential);
+      throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
+    }
+    return this.runForUser(initialPerson.id, async () => {
+      this.ensurePeopleAvailable();
+      const person = this.findByEmail(normalizedEmail);
+      if (!person || person.id !== initialPerson.id || !person.active || !person.passwordSetupAllowed) {
+        throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
+      }
+      const storedHash = await this.createStoredPasswordHash(credential);
+      this.repository.revokeUserSessions(person.id);
+      try {
+        await this.sheetService.setPasswordHash(person.id, storedHash, {
+          expectedHash: person.storedPasswordHash,
+          requirePasswordSetupAllowed: true,
+        });
+      } catch (error) {
+        error.details = { ...(error.details || {}), sessionsRevoked: true };
+        throw error;
+      }
+      this.repository.revokeUserSessions(person.id);
       return { success: true };
     });
   }

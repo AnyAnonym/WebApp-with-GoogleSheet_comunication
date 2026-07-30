@@ -1,8 +1,8 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Stand: v4.0.0
-Letzte Aenderung: 29.07.2026
+Stand: v4.1.0
+Letzte Aenderung: 30.07.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -41,6 +41,10 @@ Client leitet die WebSocket-Adresse same-origin aus window.location und dem Pfad
 Caddy liefert das jeweilige Frontend aus und proxyt nur diese Backendpfade:
   /ws, /api/*, /live, /ready, /health, /version, /status
 
+Zu den 4.1.0-HTTP-Routen gehoeren `POST /api/password-setup` fuer die
+freigegebene Erstvergabe und `POST /api/admin/password-setup` zum Setzen oder
+Aufheben dieser Freigabe durch Administratoren.
+
 Die Vorlage setzt CSP und weitere Security-Header. Die Backendports 8080, 8083
 und 8084 sind ausschliesslich an Loopback gebunden und nicht extern freizugeben.
 
@@ -66,11 +70,11 @@ LOKALE, NICHT VERSIONIERTE BETRIEBSDATEN
 
 Bekannte nicht geheime Betriebskennungen:
 
-System | Spreadsheet-ID                                      | Credential-Datei
--------|-----------------------------------------------------|----------------------------
-Live   | 1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04        | service-account.json
-PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | epiberpaj-5032a34639bf.json
-PK     | noch verbindlich festzulegen                        | service-account.json
+System | Spreadsheet-ID                                      | Credential-Quelldatei
+-------|-----------------------------------------------------|-----------------------------------------------
+Live   | 1E1CYezDcScIBvH9ebjN0hOkvttTdA6PFIgYKDMaeE04        | /srv/http/ePiber/piber/Backend/epiberpiber-31aebe556ced.json
+PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | /srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json
+PK     | noch verbindlich festzulegen                        | /srv/http/ePiber/pk/Backend/service-account.json
 
 Spreadsheet-IDs und Dateinamen sind keine Secrets. Schluesselinhalte, Tokens,
 Cookies und lokale `.env`-Werte duerfen nicht dokumentiert oder versioniert werden.
@@ -87,9 +91,9 @@ ist ROLLOUT-CHECKLIST.md vollstaendig abzuarbeiten. Vorgeschriebene Reihenfolge:
   2. Identischen bestaetigten Stand auf PK installieren und Smoke-Test ausfuehren.
   3. Identischen bestaetigten Stand zuletzt auf Live installieren.
 
-Zielversion dieser Dokumentation ist 4.0.0. `Backend/package.json`,
+Zielversion dieser Dokumentation ist 4.1.0. `Backend/package.json`,
 `Backend/package-lock.json`, Buildstand und Antwort von `/version` muessen vor
-einer Promotion exakt 4.0.0 melden.
+einer Promotion exakt 4.1.0 melden.
 
 
 ================================================================================
@@ -100,4 +104,6 @@ VERWANDTE DOKUMENTATION
   Project/ChangeLogs/ChangeLog-main.txt Konsolidiertes Main-Aenderungsprotokoll
   Project/software/ARCHITEKTUR.txt   Backendmodule und Datenfluss
   Project/software/ENDPOINTS.txt     HTTP-, WebSocket- und Rollenvertraege
+  Project/software/WEBSOCKET-CLOSE-CODES.txt Bedeutung und Bewertung der
+                                      WebSocket-Schliesscodes
   Project/software/DATENBANK.txt     Google-Sheets- und SQLite-Schema

@@ -1,20 +1,29 @@
 ================================================================================
 Spielerverzeichnis - Aktive Mitglieder und Profile
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   HTML: Frontend/players.html
   JS:   Frontend/JS/playerList.js sowie gemeinsames Profilmodal in modals.js
-  Zeigt aktive Spieler nach Nachname sortiert mit Nachname, Vorname und Telefon;
-  0043 wird als +43 und ein leerer Wert als `---` dargestellt.
+  Zeigt aktive Spieler nach Nachname sortiert in genau fuenf Spalten: Nachname,
+  Vorname, Telefon, E-Mail und Geburtsdatum. 0043 wird am Telefonanfang als +43
+  und ein leerer Telefon- oder E-Mail-Wert als `---` dargestellt. Geburtsdaten
+  der Form YYYYMMDD beziehungsweise YYMMDD werden als TT.MM.JJJJ ausgegeben;
+  bei zweistelligen Jahren gilt 50..99 als 19xx und 00..49 als 20xx.
 
 -- Zugriff und Daten --
   Die Seite wartet auf authClient.ready und verwendet die serverseitige Sitzung.
   Ohne Anmeldung bleibt die Tabelle verborgen und eine Login-CTA wird gezeigt.
   Angemeldet wird `memberDirectory` statt der oeffentlichen `players`-Rohansicht
-  geladen; die Mitgliederprojektion umfasst nur ID, Namen, Telefon und Aktivstatus.
-  Serverseitige Zugriffspruefung bleibt massgeblich.
+  geladen; die Mitgliederprojektion umfasst ID, Namen, Telefon, E-Mail,
+  Geburtsdatum und Aktivstatus. Serverseitige Zugriffspruefung bleibt massgeblich.
+
+-- Tabelle --
+  Tabellenkopf und Werte bleiben ohne Zeilenumbruch. Die Tabelle ist mindestens
+  so breit wie ihr Container und darf darueber hinaus auf Inhaltsbreite wachsen;
+  der umgebende Container scrollt dann horizontal. Die Zeile der angemeldeten
+  Person wird anhand der Session-ID vollstaendig fett dargestellt.
 
 -- Aktualisierung und Fehler --
   Sessionaenderungen rendern anonymes Verzeichnis oder laden es neu; Generationen
@@ -27,7 +36,8 @@ Stand: v4.0.0
   Jede Zeile ist per Maus sowie Enter/Leertaste als Profilaktion bedienbar.
   `publicProfile` liefert anonym nur ID/Name, angemeldeten Benutzern auch E-Mail,
   Telefon und Geburtsdatum; `myProfile` liefert fuer das eigene Profil zusaetzlich
-  Geschlecht und Passwortaenderung. Nur Admins sehen bei fremden Profilen
-  "Reset-Code erstellen" und "Passwort direkt setzen"; direktes Setzen widerruft
-  die Sitzungen der Zielperson. Alle Tabellen- und Profilwerte werden per
-  textContent/Textknoten dargestellt.
+  Geschlecht und Passwortaenderung. Nur Admins sehen bei fremden Profilen die vom
+  aktuellen Profilstatus abhaengige Aktion `Passwortvergabe freigeben` oder
+  `Passwortfreigabe aufheben` sowie `Reset-Code erstellen` und `Passwort direkt
+  setzen`; direktes Setzen widerruft die Sitzungen der Zielperson. Alle Tabellen-
+  und Profilwerte werden per textContent/Textknoten dargestellt.

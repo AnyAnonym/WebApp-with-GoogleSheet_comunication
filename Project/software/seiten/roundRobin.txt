@@ -1,7 +1,7 @@
 ================================================================================
 RoundRobin-Gruppenphase - Tabellen und Paarungslisten
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   HTML: Frontend/RoundRobin.html
@@ -16,7 +16,8 @@ Stand: v4.0.0
   Jede Invalidierung laedt alle vier Quellen und den Bewerbsnamen neu; es gibt kein
   lokales Matchpolling. Loading-/Fehleroverlay mit Retry liefern einen definierten
   Abschluss. Fehlender Pflichtparameter oder fehlgeschlagener Erstaufbau meldet
-  Monitor-Failed, erfolgreich gerenderte Daten Monitor-Ready.
+  Monitor-Failed, erfolgreich gerenderte Daten Monitor-Ready. Die Ansicht wartet
+  auf `authClient.ready`; bei einer geaenderten Session-ID wird sie neu gerendert.
 
 -- Bedienung und Regeln --
   Pflichtparameter `?id=<bewerbId>`. Optional `?paarungslayout=0..5`: 0 volles
@@ -27,6 +28,10 @@ Stand: v4.0.0
 
 -- Darstellung und Sicherheit --
   Das Grid waehlt je nach Gruppenzahl eine bis vier Spalten und wird mobil
-  einspaltig. Alle externen Namen, Resultate, Gruppen- und Statistikwerte werden
-  vor dem begrenzten Template-Markup HTML-escaped. Externe Webfonts wurden
+  einspaltig. Enthaelt eine Tabellenzeile die aktuelle Person als Einzelspieler
+  oder Doppelpartner, sind ab der Namensspalte alle Zellen blau; die Rangzelle
+  bleibt unabhaengig davon schwarz. Aufsteigerzeilen werden vollstaendig fett
+  dargestellt und ihre Rangzelle ist gruen, auch wenn die aktuelle Person in
+  dieser Zeile steht. Alle externen Namen, Resultate, Gruppen- und Statistikwerte
+  werden vor dem begrenzten Template-Markup HTML-escaped. Externe Webfonts wurden
   entfernt; lokale/systemeigene Schrift-Fallbacks gelten.

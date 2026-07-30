@@ -462,6 +462,58 @@ test("Passwortwrite folgt der Personen-ID auch bei einer verschobenen Zeile", as
   repository.close();
 });
 
+test("Passwortfreigabe wird gesetzt und beim Passwortwrite verbraucht", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const person = fake.tables.Personen.find((row) => row[0] === "p2");
+
+  await service.setPasswordSetupAllowed("p2", true);
+  assert.equal(person[5], "x");
+  await service.setPasswordHash("p2", "new-stored-hash", {
+    expectedHash: "b".repeat(64),
+    requirePasswordSetupAllowed: true,
+  });
+  assert.equal(person[4], "new-stored-hash");
+  assert.equal(person[5], "");
+  await assert.rejects(
+    service.setPasswordHash("p2", "another-hash", {
+      expectedHash: "new-stored-hash",
+      requirePasswordSetupAllowed: true,
+    }),
+    { code: "PASSWORD_SETUP_INVALID" },
+  );
+
+  await service.stop();
+  repository.close();
+});
+
+test("Passwortvergabe prueft den Aktivstatus im frischen Personen-Stand", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const person = fake.tables.Personen.find((row) => row[0] === "p2");
+  person[5] = "x";
+  person[8] = "0";
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(
+    service.setPasswordHash("p2", "new-stored-hash", {
+      expectedHash: "b".repeat(64),
+      requirePasswordSetupAllowed: true,
+    }),
+    { code: "PASSWORD_SETUP_INVALID" },
+  );
+  assert.equal(person[4], "b".repeat(64));
+  assert.equal(person[5], "x");
+
+  await service.stop();
+  repository.close();
+});
+
 test("ein nach Commit verlorenes Append-Ergebnis wird ueber die stabile ID erkannt", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();

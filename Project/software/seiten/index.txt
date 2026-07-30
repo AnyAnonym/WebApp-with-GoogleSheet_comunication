@@ -1,7 +1,7 @@
 ================================================================================
 Dashboard / Willkommensseite - Startseite der Anwendung
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   Zentrale Einstiegsseite mit Navbar, Willkommenstext und Footer.
@@ -18,11 +18,31 @@ Stand: v4.0.0
   Profil, Anmeldung und Abmeldung werden nach dem Sessionzustand dargestellt und
   bei Aenderungen auch tabuebergreifend aktualisiert.
 
+-- Anmeldung und Passwort --
+  Die gemeinsamen Modale fuer Anmeldung, Passwortaenderung, Reset-Code,
+  Erstvergabe und direktes administratives Setzen lassen sich nur ueber das X
+  oder `Abbrechen` schliessen, nicht durch Klick auf den Hintergrund oder Escape.
+  Waehrend eines Requests sind alle Schaltflaechen des jeweiligen Modals gesperrt;
+  dadurch kann es auch nicht geschlossen oder die Aktion doppelt ausgeloest werden.
+  Formulare und Felder besitzen Passwortmanager-Metadaten mit method/action,
+  `username`, `current-password`, `new-password` beziehungsweise `one-time-code`;
+  die Passwortaenderung fuehrt die angemeldete E-Mail als unsichtbares
+  Username-Feld. Passwortfelder werden beim Schliessen zurueckgesetzt und wieder
+  verdeckt.
+
+  Im Login kann eine zuvor vom Administrator freigegebene Person ueber
+  `Erstmals Passwort vergeben` mit E-Mail und zweimaligem neuen Passwort ihr
+  erstes Passwort setzen. Danach wird das Login mit uebernommener E-Mail erneut
+  geoeffnet. Reset-Code und direkte administrative Passwortvergabe bleiben davon
+  getrennte Ablaeufe.
+
 -- Layout und Bereitschaft --
   Header, Main-Bereich, leerer Sidebar-Container und Footer; responsiv rutscht die
   Sidebar unter den Hauptbereich. staticReady.js meldet im Monitorbetrieb nach
   DOMContentLoaded `epiber-monitor-ready`; die statische Seite benoetigt keine
-  Fachdaten zum Ladeabschluss.
+  Fachdaten zum Ladeabschluss. Die mobile Navigation liegt als fixed Modal
+  unabhaengig von der Dokumentposition zentriert im sichtbaren Viewport; Oeffnen
+  und Schliessen veraendern die Scrollposition der Seite nicht.
 
 -- Besonderheiten --
   Keine URL-Parameter. rankingSidebar.js und SDK.js werden nicht mehr verwendet;

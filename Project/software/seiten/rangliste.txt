@@ -1,7 +1,7 @@
 ================================================================================
 Ranglisten-Pyramide - Interaktive Forderungsrangliste
 ================================================================================
-Stand: v4.0.0
+Stand: v4.1.0
 
 -- Funktion und Dateien --
   HTML: Frontend/rangliste.html
@@ -22,8 +22,10 @@ Stand: v4.0.0
   Profilklick verwendet `publicProfile` beziehungsweise fuer das eigene Profil
   `myProfile`: anonym nur ID/Name, angemeldet E-Mail/Telefon/Geburtsdatum, eigenes
   Profil zusaetzlich Geschlecht/Passwortaenderung. Nur Admins erhalten bei fremden
-  Profilen Reset-Code und direktes Passwortsetzen. Forderungen senden stabile
-  `operationId`, `bewerbId` und `opponentId`; der Server prueft Identitaet und Regeln.
+  Profilen die vom Profilstatus abhaengige Aktion `Passwortvergabe freigeben` oder
+  `Passwortfreigabe aufheben` sowie Reset-Code und direktes Passwortsetzen.
+  Forderungen senden stabile `operationId`, `bewerbId` und `opponentId`; der Server
+  prueft Identitaet und Regeln.
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schutzzeit;

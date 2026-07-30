@@ -250,7 +250,7 @@ const endpoints = {
       requireCurrentTables("players");
       const id = idValue(params?.id, "id");
       const profile = context.auth
-        ? dependencies.authService.memberProfile(id)
+        ? dependencies.authService.memberProfile(id, { includeAdminFields: context.principal.role === "admin" })
         : dependencies.authService.publicProfile(id);
       return { success: true, profile };
     },
@@ -399,7 +399,7 @@ const endpoints = {
       }, (current) => {
         const assignment = resolveCourtAssignment(request);
         return { ...assignment.data, aktiv: current.aktiv };
-      });
+      }, () => courtPoller.resetCourtScore(court));
     },
   },
   courtSetActive: {

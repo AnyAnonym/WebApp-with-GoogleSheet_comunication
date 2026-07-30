@@ -1,7 +1,7 @@
 ================================================================================
   ENDPOINTS.txt - HTTP- und WebSocket-v2-Referenz
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.0.0
+  Stand: v4.1.0, 2026-07-30
 ================================================================================
 
 Alle dynamischen Pfade werden vom Node.js-Backend bedient; Caddy terminiert in
@@ -54,7 +54,7 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 ================================================================================
 
 ----- GET /version (public) -----
-  200: `{ "version": "4.0.0" }`.
+  200: `{ "version": "4.1.0" }`.
 
 ----- GET /live (public) -----
   Prozess-Liveness. 200 mit `{ status: "ok", version }`; waehrend Shutdown 503
@@ -97,6 +97,19 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
   Session samt Cookie erstellt. Bei fehlgeschlagenem/unklarem Write bleibt die
   alte Session ungueltig und der Fehler markiert `sessionInvalidated`.
 
+----- POST /api/password-setup (public, erlaubte Origin) -----
+  Body `{ email, newPasswordHash }`; `newPasswordHash` ist exakt 64 Hexzeichen.
+  Vergibt einer aktiven Person einmalig ein Passwort, wenn deren Sheet-Feld
+  `KennwortVergessen` aktuell `x` enthaelt. Nicht vorhandene, inaktive oder nicht
+  freigegebene Konten liefern einheitlich `PASSWORD_SETUP_INVALID`; der negative
+  Pfad fuehrt eine Dummy-scrypt-Berechnung aus. Der Vorgang ist pro Zielperson
+  serialisiert, prueft Freigabe und bisherigen Passwortwert unmittelbar vor dem
+  Write erneut, speichert scrypt und leert `KennwortVergessen` im selben
+  Sheet-Write. Alle Sessions der Person werden vor dem Write und nach Erfolg
+  widerrufen; bei Fehler oder unklarem Ausgang bleiben sie widerrufen. Die Route
+  besitzt ein eigenes IP-Limit. Zusaetzlich teilen sich alle scrypt-Verifikationen
+  und -Erzeugungen eine globale Grenze von vier gleichzeitigen Operationen.
+
 ----- POST /api/password-reset (public, erlaubte Origin) -----
   Body `{ resetToken, newPasswordHash }`. Verbraucht einen gehashten, ablaufenden,
   einmaligen Adminnachweis. Der Nachweis wird an diesen neuen Credential
@@ -108,6 +121,14 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
   Body `{ personId }`. Erzeugt fuer die Zielperson einen einmaligen Resetcode und
   liefert `{ success, resetToken, expiresAt, personId }`. Ein neuer Code ersetzt
   einen noch offenen Code. Nur der Client sieht den Klartextcode einmalig.
+
+----- POST /api/admin/password-setup (admin) -----
+  Body `{ personId, allowed }`, wobei `allowed` boolean ist. Setzt
+  `KennwortVergessen` ueber die stabile Personenzeile auf `x` beziehungsweise
+  leer; ein unklarer Write wird durch einen Metadaten-Zeilenread bestaetigt oder
+  als `WRITE_OUTCOME_UNKNOWN` gemeldet. Die Antwort ist
+  `{ success, personId, allowed }`. Die Mutation ist pro Zielperson serialisiert
+  und unterliegt dem HTTP-Write-Limit.
 
 ----- POST /api/admin/password (admin) -----
   Body `{ personId, newPasswordHash }`. Setzt das Passwort einer Zielperson direkt
@@ -149,7 +170,7 @@ Innerhalb standardmaessig 5 Sekunden muss der Client senden:
     "clientId": "...",
     "deviceId": "...",
     "pageType": "scoreboard",
-    "appVersion": "4.0.0"
+    "appVersion": "4.1.0"
   }
 
 `clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
@@ -163,7 +184,7 @@ Serverantwort:
     "type": "welcome",
     "protocol": 2,
     "connectionId": "UUID",
-    "serverVersion": "4.0.0",
+    "serverVersion": "4.1.0",
     "timing": { "pingIntervalMs": 25000, "staleAfterMs": 70000 },
     "principal": {
       "type": "anonymous|user|device",
@@ -176,6 +197,8 @@ Serverantwort:
 `user` erscheint nur bei Benutzern, `monitor` nur bei Geraeten. Falsche Version
 schliesst mit 4406, Handshake-Timeout mit 4408. Server-Ping enthaelt `ts`, Client
 antwortet mit Pong; tote Clients werden nach standardmaessig 75 Sekunden beendet.
+Die Bedeutungen aller verwendeten Codes und das Reconnect-Verhalten stehen in
+`Project/software/WEBSOCKET-CLOSE-CODES.txt`.
 
 
 ================================================================================
@@ -211,7 +234,8 @@ PUBLIC:
 
   `publicProfile { id }`
       Anonym: ID/Name. Mit Benutzersession: zusaetzlich E-Mail, Telefon,
-      Geburtsdatum. Adminaktionen sind separate HTTP-Routen.
+      Geburtsdatum. Nur fuer Admins enthaelt ein fremdes Mitgliederprofil
+      zusaetzlich `passwordSetupAllowed`; Adminaktionen sind separate HTTP-Routen.
 
   `bewerbe {}`
       Oeffentliche Bewerbprojektion plus `bewerbsartValues`.
@@ -244,7 +268,7 @@ PUBLIC:
 
 AUTHENTICATED (player, operator oder admin):
   `memberDirectory {}`
-      Aktive Mitglieder mit ID, Namen, Telefon und Aktiv.
+      Aktive Mitglieder mit ID, Namen, Telefon, E-Mail, Geburtsdatum und Aktiv.
 
   `myProfile {}`
       Eigenes privates Profil inklusive Rolle, nie Passwortwerte.
@@ -271,7 +295,9 @@ OPERATOR ODER ADMIN:
   `courtAssign { operationId, court, expectedRevision, matchId? }`
       Alternativ zu matchId exakt `homePlayerIds` und `guestPlayerIds`, jeweils
       ein bis zwei eindeutige Personen-IDs. court ist 1 oder 2,
-      expectedRevision eine Ganzzahl >=1.
+      expectedRevision eine Ganzzahl >=1. Eine tatsaechlich neu angewendete
+      Zuweisung setzt den Score dieses Courts auf acht `"0"`-Werte zurueck; eine
+      idempotent wiedergegebene Operation loest keinen erneuten Reset aus.
 
   `courtSetActive { operationId, court, expectedRevision, active }`
       Revisionsgeschuetzte Aktivierung; `active` ist boolean.
@@ -363,9 +389,11 @@ Legacy-Ausnahmen:
   - Logging besitzt drei Spalten und keine EventID/Readback. Erfolgreich
     abgeschlossene Operationen werden per operationId dedupliziert; ein
     mehrdeutiger Append ist nicht sicher wiederholbar.
-  - ScoreLog ist kein RPC-Fachwrite. Der Court-Poller schreibt drei Spalten
-    Fire-and-forget, ohne operationId/EventID, Retry, Readback, Pendingstatus,
-    SQLite-Queue oder Shutdown-Drain.
+  - ScoreLog ist kein RPC-Fachwrite. Reset und erste externe Baseline schreiben
+    nichts; das gilt auch fuer den sofort angezeigten ersten externen Stand eines
+    beim Prozessstart bereits aktiven Courts. Erst eine spaetere semantische
+    Aenderung wird dreispaltig Fire-and-forget angehaengt, ohne operationId/EventID,
+    Retry, Readback, Pendingstatus, SQLite-Queue oder Shutdown-Drain.
 
 
 ================================================================================

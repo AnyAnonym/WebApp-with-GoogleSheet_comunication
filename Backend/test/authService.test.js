@@ -154,6 +154,84 @@ test("Admin erstellt einen einmaligen Reset-Nachweis", async () => {
   repository.close();
 });
 
+test("Admin verwaltet die dauerhafte Passwortfreigabe", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const adminSession = repository.createSession({ userId: "p1", email: "ada@example.test", ttlMs: 60000 });
+  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  const writes = [];
+  const auth = new AuthService({
+    repository,
+    sheetService: { async setPasswordSetupAllowed(personId, allowed) { writes.push({ personId, allowed }); } },
+  });
+
+  await assert.rejects(auth.setPasswordSetupAllowed(playerSession.token, "p1", true), { code: "FORBIDDEN" });
+  assert.deepEqual(await auth.setPasswordSetupAllowed(adminSession.token, "p2", true), {
+    success: true,
+    personId: "p2",
+    allowed: true,
+  });
+  assert.deepEqual(writes, [{ personId: "p2", allowed: true }]);
+  repository.close();
+});
+
+test("freigegebene aktive Person setzt ihr Passwort einmalig", async () => {
+  const people = peopleFixture();
+  people[2][5] = "x";
+  dataStore.set("players", people, { source: "test" });
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const oldSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  let passwordWrite = null;
+  const auth = new AuthService({
+    repository,
+    sheetService: {
+      async setPasswordHash(personId, storedHash, options) {
+        passwordWrite = { personId, storedHash, options };
+        const current = structuredClone(dataStore.get("players"));
+        current[2][4] = storedHash;
+        current[2][5] = "";
+        dataStore.set("players", current, { source: "write" });
+      },
+    },
+  });
+
+  assert.deepEqual(await auth.setupPassword("PETER@example.test", "d".repeat(64)), { success: true });
+  assert.equal(passwordWrite.personId, "p2");
+  assert.equal(passwordWrite.options.expectedHash, "b".repeat(64));
+  assert.equal(passwordWrite.options.requirePasswordSetupAllowed, true);
+  assert.match(passwordWrite.storedHash, /^scrypt\$v1\$/);
+  assert.equal(repository.getSession(oldSession.token), null);
+  await assert.rejects(auth.setupPassword("peter@example.test", "e".repeat(64)), { code: "PASSWORD_SETUP_INVALID" });
+  repository.close();
+});
+
+test("Passwortvergabe bleibt fuer inaktive Personen gesperrt", async () => {
+  const people = peopleFixture();
+  people[2][5] = "x";
+  people[2][8] = "0";
+  dataStore.set("players", people, { source: "test" });
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  await assert.rejects(auth.setupPassword("peter@example.test", "d".repeat(64)), { code: "PASSWORD_SETUP_INVALID" });
+  repository.close();
+});
+
+test("globale scrypt-Grenze schuetzt auch abgelehnte Passwortvergaben", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  const results = await Promise.allSettled(Array.from({ length: 5 }, (_, index) => (
+    auth.setupPassword(`unknown-${index}@example.test`, "d".repeat(64))
+  )));
+  assert.equal(results.filter((result) => result.status === "rejected" && result.reason.code === "AUTH_BUSY").length, 1);
+  assert.equal(results.filter((result) => result.status === "rejected" && result.reason.code === "PASSWORD_SETUP_INVALID").length, 4);
+  repository.close();
+});
+
 test("Login mit altem Passwort kann einen laufenden Reset nicht ueberholen", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();

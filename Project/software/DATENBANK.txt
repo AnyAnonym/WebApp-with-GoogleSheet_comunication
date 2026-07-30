@@ -1,7 +1,7 @@
 ================================================================================
   DATENBANK.txt - Google-Sheets- und SQLite-Datenhaltung
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.0.0
+  Stand: v4.1.0, 2026-07-30
 ================================================================================
 
 Dieses Dokument beschreibt die beiden produktiven Datenhaltungen. Google Sheets
@@ -82,14 +82,20 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   E-Mail             | Loginname; normalisiert kleingeschrieben und eindeutig.
   PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
                      | 64-stellige SHA-256-Werte lesbar.
-  KennwortVergessen  | Legacy-Feld; wird bei Passwortwrites geleert, ist aber
-                     | kein Berechtigungsnachweis fuer den neuen Resetablauf.
+  KennwortVergessen  | `x` ist die Adminfreigabe fuer die einmalige erstmalige
+                     | Passwortvergabe; jeder Passwortwrite leert das Feld. Der
+                     | separate Resetcode-Ablauf verwendet es nicht.
   TelefonMobil       | Telefonnummer.
   GeburtsDatum       | Geburtsdatum.
   Geschlecht         | Fachwert, historisch 1/2.
   Aktiv              | "1" = aktiv. Inaktive Personen koennen sich nicht
                      | anmelden und erscheinen nicht im Mitgliederverzeichnis.
   Role               | Pflichtspalte: player, operator oder admin.
+
+`KennwortVergessen` ist keine allgemeine Poller-Pflichtspalte. Fuer die
+Passwort-Erstvergabe muss sie jedoch vorhanden und fuer den Service-Account
+beschreibbar sein; andernfalls lehnt der betreffende Write die Funktion mit
+`SHEET_SCHEMA` ab.
 
 Role-Vertrag:
   - Die erlaubten normalisierten Werte sind `player`, `operator` und `admin`.
@@ -108,6 +114,12 @@ Passwort-Vertrag:
   - Ein erfolgreicher Login mit einem alten SHA-256-Sheetwert migriert diesen
     per Compare-and-set zu scrypt. Unbekannte Benutzer durchlaufen eine
     Dummy-Verifikation gegen Timing-/Enumerationseffekte.
+  - Eine erstmalige Passwortvergabe ist nur fuer eine aktive Person mit
+    `KennwortVergessen=x` erlaubt. Nicht vorhandene, inaktive und nicht
+    freigegebene Konten erhalten denselben Fehler; der negative Pfad berechnet
+    Dummy-scrypt. Der Write prueft den bisherigen PasswdHash per Compare-and-set
+    und die Freigabe erneut, schreibt scrypt und verbraucht die Freigabe durch
+    gleichzeitiges Leeren von KennwortVergessen.
 
 Personenprojektionen:
   - `players` ist oeffentlich: ID, Vorname, Nachname, Aktiv.
@@ -115,18 +127,20 @@ Personenprojektionen:
   - `publicProfile` ist bei angemeldeter Session ein Mitgliederprofil: zusaetzlich
     E-Mail, Telefon und Geburtsdatum.
   - `memberDirectory` ist loginpflichtig: aktive Personen mit ID, Namen,
-    TelefonMobil und Aktiv.
+    TelefonMobil, E-Mail, GeburtsDatum und Aktiv.
   - `myProfile` und die HTTP-Sessionantwort sind privat: ID, Namen, E-Mail,
     Telefon, Geburtsdatum, Geschlecht und Rolle; nie PasswdHash.
-  - Nur die Admin-Oberflaeche darf fuer fremde Profile Resetnachweise erzeugen
-    oder ein Passwort direkt setzen. Diese Aktionen erweitern nicht die
-    Personenprojektion um Hashes oder Geheimnisse.
+  - Ein fremdes Mitgliederprofil enthaelt nur fuer Admins zusaetzlich den Boolean
+    `passwordSetupAllowed`. Nur die Admin-Oberflaeche darf diese Freigabe aendern,
+    Resetnachweise erzeugen oder ein Passwort direkt setzen. Hashes und
+    Geheimnisse werden nie projiziert.
 
-Beim eigenen Passwortwechsel, Reset und direkten Admin-Passwortsetzen werden
-alle Sessions der Zielperson vorsorglich vor dem Sheet-Write widerrufen. Beim
-eigenen erfolgreichen Wechsel wird danach genau eine neue Session erstellt.
-Schlaegt ein direkter Admin-Write fehl oder bleibt sein Ausgang unklar, bleiben
-die Ziel-Sessions widerrufen; das Sheetpasswort kann dabei unveraendert sein.
+Beim eigenen Passwortwechsel, Reset, direkten Admin-Passwortsetzen und der
+erstmaligen Passwortvergabe werden alle Sessions der Zielperson vorsorglich vor
+dem Sheet-Write widerrufen. Beim eigenen erfolgreichen Wechsel wird danach genau
+eine neue Session erstellt. Schlaegt ein direkter Admin-Write oder die erstmalige
+Vergabe fehl oder bleibt sein Ausgang unklar, bleiben die Ziel-Sessions
+widerrufen; das Sheetpasswort kann dabei unveraendert sein.
 
 
 ================================================================================
@@ -219,13 +233,20 @@ ScoreLog:
   Spalte 1 Timestamp | Spalte 2 PlatzNr | Spalte 3 Score
 
 Timestamp hat das Wiener Format `YYMMDD-HHMM-SS`. Score hat das Format
-`S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`.
-Sobald mindestens ein Platz aktiv ist und das Polling laeuft, wird fuer jeden von
-der Quelle gelieferten Platz der erste semantische Stand protokolliert, danach
-jede semantische Scoreaenderung. Der Write ist bewusst
-Fire-and-forget: Fehler werden nur geloggt, nicht erneut versucht oder beim
-Shutdown drainiert. Es existieren insbesondere kein EventID, kein Readback,
-kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer ScoreLog.
+`S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`. Inaktive
+Courts frieren ihren letzten sichtbaren Stand ein; sind beide Courts inaktiv,
+laeuft kein externes Polling. Nach Aktivierung oder Reset ist die erste zulaessige
+externe Antwort dieses Courts nur die Baseline und veraendert weder Anzeige noch
+ScoreLog. Erst eine folgende Abweichung von dieser Baseline aktualisiert Anzeige
+und ScoreLog. Beim Prozessstart wird der erste externe Stand eines in SQLite
+bereits aktiven Courts dagegen sofort angezeigt, aber nicht ins ScoreLog
+geschrieben. Ein Reset setzt alle acht Scorewerte auf `"0"`, publiziert diesen
+Stand, erzeugt aber selbst keinen ScoreLog-Eintrag. Pro-Court-Epochen verwerfen
+Antworten eines vor Aktivitaetswechsel oder Reset begonnenen Fetches. Der Write
+ist bewusst Fire-and-forget: Fehler werden nur geloggt, nicht erneut versucht
+oder beim Shutdown drainiert. Es existieren insbesondere kein EventID, kein
+Readback, kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer
+ScoreLog.
 
 
 ================================================================================
@@ -280,7 +301,7 @@ keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
   9. ROLLOUT-PRUEFUNGEN
 ================================================================================
 
-Vor v4.0.0 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
+Vor v4.1.0 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
 genannten Pflichtspalten, `Entrydate`, Schreibrechte fuer Personen, Matches1,
 EntryList, Logging und ScoreLog sowie eindeutige IDs/Metadaten zu pruefen. Keine
 EventID-Spalten fuer Logging/ScoreLog anlegen. Die vollstaendige verbindliche

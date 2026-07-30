@@ -72,6 +72,7 @@
 .rr-table td {
   padding: 6px 8px;
   border-bottom: 1px solid #e0e0e0;
+  color: #000;
 }
 
 .rr-center {
@@ -95,11 +96,18 @@
 /* ── Hervorhebung Top-Ränge ── */
 .rr-highlight {
   font-weight: 800;
-  color: #198754;
 }
 
 .rr-highlight td {
   font-weight: 800;
+}
+
+.rr-highlight td:first-child {
+  color: #198754;
+}
+
+.rr-current-user td:not(:first-child) {
+  color: #0b57d0;
 }
 
 /* ── Paarungen ── */

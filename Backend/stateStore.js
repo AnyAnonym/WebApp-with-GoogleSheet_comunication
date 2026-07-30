@@ -69,7 +69,7 @@ function setScoreboardCourt(court, data, expectedRevision = undefined) {
   return value;
 }
 
-function applyCourtOperation(court, operation, update) {
+function applyCourtOperation(court, operation, update, onApplied) {
   ensureReady();
   if (court !== "1" && court !== "2") throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
   const outcome = repository.applyStateOperation({
@@ -92,7 +92,10 @@ function applyCourtOperation(court, operation, update) {
       return { success: true, court: { ...snapshot.value, revision: snapshot.revision, updatedAt: snapshot.updatedAt } };
     },
   });
-  if (outcome.snapshot) emit({ type: "court", court, value: outcome.result.court });
+  if (outcome.snapshot) {
+    onApplied?.(outcome.result.court);
+    emit({ type: "court", court, value: outcome.result.court });
+  }
   return outcome.repeated ? { ...outcome.result, repeated: true } : outcome.result;
 }
 

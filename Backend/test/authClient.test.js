@@ -4,6 +4,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+async function waitFor(predicate, timeoutMs, message) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(message);
+}
+
 function loadAuthClient(fetchImplementation, { locks } = {}) {
   const windowListeners = new Map();
   const unrefTimeout = (callback, delay, ...args) => {
@@ -113,9 +122,7 @@ test("Web Lock serialisiert Auth-Mutationen auch ueber zwei Dokumente", async ()
 
   const login = firstTab.login("player@example.test", "secret");
   const logout = secondTab.logout();
-  for (let attempt = 0; attempt < 20 && calls.length === 0; attempt++) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
+  await waitFor(() => calls.length > 0, 1000, "Login hat den gemeinsamen Web Lock nicht erhalten");
   assert.deepEqual(calls, ["POST /api/session"]);
   releaseLogin();
   await Promise.all([login, logout]);

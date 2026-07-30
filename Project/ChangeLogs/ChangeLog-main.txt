@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.0.0
+Stand: 4.1.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,94 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.1.0] - 2026-07-30
+Commit: 4.1.0 | Passwortvergabe, Ansichten und Courtscores erweitert
+Quelle: direkte Main-Ausnahme
+
+  Added
+  - [Software] Adminfreigabe und einmalige erstmalige Passwortvergabe ueber die
+    neuen HTTP-Routen `POST /api/admin/password-setup` und
+    `POST /api/password-setup` eingefuehrt.
+  - [Dokumentation] `AGENTS.md` als OpenCode-Einstiegspunkt mit gezieltem
+    Dokumentationsrouting, Projektkontext und Sicherheitsregeln aufgenommen.
+  - [Dokumentation] Eine eigenstaendige Referenz fuer WebSocket-Close-Codes,
+    Reconnect-Verhalten, typische Logfolgen und HTTP-Upgrade-Ablehnungen angelegt.
+
+  Changed
+  - [Software] `KennwortVergessen=x` ist eine durch Administratoren verwaltete,
+    dauerhaft gueltige und beim erfolgreichen Passwortwrite einmalig verbrauchte
+    Freigabe. Negative Pfade verwenden einen einheitlichen Fehler und Dummy-scrypt;
+    Freigabe und Passwortwert werden unter Benutzerlock und Compare-and-set erneut
+    geprueft, bestehende Sitzungen vorsorglich widerrufen.
+  - [Software] Das Mitgliederverzeichnis zeigt angemeldeten Benutzern Nachname,
+    Vorname, Telefon, E-Mail und Geburtsdatum, haelt alle Zellen einzeilig und
+    markiert die eigene Zeile fett.
+  - [Software] RoundRobin und Turnierraster markieren die angemeldete Person oder
+    ihr Doppelteam blau und rendern bei Sessionwechsel neu. Bei Aufsteigern bleibt
+    ausschliesslich die Rangzelle gruen, waehrend die Zeile fett dargestellt wird.
+  - [Software] Breite Turnierraster verwenden dokumentweites horizontales
+    Browser-Scrolling statt einer internen Scrollleiste am Rasterende.
+  - [Software] Login- und Passwortdialoge besitzen explizite Abbruchaktionen,
+    bleiben bei Hintergrundklick und Escape offen, sperren waehrend Requests alle
+    Aktionen und verwenden standardisierte Passwortmanager-Metadaten.
+  - [Software] Das mobile Navigationsmodal bleibt im sichtbaren Viewport zentriert
+    und veraendert beim Oeffnen nicht mehr die Seitenposition.
+  - [Software] Inaktive Courts behalten ihren letzten Score sichtbar. Aktivierung
+    und Reset lesen zunaechst nur eine externe Baseline; erst die folgende
+    Scoreaenderung aktualisiert Anzeige und dreispaltiges ScoreLog.
+  - [Software] Neue Court-Zuweisungen setzen den zugehoerigen Score auf acht
+    Nullwerte. Pro-Court-Epochen grenzen Deaktivierung, Aktivierungsphase und Reset
+    gegen bereits laufende externe Fetches ab; bei zwei inaktiven Courts stoppt
+    das externe Polling.
+  - [Infrastruktur] Die Live-systemd-Vorlage bindet als root-kontrollierte
+    Credential-Quelldatei `Backend/epiberpiber-31aebe556ced.json` ein; der
+    geschuetzte Laufzeitname `%d/google-service-account` bleibt unveraendert.
+
+  Fixed
+  - [Software] Passwortmanager- oder Overlayinteraktionen koennen Login- und
+    Passwortformulare nicht mehr unbeabsichtigt schliessen; Abbruch setzt
+    Formulardaten und Passwortsichtbarkeit zurueck.
+  - [Software] Deaktivierte Scoreboard-Courts werden nicht mehr geleert oder auf
+    Striche reduziert; neue Snapshot- und Pushdaten behalten den Freeze-Stand.
+  - [Software] Verspaetete Court-Antworten koennen Deaktivierung, Nullreset oder
+    Aktivierungsbaseline nicht ueberholen. Baseline und Reset erzeugen keinen
+    ScoreLog-Eintrag; idempotente Zuweisungswiederholung setzt nicht erneut null.
+  - [Software] Nach einem Backendneustart zeigen persistiert aktive Courts den
+    ersten externen Stand sofort statt bis zur Folgeaenderung null; dieser
+    Wiederanlaufstand erzeugt keinen ScoreLog-Eintrag.
+  - [Software] Passwort-Erstvergabe prueft Freigabe und Aktivstatus gemeinsam am
+    frisch gelesenen Personen-Datensatz. Veraltete Cachewerte koennen eine
+    zwischenzeitlich deaktivierte Person nicht mehr zur Passwortvergabe zulassen.
+  - [Software] Veraltete parallele RoundRobin-Renders koennen nach einem
+    Sessionwechsel keine neuere Benutzerhervorhebung mehr ueberschreiben.
+  - [Sicherheit] Auch negative oeffentliche Passwortvergaben unterliegen der
+    globalen Grenze von vier gleichzeitigen scrypt-Operationen.
+  - [Software] Wechsel zwischen Gruppenansicht und Raster sowie Sessionwechsel
+    waehrend des Initialloads verwerfen ausstehende veraltete Render-Ergebnisse;
+    nur der letzte Initialrender bestaetigt oder verwirft den Monitor-Handshake.
+
+  Sicherheit und Betrieb
+  - [Datenbank] Keine neue Sheet- oder SQLite-Migration. Die bestehende Spalte
+    `KennwortVergessen` muss vorhanden und beschreibbar sein; historische `x`-
+    Werte sind vor Rollout zu pruefen, da sie die Erstvergabe freigeben.
+  - [Software] E-Mail und Geburtsdatum sind im Mitgliederverzeichnis fuer alle
+    angemeldeten Mitglieder sichtbar; diese Datenschutzentscheidung ist vor
+    Produktion fachlich abzunehmen.
+  - [Infrastruktur] Backendneustart und Browser-Neuladen sind erforderlich. Die
+    neue Live-Credential-Quelldatei muss lokal root:root mit Modus 0600 existieren
+    und darf nicht in Git aufgenommen werden.
+
+  Pruefungen
+  - [Software] `npm run check` und alle 78 automatisierten Tests erfolgreich.
+  - [Software] Neue Tests decken Passwortfreigabe, Einmalverbrauch,
+    Mitgliederprojektion, Court-Freeze, Baseline, Reset und Fetch-Races ab.
+  - [Dokumentation] Fach-, Seiten-, Betriebs-, Rollout- und Close-Code-
+    Dokumentation auf den Stand 4.1.0 angeglichen.
+  - [Dokumentation] Die nicht-kanonische Logging-Analyse um die seit 4.1.0
+    geltende Baseline-/Freeze-Semantik und die verbleibende In-Memory-Grenze
+    ergaenzt.
 
 
 [4.0.0] - 2026-07-29

@@ -108,7 +108,19 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const repository = new StateRepository(":memory:");
   const sheetService = {
-    async setPasswordHash() {},
+    async setPasswordHash(personId, storedHash) {
+      const current = structuredClone(dataStore.get("players"));
+      const row = current.slice(1).find((entry) => entry[0] === personId);
+      row[4] = storedHash;
+      row[5] = "";
+      dataStore.set("players", current, { source: "write" });
+    },
+    async setPasswordSetupAllowed(personId, allowed) {
+      const current = structuredClone(dataStore.get("players"));
+      const row = current.slice(1).find((entry) => entry[0] === personId);
+      row[5] = allowed ? "x" : "";
+      dataStore.set("players", current, { source: "write" });
+    },
     async stop() {},
   };
   const application = createApplication({ repository, sheetService });
@@ -172,6 +184,27 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(adminPasswordResponse.status, 200);
   assert.deepEqual(await adminPasswordResponse.json(), { success: true, personId: "p2" });
+
+  const setupPermissionResponse = await fetch(`${httpBase}/api/admin/password-setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({ personId: "p2", allowed: true }),
+  });
+  assert.equal(setupPermissionResponse.status, 200);
+  assert.deepEqual(await setupPermissionResponse.json(), { success: true, personId: "p2", allowed: true });
+  const setupResponse = await fetch(`${httpBase}/api/password-setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ email: "peter@example.test", newPasswordHash: "9".repeat(64) }),
+  });
+  assert.equal(setupResponse.status, 200);
+  assert.deepEqual(await setupResponse.json(), { success: true });
+  const repeatedSetupResponse = await fetch(`${httpBase}/api/password-setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ email: "peter@example.test", newPasswordHash: "8".repeat(64) }),
+  });
+  assert.equal(repeatedSetupResponse.status, 401);
 
   const resetProofResponse = await fetch(`${httpBase}/api/admin/password-reset`, {
     method: "POST",
@@ -260,7 +293,10 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const directory = await adminClient.next((message) => message.id === "directory");
   assert.equal(directory.type, "response");
   assert.equal(directory.data.values[1][3], "+43123");
-  assert.equal(directory.data.values[0].includes("E-Mail"), false);
+  assert.equal(directory.data.values[1][4], "ada@example.test");
+  assert.equal(directory.data.values[1][5], "19900102");
+  assert.equal(directory.data.values[0].includes("E-Mail"), true);
+  assert.equal(directory.data.values[0].includes("GeburtsDatum"), true);
   assert.equal(directory.data.values[0].includes("PasswdHash"), false);
 
   const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
@@ -390,6 +426,13 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     expectedRevision: 1,
   });
   assert.equal(assignment.data.court.homePlayer, "Ada Admin");
+  const assignedScores = await adminClient.request("courtScores");
+  const assignedCourtScore = assignedScores.data.data.courts.find((court) => court.platz === "1");
+  assert.deepEqual(assignedCourtScore, {
+    platz: "1",
+    satz1home: "0", satz1gast: "0", satz2home: "0", satz2gast: "0",
+    satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
+  });
   const activation = await adminClient.request("courtSetActive", {
     court: "1",
     active: false,

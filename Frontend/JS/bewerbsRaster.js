@@ -1,4 +1,5 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
+import { getUser, ready, subscribeAuth } from "./authClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
@@ -14,6 +15,7 @@ const BEWERB_ID = params.get("id");
 const PAIRING_LAYOUT = params.get("paarungslayout") || "0";
 let activeView = "bracket";
 let refreshRoundRobinView = null;
+let roundRobinModule = null;
 
 const ROUND_DISPLAY = {
   R1: "1. Runde", R2: "2. Runde", R3: "3. Runde",
@@ -301,6 +303,7 @@ function renderBracket(rounds) {
   }
 
   const numRounds = rounds.length;
+  const currentUserId = String(getUser()?.id || "");
   const r1Count = rounds[0].matches.length;
   const gridRows = r1Count * 2;
 
@@ -347,6 +350,9 @@ function renderBracket(rounds) {
         const isWinner = match.winner && slotId && match.winner === slotId;
 
         if (isWinner) el.classList.add("winner");
+        if (currentUserId && (slotId === currentUserId || slot.partnerId === currentUserId)) {
+          el.classList.add("current-user");
+        }
 
         // Doppel: Name + Partner
         const displayName = slot.partnerName
@@ -455,6 +461,7 @@ async function loadBracket() {
       callWithRetry(readMatchesList),
       callWithRetry(readPlayersList),
     ]);
+    if (activeView !== "bracket") return true;
 
     const bewerbValues = bewerbRes.data?.values || [];
     const bewbsValues = bewbsRes.data?.values || [];
@@ -537,6 +544,7 @@ async function loadBracket() {
       btnRaster.addEventListener("click", async () => {
         activeView = "bracket";
         refreshRoundRobinView = null;
+        roundRobinModule?.invalidateRoundRobinRender?.();
         await loadBracket();
       });
 
@@ -548,6 +556,8 @@ async function loadBracket() {
         setHeading("Round Robin - " + (bewerbName || "Bewerb"));
         try {
           const mod = await import("./RoundRobin.js?v=3");
+          if (activeView !== "round-robin") return;
+          roundRobinModule = mod;
           if (mod.renderRoundRobin) {
             refreshRoundRobinView = async () => {
               container.replaceChildren();
@@ -575,6 +585,7 @@ async function loadBracket() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
+    await ready;
     const rendered = await loadBracket();
     if (rendered) signalMonitorReady();
     else signalMonitorFailed();
@@ -583,6 +594,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? refreshRoundRobinView()
         : loadBracket()
     ));
+    let observedUserId = String(getUser()?.id || "");
+    subscribeAuth((user) => {
+      const nextUserId = String(user?.id || "");
+      if (nextUserId === observedUserId) return;
+      observedUserId = nextUserId;
+      void (activeView === "round-robin" && refreshRoundRobinView
+        ? refreshRoundRobinView()
+        : loadBracket());
+    });
   } catch {
     signalMonitorFailed();
     showErrorOverlay("Fehler beim Laden des Turnierrasters");

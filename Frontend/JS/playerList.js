@@ -9,6 +9,15 @@ function formatTelefon(value) {
   return String(value || "").trim().replace(/^0043/, "+43") || "---";
 }
 
+function formatGeburtsdatum(value) {
+  const raw = String(value || "").trim();
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) return `${compact[3]}.${compact[2]}.${compact[1]}`;
+  const short = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (short) return `${short[3]}.${short[2]}.${Number(short[1]) >= 50 ? "19" : "20"}${short[1]}`;
+  return raw || "---";
+}
+
 function getElements() {
   return {
     table: document.getElementById("tbl"),
@@ -99,7 +108,7 @@ async function renderDirectory(user = getUser()) {
   if (values.length < 2) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 3;
+    cell.colSpan = 5;
     cell.style.textAlign = "center";
     cell.textContent = "Keine Spieler gefunden.";
     row.appendChild(cell);
@@ -109,6 +118,8 @@ async function renderDirectory(user = getUser()) {
     const firstNameIndex = header.indexOf("vorname");
     const lastNameIndex = header.indexOf("nachname");
     const phoneIndex = header.indexOf("telefonmobil");
+    const emailIndex = header.indexOf("e-mail");
+    const birthDateIndex = header.indexOf("geburtsdatum");
     const activeIndex = header.indexOf("aktiv");
     const idIndex = header.indexOf("id");
 
@@ -123,9 +134,12 @@ async function renderDirectory(user = getUser()) {
     rows.forEach((valuesRow) => {
       const row = document.createElement("tr");
       const playerId = String(valuesRow[idIndex] || "").trim();
+      if (playerId === String(user.id || "")) row.classList.add("current-player");
       appendCell(row, String(valuesRow[lastNameIndex] || "").trim());
       appendCell(row, String(valuesRow[firstNameIndex] || "").trim());
       appendCell(row, formatTelefon(valuesRow[phoneIndex]));
+      appendCell(row, String(valuesRow[emailIndex] || "").trim() || "---");
+      appendCell(row, formatGeburtsdatum(valuesRow[birthDateIndex]));
       if (playerId) {
         const openProfile = () => window.openProfileModal?.({ playerId });
         row.tabIndex = 0;

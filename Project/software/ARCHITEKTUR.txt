@@ -1,7 +1,7 @@
 ================================================================================
   ARCHITEKTUR.txt - Module, Datenfluss und Sicherheitsarchitektur
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.0.0
+  Stand: v4.1.0, 2026-07-30
 ================================================================================
 
 
@@ -64,7 +64,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Liest Personen nur aus aktuellem Cache, erstellt kontextabhaengige sichere
   Projektionen, prueft scrypt/Legacy-Credentials mit Dummy-Verifikation,
   serialisiert Operationen je Benutzer und orchestriert Login, Migration,
-  Logout, Eigenwechsel, Resetnachweis und Admin-Passwortsetzung.
+  Logout, Eigenwechsel, Resetnachweis, adminfreigegebene erstmalige Vergabe und
+  Admin-Passwortsetzung.
 
 `stateRepository.js`
   Kapselt SQLite mit WAL/FULL, Dateirechten, Transaktionen, revisioniertem
@@ -108,7 +109,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Pollt nur wenn mindestens ein Court aktiv ist. AbortController, Fetch-Timeout,
   Antwortgroessenlimit, JSON-/Strukturvalidierung, semantische Score-
   Normalisierung, exponentieller Backoff mit Jitter, Heartbeats, Revisionen und
-  dynamische Stale-Grenze schuetzen die externe Quelle.
+  dynamische Stale-Grenze schuetzen die externe Quelle. Pro-Court-Epochen sperren
+  alte Fetchantworten nach Aktivitaetswechsel oder Score-Reset aus.
 
 `monitorBroker.js`
   Provisioniert, rotiert und widerruft gehashte Geraetetokens; erzwingt genau eine
@@ -131,7 +133,9 @@ Credential. HTTPS schuetzt den Transport. Das Backend speichert neue Credentials
 mit scrypt v1 (N=16384, r=8, p=1, Salt 16 Byte, Key 32 Byte). Ein erfolgreicher
 Login migriert einen alten SHA-256-Sheetwert per Compare-and-set; unbekannte oder
 inaktive Benutzer durchlaufen eine Dummy-scrypt-Pruefung und erhalten denselben
-Loginfehler. Loginlimits gelten kombiniert fuer IP/E-Mail und IP.
+Loginfehler. Loginlimits gelten kombiniert fuer IP/E-Mail und IP. Eine globale
+Grenze laesst hoechstens vier scrypt-Verifikationen oder -Erzeugungen gleichzeitig
+zu; das schliesst negative oeffentliche Erstvergaben ein.
 
 Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
 Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash. Rollen werden
@@ -153,8 +157,11 @@ Datenprojektionen:
   - Anonymes Spielerprofil: ID und Name.
   - Angemeldetes fremdes Profil: zusaetzlich E-Mail, Telefon, Geburtsdatum.
   - Eigenprofil: zusaetzlich Geschlecht und Rolle.
-  - Admin erhaelt keine fremden Passwortdaten. Reset-Code-Erzeugung und direktes
-    Setzen sind separate Adminaktionen.
+  - Das loginpflichtige Mitgliederverzeichnis enthaelt fuer aktive Personen auch
+    E-Mail und Geburtsdatum.
+  - Admin erhaelt am fremden Profil nur `passwordSetupAllowed`, keine fremden
+    Passwortdaten. Freigabe, Reset-Code-Erzeugung und direktes Setzen sind
+    separate Adminaktionen.
 
 Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
 Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
@@ -162,6 +169,14 @@ ein alter Login/Write Reset oder Logout nicht ueberholen kann. Sie bleiben auch
 bei fehlgeschlagenem oder unbekanntem Write ungueltig. Nur nach erfolgreichem
 Eigenwechsel wird eine neue Session erstellt. Ein Resetnachweis ist gehasht,
 ablaufend, einmalig und fest an den Credential des ersten Versuchs gebunden.
+
+Die erstmalige Passwortvergabe verwendet `KennwortVergessen=x` als explizite
+Adminfreigabe. Sie verlangt eine aktive Person, fuehrt bei nicht vorhandener oder
+nicht freigegebener Identitaet Dummy-scrypt aus und prueft unter der
+Benutzerserialisierung Freigabe und bisherigen Passwortwert erneut. Der
+Compare-and-set-Write speichert scrypt und leert den Marker atomar; damit ist die
+Freigabe einmalig verbraucht. Sessions werden vor dem externen Write und nach
+Erfolg widerrufen und bleiben auch bei Fehler oder unbekanntem Ausgang ungueltig.
 
 `authClient.js` unterscheidet loading, authenticated, anonymous und unavailable.
 Auth-Mutationen sind dokumentintern und ueber einen same-origin Web Lock auch
@@ -203,12 +218,14 @@ Legacy-Grenze:
   - Logging schreibt Timestamp, Type, Message mit USER_ENTERED. Ein erfolgreiches
     Fachresultat ist operationId-dedupliziert, aber ein mehrdeutiger Append kann
     ohne EventID/Readback nicht sicher wiederholt werden.
-  - ScoreLog schreibt Timestamp, PlatzNr, Score mit USER_ENTERED. Der erste
-    gelesene Stand und jede semantische Aenderung werden Fire-and-forget
-    angehaengt. Es gibt ausdruecklich keine EventID, keinen Retry, keinen
-    Readback, keine Write-ahead-/SQLite-Queue, keinen Pendingstatus und keinen
-    Shutdown-Drain. Dieses Legacyverhalten darf nicht mit der allgemeinen
-    SheetService-Unknown-Semantik gleichgesetzt werden.
+  - ScoreLog schreibt Timestamp, PlatzNr, Score mit USER_ENTERED. Reset, erste
+    externe Baseline und der erste uebernommene Stand eines beim Prozessstart
+    bereits aktiven Courts werden nicht angehaengt; erst die naechste semantische
+    Aenderung eines aktiven Courts wird Fire-and-forget geschrieben. Es gibt
+    ausdruecklich keine EventID, keinen Retry, keinen Readback, keine Write-ahead-
+    /SQLite-Queue, keinen Pendingstatus und keinen Shutdown-Drain. Dieses
+    Legacyverhalten darf nicht mit der allgemeinen SheetService-Unknown-Semantik
+    gleichgesetzt werden.
 
 
 ================================================================================
@@ -275,9 +292,18 @@ hat eine 20-Sekunden-Loaddeadline. Disconnect beendet auch received/loading mit
 Polling mehr.
 
 Court-Zuweisung und Aktivierung sind operationId-idempotent, revisioniert und in
-SQLite persistent. Aktivierung steuert den externen Poller. Dessen normalisierter
-Snapshot enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler; nur
-semantische Aenderungen erhoehen die Revision und erzeugen Scoreevents.
+SQLite persistent. Nur eine neu angewendete Zuweisung setzt den Score dieses
+Courts auf acht Nullwerte; idempotente Wiederholung setzt nicht erneut zurueck.
+Inaktive Courts frieren ihren sichtbaren Score ein, und bei zwei inaktiven Courts
+stoppt das externe Polling. Aktivierung und Reset erhoehen eine eigene Court-Epoch.
+Jeder Fetch merkt sich Aktivitaet und Epoch bei Beginn; seine Courtantwort wird
+nur akzeptiert, wenn der Court am Anfang und Ende aktiv und die Epoch unveraendert
+ist. Die erste akzeptierte externe Antwort nach Aktivierung oder Reset dient nur
+als Baseline. Erst die folgende Abweichung aktualisiert Anzeige und ScoreLog; der
+Reset selbst publiziert Nullwerte, schreibt aber kein ScoreLog. Bei Prozessstart
+uebernimmt ein laut SQLite bereits aktiver Court seinen ersten externen Stand
+sofort in die Anzeige, ohne ihn zu protokollieren. Der normalisierte Snapshot
+enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler.
 
 
 ================================================================================
@@ -328,6 +354,20 @@ Fachseiten abonnieren tabellenspezifische Invalidierungen statt kurzer Polltimer
 Externe Daten werden ueber sichere DOM-Knoten oder begrenztes Escaping gerendert.
 Externe Font-/Script-Abhaengigkeiten, SDK.js und rankingSidebar.js sind entfernt.
 Die elf fachlichen Seitendokumente sind in `SOFTWARE-DOKU.txt` indiziert.
+
+Login-, Eigenwechsel-, Reset-, Erstvergabe- und Admin-Passwortdialoge verlangen
+eine explizite Schliessen-/Abbrechen-Aktion; Klick auf den Hintergrund und Escape
+schliessen sie nicht. Waehrend eines Requests sind alle Dialogbuttons gesperrt,
+beim Schliessen werden Formulare und Passwortsichtbarkeit zurueckgesetzt. Die
+Formulare besitzen semantische `method`-/`action`-/`name`- und `autocomplete`-
+Angaben fuer Passwortmanager; der Eigenwechsel fuehrt den Benutzernamen als
+visuell verborgenes `autocomplete=username`-Feld, waehrend Admin-Direktsetzung
+`autocomplete=off` verwendet. JavaScript faengt die Submits weiterhin ab und
+uebertraegt nur SHA-256-Credentials per JSON.
+
+Die mobile Navigation ist ein viewportfuellendes Overlay mit zentriertem,
+breitenbegrenztem Inhalt. Das Oeffnen veraendert die aktuelle Scrollposition
+nicht; Hintergrundklick und Auswahl eines Navigationslinks schliessen das Overlay.
 
 
 ================================================================================

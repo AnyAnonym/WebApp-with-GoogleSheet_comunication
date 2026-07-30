@@ -16,9 +16,25 @@ let controller = null;
 let generation = 0;
 let running = false;
 let courtActive = { "1": false, "2": false };
-let lastCourts = [];
-let lastFingerprint = "";
+const ZERO_SCORE = Object.freeze({
+  satz1home: "0",
+  satz1gast: "0",
+  satz2home: "0",
+  satz2gast: "0",
+  satz3home: "0",
+  satz3gast: "0",
+  punktehome: "0",
+  punktegast: "0",
+});
+let lastCourts = [
+  { platz: "1", ...ZERO_SCORE },
+  { platz: "2", ...ZERO_SCORE },
+];
 let lastCourtScores = {};
+let courtEpoch = { "1": 0, "2": 0 };
+let externalBaseline = { "1": null, "2": null };
+let waitForExternalChange = { "1": false, "2": false };
+let suppressNextScoreLog = { "1": false, "2": false };
 let revision = 0;
 let pollCount = 0;
 let pushCount = 0;
@@ -67,7 +83,7 @@ function cleanScore(value) {
   return result.toUpperCase();
 }
 
-function normalizeData(data) {
+function normalizeData(data, requiredCourts = courtActive) {
   if (!data || typeof data !== "object" || !Array.isArray(data.courts)) throw new Error("courts-Array fehlt");
   const seen = new Set();
   const courts = data.courts.map((court) => {
@@ -89,7 +105,7 @@ function normalizeData(data) {
     };
   }).sort((left, right) => left.platz.localeCompare(right.platz));
   for (const court of ["1", "2"]) {
-    if (courtActive[court] && !seen.has(court)) throw new Error(`Aktiver Platz ${court} fehlt`);
+    if (requiredCourts[court] && !seen.has(court)) throw new Error(`Aktiver Platz ${court} fehlt`);
   }
   return courts;
 }
@@ -132,13 +148,32 @@ async function writeScoreLog(platz, score) {
   }
 }
 
-function detectScoreChanges(courts) {
+function acceptCourtScores(courts, activeAtStart, epochAtStart) {
+  let changed = false;
+  const byCourt = new Map(lastCourts.map((court) => [court.platz, court]));
   for (const court of courts) {
+    if (!activeAtStart[court.platz] || !courtActive[court.platz] || epochAtStart[court.platz] !== courtEpoch[court.platz]) continue;
     const current = scoreString(court);
-    const previous = lastCourtScores[court.platz];
+    if (waitForExternalChange[court.platz]) {
+      if (externalBaseline[court.platz] === null) {
+        externalBaseline[court.platz] = current;
+        continue;
+      }
+      if (externalBaseline[court.platz] === current) continue;
+      waitForExternalChange[court.platz] = false;
+      externalBaseline[court.platz] = null;
+    }
+    const previous = scoreString(byCourt.get(court.platz));
+    const suppressLog = suppressNextScoreLog[court.platz];
+    suppressNextScoreLog[court.platz] = false;
+    if (previous === current) continue;
+    byCourt.set(court.platz, court);
     lastCourtScores[court.platz] = current;
-    if (previous !== current) void writeScoreLog(court.platz, current);
+    if (!suppressLog) void writeScoreLog(court.platz, current);
+    changed = true;
   }
+  if (changed) lastCourts = [byCourt.get("1"), byCourt.get("2")];
+  return changed;
 }
 
 function snapshot() {
@@ -186,6 +221,8 @@ async function poll(myGeneration = generation) {
     return;
   }
   lastAttemptAt = Date.now();
+  const activeAtStart = { ...courtActive };
+  const epochAtStart = { ...courtEpoch };
   const localController = new AbortController();
   controller = localController;
   const timeout = setTimeout(() => localController.abort(new Error("Court-Fetch Timeout")), COURT_FETCH_TIMEOUT_MS);
@@ -193,18 +230,14 @@ async function poll(myGeneration = generation) {
     const response = await fetchImplementation(COURT_URL, { cache: "no-store", signal: localController.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await readBoundedText(response);
-    const courts = normalizeData(JSON.parse(text));
-    const fingerprint = JSON.stringify(courts);
-    const changed = fingerprint !== lastFingerprint;
+    const courts = normalizeData(JSON.parse(text), activeAtStart);
+    const changed = acceptCourtScores(courts, activeAtStart, epochAtStart);
     const recovered = failureCount > 0 || lastError !== null || lastSuccessAt === 0;
     pollCount++;
     failureCount = 0;
     lastSuccessAt = Date.now();
     lastError = null;
     if (changed) {
-      detectScoreChanges(courts);
-      lastCourts = courts;
-      lastFingerprint = fingerprint;
       revision++;
       pushCount++;
     }
@@ -245,11 +278,35 @@ function updatePollingState() {
   }
 }
 
-function setCourtActive(courts) {
+function setCourtActive(courts, { initial = false } = {}) {
   for (const court of ["1", "2"]) {
-    if (courts[court] !== undefined) courtActive[court] = courts[court] === true || courts[court] === 1;
+    if (courts[court] === undefined) continue;
+    const active = courts[court] === true || courts[court] === 1;
+    if (active !== courtActive[court]) {
+      courtEpoch[court]++;
+      externalBaseline[court] = null;
+      waitForExternalChange[court] = active && !initial;
+      suppressNextScoreLog[court] = active && initial;
+    }
+    courtActive[court] = active;
   }
   updatePollingState();
+}
+
+function resetCourtScore(court) {
+  const courtKey = String(court);
+  if (courtKey !== "1" && courtKey !== "2") throw new Error("Court muss 1 oder 2 sein");
+  courtEpoch[courtKey]++;
+  externalBaseline[courtKey] = null;
+  waitForExternalChange[courtKey] = courtActive[courtKey];
+  suppressNextScoreLog[courtKey] = false;
+  const reset = { platz: courtKey, ...ZERO_SCORE };
+  lastCourts = lastCourts.map((current) => current.platz === courtKey ? reset : current);
+  lastCourtScores[courtKey] = scoreString(reset);
+  revision++;
+  pushCount++;
+  notify(true);
+  return structuredClone(reset);
 }
 
 function setOnUpdate(callback) {
@@ -293,6 +350,7 @@ module.exports = {
   getLastData,
   getStatus,
   poll,
+  resetCourtScore,
   setCourtActive,
   setDependenciesForTests,
   setOnUpdate,

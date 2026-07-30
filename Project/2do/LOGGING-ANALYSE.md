@@ -6,7 +6,7 @@ Gegenstand: Frontend, Backend, WebSocket, Google Sheets, systemd/journald und Ca
 
 Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die
 Verbesserungsvorschlaege waren damals nicht umgesetzt; der aktuelle Stand steht
-im Schlussabschnitt "Implementierungsstatus 2026-07-29".
+im Schlussabschnitt "Implementierungsstatus 2026-07-29/30".
 
 ## 1. Gesamtbild
 
@@ -317,6 +317,12 @@ Der letzte Score wird intern aktualisiert, bevor der Append erfolgreich abgeschl
 ### 8.5 Neustart-Duplikate
 
 Der zuletzt bekannte Score befindet sich nur im Arbeitsspeicher. Nach einem Neustart wird der erste empfangene Stand erneut als Scoreaenderung protokolliert.
+
+Aktueller Stand seit v4.1.0: Der erste externe Stand nach Start, Aktivierung oder
+Reset wird nur als Baseline gespeichert und nicht geloggt. Erst eine spaetere
+Abweichung eines aktiven Courts aktualisiert Anzeige und ScoreLog. Die fehlende
+Score-Persistenz und damit der Verlust des sichtbaren In-Memory-Stands bei einem
+Backendneustart bleiben bestehen.
 
 ### 8.6 Fehlende fachliche Zuordnung
 
@@ -1186,9 +1192,11 @@ Das fachliche Spreadsheet-Logging wurde bewusst nicht neu entworfen:
 Beide Writer verwenden weiterhin `USER_ENTERED` und besitzen keine EventID-
 Spalte und keinen Tabellen-Readback. `ScoreLog` besitzt zudem keine Retry- oder
 Write-ahead-Queue, keine SQLite-Persistenz, keine Pendingwerte und keinen
-Shutdown-Drain; es schreibt den ersten gelesenen Stand und weitere semantische
-Scoreaenderungen fire-and-forget. Das SQLite-WAL betrifft ausschliesslich den
-Anwendungsstate und ist kein ScoreLog-WAL. Das umfassende Logging-/ScoreLog-
+Shutdown-Drain. Seit v4.1.0 dienen erste externe Staende nach Start, Aktivierung
+oder Reset nur als ungeloggte Baseline; erst eine spaetere Abweichung eines
+aktiven Courts wird fire-and-forget geschrieben. Reset und eingefrorene inaktive
+Courts erzeugen keinen ScoreLog-Eintrag. Das SQLite-WAL betrifft ausschliesslich
+den Anwendungsstate und ist kein ScoreLog-WAL. Das umfassende Logging-/ScoreLog-
 Redesign bleibt einem eigenen spaeteren Branch vorbehalten.
 
 Weiterhin offen sind ein zentraler strukturierter Backend-Logger,

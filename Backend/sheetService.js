@@ -413,7 +413,7 @@ class SheetService {
     });
   }
 
-  async setPasswordHash(personId, storedHash, { expectedHash } = {}) {
+  async setPasswordHash(personId, storedHash, { expectedHash, requirePasswordSetupAllowed = false } = {}) {
     return this.enqueue("players", async () => {
       const values = await this.readTable("players");
       let stable;
@@ -426,7 +426,16 @@ class SheetService {
       const { header, metadata, row, sheets } = stable;
       const passwordIndex = headerIndex(header, "passwdhash");
       const resetIndex = headerIndex(header, "kennwortvergessen");
+      const activeIndex = headerIndex(header, "aktiv");
       if (passwordIndex < 0) throw new AppError("SHEET_SCHEMA", "Personen-Spalten fehlen", 500);
+      if (requirePasswordSetupAllowed && (
+        resetIndex < 0
+        || activeIndex < 0
+        || String(row[resetIndex] || "").trim().toLowerCase() !== "x"
+        || String(row[activeIndex] || "").trim() !== "1"
+      )) {
+        throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
+      }
       if (String(row[passwordIndex] || "").trim() === storedHash) {
         const confirmation = await this.readTable("players");
         dataStore.set("players", confirmation, { source: "write" });
@@ -472,6 +481,56 @@ class SheetService {
         const cachedRow = cached.slice(1).find((row) => String(row[cachedIdIndex] || "").trim() === personId);
         if (cachedRow && cachedPasswordIndex >= 0) cachedRow[cachedPasswordIndex] = storedHash;
         if (cachedRow && cachedResetIndex >= 0) cachedRow[cachedResetIndex] = "";
+        return cached;
+      });
+      return { success: true };
+    });
+  }
+
+  async setPasswordSetupAllowed(personId, allowed) {
+    return this.enqueue("players", async () => {
+      const values = await this.readTable("players");
+      let stable;
+      try {
+        stable = await this.resolveStableRow("players", personId, values);
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+        throw error;
+      }
+      const { header, metadata, row, sheets } = stable;
+      const setupIndex = headerIndex(header, "kennwortvergessen");
+      if (setupIndex < 0) throw new AppError("SHEET_SCHEMA", "Personen-Spalte KennwortVergessen fehlt", 500);
+      const marker = allowed ? "x" : "";
+      if (String(row[setupIndex] || "").trim().toLowerCase() === marker) return { success: true, repeated: true };
+      const updates = Array(setupIndex + 1).fill(null);
+      updates[setupIndex] = marker;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{
+              dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } },
+              majorDimension: "ROWS",
+              values: [updates],
+            }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        try {
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId);
+          if (!confirmationRow || String(confirmationRow[setupIndex] || "").trim().toLowerCase() !== marker) throw error;
+        } catch {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Passwortfreigabe ist unklar", 503, { personId });
+        }
+      }
+      await this.refreshCache("players", (cached) => {
+        const cachedHeader = headerOf(cached);
+        const cachedIdIndex = headerIndex(cachedHeader, "id");
+        const cachedSetupIndex = headerIndex(cachedHeader, "kennwortvergessen");
+        const cachedRow = cached.slice(1).find((entry) => String(entry[cachedIdIndex] || "").trim() === personId);
+        if (cachedRow && cachedSetupIndex >= 0) cachedRow[cachedSetupIndex] = marker;
         return cached;
       });
       return { success: true };

@@ -99,7 +99,6 @@ function initMobileNavigation() {
   if (!hamburgerButton || !mobileNavModal) return;
 
   hamburgerButton.addEventListener("click", () => {
-    window.scrollTo(0, 0);
     mobileNavModal.classList.remove("hidden");
   });
 

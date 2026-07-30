@@ -9,7 +9,9 @@ import {
   isAuthenticated,
   refreshSession,
   resetPassword,
+  setPasswordSetupAllowed,
   setPasswordForPerson,
+  setupPassword,
   subscribeAuth,
 } from "./authClient.js";
 
@@ -47,13 +49,13 @@ window.showToast = function (message, type = "info") {
   setTimeout(() => toast.remove(), 3000);
 };
 
-function createModal(id, content) {
+function createModal(id, content, { explicitDismiss = false } = {}) {
   const modal = document.createElement("div");
   modal.id = id;
-  modal.className = "modal hidden";
+  modal.className = `modal hidden${explicitDismiss ? " explicit-dismiss" : ""}`;
   modal.innerHTML = `
     <div class="modal-content">
-      <span class="close" role="button" aria-label="Schließen" tabindex="0">&times;</span>
+      <button type="button" class="close" aria-label="Abbrechen">&times;</button>
       ${content}
     </div>
   `;
@@ -65,11 +67,30 @@ function openModal(modal) {
   modal?.classList.remove("hidden");
 }
 
+function setModalBusy(form, busy) {
+  const modal = form.closest(".explicit-dismiss");
+  if (!modal) return;
+  modal.dataset.busy = busy ? "true" : "false";
+  modal.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
 function closeModal(modal) {
   modal?.classList.add("hidden");
+  if (modal?.classList.contains("explicit-dismiss")) {
+    modal.querySelector("form")?.reset();
+    modal.querySelectorAll('input[autocomplete="current-password"], input[autocomplete="new-password"]').forEach((input) => {
+      input.type = "password";
+    });
+    modal.querySelectorAll(".toggle-password").forEach((toggle) => {
+      toggle.innerHTML = "&#128065;";
+    });
+  }
   if (modal?.id === "withdrawModal") withdrawContext = null;
   if (modal?.id === "profileModal") profileRequestGeneration += 1;
   if (modal?.id === "resetPasswordModal") document.getElementById("resetPasswordForm")?.reset();
+  if (modal?.id === "passwordSetupModal") document.getElementById("passwordSetupForm")?.reset();
   if (modal?.id === "adminPasswordModal") {
     adminPasswordTarget = null;
     document.getElementById("adminPasswordForm")?.reset();
@@ -84,9 +105,9 @@ function closeModal(modal) {
 
 const loginModal = createModal("loginModal", `
   <h2>Login</h2>
-  <form id="loginForm">
+  <form id="loginForm" method="post" action="/api/session" autocomplete="on">
     <label for="email">E-Mail:</label>
-    <input type="email" id="email" name="email" autocomplete="username" required>
+    <input type="email" id="email" name="username" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required>
 
     <label for="password">Passwort:</label>
     <div style="position: relative; margin-bottom: 16px;">
@@ -95,13 +116,16 @@ const loginModal = createModal("loginModal", `
     </div>
 
     <button type="submit" class="btn-login">Anmelden</button>
+    <button type="button" id="openPasswordSetup" class="btn-login">Erstmals Passwort vergeben</button>
     <button type="button" id="openPasswordReset" class="btn-login">Reset-Code verwenden</button>
+    <button type="button" class="btn-login modal-cancel">Abbrechen</button>
   </form>
-`);
+`, { explicitDismiss: true });
 
 const passwordModal = createModal("changePasswordModal", `
   <h2>Passwort ändern</h2>
-  <form id="changePasswordForm">
+  <form id="changePasswordForm" method="post" action="/api/password" autocomplete="on">
+    <input type="text" id="changePasswordUsername" name="username" autocomplete="username" class="password-manager-username" tabindex="-1" aria-hidden="true" readonly>
     <label for="currentPassword">Aktuelles Passwort:</label>
     <div style="position: relative; margin-bottom: 16px;">
       <input type="password" id="currentPassword" name="currentPassword" autocomplete="current-password" required style="width: 100%; padding-right: 40px;">
@@ -121,12 +145,13 @@ const passwordModal = createModal("changePasswordModal", `
     </div>
 
     <button type="submit" class="btn-login">Speichern</button>
+    <button type="button" class="btn-login modal-cancel">Abbrechen</button>
   </form>
-`);
+`, { explicitDismiss: true });
 
 const resetPasswordModal = createModal("resetPasswordModal", `
   <h2>Passwort zurücksetzen</h2>
-  <form id="resetPasswordForm">
+  <form id="resetPasswordForm" method="post" action="/api/password-reset" autocomplete="on">
     <label for="resetToken">Einmaliger Reset-Code:</label>
     <input type="text" id="resetToken" name="resetToken" autocomplete="one-time-code" minlength="32" maxlength="128" required>
     <label for="resetNewPassword">Neues Passwort:</label>
@@ -134,8 +159,24 @@ const resetPasswordModal = createModal("resetPasswordModal", `
     <label for="resetConfirmPassword">Passwort bestätigen:</label>
     <input type="password" id="resetConfirmPassword" name="confirmPassword" autocomplete="new-password" minlength="6" required>
     <button type="submit" class="btn-login">Passwort setzen</button>
+    <button type="button" class="btn-login modal-cancel">Abbrechen</button>
   </form>
-`);
+`, { explicitDismiss: true });
+
+const passwordSetupModal = createModal("passwordSetupModal", `
+  <h2>Erstmals Passwort vergeben</h2>
+  <p>Diese Funktion muss zuvor von einem Administrator freigegeben werden.</p>
+  <form id="passwordSetupForm" method="post" action="/api/password-setup" autocomplete="on">
+    <label for="setupEmail">E-Mail:</label>
+    <input type="email" id="setupEmail" name="username" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required>
+    <label for="setupNewPassword">Neues Passwort:</label>
+    <input type="password" id="setupNewPassword" name="newPassword" autocomplete="new-password" minlength="6" required>
+    <label for="setupConfirmPassword">Passwort bestätigen:</label>
+    <input type="password" id="setupConfirmPassword" name="confirmPassword" autocomplete="new-password" minlength="6" required>
+    <button type="submit" class="btn-login">Passwort setzen</button>
+    <button type="button" class="btn-login modal-cancel">Abbrechen</button>
+  </form>
+`, { explicitDismiss: true });
 
 const resetProofModal = createModal("resetProofModal", `
   <h2>Einmaliger Reset-Code</h2>
@@ -148,14 +189,15 @@ const resetProofModal = createModal("resetProofModal", `
 const adminPasswordModal = createModal("adminPasswordModal", `
   <h2>Passwort direkt setzen</h2>
   <p id="adminPasswordTarget"></p>
-  <form id="adminPasswordForm">
+  <form id="adminPasswordForm" method="post" action="/api/admin/password" autocomplete="off">
     <label for="adminNewPassword">Neues Passwort:</label>
     <input type="password" id="adminNewPassword" name="newPassword" autocomplete="new-password" minlength="6" required>
     <label for="adminConfirmPassword">Passwort bestätigen:</label>
     <input type="password" id="adminConfirmPassword" name="confirmPassword" autocomplete="new-password" minlength="6" required>
     <button type="submit" class="btn-login">Passwort setzen</button>
+    <button type="button" class="btn-login modal-cancel">Abbrechen</button>
   </form>
-`);
+`, { explicitDismiss: true });
 
 const profileModal = createModal("profileModal", `
   <h2 id="profileName">Profil</h2>
@@ -217,7 +259,9 @@ function openPasswordModal() {
     return;
   }
 
-  document.getElementById("changePasswordForm")?.reset();
+  const form = document.getElementById("changePasswordForm");
+  form?.reset();
+  if (form) form.elements.username.value = getUser()?.email || "";
   closeModal(profileModal);
   openModal(passwordModal);
   document.getElementById("currentPassword")?.focus();
@@ -288,6 +332,31 @@ window.openProfileModal = async (options = {}) => {
     const bewerbId = String(options.bewerbId || "").trim();
 
     if (sessionUser?.role === "admin") {
+      const setupButton = document.createElement("button");
+      setupButton.type = "button";
+      setupButton.className = "btn-login";
+      setupButton.textContent = profile.passwordSetupAllowed
+        ? "Passwortfreigabe aufheben"
+        : "Passwortvergabe freigeben";
+      setupButton.addEventListener("click", async () => {
+        const allowed = !profile.passwordSetupAllowed;
+        setupButton.disabled = true;
+        try {
+          await setPasswordSetupAllowed(profile.id, allowed);
+          profile.passwordSetupAllowed = allowed;
+          setupButton.textContent = allowed ? "Passwortfreigabe aufheben" : "Passwortvergabe freigeben";
+          window.showToast(
+            allowed ? `Passwortvergabe für ${profileName(profile)} ist freigegeben.` : "Passwortfreigabe wurde aufgehoben.",
+            "success",
+          );
+        } catch (error) {
+          window.showToast(errorMessage(error, "Passwortfreigabe konnte nicht geändert werden."), "error");
+        } finally {
+          setupButton.disabled = false;
+        }
+      });
+      actionsElement.appendChild(setupButton);
+
       const resetButton = document.createElement("button");
       resetButton.type = "button";
       resetButton.className = "btn-login";
@@ -421,10 +490,10 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
   event.preventDefault();
   const form = event.currentTarget;
   const submitButton = form.querySelector('button[type="submit"]');
-  const email = form.elements.email.value.trim();
+  const email = form.elements.username.value.trim();
   const password = form.elements.password.value;
 
-  submitButton.disabled = true;
+  setModalBusy(form, true);
   submitButton.textContent = "Anmelden...";
 
   try {
@@ -439,7 +508,7 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
       : errorMessage(error, "Anmeldung fehlgeschlagen.");
     window.showToast(message, "error");
   } finally {
-    submitButton.disabled = false;
+    setModalBusy(form, false);
     submitButton.textContent = "Anmelden";
   }
 });
@@ -461,7 +530,7 @@ document.getElementById("changePasswordForm").addEventListener("submit", async (
     return;
   }
 
-  submitButton.disabled = true;
+  setModalBusy(form, true);
   submitButton.textContent = "Wird gespeichert...";
 
   try {
@@ -475,7 +544,7 @@ document.getElementById("changePasswordForm").addEventListener("submit", async (
   } catch (error) {
     window.showToast(errorMessage(error, "Passwort konnte nicht geändert werden."), "error");
   } finally {
-    submitButton.disabled = false;
+    setModalBusy(form, false);
     submitButton.textContent = "Speichern";
   }
 });
@@ -485,6 +554,47 @@ document.getElementById("openPasswordReset").addEventListener("click", () => {
   closeModal(loginModal);
   openModal(resetPasswordModal);
   document.getElementById("resetToken")?.focus();
+});
+
+document.getElementById("openPasswordSetup").addEventListener("click", () => {
+  document.getElementById("passwordSetupForm")?.reset();
+  const loginEmail = document.getElementById("email")?.value.trim();
+  if (loginEmail) document.getElementById("setupEmail").value = loginEmail;
+  closeModal(loginModal);
+  openModal(passwordSetupModal);
+  document.getElementById(loginEmail ? "setupNewPassword" : "setupEmail")?.focus();
+});
+
+document.getElementById("passwordSetupForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const email = form.elements.username.value.trim();
+  const newPassword = form.elements.newPassword.value;
+  const confirmation = form.elements.confirmPassword.value;
+  if (newPassword.length < 6 || newPassword !== confirmation) {
+    window.showToast(
+      newPassword.length < 6 ? "Das neue Passwort muss mindestens 6 Zeichen lang sein." : "Die Passwörter stimmen nicht überein.",
+      "error",
+    );
+    return;
+  }
+  setModalBusy(form, true);
+  try {
+    await setupPassword(email, newPassword);
+    form.reset();
+    closeModal(passwordSetupModal);
+    window.showToast("Passwort wurde gesetzt. Du kannst dich jetzt anmelden.", "success");
+    window.openLoginModal();
+    document.getElementById("email").value = email;
+  } catch (error) {
+    const message = error.code === "PASSWORD_SETUP_INVALID"
+      ? "Passwortvergabe ist für diese E-Mail nicht freigegeben."
+      : errorMessage(error, "Passwort konnte nicht gesetzt werden.");
+    window.showToast(message, "error");
+  } finally {
+    setModalBusy(form, false);
+  }
 });
 
 document.getElementById("resetPasswordForm").addEventListener("submit", async (event) => {
@@ -501,7 +611,7 @@ document.getElementById("resetPasswordForm").addEventListener("submit", async (e
     window.showToast(message, "error");
     return;
   }
-  submitButton.disabled = true;
+  setModalBusy(form, true);
   try {
     await resetPassword(resetToken, newPassword);
     form.reset();
@@ -511,7 +621,7 @@ document.getElementById("resetPasswordForm").addEventListener("submit", async (e
   } catch (error) {
     window.showToast(errorMessage(error, "Passwort konnte nicht zurückgesetzt werden."), "error");
   } finally {
-    submitButton.disabled = false;
+    setModalBusy(form, false);
   }
 });
 
@@ -534,7 +644,7 @@ document.getElementById("adminPasswordForm").addEventListener("submit", async (e
     return;
   }
 
-  submitButton.disabled = true;
+  setModalBusy(form, true);
   const target = { ...adminPasswordTarget };
   try {
     await setPasswordForPerson(target.id, newPassword);
@@ -546,7 +656,7 @@ document.getElementById("adminPasswordForm").addEventListener("submit", async (e
   } catch (error) {
     window.showToast(errorMessage(error, "Passwort konnte nicht gesetzt werden."), "error");
   } finally {
-    submitButton.disabled = false;
+    setModalBusy(form, false);
   }
 });
 
@@ -627,11 +737,18 @@ document.addEventListener("click", async (event) => {
 
   const closeButton = event.target.closest(".modal .close");
   if (closeButton) {
-    closeModal(closeButton.closest(".modal"));
+    const modal = closeButton.closest(".modal");
+    if (modal.dataset.busy !== "true") closeModal(modal);
+    return;
+  }
+  const cancelButton = event.target.closest(".modal-cancel");
+  if (cancelButton) {
+    const modal = cancelButton.closest(".modal");
+    if (modal.dataset.busy !== "true") closeModal(modal);
     return;
   }
   if (event.target.classList.contains("modal")) {
-    closeModal(event.target);
+    if (!event.target.classList.contains("explicit-dismiss")) closeModal(event.target);
     return;
   }
 
@@ -677,5 +794,5 @@ document.addEventListener("click", async (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  document.querySelectorAll(".modal:not(.hidden)").forEach(closeModal);
+  document.querySelectorAll(".modal:not(.hidden):not(.explicit-dismiss)").forEach(closeModal);
 });

@@ -1,4 +1,5 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
+import { getUser, ready, subscribeAuth } from "./authClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 
@@ -8,6 +9,11 @@ const readMatchesList = createEndpoint("matches");
 const readPlayersList = createEndpoint("players");
 const readBewerbe     = createEndpoint("bewerbe");
 const readBewerbsart  = createEndpoint("bewerbsart");
+let renderGeneration = 0;
+
+export function invalidateRoundRobinRender() {
+  renderGeneration++;
+}
 
 // ── Hilfsfunktionen ──
 
@@ -334,16 +340,20 @@ function renderMessage(container, message) {
 }
 
 export async function renderRoundRobin(bewerbId, container, paarungslayout) {
+  const generation = ++renderGeneration;
   container.replaceChildren();
   showLoadingOverlay("Lade Gruppen...");
 
   try {
+    await ready;
+    const currentUserId = String(getUser()?.id || "");
     const [matchRes, playerRes, bewerbRes, bewerbsartRes] = await Promise.all([
       callWithRetry(readMatchesList),
       callWithRetry(readPlayersList),
       callWithRetry(readBewerbe),
       callWithRetry(readBewerbsart),
     ]);
+    if (generation !== renderGeneration) return null;
 
     const matchValues = matchRes.data?.values || [];
     const playerValues = playerRes.data?.values || [];
@@ -412,6 +422,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     const sortedGroups = [...groups.entries()].sort((a, b) => a[0] - b[0]);
 
     if (sortedGroups.length === 0) {
+      if (generation !== renderGeneration) return null;
       renderMessage(container, "Keine Gruppen für diesen Bewerb gefunden.");
       hideLoadingOverlay();
       return true;
@@ -475,7 +486,9 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
       rows.forEach((r, idx) => {
         const rang = idx + 1;
         const isPromoted = promotedPlayers.has(r.id);
-        const cls = isPromoted ? ' class="rr-highlight"' : "";
+        const isCurrentUser = currentUserId && (r.id === currentUserId || r.partner === currentUserId);
+        const classes = [isPromoted ? "rr-highlight" : "", isCurrentUser ? "rr-current-user" : ""].filter(Boolean);
+        const cls = classes.length ? ` class="${classes.join(" ")}"` : "";
         const teamHtml = formatTeamHtml(r.id, r.partner, playerMap);
         html += `<tr${cls}>`;
         html += `<td class="rr-center">${escapeHtml(rang)}</td>`;
@@ -514,11 +527,13 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     });
 
     html += "</div>";
+    if (generation !== renderGeneration) return null;
     // Backend-derived text is escaped before it is added to this markup string.
     container.innerHTML = html;
     hideLoadingOverlay();
     return true;
   } catch {
+    if (generation !== renderGeneration) return null;
     showErrorOverlay("Fehler beim Laden der Gruppen", () => renderRoundRobin(bewerbId, container, paarungslayout));
     return false;
   }
@@ -560,6 +575,20 @@ async function initRoundRobinPage() {
   }
 
   try {
+    await ready;
+    let initializationPending = true;
+    let observedUserId = String(getUser()?.id || "");
+    subscribeAuth((user) => {
+      const nextUserId = String(user?.id || "");
+      if (nextUserId === observedUserId) return;
+      observedUserId = nextUserId;
+      void renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT).then((rendered) => {
+        if (!initializationPending || rendered === null) return;
+        initializationPending = false;
+        if (rendered) signalMonitorReady();
+        else signalMonitorFailed();
+      });
+    });
     const [, rendered] = await Promise.all([
       loadBewerbName(BEWERB_ID),
       renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT),
@@ -570,8 +599,11 @@ async function initRoundRobinPage() {
         renderRoundRobin(BEWERB_ID, container, PAARUNGSLAYOUT),
       ]);
     });
-    if (rendered) signalMonitorReady();
-    else signalMonitorFailed();
+    if (initializationPending && rendered !== null) {
+      initializationPending = false;
+      if (rendered) signalMonitorReady();
+      else signalMonitorFailed();
+    }
   } catch {
     signalMonitorFailed();
     showErrorOverlay("Fehler beim Laden der Gruppen");

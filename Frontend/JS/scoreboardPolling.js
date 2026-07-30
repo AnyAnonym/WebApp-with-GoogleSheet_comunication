@@ -336,7 +336,6 @@ function buildRasterMap(values) {
 // ── Hilfsfunktionen DOM ──
 
 const courtActive = { "1": false, "2": false };
-const SCORE_CELL_SUFFIXES = ["h-s1", "h-s2", "h-s3", "h-p", "g-s1", "g-s2", "g-s3", "g-p"];
 
 function setText(id, value, fallback = "-") {
   const element = document.getElementById(id);
@@ -421,18 +420,6 @@ function schedulePlayerNameSizing() {
     sizeCourtPlayerNames("1");
     sizeCourtPlayerNames("2");
   });
-}
-
-function clearCourtScores(courtKey) {
-  SCORE_CELL_SUFFIXES.forEach((suffix) => {
-    const element = document.getElementById(`p${courtKey}-${suffix}`);
-    if (element) element.textContent = "";
-  });
-}
-
-function clearAllCourtScores() {
-  clearCourtScores("1");
-  clearCourtScores("2");
 }
 
 // ── Verbindungs- und Quellenstatus ──
@@ -534,7 +521,6 @@ function updateCourt(court) {
   if (!court || typeof court !== "object") return;
   const courtKey = String(court.platz ?? "");
   if (courtKey !== "1" && courtKey !== "2") return;
-  if (!courtActive[courtKey]) return;
   const prefix = `p${courtKey}`;
   setText(`${prefix}-h-s1`, court.satz1home);
   setText(`${prefix}-h-s2`, court.satz2home);
@@ -553,10 +539,6 @@ function applyScoreData(data) {
   if (revision !== null) latestScoreRevision = revision;
   updateCourtSource(data.source);
   if (Array.isArray(data.courts)) {
-    const presentCourts = new Set(data.courts.map((court) => String(court?.platz || "")));
-    for (const courtKey of ["1", "2"]) {
-      if (courtActive[courtKey] && !presentCourts.has(courtKey)) clearCourtScores(courtKey);
-    }
     data.courts.forEach(updateCourt);
   }
   updateStatus();
@@ -600,7 +582,6 @@ function updateScoreboardCourt(courtKey, value) {
     headerElement.classList.remove("court-active", "court-inactive");
     headerElement.classList.add(isActive ? "court-active" : "court-inactive");
   }
-  if (!isActive) clearCourtScores(courtKey);
 }
 
 function applyScoreboardCourts(courts) {
@@ -701,7 +682,6 @@ function renderSnapshot(prepared, courtSequenceAtRequest, scoreSequenceAtRequest
   matchRasterMap = prepared.maps.raster;
   prepared.targets.upcoming.replaceChildren(prepared.upcoming);
   prepared.targets.recent.replaceChildren(prepared.recent);
-  clearAllCourtScores();
   applyScoreboardCourts(effectiveCourts);
   applyScoreData(effectiveScores);
   hasRenderedSnapshot = true;

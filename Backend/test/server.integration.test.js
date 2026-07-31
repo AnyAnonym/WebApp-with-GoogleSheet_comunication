@@ -96,12 +96,13 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const people = peopleFixture();
   people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator"]);
   dataStore.set("players", people, { source: "test" });
-  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID", "Geschlecht"], ["cup-1", "Cup", "type-1", "2"]], { source: "test" });
+  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID", "Geschlecht", "MatchtypID Standard"], ["cup-1", "Cup", "type-1", "2", "1"]], { source: "test" });
   dataStore.set("bewerbsart", [["ID", "Bezeichnung"], ["type-1", "Turnier"]], { source: "test" });
+  dataStore.set("matchtyp", [["ID", "Bezeichnung", "Satztiebreak", "Entscheidender Satz"], ["1", "Normal", "6-6", "vollstaendiger Satz"], ["2", "Kurzsatz", "3-3", "MT10"]], { source: "test" });
   dataStore.set("matches1", [[
     "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
-    "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "InternalNote",
-  ], ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "secret-note"]], { source: "test" });
+    "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchtypID", "InternalNote",
+  ], ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note"]], { source: "test" });
   dataStore.set("rlPlatzierung", [["ID", "BewerbID", "PersonID", "Rang"], ["r1", "cup-1", "p1", "1"]], { source: "test" });
   dataStore.set("navigator", [["ID", "Name", "Ziel", "Profil"], ["n1", "Scoreboard", "/scoreboard.html", "1"]], { source: "test" });
   dataStore.set("entryList", [["ID", "BewerbID", "PersonenID", "Entrydate", "PaymentStatus"], ["e1", "cup-1", "p1", "260101-1200", "paid"]], { source: "test" });
@@ -420,12 +421,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const assignment = await adminClient.request("courtAssign", {
     court: "1",
-    homePlayerIds: ["p1"],
-    guestPlayerIds: ["p2"],
+    matchId: "m1",
     operationId: "00000000-0000-4000-8000-000000000303",
     expectedRevision: 1,
   });
   assert.equal(assignment.data.court.homePlayer, "Ada Admin");
+  assert.equal(assignment.data.court.matchtypId, "2");
   const assignedScores = await adminClient.request("courtScores");
   const assignedCourtScore = assignedScores.data.data.courts.find((court) => court.platz === "1");
   assert.deepEqual(assignedCourtScore, {

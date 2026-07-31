@@ -19,7 +19,7 @@ let snapshotInFlight = false;
 let snapshotQueued = false;
 let snapshotGeneration = 0;
 let playerNameSizingFrame = null;
-const requiredRevisions = { players: null, bewerbe: null, matches1: null };
+const requiredRevisions = { players: null, bewerbe: null, matchtyp: null, matches1: null };
 
 let courtEventSequence = 0;
 let scoreEventSequence = 0;
@@ -530,6 +530,14 @@ function updateCourt(court) {
   setText(`${prefix}-g-s2`, court.satz2gast);
   setText(`${prefix}-g-s3`, court.satz3gast);
   setText(`${prefix}-g-p`, court.punktegast);
+  const thirdSetHome = document.getElementById(`${prefix}-h-s3`);
+  const thirdSetGuest = document.getElementById(`${prefix}-g-s3`);
+  const wideThirdSet = [court.satz3home, court.satz3gast]
+    .some((value) => /^\d{2,}$/.test(String(value ?? "").trim()));
+  thirdSetHome?.classList.toggle("match-tiebreak", court.satz3matchtiebreak === true);
+  thirdSetGuest?.classList.toggle("match-tiebreak", court.satz3matchtiebreak === true);
+  thirdSetHome?.classList.toggle("wide-third-set", wideThirdSet);
+  thirdSetGuest?.classList.toggle("wide-third-set", wideThirdSet);
 }
 
 function applyScoreData(data) {
@@ -626,7 +634,7 @@ function validateSnapshot(snapshot) {
   if (!snapshot.revisions || typeof snapshot.revisions !== "object" || Array.isArray(snapshot.revisions)) {
     throw createSnapshotError("Scoreboard-Snapshot enthält keine Revisionen", true);
   }
-  for (const key of ["players", "bewerbe", "matches1"]) {
+  for (const key of ["players", "bewerbe", "matchtyp", "matches1"]) {
     const revision = nonNegativeNumber(snapshot.revisions[key]);
     if (revision === null) {
       throw createSnapshotError(`Scoreboard-Snapshot enthält keine gültige ${key}-Revision`, true);
@@ -830,6 +838,7 @@ try {
   subscribe("matches", (data) => handleTableInvalidation("matches1", data));
   subscribe("players", (data) => handleTableInvalidation("players", data));
   subscribe("bewerbe", (data) => handleTableInvalidation("bewerbe", data));
+  subscribe("matchtyp", (data) => handleTableInvalidation("matchtyp", data));
   onConnectionState(handleConnectionState);
   onResync(handleResync);
   window.addEventListener("resize", schedulePlayerNameSizing);

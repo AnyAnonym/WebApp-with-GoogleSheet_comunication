@@ -10,8 +10,11 @@ test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
   assert.throws(() => validateTableValues("matches1", [["ID"]]), { code: "SHEET_SCHEMA" });
   assert.throws(() => validateTableValues("players", []), { code: "SHEET_SCHEMA" });
   assert.throws(() => validateTableValues("entryList", [["ID", "BewerbID", "PersonenID", "Datum"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("matchtyp", [["ID", "Bezeichnung"]]), { code: "SHEET_SCHEMA" });
   const entryList = [["ID", "BewerbID", "PersonenID", "Entrydate"]];
   assert.equal(validateTableValues("entryList", entryList), entryList);
+  const matchtyp = [["ID", "Satztiebreak", "Entscheidender Satz"], ["1", "6-6", "MT10"]];
+  assert.equal(validateTableValues("matchtyp", matchtyp), matchtyp);
 });
 
 test("Personen-IDs, E-Mails und Rollen werden strukturell validiert", () => {

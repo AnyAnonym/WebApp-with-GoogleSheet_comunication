@@ -6,6 +6,7 @@ let repository = null;
 const DEFAULT_COURT = Object.freeze({
   matchId: "",
   bewerbId: "",
+  matchtypId: "",
   bewerb: "",
   homePlayerIds: [],
   guestPlayerIds: [],
@@ -48,7 +49,7 @@ function getCourt(court) {
   ensureReady();
   if (court !== "1" && court !== "2") throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
   const snapshot = repository.getState(`court:${court}`, DEFAULT_COURT);
-  return { ...structuredClone(snapshot.value), revision: snapshot.revision, updatedAt: snapshot.updatedAt };
+  return { ...DEFAULT_COURT, ...structuredClone(snapshot.value), revision: snapshot.revision, updatedAt: snapshot.updatedAt };
 }
 
 function getScoreboardCourts() {

@@ -173,6 +173,22 @@ die angebotenen Anmeldefunktionen verwenden.
   LF-14 Die konkrete Auswahl und Priorisierung zusaetzlicher Informationen fuer
         Mobiltelefon und Fernseher ist noch festzulegen. [Offen]
 
+  LF-15 Das Live-Scoreboard soll die von der externen Scoreboard-Einheit
+        gelieferten Drehwerte anhand des zugeordneten Matchtyps interpretieren
+        und entsprechend der jeweiligen Zaehlweise anzeigen. Bei einem Tie-Break
+        im ersten oder zweiten Satz dient die dritte physische Drehspalte als
+        Punktezaehler; die digitale dritte Satzspalte zeigt dabei 0. Der bei der
+        Court-Zuweisung wirksame Matchtyp bleibt fuer das laufende Match
+        unveraendert. [Bestaetigt]
+
+  LF-16 Ist der entscheidende Satz als Match-Tie-Break `MT7` oder `MT10`
+        festgelegt, soll die dritte digitale Satzspalte fuer Heim und Gast
+        tuerkis statt blau dargestellt werden. [Bestaetigt]
+
+  LF-17 Das mobile Live-Scoreboard soll eine sichtbare Ruecknavigation zum
+        Dashboard anbieten, die nicht von den Navigationselementen des
+        Mobiltelefons oder Browsers abhaengt. [Bestaetigt]
+
 6.3 Organisation und Bedienung
 
   LF-20 Berechtigte Benutzer sollen den laufenden Spiel- und Anzeigebetrieb
@@ -194,6 +210,15 @@ die angebotenen Anmeldefunktionen verwenden.
 
   LF-32 Ein Ausfall oder veralteter Datenstand darf Benutzern keinen irrefuehrend
         aktuellen Spielstand vermitteln. [Arbeitsannahme]
+
+6.5 Semantische Ergebnispruefung
+
+  LF-40 In einem spaeteren Ausbauschritt soll das System Matchergebnisse anhand
+        der Regeln des zugeordneten Matchtyps semantisch pruefen koennen.
+        [Bestaetigt]
+
+  LF-41 Der genaue Pruefumfang, der Zeitpunkt der Pruefung und der Umgang mit
+        Sonderfaellen oder ungueltigen Ergebnissen sind noch festzulegen. [Offen]
 
 
 ================================================================================

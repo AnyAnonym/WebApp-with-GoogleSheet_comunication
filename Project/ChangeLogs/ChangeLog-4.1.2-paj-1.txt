@@ -8,6 +8,27 @@ Commit: 4.1.2-paj-1-1 | Fachkonzept und Dokumentationshinweise vorbereitet
   Added
   - [Dokumentation] Nutzerorientierten Entwurf fuer Produktvision, Benutzergruppen, Nutzungsszenarien, fachliche Anforderungen und offene Fragen angelegt.
 
+[4.1.2-paj-1-2] - 2026-07-31
+Commit: 4.1.2-paj-1-2 | Scoreboard-Zaehlarten und mobile Darstellung erweitert
+
+  Added
+  - [Dokumentation] Aufbau, Datenfluss, Stromversorgung, WLAN-Inbetriebnahme, bekannte Receiver-Probleme und Matchtyp-Regeln der externen Scoreboard-Verarbeitung beschrieben.
+  - [Software] Automatisierte Tests fuer Bewerbsstandard, Match-Override, Satz-Tie-Break-Projektion und unveraenderte echte Entscheidungssaetze ergaenzt.
+  - [Software] Abschluss mit `npm test` (82 Tests), `npm run check`, `git diff --check` und betriebsbereitem PAJ-Backend geprueft.
+
+  Changed
+  - [Dokumentation] Geplante Matchtyp-basierte Anzeigeinterpretation und spaetere semantische Ergebnispruefung in den Fachkonzeptentwurf aufgenommen.
+  - [Software] Tabelle `Matchtyp` in den langsamen Sheet-Poller und die Scoreboard-Synchronisierung aufgenommen.
+  - [Software] Satz-Tie-Breaks im ersten oder zweiten Satz verwenden in der digitalen Anzeige die dritte physische Drehspalte als Punktestand und setzen die angezeigte dritte Satzspalte auf 0.
+  - [Software] Eine Matchtyp-Zuordnung am Match ueberschreibt den Standard-Matchtyp des zugehoerigen Bewerbs; der aufgeloeste Wert wird fuer die laufende Court-Zuweisung in SQLite fixiert, waehrend externe Rohscores und ScoreLog unveraendert bleiben.
+  - [Datenbank] Bestehende SQLite-Court-Zustaende bleiben lesbar; vor dem Update gespeicherte Zuweisungen erhalten bis zu ihrer naechsten Zuweisung eine leere `matchtypId`.
+  - [Software] Bei den Entscheidungssatzvarianten `MT7` und `MT10` wird die dritte Satzspalte fuer Heim und Gast tuerkis statt blau dargestellt.
+  - [Software] Desktop- und Fernsehlayout verbreitern die dritte Satzspalte fuer Heim und Gast gemeinsam erst bei einem mindestens zweistelligen Wert; die Punktespalte bietet ausreichend Platz fuer Werte wie `40`, waehrend die mobilen Spaltenbreiten unveraendert bleiben.
+  - [Software] Mobiles Scoreboard um einen dezenten, Safe-Area-faehigen Zurueck-Pfeil zum Dashboard ergaenzt und die schriftartabhaengige Glyphe durch ein kraeftiges, verlaengertes und geometrisch zentriertes SVG-Symbol ersetzt; Desktop- und Fernsehlayout bleiben ohne Navigationselement.
+
+  Fixed
+  - [Software] Matchtyp-Schema auf den tatsaechlichen Header `Entscheidender Satz` korrigiert, damit die Tabelle geladen wird und Scoreboard sowie Court-Zuweisung nicht durch globale Not-Readiness blockiert werden.
+
 Dokumentationsuebernahme beim Main-Versionssprung
 
   Project/FACHKONZEPT.txt
@@ -19,9 +40,33 @@ Dokumentationsuebernahme beim Main-Versionssprung
 
   Project/software/SOFTWARE-DOKU.txt
   - `Project/FACHKONZEPT.txt` als fachliche Quelle fuer Produktzweck, Zielgruppen, Nutzungsszenarien und Anforderungen in den Dokumentationsindex aufnehmen.
+  - `Project/Scoreboard-Funktion.md` als Beschreibung der externen Scoreboard-Einheit und ihrer Anbindung an ePiber aufnehmen.
+
+  Project/software/DATENBANK.txt
+  - Die Tabelle `Matchtyp` mit den Spalten `ID`, `Bezeichnung`, `Gewinnsaetze`, `Satzlaenge`, `Satztiebreak`, `Entscheidender Satz` und `NoAd` dokumentieren.
+  - Wertebereiche und Semantik der Matchtyp-Spalten sowie ihre Verwendung fuer Anzeigeinterpretation und eine spaetere Ergebnispruefung festhalten.
+  - Dokumentieren, dass `Matches1.MatchtypID` einen gesetzten `Bewerb.MatchtypID Standard` ueberschreibt.
+  - `Matchtyp` als langsam gepollte Tabelle mit den Pflichtspalten `ID`, `Satztiebreak` und `Entscheidender Satz` in die Liste der geladenen Tabellen aufnehmen.
+  - `matchtypId` als bei der Court-Zuweisung aufgeloesten und in SQLite persistierten Bestandteil des Court-States dokumentieren.
+
+  Project/software/ARCHITEKTUR.txt
+  - Die serverseitige Scoreboard-Anzeigeprojektion dokumentieren: Matchtyp-Aufloesung und persistierter Zuweisungssnapshot, Umdeutung der dritten Drehspalte bei Satz-Tie-Breaks sowie unveraenderte Rohscores beziehungsweise ScoreLog-Daten.
+
+  Project/software/ENDPOINTS.txt
+  - `matchtyp` als oeffentliches Invalidierungstopic und die Matchtyp-Revision als Bestandteil von `scoreboardSnapshot` dokumentieren.
+  - Das abgeleitete Court-Feld `satz3matchtiebreak` in Scoreboard-Snapshots und `scores`-Pushes dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Nach dem Rollout alle bereits zuvor gespeicherten laufenden Court-Zuweisungen einmal neu zuweisen, damit deren aufgeloeste `matchtypId` im SQLite-Court-State gespeichert wird.
 
   Project/software/seiten/scoreboard.txt
   - Die zwei bestaetigten Hauptnutzungen als mobilen Liveticker und Fernsehanzeige fuer Spielstaende entfernter Plaetze ergaenzen.
+  - Auf `Project/Scoreboard-Funktion.md` als Beschreibung der externen Datenquelle verweisen und die manuelle WLAN-Inbetriebnahme sowie den fehlenden automatischen Reconnect des Receivers als betriebliche Abhaengigkeiten benennen.
+  - Die Matchtyp-basierte Interpretation der externen Drehwerte fuer die Anzeige beschreiben.
+  - Dokumentieren, dass beim Satz-Tie-Break in Satz 1 oder 2 die dritte physische Drehspalte im Punktefeld erscheint und die digitale dritte Satzspalte 0 zeigt.
+  - Die tuerkise Markierung der dritten Satzspalte bei den Entscheidungssatzvarianten `MT7` und `MT10` dokumentieren.
+  - Die erst bei mindestens zweistelligen Werten dynamisch verbreiterte dritte Satzspalte, die ausreichend breite Punktespalte und die gemeinsamen Spaltenbreiten fuer Heim und Gast dokumentieren.
+  - Den nur mobil sichtbaren Zurueck-Pfeil zum Dashboard und seine Safe-Area-Positionierung dokumentieren.
 
   AGENTS.md
   - Das vorlaeufige Doku-Routing zum Entwurf durch das dauerhafte Routing auf `Project/FACHKONZEPT.txt` ersetzen.

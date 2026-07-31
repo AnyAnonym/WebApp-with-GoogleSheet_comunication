@@ -1,0 +1,27 @@
+[4.1.2-paj-1-1] - 2026-07-31
+Commit: 4.1.2-paj-1-1 | Fachkonzept und Dokumentationshinweise vorbereitet
+
+  Changed
+  - [Repository] Seitenbranch und Entwicklungsstand fuer die bevorstehenden Aenderungen vorbereitet.
+  - [Dokumentation] Dokumentationsworkflow um konkrete, rueckfragepflichtige Vorschlaege fuer neu erkannte fachliche Informationen erweitert.
+
+  Added
+  - [Dokumentation] Nutzerorientierten Entwurf fuer Produktvision, Benutzergruppen, Nutzungsszenarien, fachliche Anforderungen und offene Fragen angelegt.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/FACHKONZEPT.txt
+  - Den abgestimmten Inhalt aus `Project/2do/FACHKONZEPT-ENTWURF.txt` als kanonisches nutzerorientiertes Fachkonzept uebernehmen.
+  - Produktvision, Ziele, Benutzergruppen, Nutzungsszenarien, fachliche Anforderungen, Abgrenzungen und offene Fragen getrennt nach ihrem Bestaetigungsstatus dokumentieren.
+
+  Project/2do/FACHKONZEPT-ENTWURF.txt
+  - Nach vollstaendiger Uebernahme in `Project/FACHKONZEPT.txt` entfernen.
+
+  Project/software/SOFTWARE-DOKU.txt
+  - `Project/FACHKONZEPT.txt` als fachliche Quelle fuer Produktzweck, Zielgruppen, Nutzungsszenarien und Anforderungen in den Dokumentationsindex aufnehmen.
+
+  Project/software/seiten/scoreboard.txt
+  - Die zwei bestaetigten Hauptnutzungen als mobilen Liveticker und Fernsehanzeige fuer Spielstaende entfernter Plaetze ergaenzen.
+
+  AGENTS.md
+  - Das vorlaeufige Doku-Routing zum Entwurf durch das dauerhafte Routing auf `Project/FACHKONZEPT.txt` ersetzen.

@@ -42,6 +42,13 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
 9. Keine destruktiven Git-Aktionen, kein Force-Push, kein Rebase eines
    veroeffentlichten Branches, kein Amend und kein Ueberspringen von Pruefungen
    ohne gesonderten ausdruecklichen Auftrag.
+10. Wird bei einer Analyse oder Umsetzung eine dauerhaft relevante fachliche
+    Information erkannt, die in der kanonischen Dokumentation fehlt, wird dem
+    User vor ihrer Aufnahme ein konkreter Dokumentationsvorschlag genannt. Der
+    Vorschlag enthaelt mindestens die vorgesehene Zieldatei und die einzutragende
+    Aussage. Erst nach Ruecksprache wird die permanente Dokumentation angepasst.
+    Verpflichtende Eintraege im temporaeren Branch-Changelog werden weiterhin
+    ohne gesonderte Einzelrueckfrage im freigegebenen Auftragsumfang gepflegt.
 
 Verpflichtender Beginn jeder neuen Arbeit:
 
@@ -451,6 +458,9 @@ sind.
   Aenderung                         | Beim Versionssprung pruefen/aktualisieren
   ----------------------------------|-------------------------------------------
   Jede Aenderung                    | Project/ChangeLogs/ChangeLog-main.txt
+  Produktzweck, Zielgruppen,        | Project/FACHKONZEPT.txt
+  Nutzungsszenarien, fachliche      |
+  Anforderungen oder Abgrenzungen  |
   Datenbankschema                   | Project/software/DATENBANK.txt
   Endpoint oder Protokoll           | Project/software/ENDPOINTS.txt
   Architektur, Cache, State, Auth   | Project/software/ARCHITEKTUR.txt

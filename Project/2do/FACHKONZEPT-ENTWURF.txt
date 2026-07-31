@@ -1,0 +1,252 @@
+================================================================================
+FACHKONZEPT-ENTWURF.txt - Produktvision und fachliches Lastenheft
+================================================================================
+Stand: Entwurf, 2026-07-31
+
+Dieses Dokument beschreibt ePiber aus Sicht der Benutzer und des Vereins. Es
+beantwortet, wofuer das System eingesetzt wird und welche fachlichen Aufgaben es
+abbilden soll. Technische Architektur, konkrete Datenformate und Implementierung
+sind nicht Gegenstand dieses Dokuments.
+
+Der Entwurf wird schrittweise gemeinsam mit dem Auftraggeber vervollstaendigt.
+Bis zur bestaetigten Uebernahme in `Project/FACHKONZEPT.txt` ist er keine
+kanonische Beschreibung des Systems.
+
+
+================================================================================
+1. DOKUMENTSTATUS UND VERBINDLICHKEIT
+================================================================================
+
+Die Aussagen werden nach ihrem Status unterschieden:
+
+  Bestaetigt
+      Vom Auftraggeber ausdruecklich als Einsatzzweck oder Anforderung genannt.
+
+  Arbeitsannahme
+      Aus dem bestehenden System oder bisherigen Gespraechen abgeleitet. Eine
+      Arbeitsannahme muss noch fachlich bestaetigt, korrigiert oder verworfen
+      werden.
+
+  Offen
+      Noch nicht entschieden oder nicht ausreichend beschrieben.
+
+Neue Erkenntnisse werden nicht stillschweigend als bestaetigte Anforderungen
+eingetragen. Vor ihrer Aufnahme wird der konkrete Eintrag vorgeschlagen und mit
+dem Auftraggeber abgestimmt.
+
+
+================================================================================
+2. PRODUKTVISION
+================================================================================
+
+ePiber ist die zentrale Web-Anwendung des ASKOE Piberbach fuer die digitale
+Begleitung des Tennisbetriebs. Das System soll Spielern, Zuschauern und den mit
+der Organisation betrauten Personen die fuer ihre jeweilige Aufgabe relevanten
+Informationen einfach und aktuell bereitstellen.
+
+Es verbindet insbesondere Turnier- und Matchinformationen mit Live-Spielstaenden
+sowie der Anzeige und Steuerung von Informationen auf mobilen Endgeraeten und
+Monitoren am Tennisplatz.
+
+Status: Arbeitsannahme; die beiden Scoreboard-Einsatzarten in Abschnitt 5.1 sind
+vom Auftraggeber bestaetigt.
+
+
+================================================================================
+3. ZIELE UND NUTZEN
+================================================================================
+
+  Z-01  Spieler sollen Bewerbe, Ranglisten, Auslosungen und ihre Matches an einer
+        zentralen Stelle einsehen koennen. [Arbeitsannahme]
+
+  Z-02  Zuschauer sollen laufende Spielstaende auch dann verfolgen koennen, wenn
+        sie nicht direkt am jeweiligen Platz stehen. [Bestaetigt]
+
+  Z-03  Die Turnierleitung soll Bewerbe, Matches und Platzbelegungen uebersichtlich
+        organisieren koennen. [Arbeitsannahme]
+
+  Z-04  Zustaendige Bediener sollen Courts, Live-Spielstaende und bereitgestellte
+        Anzeigen im laufenden Betrieb steuern koennen. [Arbeitsannahme]
+
+  Z-05  Informationen sollen fuer den jeweiligen Einsatzzweck sowohl auf kleinen
+        mobilen Displays als auch auf entfernten grossen Anzeigen gut erfassbar
+        sein. [Bestaetigt fuer das Live-Scoreboard]
+
+
+================================================================================
+4. BENUTZERGRUPPEN
+================================================================================
+
+  Zuschauer und Besucher [Arbeitsannahme]
+      Verfolgen Bewerbe, Matches und Live-Spielstaende ohne organisatorische
+      Aufgaben im System.
+
+  Spieler [Arbeitsannahme]
+      Informieren sich ueber Bewerbe, Anmeldungen, Ranglisten, Auslosungen und
+      eigene oder andere Matches.
+
+  Operatoren [Arbeitsannahme]
+      Bedienen Courts, Anzeigen und Live-Funktionen waehrend des Spielbetriebs.
+
+  Administratoren und Turnierleitung [Arbeitsannahme]
+      Organisieren den Spielbetrieb und verwalten die dafuer erforderlichen
+      fachlichen Einstellungen und Daten.
+
+  Monitorgeraete [Arbeitsannahme]
+      Sind keine menschliche Benutzergruppe, bilden aber einen eigenen
+      Nutzungskontext fuer automatisch oder ferngesteuert dargestellte Inhalte.
+
+Offen: Rollenbezeichnungen, Verantwortungsgrenzen und die tatsaechlichen
+Arbeitsablaeufe jeder Benutzergruppe muessen noch fachlich bestaetigt werden.
+
+
+================================================================================
+5. ZENTRALE NUTZUNGSSZENARIEN
+================================================================================
+
+5.1 Live-Spielstaende verfolgen [Bestaetigt]
+
+Das Live-Scoreboard wird im Regelfall in zwei wesentlichen Situationen genutzt:
+
+1. Mobiler Liveticker
+   Zuschauer rufen das Scoreboard auf einem Mobiltelefon auf, um aktuelle
+   Spielstaende und Ergebnisse zu verfolgen.
+
+2. Scoreboard am Tennisplatz
+   Das Scoreboard wird auf einem Fernseher angezeigt. Zuschauer vor Ort koennen
+   dadurch insbesondere Spielstaende auf weiter entfernten Plaetzen verfolgen,
+   die von ihrem Standort nicht ausreichend einsehbar sind.
+
+Beide Situationen verwenden dieselben fachlichen Live-Daten, stellen aber
+unterschiedliche Anforderungen an Lesedistanz, Informationsdichte,
+Bildschirmgroesse und Bedienkontext.
+
+5.2 Turnier- und Bewerbsinformationen abrufen [Arbeitsannahme]
+
+Spieler und Zuschauer koennen Bewerbe, Teilnehmer, Auslosungen, Gruppenphasen,
+Ranglisten sowie offene und abgeschlossene Matches einsehen.
+
+5.3 Spielbetrieb organisieren [Arbeitsannahme]
+
+Die Turnierleitung ordnet Matches und Plaetze zu und behaelt den laufenden sowie
+bereits abgeschlossenen Spielbetrieb im Blick.
+
+5.4 Anzeigen am Veranstaltungsort steuern [Arbeitsannahme]
+
+Zustaendige Bediener waehlen aus, welche Informationen auf einem Monitor gezeigt
+werden. Die Anzeige selbst soll ohne laufende Bedienung am Monitor funktionieren.
+
+5.5 Fuer Bewerbe anmelden [Arbeitsannahme]
+
+Spieler koennen die fuer einen Bewerb vorgesehene Eintragungsliste einsehen und
+die angebotenen Anmeldefunktionen verwenden.
+
+
+================================================================================
+6. FACHLICHE ANFORDERUNGEN
+================================================================================
+
+6.1 Oeffentliche Information
+
+  LF-01 Das System soll aktuelle Bewerbe und die zugehoerigen fachlichen
+        Informationen uebersichtlich darstellen. [Arbeitsannahme]
+
+  LF-02 Das System soll offene und abgeschlossene Matches unterscheidbar und
+        auffindbar darstellen. [Arbeitsannahme]
+
+  LF-03 Das System soll je nach Bewerbsform KO-Raster, Gruppenphase oder Rangliste
+        darstellen koennen. [Arbeitsannahme]
+
+6.2 Live-Scoreboard
+
+  LF-10 Das System soll laufende Spielstaende zeitnah anzeigen. [Bestaetigt]
+
+  LF-11 Das Live-Scoreboard soll auf Mobiltelefonen als Liveticker nutzbar sein.
+        [Bestaetigt]
+
+  LF-12 Das Live-Scoreboard soll auf einem Fernseher am Tennisplatz aus typischer
+        Zuschauerentfernung erfassbar sein. [Bestaetigt]
+
+  LF-13 Das Live-Scoreboard soll Spielstaende entfernter Plaetze sichtbar machen.
+        [Bestaetigt]
+
+  LF-14 Die konkrete Auswahl und Priorisierung zusaetzlicher Informationen fuer
+        Mobiltelefon und Fernseher ist noch festzulegen. [Offen]
+
+6.3 Organisation und Bedienung
+
+  LF-20 Berechtigte Benutzer sollen den laufenden Spiel- und Anzeigebetrieb
+        steuern koennen. [Arbeitsannahme]
+
+  LF-21 Bedienfunktionen und rein betrachtende Funktionen sollen entsprechend
+        der Verantwortung der Benutzer getrennt sein. [Arbeitsannahme]
+
+  LF-22 Monitore sollen fuer unterschiedliche Informationsansichten zentral
+        gesteuert werden koennen. [Arbeitsannahme]
+
+6.4 Gebrauchstauglichkeit
+
+  LF-30 Oeffentliche Informationen sollen ohne Fachwissen ueber die technische
+        Funktionsweise des Systems verstaendlich sein. [Arbeitsannahme]
+
+  LF-31 Die Darstellung soll sich am Nutzungskontext und nicht nur an der
+        technischen Bildschirmbreite orientieren. [Arbeitsannahme]
+
+  LF-32 Ein Ausfall oder veralteter Datenstand darf Benutzern keinen irrefuehrend
+        aktuellen Spielstand vermitteln. [Arbeitsannahme]
+
+
+================================================================================
+7. ABGRENZUNG
+================================================================================
+
+Dieses Fachkonzept legt keine Programmiersprache, Datenbank, Schnittstelle oder
+konkrete technische Loesung fest. Solche Entscheidungen werden in der
+technischen Dokumentation beschrieben.
+
+Noch offen ist insbesondere, welche Aufgaben ausdruecklich nicht durch ePiber
+abgebildet werden sollen und welche externen Systeme oder manuellen Ablaeufe
+bewusst bestehen bleiben.
+
+
+================================================================================
+8. GEPLANTE BENUTZERDOKUMENTATION
+================================================================================
+
+Aus dem bestaetigten Fachkonzept sollen spaeter zielgruppengerechte
+Bedienungsanleitungen abgeleitet werden. Voraussichtlich erforderlich sind:
+
+  - Kurzanleitung fuer Spieler und Zuschauer
+  - Anleitung fuer Operatoren am Tennisplatz
+  - Anleitung fuer Turnierleitung und Administration
+  - Anleitung fuer Einrichtung und Bedienung der Monitoranzeigen
+
+Status: Arbeitsannahme. Umfang und Aufteilung sind noch festzulegen.
+
+
+================================================================================
+9. OFFENE FACHLICHE FRAGEN
+================================================================================
+
+  F-01 Welche Aufgaben soll ePiber insgesamt verbindlich abdecken?
+  F-02 Welche Benutzerrollen gibt es fachlich, und wer darf was ausfuehren?
+  F-03 Welche Informationen sind im mobilen Liveticker am wichtigsten?
+  F-04 Welche Informationen muessen auf dem Fernseher aus der Entfernung sichtbar
+       sein, und welche duerfen dort entfallen?
+  F-05 Welche Arbeitsablaeufe fuehrt die Turnierleitung im System vollstaendig aus?
+  F-06 Welche Daten oder Entscheidungen kommen weiterhin aus externen Systemen
+       oder manuellen Prozessen?
+  F-07 Welche Benutzeranleitungen werden tatsaechlich benoetigt?
+
+
+================================================================================
+10. PFLEGE DES ENTWURFS
+================================================================================
+
+Weitere Informationen des Auftraggebers werden schrittweise den Zielen,
+Benutzergruppen, Szenarien und Anforderungen zugeordnet. Dabei werden
+widerspruechliche oder unklare Angaben als offene Fragen sichtbar gehalten.
+
+Bei der Main-Integration wird der abgestimmte Inhalt als
+`Project/FACHKONZEPT.txt` uebernommen, in den Dokumentationsindex und das
+Doku-Routing aufgenommen und dieser Entwurf entfernt.

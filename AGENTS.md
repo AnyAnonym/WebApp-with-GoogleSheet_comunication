@@ -19,6 +19,11 @@ moeglichst wenigen Datei- und Suchzugriffen.
 5. Lokale Geheimnisdateien wie `Backend/.env` und Service-Account-JSON-Dateien
    duerfen ohne ausdruecklichen Auftrag weder gelesen noch vollstaendig ausgegeben
    werden. Geheimnisfreie `*.example`-Vorlagen duerfen gezielt gelesen werden.
+6. Wird bei Analyse oder Umsetzung eine dauerhaft dokumentationsrelevante
+   fachliche Information erkennbar, schlage dem User vor einer Aufnahme die
+   Zieldatei und den konkret einzutragenden Inhalt vor. Pflege sie erst nach
+   Ruecksprache ein; verpflichtendes Branch-Changelog-Bookkeeping bleibt davon
+   unberuehrt.
 
 ## Projekt
 
@@ -41,7 +46,7 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
-- Aktueller Main-Stand: `4.1.2`
+- Aktueller Main-Stand: `4.1.3`
 
 ## Dokumentierter Infrastruktur-Sollstand
 
@@ -69,6 +74,7 @@ Project/     Dokumentation und Konfigurationsvorlagen
 
 | Thema der Anfrage | Zuerst lesen |
 |-------------------|--------------|
+| Zweck, Zielgruppen, Nutzungsszenarien oder fachliche Anforderungen | `Project/FACHKONZEPT.txt` |
 | Konkrete HTML-Seite | Bei bekanntem Dokumentnamen direkt `Project/software/seiten/<dokumentname>.txt`, sonst Zuordnung in `Project/software/SOFTWARE-DOKU.txt` |
 | HTTP/WS, Parameter, Requests oder Responses | `Project/software/ENDPOINTS.txt` |
 | Tabellen, Spalten, Formate, IDs oder Beziehungen | `Project/software/DATENBANK.txt` |

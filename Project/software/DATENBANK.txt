@@ -1,7 +1,7 @@
 ================================================================================
   DATENBANK.txt - Google-Sheets- und SQLite-Datenhaltung
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.1.0, 2026-07-30
+  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 Dieses Dokument beschreibt die beiden produktiven Datenhaltungen. Google Sheets
@@ -15,7 +15,7 @@ oeffentliche Antworten enthalten nur explizit freigegebene Projektionen.
   1. GOOGLE SHEETS: GELADENE TABELLEN UND PFLICHTSPALTEN
 ================================================================================
 
-Der Poller laedt sieben Tabellen. Schemafehler oder veraltete Daten machen die
+Der Poller laedt acht Tabellen. Schemafehler oder veraltete Daten machen die
 betroffene Tabelle fuer Fachoperationen unverfuegbar.
 
   Interner Name   | Sheet-Tab       | Kategorie | Pflichtspalten
@@ -24,6 +24,8 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
                   |                 |           | E-Mail, PasswdHash, Aktiv, Role
   bewerbe         | Bewerb          | slow      | ID, Bezeichnung, BewerbsartID
   bewerbsart      | Bewerbsart      | slow      | ID, Bezeichnung
+  matchtyp        | Matchtyp        | slow      | ID, Satztiebreak,
+                  |                 |           | Entscheidender Satz
   matches1        | Matches1        | fast      | ID, MatchDate, ForderungDate,
                   |                 |           | BewerbID, BewerbRunde,
                   |                 |           | Spieler1ID, Spieler3ID, Ergebnis
@@ -54,7 +56,8 @@ Matches1 enthaelt offene und gespielte Matches.
   Dauer           | Reservierte Matchdauer.
   BewerbID        | Referenz auf Bewerb.ID.
   BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
-  MatchtypID      | Optionale Referenz fuer Nicht-Bewerbs-Matches.
+  MatchtypID      | Optionale Matchtyp-Ueberschreibung. Ist sie gesetzt,
+                  | ueberstimmt sie `Bewerb.MatchtypID Standard`.
   Spieler1ID      | Erste Heim-/Gegner-ID; Suffixe wie [wo] oder [ret] sind
                   | in Altdaten moeglich.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
@@ -144,7 +147,7 @@ widerrufen; das Sheetpasswort kann dabei unveraendert sein.
 
 
 ================================================================================
-  4. BEWERB, BEWERBSART, RL-PLATZIERUNG UND NAVIGATOR
+  4. BEWERB, BEWERBSART, MATCHTYP, RL-PLATZIERUNG UND NAVIGATOR
 ================================================================================
 
 Bewerb:
@@ -156,6 +159,25 @@ Bewerb:
 Bewerbsart:
   ID, Bezeichnung, EntryListAvailable, Rasterfunktion, RoundRobin und Spezifikum.
   Die Flags verwenden historisch "1" fuer aktiv.
+
+Matchtyp:
+
+  Spalte                 | Vertrag
+  -----------------------|------------------------------------------------------
+  ID                     | Eindeutige positive ganzzahlige Matchtyp-ID.
+  Bezeichnung            | Textuelle Bezeichnung.
+  Gewinnsaetze           | `2` fuer Best-of-3 oder `3` fuer Best-of-5.
+  Satzlaenge             | Ganzzahl von 0 bis 6; ueblich 6, kurze Saetze z.B. 4.
+  Satztiebreak           | Aktuell `3-3` oder `6-6`; Stand, an dem im Satz ein
+                         | Tie-Break beginnt.
+  Entscheidender Satz    | `vollstaendiger Satz`, `MT10` oder `MT7`.
+  NoAd                   | `N` ohne No-Ad-Regel, `J` mit No-Ad-Regel.
+
+Bei einer Court-Zuweisung gilt zuerst `Matches1.MatchtypID`, falls gesetzt,
+ansonsten `Bewerb.MatchtypID Standard`. Die aufgeloeste ID wird als `matchtypId`
+im persistenten Court-State gespeichert und bleibt bis zur naechsten Zuweisung
+unveraendert. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
+spaetere semantische Ergebnispruefung ist fachlich vorgesehen.
 
 RL-Platzierung:
   Optional ID, BewerbID, PersonID und Rang. Ranglistenwrites pruefen die aktuelle
@@ -263,6 +285,9 @@ Tabelle `app_state`:
   Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
   Monitorziele `monitor-target:<id>` und Metadaten-Intents. Compare-and-set
   meldet bei falscher Revision `REVISION_CONFLICT`.
+  Court-Zustaende enthalten unter anderem Match-/Bewerbszuordnung, Spieler,
+  Aktivstatus und die bei der Zuweisung aufgeloeste `matchtypId`. Alte Zustaende
+  ohne dieses Feld bleiben lesbar und liefern bis zur Neuzuweisung eine leere ID.
 
 Tabelle `sessions`:
   sid_hash PRIMARY KEY, user_id, email, created_at, expires_at, last_seen_at.
@@ -301,7 +326,7 @@ keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
   9. ROLLOUT-PRUEFUNGEN
 ================================================================================
 
-Vor v4.1.0 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
+Vor v4.1.3 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
 genannten Pflichtspalten, `Entrydate`, Schreibrechte fuer Personen, Matches1,
 EntryList, Logging und ScoreLog sowie eindeutige IDs/Metadaten zu pruefen. Keine
 EventID-Spalten fuer Logging/ScoreLog anlegen. Die vollstaendige verbindliche

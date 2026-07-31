@@ -1,7 +1,7 @@
 ================================================================================
   ENDPOINTS.txt - HTTP- und WebSocket-v2-Referenz
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.1.0, 2026-07-30
+  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 Alle dynamischen Pfade werden vom Node.js-Backend bedient; Caddy terminiert in
@@ -257,14 +257,17 @@ PUBLIC:
       `{ complete:true, schutzzeit:[{id,until}], sperrzeit:[{id,until}] }`.
 
   `getScoreboardCourts {}`
-      Revisionierte persistente Court-Zustaende.
+      Revisionierte persistente Court-Zustaende inklusive der bei Zuweisung
+      fixierten `matchtypId`.
 
   `courtScores {}`
       Letzter normalisierter Court-Snapshot mit Revision und Quellenalter.
 
   `scoreboardSnapshot {}`
       Atomarer Startsnapshot aus Personen-, Bewerb-, Match-, Court- und
-      Scoredaten samt Tabellenrevisionen.
+      Scoredaten samt Tabellenrevisionen einschliesslich `matchtyp`.
+      `scores.courts[]` enthaelt zusaetzlich den abgeleiteten Boolean
+      `satz3matchtiebreak`.
 
 AUTHENTICATED (player, operator oder admin):
   `memberDirectory {}`
@@ -298,6 +301,8 @@ OPERATOR ODER ADMIN:
       expectedRevision eine Ganzzahl >=1. Eine tatsaechlich neu angewendete
       Zuweisung setzt den Score dieses Courts auf acht `"0"`-Werte zurueck; eine
       idempotent wiedergegebene Operation loest keinen erneuten Reset aus.
+      Fuer Matchzuweisungen wird `Matches1.MatchtypID` oder ersatzweise
+      `Bewerb.MatchtypID Standard` als `matchtypId` im Court-State fixiert.
 
   `courtSetActive { operationId, court, expectedRevision, active }`
       Revisionsgeschuetzte Aktivierung; `active` ist boolean.
@@ -348,12 +353,14 @@ jeden akzeptierten Topic sendet der Server unmittelbar davor einen initialen
 gewuenschte Topics clientseitig in Batches zu je 20 wieder her.
 
 Public Topics:
-  `scores`             normalisierter Court-Snapshot mit Quellenstatus
+  `scores`             Scoreboard-Anzeigeprojektion mit Quellenstatus und
+                       `satz3matchtiebreak` je Court
   `scoreboard-state`   aktueller persistenter Court-State
   `matches`            Matches1-Invalidierung mit Tabellenrevision/Alter
   `players`            Personen-Invalidierung
   `bewerbe`            Bewerb-Invalidierung
   `bewerbsart`         Bewerbsart-Invalidierung
+  `matchtyp`           Matchtyp-Invalidierung
   `entryList`          EntryList-Invalidierung
   `ranking`            RL-Platzierung-Invalidierung
 

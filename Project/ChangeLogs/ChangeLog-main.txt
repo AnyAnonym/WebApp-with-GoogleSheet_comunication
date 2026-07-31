@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.2
+Stand: 4.1.3
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,37 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.1.3] - 2026-07-31
+Commit: 4.1.3 | Scoreboard-Zaehlarten und mobile Darstellung erweitert
+Quelle: 4.1.2-paj-1
+
+  Added
+  - [Dokumentation] Nutzerorientiertes Fachkonzept mit Produktvision,
+    Benutzergruppen, Nutzungsszenarien, Anforderungen und offenen Fragen sowie
+    eine Funktionsbeschreibung der externen Scoreboard-Einheit angelegt.
+  - [Software] Automatisierte Tests fuer Matchtyp-Aufloesung,
+    Satz-Tie-Break-Projektion und Entscheidungssatzdarstellung ergaenzt.
+
+  Changed
+  - [Dokumentation] Workflow verlangt bei neu erkannten dauerhaft relevanten
+    Fakten vor der Aufnahme einen konkreten Vorschlag mit Zieldatei und Inhalt.
+  - [Software] `Matchtyp` wird als achte Sheet-Tabelle geladen. Eine Matchtyp-ID
+    am Match ueberschreibt den Bewerbsstandard und wird bei Court-Zuweisung in
+    SQLite fixiert.
+  - [Software] Satz-Tie-Breaks in Satz 1/2 verwenden die dritte physische
+    Drehspalte als Punkteanzeige; bei `MT7`/`MT10` ist Satz 3 tuerkis.
+  - [Software] Desktop-/Fernsehbreiten vermeiden abgeschnittene zweistellige
+    Satz- und Punktewerte; mobil fuehrt ein Safe-Area-faehiger SVG-Pfeil zum
+    Dashboard.
+  - [Datenbank] Bestehende Court-Zustaende bleiben lesbar und erhalten bis zur
+    naechsten Zuweisung eine leere `matchtypId`.
+
+  Fixed
+  - [Software] Der Matchtyp-Vertrag verwendet den tatsaechlichen Sheet-Header
+    `Entscheidender Satz`, sodass Readiness, Scoreboard und Court-Zuweisung nicht
+    durch den falschen Spaltennamen blockiert werden.
 
 
 [4.1.2] - 2026-07-30

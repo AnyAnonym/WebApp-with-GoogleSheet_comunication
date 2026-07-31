@@ -98,6 +98,7 @@ const TABLE_CONFIG = {
   players:       { range: "Personen",       category: "slow" },
   bewerbe:       { range: "Bewerb",         category: "slow" },
   bewerbsart:    { range: "Bewerbsart",     category: "slow" },
+  matchtyp:      { range: "Matchtyp",        category: "slow" },
   matches1:      { range: "Matches1",       category: "fast" },
   rlPlatzierung: { range: "RL-Platzierung", category: "fast" },
   navigator:     { range: "Navigator",       category: "slow" },

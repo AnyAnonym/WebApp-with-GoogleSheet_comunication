@@ -8,6 +8,7 @@ const REQUIRED_HEADERS = {
   players: ["id", "vorname", "nachname", "e-mail", "passwdhash", "aktiv", "role"],
   bewerbe: ["id", "bezeichnung", "bewerbsartid"],
   bewerbsart: ["id", "bezeichnung"],
+  matchtyp: ["id", "satztiebreak", "entscheidender satz"],
   matches1: ["id", "matchdate", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler3id", "ergebnis"],
   rlPlatzierung: ["bewerbid", "personid", "rang"],
   navigator: ["name", "ziel"],

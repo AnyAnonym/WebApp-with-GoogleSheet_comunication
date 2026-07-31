@@ -1,7 +1,7 @@
 ================================================================================
 Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
 ================================================================================
-Stand: v4.1.0
+Stand: v4.1.3
 
 -- Funktion und Dateien --
   HTML: Frontend/scoreboard.html
@@ -9,12 +9,16 @@ Stand: v4.1.0
   CSS:  Frontend/CSS/scoreboard.css
   Standalone ohne Navbar/Footer. Zeigt zwei Courts mit Einzel-/Doppelnamen, drei
   Saetzen und Punkten sowie am Desktop je sechs naechste und letzte Spiele.
+  Hauptnutzungen sind der mobile Liveticker und die Fernsehanzeige am Tennisplatz
+  fuer Spielstaende weiter entfernter Plaetze. Die externe Einheit und ihr
+  Betriebsablauf sind in `Project/Scoreboard-Funktion.md` beschrieben.
 
 -- Snapshot, Push und Resync --
   Das fruehere Ein-/Fuenf-Sekunden-Polling ist entfernt. `scoreboardSnapshot`
   liefert atomar oeffentliche Spieler-, Bewerbs-, Matches1-, Court- und Scoredaten
   samt Tabellen- und Score-Revisionen. Danach liefern `scores` und
-  `scoreboard-state` direkte Aenderungen; `matches`, `players` und `bewerbe`
+  `scoreboard-state` direkte Aenderungen; `matches`, `players`, `bewerbe` und
+  `matchtyp`
   invalidieren den Snapshot. Revisionen verhindern Rueckschritte. Reconnect,
   Protokoll-Resync, Luecken oder veraltete Invalidierungsrevisionen erzwingen einen
   neuen Snapshot; Fehler werden mit exponentiellem Retry bis 30 Sekunden erneut
@@ -39,6 +43,14 @@ Stand: v4.1.0
   Deaktivierung, Reaktivierung oder Reset begann, duerfen den neueren Zustand
   nicht ueberschreiben.
 
+-- Matchtyp und Anzeigeprojektion --
+  Bei der Court-Zuweisung ueberschreibt `Matches1.MatchtypID` den Standard des
+  Bewerbs; die aufgeloeste ID bleibt im SQLite-Court-State bis zur Neuzuweisung
+  fixiert. Entspricht Satz 1 oder 2 dem konfigurierten `Satztiebreak`, erscheinen
+  die Werte der dritten physischen Drehspalte im Punktefeld und Satz 3 zeigt 0.
+  Bei `Entscheidender Satz=MT7|MT10` ist die dritte Satzspalte tuerkis. Rohscores
+  und ScoreLog werden nicht veraendert.
+
 -- Lade- und Statusverhalten --
   Inhalt wird erst nach validiertem Erst-Snapshot eingeblendet und dann als
   Monitor-Ready gemeldet. Terminale Snapshot-/DOM-Fehler bleiben als Ladefehler mit
@@ -46,6 +58,9 @@ Stand: v4.1.0
   Synchronisation, Court-Quellenalter und Stale-Zustand werden intern ausgewertet;
   es gibt bewusst keine sichtbaren Connection-, Sync- oder Quellenstatus-Badges.
   Court aktiv/inaktiv bleibt an der gruenen/roten Platzueberschrift erkennbar.
+  Die externe Receiver-WLAN-Verbindung startet nach Stromversorgung erst durch
+  manuelles `START` und reconnectet nach Verbindungsverlust nicht automatisch;
+  dies ist eine betriebliche Abhaengigkeit ausserhalb von ePiber.
 
 -- Formatierung --
   Pro Platz stehen Datum/Uhrzeit `TT.MM. - HH:MM` und Bewerb/Runde in zwei
@@ -61,3 +76,7 @@ Stand: v4.1.0
   Court wird aus realer Glyphenbreite aller Namenszeilen und verfuegbarer Hoehe die
   groesstmoegliche gemeinsame Schriftgroesse berechnet; Heim/Gast erhalten gleiche
   Feldhoehe. Dieselbe adaptive Obergrenze gilt fuer Einzel und Doppel.
+  Ab 1001 px wird Satz 3 fuer Heim und Gast gemeinsam erst bei einem mindestens
+  zweistelligen Wert verbreitert; die Punktespalte zeigt Werte wie 40 vollstaendig.
+  Mobil bleiben die Scorebreiten unveraendert und ein Safe-Area-faehiger,
+  geometrisch zentrierter Zurueck-Pfeil fuehrt links oben zum Dashboard.

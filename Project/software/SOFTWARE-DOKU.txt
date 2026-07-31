@@ -1,6 +1,6 @@
 ================================================================================
   SOFTWARE-DOKU.txt - Index der Software-Dokumentation
-  Stand: v4.1.0, 2026-07-30
+  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 Dieses Verzeichnis dokumentiert den in Main integrierten Softwarestand. Code und
@@ -13,6 +13,10 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
   Pfad                         | Inhalt
   -----------------------------|-----------------------------------------------
+  Project/FACHKONZEPT.txt      | Produktvision, Zielgruppen, Nutzungsszenarien,
+                               | fachliche Anforderungen und offene Fragen.
+  Project/Scoreboard-          | Externe Scoreboard-Einheit, Receiverbetrieb,
+  Funktion.md                  | JSON-Datenfluss und Matchtyp-Auswertung.
   software/SOFTWARE-DOKU.txt   | Dieser Index.
   software/DATENBANK.txt       | Google-Sheets-Schema und -Projektionen,
                                | SQLite-Schema/State, Idempotenz, Legacy-

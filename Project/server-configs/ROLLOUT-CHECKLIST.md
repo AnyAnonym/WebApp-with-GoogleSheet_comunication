@@ -1,6 +1,6 @@
-# ePiber 4.1.0 Rollout-Checkliste
+# ePiber 4.1.3 Rollout-Checkliste
 
-Stand: 30.07.2026
+Stand: 31.07.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> Live**. Jede Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
@@ -11,7 +11,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Zweite pruefende Person: `____________________________`
 - [ ] Wartungsfenster und Kommunikationsweg festgelegt.
 - [ ] Vorheriger freigegebener Commit/Release fuer Rollback notiert: `____________________________`
-- [ ] `Backend/package.json`, `Backend/package-lock.json` und Release-Commit melden exakt `4.1.0`.
+- [ ] `Backend/package.json`, `Backend/package-lock.json` und Release-Commit melden exakt `4.1.3`.
 - [ ] `git status` des Deploymentstands ist sauber; keine lokalen Code-/Vorlagenaenderungen werden ausgerollt.
 
 ## 1. Google-Sheets-Backup und Schema
@@ -71,7 +71,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Im `Backend/` des Releasecheckouts ist `npm ci --omit=dev` erfolgreich.
 - [ ] `npm run build` ist erfolgreich; statischer Check und vollstaendige Testsuite sind gruen.
 - [ ] `npm audit --omit=dev` meldet keine nicht akzeptierte Produktionsluecke.
-- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der installierten 4.1.0-Vorlage erfolgreich.
+- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der installierten 4.1.3-Vorlage erfolgreich.
 - [ ] Alle drei installierten Units bestehen `systemd-analyze verify`.
 - [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Loopbackports.
 - [ ] Caddy-Roots zeigen exakt auf die jeweiligen `Frontend/`-Verzeichnisse; Backend, `.env`, Credentials und SQLite sind nicht statisch erreichbar.
@@ -93,7 +93,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 ## 6. Health, Status und Transport
 
-- [ ] `/version` liefert HTTP 200 und exakt Version `4.1.0`.
+- [ ] `/version` liefert HTTP 200 und exakt Version `4.1.3`.
 - [ ] `/live` liefert HTTP 200 mit `status: ok`.
 - [ ] `/ready` und `/health` liefern nach Initialisierung HTTP 200 mit `status: ready`.
 - [ ] Anonymes `/status` wird mit 401 abgewiesen.
@@ -138,6 +138,10 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Mobile Hoch- und Querformate, einschliesslich kleiner Querformate, mit Einzel- und Doppelpaarungen abgenommen.
 - [ ] Namen, gemeinsame Heim-/Gast-Feldhoehen, Scores, Satzwerte, Datum/Bewerb, Seitenpanel, Topausrichtung und `100dvh` sind ohne Abschneiden oder Ueberlagerung korrekt.
 - [ ] Scoreboard-Snapshot, Score-/Tabellen-Subscriptions, Revisionen und Resync liefern nach Reload und Reconnect konsistente Daten.
+- [ ] Tabelle `Matchtyp` besitzt mindestens `ID`, `Satztiebreak` und `Entscheidender Satz`; `Matches1.MatchtypID` ueberschreibt den Bewerbsstandard.
+- [ ] Bereits vor dem Rollout gespeicherte laufende Court-Zuweisungen wurden einmal neu zugewiesen und enthalten danach eine `matchtypId`.
+- [ ] Satz-Tie-Break in Satz 1/2 verschiebt die dritte Drehspalte ins Punktefeld und zeigt Satz 3 als 0; `MT7`/`MT10` markiert Satz 3 tuerkis.
+- [ ] Zweistellige Werte in Satz 3 und Punktewerte wie 40 werden am Fernseher nicht abgeschnitten; der mobile Zurueck-Pfeil ist erreichbar und zentriert.
 - [ ] Deaktivieren eines Platzes friert dessen letzten akzeptierten Score ein; spaete oder weitere externe Pollantworten dieses Platzes erzeugen keine Scoreaenderung und keine dadurch ausgeloeste Revision.
 - [ ] Expliziter Nullreset setzt ausschliesslich den gewaehlten Platz sofort auf `0-0/0-0/0-0/0-0`, erhoeht Revision/Push genau einmal und bleibt fuer Abonnenten nach Resync sichtbar.
 - [ ] Nach Aktivierung oder Nullreset wird der erste externe Stand nur als Baseline erfasst; ein unveraenderter Vorreset-Stand hebt den Nullreset nicht auf, erst eine spaetere semantische externe Aenderung wird uebernommen.
@@ -224,7 +228,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 ## Erfolgskriterien
 
-- [ ] Alle drei Systeme liefern exakt Version `4.1.0` und verwenden den identischen freigegebenen Commit.
+- [ ] Alle drei Systeme liefern exakt Version `4.1.3` und verwenden den identischen freigegebenen Commit.
 - [ ] Alle drei Systeme sind ausschliesslich ueber HTTPS/WSS erreichbar; Backends lauschen nur an Loopback.
 - [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets und keine pending Metadata.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.

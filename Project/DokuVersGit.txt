@@ -1,7 +1,7 @@
 ================================================================================
 DokuVersGit.txt - Dokumentation, Versionierung und Git
 ================================================================================
-Stand: 4.1.3
+Stand: 4.1.6
 
 Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
@@ -43,12 +43,20 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
    veroeffentlichten Branches, kein Amend und kein Ueberspringen von Pruefungen
    ohne gesonderten ausdruecklichen Auftrag.
 10. Wird bei einer Analyse oder Umsetzung eine dauerhaft relevante fachliche
-    Information erkannt, die in der kanonischen Dokumentation fehlt, wird dem
-    User vor ihrer Aufnahme ein konkreter Dokumentationsvorschlag genannt. Der
-    Vorschlag enthaelt mindestens die vorgesehene Zieldatei und die einzutragende
-    Aussage. Erst nach Ruecksprache wird die permanente Dokumentation angepasst.
-    Verpflichtende Eintraege im temporaeren Branch-Changelog werden weiterhin
-    ohne gesonderte Einzelrueckfrage im freigegebenen Auftragsumfang gepflegt.
+     Information erkannt, die in der kanonischen Dokumentation fehlt, wird dem
+     User vor ihrer Aufnahme ein konkreter Dokumentationsvorschlag genannt. Der
+     Vorschlag enthaelt mindestens die vorgesehene Zieldatei und die einzutragende
+     Aussage. Erst nach Ruecksprache wird die permanente Dokumentation angepasst.
+     Verpflichtende Eintraege im temporaeren Branch-Changelog werden weiterhin
+     ohne gesonderte Einzelrueckfrage im freigegebenen Auftragsumfang gepflegt.
+11. Bei wiederkehrenden OpenCode-Arbeitsablaeufen mit klar getrennten Phasen aus
+    Vorbereitung, Umsetzung und Abschluss soll vor Beginn einer neuen Phase knapp
+    geprueft werden, ob ein Modell- oder Reasoning-Wechsel sinnvoll ist. Ziel ist
+    ein geringerer Kontext- und Kontingentverbrauch, ohne das fuer die Phase
+    benoetigte Kontextfenster zu unterschreiten. Leichtgewichtigere Modelle sind
+    fuer regelgebundene Vorbereitungs- und Abschlussroutinen bevorzugt; fuer
+    Analyse, Umsetzung und schwierige Pruefungen bleiben staerkere Modelle
+    vorgesehen.
 
 Verpflichtender Beginn jeder neuen Arbeit:
 
@@ -609,7 +617,10 @@ ausdruecklich als Ausnahme freigibt.
 9. Im zentralen Changelog lautet das Quellenfeld "direkte Main-Ausnahme".
 10. Push bleibt ein eigener, ausdruecklich freizugebender Schritt.
 11. Ist die Arbeit zu gross fuer einen einzelnen Versionscommit, muss stattdessen
-   ein Seitenbranch verwendet werden.
+    ein Seitenbranch verwendet werden.
+12. Ein phasenabhaengiger Modell- oder Reasoning-Wechsel innerhalb derselben
+    OpenCode-Session ist zulaessig, solange dadurch keine verpflichtende Doku-,
+    Test-, Versions- oder Git-Pruefung aus dem verfuegbaren Kontext faellt.
 
 
 ================================================================================

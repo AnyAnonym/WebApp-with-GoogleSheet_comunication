@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.5
+Stand: 4.1.6
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,20 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.1.6] - 2026-08-01
+Commit: 4.1.6 | Workflow fuer phasenabhaengige Modellwahl ergaenzt
+Quelle: direkte Main-Ausnahme
+
+  Changed
+  - [Dokumentation] Die organisatorischen Workflow-Regeln erlauben fuer
+    wiederkehrende OpenCode-Phasen jetzt eine knappe Pruefung von Modell- und
+    Reasoning-Wechseln, damit Vorbereitung und Abschluss leichtergewichtige
+    Modelle nutzen koennen, ohne notwendiges Kontextfenster zu verlieren.
+  - [Dokumentation] `AGENTS.md` beschreibt fuer OpenCode-Sessions die
+    phasenabhaengige Modellwahl zwischen Vorbereitung, Umsetzung und Abschluss
+    sowie den vorsichtigen Umgang mit kleineren Kontextfenstern.
+  - [Software] Paket- und Lockfile-Version wurden auf 4.1.6 angehoben.
 
 
 [4.1.5] - 2026-08-01

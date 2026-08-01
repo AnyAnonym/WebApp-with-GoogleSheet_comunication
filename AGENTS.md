@@ -28,6 +28,12 @@ moeglichst wenigen Datei- und Suchzugriffen.
    Zusammenfassung eine vollständige Liste aller geaenderten Dateien auszugeben.
 8. Nach einem vorbereitenden Versionierungsschritt (`-x`-Setzung) wird vor jedem
    Commit explizit beim User nachgefragt, ob der Commit jetzt erfolgen soll.
+9. Bei laengeren OpenCode-Sessions mit wiederkehrenden Phasen aus Vorbereitung,
+   Umsetzung und Abschluss soll vor einer neuen Phase knapp geprueft werden, ob
+   ein Modell- oder Reasoning-Wechsel den Kontext- und Kontingentverbrauch senkt,
+   ohne das aktuell benoetigte Kontextfenster zu unterschreiten. Leichtgewichtigere
+   Modelle sind fuer regelgetriebene Vorbereitungs- und Abschlussroutinen
+   bevorzugt, staerkere Modelle fuer Analyse und Umsetzung.
 
 ## Projekt
 
@@ -50,7 +56,7 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
-- Aktueller Main-Stand: `4.1.3`
+- Aktueller Main-Stand: `4.1.6`
 
 ## Dokumentierter Infrastruktur-Sollstand
 

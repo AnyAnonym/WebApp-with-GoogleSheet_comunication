@@ -52,7 +52,7 @@ function createSocketClient(url, headers) {
         waiters.push(waiter);
       });
     },
-    async handshake(pageType = "test") {
+    async handshake(pageType = "test", clientVersion = appVersion) {
       await this.open();
       socket.send(JSON.stringify({
         type: "hello",
@@ -61,6 +61,7 @@ function createSocketClient(url, headers) {
         clientId: "00000000-0000-4000-8000-000000000010",
         deviceId: "00000000-0000-4000-8000-000000000011",
         pageType,
+        appVersion: clientVersion,
       }));
       return this.next((message) => message.type === "welcome");
     },
@@ -77,6 +78,12 @@ function createSocketClient(url, headers) {
       });
     },
   };
+}
+
+function nextClose(socket) {
+  return new Promise((resolve) => {
+    socket.once("close", (code, reason) => resolve({ code, reason: reason?.toString?.() || "" }));
+  });
 }
 
 function rejectedUpgrade(url, origin) {
@@ -122,6 +129,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
       row[5] = allowed ? "x" : "";
       dataStore.set("players", current, { source: "write" });
     },
+    status() { return {}; },
     async stop() {},
   };
   const application = createApplication({ repository, sheetService });
@@ -236,6 +244,20 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const publicClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
   assert.equal((await publicClient.handshake()).principal.role, "anonymous");
+  const staleVersionClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
+  await staleVersionClient.open();
+  staleVersionClient.socket.send(JSON.stringify({
+    type: "hello",
+    v: 2,
+    protocol: 2,
+    clientId: "00000000-0000-4000-8000-000000000120",
+    deviceId: "00000000-0000-4000-8000-000000000121",
+    pageType: "test",
+    appVersion: "0.0.0",
+  }));
+  const staleVersionClose = await nextClose(staleVersionClient.socket);
+  assert.equal(staleVersionClose.code, 4406);
+  assert.match(staleVersionClose.reason, /App-Version/i);
   publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "public-read", endpoint: "players", params: {} }));
   const publicPlayers = await publicClient.next((message) => message.id === "public-read");
   assert.equal(publicPlayers.type, "response");
@@ -290,6 +312,22 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const adminClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: cookie });
   assert.equal((await adminClient.handshake()).principal.role, "admin");
+  const statusResponse = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
+  assert.equal(statusResponse.status, 200);
+  const statusPayload = await statusResponse.json();
+  assert.deepEqual(statusPayload.provider.clientCapacity, { current: 2, max: 200, text: "2/200" });
+  assert.deepEqual(statusPayload.provider.connectionsByIp, [{
+    ip: "127.0.0.1",
+    current: 2,
+    max: 20,
+    text: "2/20",
+  }]);
+  const adminStatusClient = statusPayload.provider.clients.find((client) => client.userId === "p1");
+  assert.equal(adminStatusClient.ip, "127.0.0.1");
+  assert.equal(adminStatusClient.userName, "Admin / Ada");
+  const anonymousStatusClient = statusPayload.provider.clients.find((client) => client.principalType === "anonymous");
+  assert.equal(anonymousStatusClient.userId, null);
+  assert.equal(anonymousStatusClient.userName, null);
   adminClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "directory", endpoint: "memberDirectory", params: {} }));
   const directory = await adminClient.next((message) => message.id === "directory");
   assert.equal(directory.type, "response");

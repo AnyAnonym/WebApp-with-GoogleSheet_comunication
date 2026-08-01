@@ -24,6 +24,10 @@ moeglichst wenigen Datei- und Suchzugriffen.
    Zieldatei und den konkret einzutragenden Inhalt vor. Pflege sie erst nach
    Ruecksprache ein; verpflichtendes Branch-Changelog-Bookkeeping bleibt davon
    unberuehrt.
+7. Nach jedem erledigten Arbeitsauftrag, der Dateien verändert hat, ist in der
+   Zusammenfassung eine vollständige Liste aller geaenderten Dateien auszugeben.
+8. Nach einem vorbereitenden Versionierungsschritt (`-x`-Setzung) wird vor jedem
+   Commit explizit beim User nachgefragt, ob der Commit jetzt erfolgen soll.
 
 ## Projekt
 

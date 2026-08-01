@@ -1,5 +1,27 @@
+[4.1.3-paj-1-5] - 2026-08-01
+Commit: 4.1.3-paj-1-5 | WebSocket-Hello erzwingt Versionsgleichheit
+
+  Changed
+  - [Repository] Backend-Handshake verlangt eine App-Version im `hello` und lehnt
+    ungültige oder abweichende `appVersion` mit 4406 ab.
+  - [Software] `GET /status` transportiert zusätzlich `provider.clientCapacity`
+    sowie `provider.connectionsByIp` (`current`, `max`, `text`) und ergänzt bei
+    `provider.clients` um `ip`, `userId` und `userName`.
+
+  Tests
+  - [Backend] WebSocket- und `/status`/Versions-Mismatch-Verhalten in
+    `Backend/test/dataClient.test.js` und `Backend/test/server.integration.test.js`
+    ergänzt und geprüft.
+  - [Infrastruktur] `WS_HANDSHAKE_TIMEOUT_MS` auf 10000 ms erhöht.
+
+[4.1.3-paj-1-4] - 2026-08-01
+  Commit: 4.1.3-paj-1-4 | Versionsregel-Commitstruktur bereinigt
+
+  Changed
+  - [Repository] Dokumentationsworkflow für Commit-/Dokumentationsabschluss präzisiert.
+
 [4.1.3-paj-1-3] - 2026-08-01
-Commit: 4.1.3-paj-1-3 | Versionsregeln fuer ersten -x-Commit präzisiert
+  Commit: 4.1.3-paj-1-3 | Versionsregeln fuer ersten -x-Commit präzisiert
 
   Changed
   - [Dokumentation] In den Versionierungsregeln wird festgelegt, dass der erste Commit
@@ -37,3 +59,4 @@ Dokumentationsuebernahme beim Main-Versionssprung
   - Im Vertrag fuer `GET /status` ergaenzen, dass `provider.clientCapacity` die globale WebSocket-Belegung als `{ current, max, text }` ausweist.
   - Dokumentieren, dass `provider.connectionsByIp` je aktiver IP `{ ip, current, max, text }` liefert und `text` jeweils das Format `aktuell/max` besitzt.
   - Dokumentieren, dass Eintraege in `provider.clients` zusaetzlich `ip`, `userId` und `userName` enthalten, wobei `userName` fuer Benutzer als `Nachname / Vorname` und Benutzerfelder fuer Nicht-Benutzer als `null` ausgegeben werden.
+  - Dokumentieren, dass `appVersion` im v2-Handshake Pflicht ist, mit `serverVersion` uebereinstimmen muss und bei Abweichung mit 4406 abbricht; `GET /version` muss zur Versionsprüfung verwendet werden.

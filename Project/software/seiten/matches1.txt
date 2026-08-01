@@ -16,12 +16,16 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   Erfolgreiches Rendern meldet Monitor-Ready, ein Initialfehler Monitor-Failed.
 
 -- Bedienung und Layout --
-  Keine URL-Parameter. Kategorien: gespielt, offen und alle. Kombinierbare Filter:
-  Forderung ohne Spieldatum, Bewerb, aktiver Spieler, Datumsbereich mit
-  Monats-Presets und fehlender Spielpartner. Gespielte Matches stehen neueste
-  zuerst; offene mit Datum chronologisch, danach undatierte nach Bewerb. BYE wird
-  ausgeblendet, Ergebnis sowie [wo]/[ret] gelten als gespielt. Das Filterpanel ist
-  am Desktop offen und mobil einklappbar.
+  Der optionale URL-Parameter `?category=played|open` waehlt die anfangs aktive
+  Kategorie; ohne gueltigen Wert gilt `played`. In der Seite bleiben die Kategorien
+  gespielt, offen und alle umschaltbar. Kombinierbare Filter: vollstaendige
+  Spielpaarung ohne Termin, Bewerb, aktiver Spieler, Datumsbereich mit
+  Monats-Presets und fehlender Spielpartner. Der Filter fuer vollstaendige
+  Paarungen verlangt bei Einzel zwei Hauptspieler und bei Doppel alle vier
+  Spielerpositionen. Gespielte Matches stehen neueste zuerst; offene mit Datum
+  chronologisch, danach undatierte nach Bewerb. BYE wird ausgeblendet, Ergebnis
+  sowie [wo]/[ret] gelten als gespielt. Das Filterpanel ist am Desktop offen und
+  mobil einklappbar.
 
 -- Darstellung und Sicherheit --
   Einzel und Doppel, Runde, Ergebnis, Forderungs-/Matchdatum sowie w.o./ret.-Badges

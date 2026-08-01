@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.2.0
+Stand: 4.3.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,39 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.3.0] - 2026-08-01
+Commit: 4.3.0 | Profilmodale und mobile Navigation erweitert
+Quelle: 4.2.0-paj-1
+
+  Added
+  - [Software] Eigene und fremde Profilmodale bieten fuer sichtbare E-Mail-Adressen
+    und Telefonnummern tastaturbedienbare Kopierbuttons mit Clipboard-Fallback und
+    sichtbarer Rueckmeldung.
+  - [Software] Spielernamen in Round-Robin-Gruppentabellen und Paarungen oeffnen
+    das gemeinsame Profilmodal; leere Spielerpositionen bleiben inaktiv.
+  - [Software] Das Scoreboard-Handylayout verlinkt aus der Platz-1-Haelfte auf
+    offene und aus der Platz-2-Haelfte auf gespielte Matches. `Matches1.html`
+    unterstuetzt dafuer `?category=open|played` als initiale Kategorieauswahl.
+
+  Changed
+  - [Software] Der Matches-Filter fuer undatierte Forderungen wurde durch
+    `Vollstaendige Spielpaarung ohne Termin` ersetzt und verlangt bei Einzel zwei
+    Hauptspieler beziehungsweise bei Doppel alle vier Spielerpositionen.
+  - [Software] Die Turnierraster-Platzierung berechnet vertikale Abstaende direkt
+    aus Matchbox- und Datumshoehe sowie festen Zwischenraeumen.
+  - [Software] Gemeinsame Modale, Platzdialoge, Monitor-Provisionierung sowie Lade-
+    und Fehlerdialoge nutzen Safe-Areas und den dynamischen Viewport, bleiben auf
+    Handys zentriert und scrollen zu hohen Inhalt innerhalb des Dialogs.
+  - [Software] Das Profilmodal der angemeldeten Person zeigt kein Geschlecht mehr.
+  - [Dokumentation] Die Seitenbeschreibungen fuer Dashboard/Profile, Matches,
+    Round Robin und Scoreboard wurden an Bedienung, URL-Parameter und mobile
+    Darstellung angeglichen.
+  - [Dokumentation] Der Schnellauftrag `herrichten` ist als begrenzter Ablauf fuer
+    Branchanlage, nummerierten Initialcommit und anschliessenden `-x`-Stand in
+    `AGENTS.md` und `Project/DokuVersGit.txt` verankert.
+  - [Repository] Paketversionen in `Backend/package.json` und
+    `Backend/package-lock.json` auf `4.3.0` gesetzt.
 
 [4.2.0] - 2026-08-01
 Commit: 4.2.0 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert

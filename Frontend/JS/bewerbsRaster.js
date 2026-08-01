@@ -91,6 +91,16 @@ function parseResult(val) {
   return sets;
 }
 
+function formatMatchDate(raw) {
+  if (!raw) return "";
+  const value = String(raw).trim();
+  const match = value.match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day, hour, minute] = match;
+  const fullYear = parseInt(year, 10) >= 50 ? `19${year}` : `20${year}`;
+  return `${day}.${month}.${fullYear} - ${hour}:${minute}`;
+}
+
 function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
   const slotMap = {};
 
@@ -102,6 +112,7 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
   const p4Idx = h.indexOf("spieler4id");
   const rtIdx = h.indexOf("bewerbrunde");
   const ergebnisIdx = h.indexOf("ergebnis");
+  const matchDateIdx = h.indexOf("matchdate");
 
   matchData.forEach((row) => {
     if (bwIdx >= 0 && String(row[bwIdx] || "").trim() !== String(BEWERB_ID).trim()) return;
@@ -122,6 +133,7 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
       bottom: { id: pid3.cleanId, partnerId: pid4.cleanId, name: null, partnerName: null, special: pid3.special, pre: pid3.pre, gesetzt: pid3.gesetzt },
       result: null,
       winner: null,
+      matchDate: formatMatchDate(matchDateIdx >= 0 ? row[matchDateIdx] : ""),
     };
 
     if (hasResult) {
@@ -228,6 +240,7 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
         bottom: sm ? sm.bottom : { id: "", name: null },
         result: sm ? sm.result : null,
         winner: sm ? sm.winner : null,
+        matchDate: sm ? sm.matchDate : "",
       });
     }
     return { roundName: rd.label, matches };
@@ -306,9 +319,26 @@ function renderBracket(rounds) {
   const currentUserId = String(getUser()?.id || "");
   const r1Count = rounds[0].matches.length;
   const gridRows = r1Count * 2;
+  const dateToMatchGap = 4;
+  const matchToPreviousMatchGap = 12;
+  let gridRowHeight = 28;
+  const columnGap = 56;
 
   const bracketDiv = document.createElement("div");
   bracketDiv.className = "bracket";
+
+  const stage = document.createElement("div");
+  stage.className = "bracket-stage";
+
+  const columnBands = document.createElement("div");
+  columnBands.className = "bracket-column-bands";
+  columnBands.style.setProperty("--cols", numRounds);
+  rounds.forEach(() => {
+    const band = document.createElement("div");
+    band.className = "bracket-column-band";
+    columnBands.appendChild(band);
+  });
+  stage.appendChild(columnBands);
 
   const headerRow = document.createElement("div");
   headerRow.className = "bracket-header-row";
@@ -319,13 +349,14 @@ function renderBracket(rounds) {
     h.textContent = r.roundName;
     headerRow.appendChild(h);
   });
-  bracketDiv.appendChild(headerRow);
+  stage.appendChild(headerRow);
 
   const grid = document.createElement("div");
   grid.className = "bracket-grid";
   grid.style.setProperty("--cols", numRounds);
   grid.style.setProperty("--rows", gridRows);
-  grid.style.height = (gridRows * 52) + "px";
+  grid.style.setProperty("--row-height", `${gridRowHeight}px`);
+  grid.style.height = (gridRows * gridRowHeight) + "px";
 
   rounds.forEach((round, rIdx) => {
     round.matches.forEach((match, mIdx) => {
@@ -333,11 +364,22 @@ function renderBracket(rounds) {
 
       const md = document.createElement("div");
       md.className = "bracket-match";
+      md.dataset.roundIndex = rIdx;
       md.style.gridColumn = rIdx + 1;
       md.style.gridRow = row;
       match._el = md;
 
       if (match.result || match.winner) md.classList.add("has-result");
+
+      if (match.matchDate) {
+        const date = document.createElement("div");
+        date.className = "bracket-match-date";
+        date.textContent = match.matchDate;
+        md.appendChild(date);
+      }
+
+      const matchBox = document.createElement("div");
+      matchBox.className = "bracket-match-box";
 
       [match.top, match.bottom].forEach((slot, sIdx) => {
         const el = document.createElement("div");
@@ -360,7 +402,6 @@ function renderBracket(rounds) {
           : (slot.name || "—");
 
         if (match.result && slot.name) {
-          const resultText = match.result.map((s) => slot._side === "left" ? s.left : s.right).join(" | ");
           const hasRet = match.result.some((s) => s.special && (slot._side === "left" ? s.retOnLeft : !s.retOnLeft));
           const name = document.createElement("span");
           name.className = "pname";
@@ -372,14 +413,31 @@ function renderBracket(rounds) {
 
           const result = document.createElement("span");
           result.className = "player-result";
-          result.textContent = resultText;
+          match.result.forEach((set, setIdx) => {
+            const value = document.createElement("span");
+            value.className = "set-result";
+            if (String(set.left).length > 1 || String(set.right).length > 1) {
+              value.classList.add("two-digit");
+            }
+            value.textContent = slot._side === "left" ? set.left : set.right;
+            result.appendChild(value);
+            if (setIdx < match.result.length - 1) {
+              const separator = document.createElement("span");
+              separator.className = "set-result-separator";
+              separator.textContent = "|";
+              result.appendChild(separator);
+            }
+          });
           el.append(name, " ", result);
         } else {
-          el.textContent = slot.name ? displayName : "—";
+          const name = document.createElement("span");
+          name.className = "pname";
+          name.textContent = slot.name ? displayName : "—";
           [slot.special, slot.gesetzt ? "gesetzt" : null].forEach((type) => {
             const badge = createBadge(type);
-            if (badge) el.append(" ", badge);
+            if (badge) name.append(" ", badge);
           });
+          el.appendChild(name);
           if (!slot.name && !slot.special) el.classList.add("bye");
         }
 
@@ -392,49 +450,89 @@ function renderBracket(rounds) {
           });
         }
 
-        md.appendChild(el);
+        matchBox.appendChild(el);
       });
 
+      md.appendChild(matchBox);
       grid.appendChild(md);
     });
   });
 
-  bracketDiv.appendChild(grid);
+  stage.appendChild(grid);
+  bracketDiv.appendChild(stage);
   container.appendChild(bracketDiv);
 
   // Spaltenbreite dynamisch berechnen basierend auf Inhalt
   requestAnimationFrame(() => {
-    let maxNameWidth = 0;
-    let maxResultWidth = 0;
+    const matchBoxes = grid.querySelectorAll(".bracket-match-box");
+    let maxMatchHeight = 0;
+    let maxDateHeight = 0;
+
+    matchBoxes.forEach((box) => {
+      const h = box.getBoundingClientRect().height;
+      if (h > maxMatchHeight) maxMatchHeight = h;
+    });
+
+    const matchDates = grid.querySelectorAll(".bracket-match-date");
+    matchDates.forEach((date) => {
+      const h = date.getBoundingClientRect().height;
+      if (h > maxDateHeight) maxDateHeight = h;
+    });
+
+    if (maxMatchHeight > 0) {
+      const additionalDateGap = matchDates.length > 0
+        ? maxDateHeight + dateToMatchGap + matchToPreviousMatchGap
+        : 0;
+      gridRowHeight = Math.max(1, Math.ceil((maxMatchHeight + additionalDateGap) / 2));
+      grid.style.setProperty("--row-height", `${gridRowHeight}px`);
+      grid.style.height = `${gridRows * gridRowHeight}px`;
+    }
+
     const padding = 28; // 14px padding links + 14px rechts
     const minGap = 12;  // Mindestabstand zwischen Name und Ergebnis
 
-    grid.querySelectorAll(".bracket-player").forEach((el) => {
-      const nameEl = el.querySelector(".pname");
-      const resultEl = el.querySelector(".player-result");
-      if (nameEl) {
-        const w = nameEl.scrollWidth;
-        if (w > maxNameWidth) maxNameWidth = w;
-      }
-      if (resultEl) {
-        const w = resultEl.scrollWidth;
-        if (w > maxResultWidth) maxResultWidth = w;
-      }
-      // Auch Spieler ohne Ergebnis berücksichtigen
-      if (!nameEl && !resultEl) {
-        const w = el.scrollWidth;
-        if (w > maxNameWidth) maxNameWidth = w;
-      }
+    const columnWidths = rounds.map((_, roundIndex) => {
+      let maxNameWidth = 0;
+      let maxResultWidth = 0;
+      const matches = grid.querySelectorAll(`.bracket-match[data-round-index="${roundIndex}"]`);
+
+      matches.forEach((matchEl) => {
+        matchEl.querySelectorAll(".bracket-player").forEach((el) => {
+          const nameEl = el.querySelector(".pname");
+          const resultEl = el.querySelector(".player-result");
+          if (nameEl) maxNameWidth = Math.max(maxNameWidth, nameEl.scrollWidth);
+          if (resultEl) maxResultWidth = Math.max(maxResultWidth, resultEl.scrollWidth);
+          if (!nameEl && !resultEl) maxNameWidth = Math.max(maxNameWidth, el.scrollWidth);
+        });
+      });
+
+      const resultGap = maxResultWidth > 0 ? minGap : 0;
+      const width = Math.max(200, Math.min(maxNameWidth + maxResultWidth + padding + resultGap, 600));
+      matches.forEach((matchEl) => {
+        matchEl.style.width = `${width}px`;
+      });
+      return width;
     });
 
-    const colWidth = Math.max(200, Math.min(maxNameWidth + maxResultWidth + padding + minGap, 600));
-    grid.querySelectorAll(".bracket-match").forEach((el) => {
-      el.style.width = colWidth + "px";
-    });
-    grid.style.gridTemplateColumns = `repeat(var(--cols, 4), ${colWidth}px)`;
+    const columnTemplate = columnWidths.map((width) => `${width}px`).join(" ");
+    headerRow.style.gridTemplateColumns = columnTemplate;
+    grid.style.gridTemplateColumns = columnTemplate;
+
+    const bandTemplate = columnWidths.map((width, index) => {
+      if (columnWidths.length === 1) return width;
+      if (index === 0 || index === columnWidths.length - 1) return width + columnGap / 2;
+      return width + columnGap;
+    }).map((width) => `${width}px`).join(" ");
+    columnBands.style.gridTemplateColumns = bandTemplate;
 
     // Connectors erst nach Breitenberechnung zeichnen
     requestAnimationFrame(() => {
+      const gridRect = grid.getBoundingClientRect();
+      let contentBottom = 0;
+      grid.querySelectorAll(".bracket-match-box").forEach((box) => {
+        contentBottom = Math.max(contentBottom, box.getBoundingClientRect().bottom - gridRect.top);
+      });
+      grid.style.height = `${Math.max(gridRows * gridRowHeight, Math.ceil(contentBottom) + 8)}px`;
       addConnectors(grid, rounds);
     });
   });

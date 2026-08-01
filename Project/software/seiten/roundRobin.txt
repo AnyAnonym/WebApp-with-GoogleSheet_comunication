@@ -22,7 +22,10 @@ RoundRobin-Gruppenphase - Tabellen und Paarungslisten
   Datum, 1 Uhrzeit, 2 ohne Datum; bei 3/4/5 bleiben offene Paarungen voll datiert,
   gespielte verwenden entsprechend voll/Uhrzeit/ohne. Spezifikum-Regeln wie
   `1G(A)/2G(A)/3G(1)` markieren Aufsteiger; Vergleich: Siege, Satzdifferenz,
-  Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet.
+  Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet. Jeder
+  vorhandene Spielername in Gruppentabellen und Paarungen ist per Maus oder
+  Tastatur bedienbar und oeffnet das gemeinsame Profilmodal fuer diese Person;
+  leere Spielerpositionen bleiben reine Anzeige.
 
 -- Darstellung und Sicherheit --
   Das Grid waehlt je nach Gruppenzahl eine bis vier Spalten und wird mobil

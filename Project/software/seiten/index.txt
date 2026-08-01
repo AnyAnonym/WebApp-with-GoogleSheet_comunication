@@ -34,13 +34,24 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   geoeffnet. Reset-Code und direkte administrative Passwortvergabe bleiben davon
   getrennte Ablaeufe.
 
+-- Profile --
+  Eigene und fuer angemeldete Benutzer sichtbare fremde Profile zeigen E-Mail,
+  Telefon und Geburtsdatum; das Geschlecht wird im Profilmodal nicht angezeigt.
+  Neben vorhandener E-Mail und Telefonnummer steht jeweils ein kleiner,
+  tastaturbedienbarer Kopierbutton mit ueberlappendem Rechtecksymbol. Moderne
+  Clipboard-APIs und ein Browser-Fallback liefern eine sichtbare Erfolg- oder
+  Fehlerrueckmeldung. Anonyme oeffentliche Profile enthalten weiterhin keine
+  Kontaktdaten.
+
 -- Layout und Bereitschaft --
   Header, Main-Bereich, leerer Sidebar-Container und Footer; responsiv rutscht die
   Sidebar unter den Hauptbereich. staticReady.js meldet im Monitorbetrieb nach
   DOMContentLoaded `epiber-monitor-ready`; die statische Seite benoetigt keine
-  Fachdaten zum Ladeabschluss. Die mobile Navigation liegt als fixed Modal
-  unabhaengig von der Dokumentposition zentriert im sichtbaren Viewport; Oeffnen
-  und Schliessen veraendern die Scrollposition der Seite nicht.
+  Fachdaten zum Ladeabschluss. Gemeinsame Modale bleiben im nach Safe-Areas
+  verfuegbaren Viewport horizontal und vertikal zentriert; zu hoher Inhalt scrollt
+  innerhalb des Dialogs. Die mobile Navigation liegt als fixed Modal unabhaengig
+  von der Dokumentposition zentriert im sichtbaren Viewport; Oeffnen und Schliessen
+  veraendern die Scrollposition der Seite nicht.
 
 -- Besonderheiten --
   Keine URL-Parameter. rankingSidebar.js und SDK.js werden nicht mehr verwendet;

@@ -5,8 +5,49 @@ Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
 Repository-Root, sofern sie nicht mit / beginnen.
 
+Fuer den alleinigen Auftrag `herrichten` ist nur der folgende Abschnitt 0 zu
+lesen. Die restliche Datei wird dabei nur gelesen, wenn Abschnitt 0 wegen einer
+Abweichung auf den normalen Workflow verweist.
+
 Die Regeln gelten ab der ersten vollstaendig angeglichenen Version 3.1.11. Aeltere Commits
 koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben.
+
+
+================================================================================
+0. SCHNELLABLAUF HERRICHTEN
+================================================================================
+
+Der eindeutige Userauftrag `herrichten` auf einem sauberen `main` autorisiert in
+einem Durchlauf ausschliesslich folgende Vorbereitung:
+
+1. Branch, Arbeitsbaum, letzten Commit und Version aus `Backend/package.json`
+   pruefen. Netzwerkaktionen wie `fetch`, `pull` oder `push` sind nicht enthalten.
+2. Den naechsten historisch freien Branch
+   `<Basisversion>-<Systemkuerzel>-<BranchId>` anhand vorhandener lokaler und
+   Remote-Referenzen, Git-Historie und `Project/ChangeLogs/ChangeLog-main.txt`
+   bestimmen. Basisversion ist die Version aus `Backend/package.json`;
+   Systemkuerzel sind `paj` oder `pk`; die positive BranchId wurde fuer diese
+   Kombination noch nie verwendet.
+3. Den Seitenbranch anlegen. Paketversionen in `Backend/package.json` und im
+   Root-Paket von `Backend/package-lock.json` auf `<branchname>-1` setzen und
+   `Project/ChangeLogs/ChangeLog-<branchname>.txt` mit dem Initialabschnitt
+   anlegen.
+4. Ohne weitere Rueckfrage ausschliesslich diese drei Dateien als
+   `<branchname>-1 | Branch-Stand nummeriert initialisiert` committen. Der Auftrag
+   `herrichten` ist die ausdrueckliche Freigabe nur fuer diesen Initialcommit.
+5. Den uncommittierten Arbeitsstand `<branchname>-1-x` gleichzeitig in beiden
+   Paketdateien und einem offenen Branch-Changelogabschnitt herstellen. Dessen
+   Zielcommit ist `<branchname>-2`.
+6. Branch, Initialcommit, `-x`-Version und die drei erwarteten uncommittierten
+   Dateien pruefen und knapp melden. Tests sind fuer diese reine Nummerierungs-
+   und Changelogvorbereitung nicht erforderlich.
+
+`herrichten` autorisiert keinen fachlichen Commit, kein `dokumentieren`, keinen
+Push, Merge, Netzwerkabgleich oder direkte Main-Aenderung. Ist `main` nicht
+sauber, stimmen Version und letzter Main-Commit nicht logisch ueberein oder ist
+der freie Branchname nicht eindeutig bestimmbar, wird nichts veraendert und die
+Abweichung knapp gemeldet. Fuer alle anderen Faelle und spaeteren Arbeitsphasen
+gelten die folgenden Detailregeln.
 
 
 ================================================================================
@@ -73,9 +114,10 @@ Verpflichtender Beginn jeder neuen Arbeit:
    Abschnitt 4 bestimmt und der Branch angelegt. Danach werden Paket, Lockfile
    und neues Branch-Changelog auf `<branchname>-1` gesetzt. Dieser rein
    nummerierende Initialstand ist die einzige Ausnahme von Punkt 1.
-6. Auch der Initialcommit benoetigt eine eigene ausdrueckliche Freigabe und lautet
-   `<branchname>-1 | Branch-Stand nummeriert initialisiert`. Er darf kein `-x`
-   enthalten.
+6. Der Initialcommit benoetigt eine eigene ausdrueckliche Freigabe und lautet
+   `<branchname>-1 | Branch-Stand nummeriert initialisiert`. Der eindeutige
+   Auftrag `herrichten` erteilt diese Freigabe bereits; eine Zwischenfrage
+   entfaellt. Der Commit darf kein `-x` enthalten.
 7. Erst nach dem Initialcommit wird `<branchname>-1-x` als uncommittierter
    Arbeitsstand vorbereitet. Der fachliche erste Zielcommit ist
    `<branchname>-2`.
@@ -266,7 +308,8 @@ Beispiele:
 
 Die laufende Nummer beginnt je Branch bei 1 und wird lueckenlos erhoeht. Auch
 ein erforderlicher Merge von main in den Seitenbranch erhaelt die naechste
-Branch-Commitnummer. Branch-Commits benoetigen einen ausdruecklichen Auftrag.
+Branch-Commitnummer. Branch-Commits benoetigen einen ausdruecklichen Auftrag;
+beim Initialcommit gilt `herrichten` als dieser Auftrag.
 Der erste Commit ist der nummerierte Initialstand `...-1` ohne `-x`; jeder
 weitere Commit beschreibt fachliche, technische oder dokumentarische Arbeit.
 
@@ -541,7 +584,8 @@ Arbeit im Seitenbranch:
 8. Alle und nur die auftragsbezogenen Dateien stagen; Secrets ausschliessen.
 9. Staged Diff, unstaged Diff und untracked Dateien gemeinsam gegen den
    vollstaendigen Auftragsumfang pruefen.
-10. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen.
+10. Commit nur nach ausdruecklicher Freigabe im Branch-Format erstellen. Fuer den
+    Initialcommit eines neuen Seitenbranches gilt `herrichten` als Freigabe.
 11. Nach dem Commit pruefen, dass Commit-ID, package.json, package-lock.json und
     GET-/version-Wert logisch uebereinstimmen und keine auftragsbezogene Datei
     im Arbeitsbaum zurueckblieb.
@@ -654,7 +698,9 @@ Vollstaendigkeit eines Commits:
 6. Vor dem Commit werden staged Diff, unstaged Diff und untracked Dateien
    gemeinsam gegen den vollstaendigen Auftragsumfang geprueft. Secrets bleiben
    ausgeschlossen.
-7. Der Commit wird ausschliesslich auf ausdrueckliche Aufforderung erstellt.
+7. Der Commit wird ausschliesslich auf ausdrueckliche Aufforderung erstellt. Fuer
+   den Initialcommit eines neuen Seitenbranches gilt `herrichten` als diese
+   Aufforderung.
 8. Nach dem Commit werden Git-Status und Commit-Diff erneut geprueft. Bleibt eine
    auftragsbezogene Datei zurueck oder fehlt sie im Commit, gilt der Commit als
    unvollstaendig.

@@ -10,6 +10,7 @@ const readPlayersList = createEndpoint("players");
 const readBewerbe     = createEndpoint("bewerbe");
 const readBewerbsart  = createEndpoint("bewerbsart");
 let renderGeneration = 0;
+const profileLinkContainers = new WeakSet();
 
 export function invalidateRoundRobinRender() {
   renderGeneration++;
@@ -120,11 +121,28 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => entities[char]);
 }
 
+function formatPlayerHtml(playerId, playerMap) {
+  const name = escapeHtml(formatPlayerName(playerId, playerMap));
+  if (!playerId) return `<span class="rr-player-name">${name}</span>`;
+  return `<button type="button" class="rr-player" data-player-id="${escapeHtml(playerId)}">${name}</button>`;
+}
+
 function formatTeamHtml(pid1, pid2, playerMap) {
-  const n1 = escapeHtml(formatPlayerName(pid1, playerMap));
-  if (!pid2) return `<span class="rr-player">${n1}</span>`;
-  const n2 = escapeHtml(formatPlayerName(pid2, playerMap));
-  return `<span class="rr-player">${n1}</span><span class="rr-team-sep"> / </span><span class="rr-player">${n2}</span>`;
+  const player1 = formatPlayerHtml(pid1, playerMap);
+  if (!pid2) return player1;
+  const player2 = formatPlayerHtml(pid2, playerMap);
+  return `${player1}<span class="rr-team-sep"> / </span>${player2}`;
+}
+
+function bindProfileLinks(container) {
+  if (profileLinkContainers.has(container)) return;
+  profileLinkContainers.add(container);
+  container.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const player = event.target.closest(".rr-player[data-player-id]");
+    if (!player || !container.contains(player)) return;
+    window.openProfileModal?.({ playerId: player.dataset.playerId });
+  });
 }
 
 function parseSheetDate(raw) {
@@ -341,6 +359,7 @@ function renderMessage(container, message) {
 
 export async function renderRoundRobin(bewerbId, container, paarungslayout) {
   const generation = ++renderGeneration;
+  bindProfileLinks(container);
   container.replaceChildren();
   showLoadingOverlay("Lade Gruppen...");
 

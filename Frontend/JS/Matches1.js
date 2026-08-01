@@ -10,7 +10,8 @@ let allMatches = [];
 let playerMap = new Map();
 let playerFilterList = []; // {id, display: "Nachname Vorname"} für Filter-Dropdown
 let bewerbMap = new Map();
-let currentCategory = "played";
+const requestedCategory = new URLSearchParams(window.location.search).get("category");
+let currentCategory = ["played", "open"].includes(requestedCategory) ? requestedCategory : "played";
 
 // ── Hilfsfunktionen ──
 
@@ -256,8 +257,12 @@ function getFilteredMatches() {
   else if (currentCategory === "open") matches = matches.filter((m) => !m.isPlayed);
 
   // Optionale Filter
-  if (document.getElementById("filterForderung")?.checked) {
-    matches = matches.filter((m) => m.fordDateRaw && !m.matchDateRaw);
+  if (document.getElementById("filterCompleteWithoutDate")?.checked) {
+    matches = matches.filter((m) => {
+      const hasCompletePrimaryPlayers = !!m.p1.id && !!m.p3.id;
+      const hasCompletePartners = (!!m.p2.id) === (!!m.p4.id);
+      return !m.matchDateRaw && hasCompletePrimaryPlayers && hasCompletePartners;
+    });
   }
   if (document.getElementById("filterBewerb")?.checked) {
     const val = document.getElementById("filterBewerbSelect")?.value;
@@ -406,6 +411,7 @@ function renderMatches() {
 function initControls() {
   // Kategorie-Buttons
   document.querySelectorAll(".m1-cat-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.cat === currentCategory);
     btn.addEventListener("click", () => {
       document.querySelectorAll(".m1-cat-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
@@ -420,7 +426,7 @@ function initControls() {
   });
 
   // Filter-Checkboxen
-  ["filterForderung", "filterBewerb", "filterSpieler", "filterDatum", "filterMissing"].forEach((id) => {
+  ["filterCompleteWithoutDate", "filterBewerb", "filterSpieler", "filterDatum", "filterMissing"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", (e) => {
       // Enable/Disable zugehörige Inputs
       if (id === "filterBewerb") document.getElementById("filterBewerbSelect").disabled = !e.target.checked;

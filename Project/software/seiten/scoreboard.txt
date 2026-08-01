@@ -97,4 +97,8 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   Ab 1001 px wird Satz 3 fuer Heim und Gast gemeinsam erst bei einem mindestens
   zweistelligen Wert verbreitert; die Punktespalte zeigt Werte wie 40 vollstaendig.
   Mobil bleiben die Scorebreiten unveraendert und ein Safe-Area-faehiger,
-  geometrisch zentrierter Zurueck-Pfeil fuehrt links oben zum Dashboard.
+  geometrisch zentrierter Zurueck-Pfeil fuehrt links oben zum Dashboard. Rechts
+  oben fuehrt `Naechste Spiele` in der Platz-1-Haelfte zu
+  `Matches1.html?category=open`; `Letzte Spiele` in der Platz-2-Haelfte oeffnet
+  `Matches1.html?category=played`. Oberhalb des mobilen Breakpoints sind diese
+  beiden Schaltflaechen ausgeblendet.

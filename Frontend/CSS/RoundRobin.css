@@ -86,7 +86,21 @@
 
 /* ── Spieler-Name (Doppel) ── */
 .rr-player {
-  /* Default: inline */
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.rr-player:hover,
+.rr-player:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .rr-team-sep {

@@ -1,6 +1,5 @@
-[4.1.3-paj-1-3-x] - In Arbeit seit 2026-08-01
-Zielcommit: 4.1.3-paj-1-3
-Status: uncommitted
+[4.1.3-paj-1-3] - 2026-08-01
+Commit: 4.1.3-paj-1-3 | Versionsregeln fuer ersten -x-Commit präzisiert
 
   Changed
   - [Dokumentation] In den Versionierungsregeln wird festgelegt, dass der erste Commit

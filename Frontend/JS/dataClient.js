@@ -3,6 +3,10 @@ const REQUEST_TIMEOUT_MS = 45000;
 const CONNECT_TIMEOUT_MS = 10000;
 const STALE_AFTER_MS = 70000;
 const MAX_BACKOFF_MS = 30000;
+const APP_VERSION_UNKNOWN = "...";
+const APP_VERSION_FETCH_TIMEOUT_MS = 2500;
+const VERSION_MISMATCH_CODE = 4406;
+const VERSION_MISMATCH_RELOAD_KEY = "epiber-app-version-reload";
 
 let socket = null;
 let socketGeneration = 0;
@@ -28,7 +32,97 @@ const resyncListeners = new Set();
 const eventListeners = new Map();
 const desiredTopics = new Set();
 const retainedOperationIds = new Map();
-const TERMINAL_CLOSE_CODES = new Set([1008, 4003, 4009, 4406]);
+let appVersionPromise = null;
+function getStoredAppVersion() {
+  return typeof window.APP_VERSION === "string" ? window.APP_VERSION : null;
+}
+
+function isKnownAppVersion(raw) {
+  return typeof raw === "string" && raw !== APP_VERSION_UNKNOWN;
+}
+
+function setFooterVersion(version) {
+  const footer = document.getElementById("footer-version");
+  if (!footer || !version) return;
+  footer.textContent = `v${version}`;
+}
+
+function fetchAppVersion() {
+  return new Promise((resolve) => {
+    if (!window.fetch) {
+      resolve(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), APP_VERSION_FETCH_TIMEOUT_MS);
+    fetch("/version", { cache: "no-store", signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Version endpoint failed"))))
+      .then((data) => {
+        const next = typeof data?.version === "string" ? data.version : null;
+        if (next) {
+          window.APP_VERSION = next;
+          setFooterVersion(next);
+        }
+        resolve(next);
+      })
+      .catch(() => resolve(getStoredAppVersion()))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
+function getAppVersionForHello() {
+  if (!appVersionPromise) {
+    const stored = getStoredAppVersion();
+    if (isKnownAppVersion(stored)) {
+      appVersionPromise = Promise.resolve(stored);
+    } else {
+      appVersionPromise = fetchAppVersion().then((value) => (isKnownAppVersion(value) ? value : APP_VERSION_UNKNOWN));
+    }
+  }
+  return appVersionPromise;
+}
+
+function shouldReloadForVersionMismatch() {
+  const storage = window.sessionStorage || window.localStorage;
+  const markerValue = storage?.getItem?.(VERSION_MISMATCH_RELOAD_KEY);
+  const marker = Number(markerValue || 0);
+  const now = Date.now();
+  if (Number.isNaN(marker) || now - marker > 10 * 60 * 1000) {
+    storage?.setItem?.(VERSION_MISMATCH_RELOAD_KEY, String(now));
+    return true;
+  }
+  return false;
+}
+
+function clearVersionMismatchReloadMarker() {
+  const storage = window.sessionStorage || window.localStorage;
+  storage?.removeItem?.(VERSION_MISMATCH_RELOAD_KEY);
+}
+
+function isVersionMismatchClose(code, reason = "") {
+  const text = typeof reason === "string" ? reason : reason?.toString?.() || "";
+  return code === VERSION_MISMATCH_CODE && /app[- ]?version/i.test(text);
+}
+const TERMINAL_CLOSE_CODES = new Set([1008, 4003, 4009]);
+const USER_FACING_STATE_TEXT = {
+  idle: "Verbinden...",
+  connecting: "Verbinden...",
+  connected: "Verbunden",
+  stale: "Daten werden aktualisiert",
+  backoff: "Bitte kurz warten",
+  offline: "Keine Verbindung",
+  stopped: "Bitte kurz warten",
+};
+
+function sanitizeCloseReason(code, reason = "") {
+  if (code === VERSION_MISMATCH_CODE) return "updates-required";
+  if (code === 4408 || code === 4000 || code === 4002) return "connection-timeout";
+  return typeof reason === "string" && reason.trim() ? "connection-closed" : "connection-lost";
+}
+
+function resolveConnectionText(currentState) {
+  return USER_FACING_STATE_TEXT[currentState] || USER_FACING_STATE_TEXT.idle;
+}
 const UNCERTAIN_OPERATION_ERRORS = new Set([
   "ACK_TIMEOUT",
   "CONNECTION_LOST",
@@ -101,6 +195,7 @@ function websocketUrl() {
 
 function setState(next, details = {}) {
   if (state === next && !Object.keys(details).length) return;
+  if (state === "stopped" && next === "backoff") return;
   if (state !== next && !ALLOWED_TRANSITIONS[state]?.has(next)) {
     throw new Error(`Ungueltiger WebSocket-Zustandswechsel: ${state} -> ${next}`);
   }
@@ -121,6 +216,7 @@ function getConnectionStatus(details = {}) {
     lastPongAt,
     lastClose,
     reconnectAttempt: connectAttempt,
+    statusText: resolveConnectionText(state),
     principal: welcome?.principal || null,
     ...details,
   };
@@ -161,7 +257,7 @@ function cleanupSocket(expectedSocket) {
 }
 
 function scheduleReconnect() {
-  if (stopped || !navigator.onLine || reconnectTimer) return;
+  if (stopped || state === "stopped" || !navigator.onLine || reconnectTimer) return;
   const base = Math.min(MAX_BACKOFF_MS, 1000 * (2 ** Math.min(connectAttempt, 5)));
   const delay = Math.floor(base * (0.8 + Math.random() * 0.4));
   setState("backoff", { retryInMs: delay });
@@ -239,6 +335,7 @@ function handleMessage(event, generation, currentSocket) {
       currentSocket.close(4406, "Protocol mismatch");
       return;
     }
+    clearVersionMismatchReloadMarker();
     welcome = message;
     setState("connected");
     if (stableTimer) clearTimeout(stableTimer);
@@ -316,20 +413,22 @@ function connect() {
   currentSocket.addEventListener("open", () => {
     if (generation !== socketGeneration || currentSocket !== socket) return;
     lastMessageAt = Date.now();
-    try {
-      sendOnSocket(currentSocket, {
-        type: "hello",
-        protocol: PROTOCOL_VERSION,
-        clientId,
-        deviceId,
-        pageType,
-        appVersion: window.APP_VERSION || null,
+    getAppVersionForHello()
+      .then((appVersion) => {
+        sendOnSocket(currentSocket, {
+          type: "hello",
+          protocol: PROTOCOL_VERSION,
+          clientId,
+          deviceId,
+          pageType,
+          appVersion,
+        });
+      })
+      .catch(() => {
+        cleanupSocket(currentSocket);
+        setState("backoff");
+        scheduleReconnect();
       });
-    } catch {
-      cleanupSocket(currentSocket);
-      setState("backoff");
-      scheduleReconnect();
-    }
   });
   currentSocket.addEventListener("message", (event) => handleMessage(event, generation, currentSocket));
   currentSocket.addEventListener("close", (event) => {
@@ -337,17 +436,37 @@ function connect() {
     cleanupSocket(currentSocket);
     lastClose = { code: event.code, reason: event.reason, at: Date.now() };
     if (stopped) {
-      setState("stopped", { closeCode: event.code, closeReason: event.reason });
+      setState("stopped", { closeCode: event.code, closeReason: sanitizeCloseReason(event.code, event.reason) });
       return;
     }
     if (TERMINAL_CLOSE_CODES.has(event.code)) {
       stopped = true;
       terminallyStopped = true;
       resolveConnectWaiters(new Error(`WebSocket dauerhaft getrennt (${event.code})`));
-      setState("stopped", { closeCode: event.code, closeReason: event.reason });
+      setState("stopped", { closeCode: event.code, closeReason: sanitizeCloseReason(event.code, event.reason) });
       return;
     }
-    setState(navigator.onLine ? "backoff" : "offline", { closeCode: event.code, closeReason: event.reason });
+    if (isVersionMismatchClose(event.code, event.reason)) {
+      if (shouldReloadForVersionMismatch()) {
+        location.reload();
+        return;
+      }
+      stopped = true;
+      terminallyStopped = true;
+      resolveConnectWaiters(new Error(`WebSocket dauerhaft geschlossen wegen Versionskonflikt (${event.code})`));
+      setState("stopped", {
+        closeCode: event.code,
+        closeReason: sanitizeCloseReason(event.code, event.reason),
+        terminalReason: "version-mismatch",
+      });
+      return;
+    }
+    if (state !== "stopped") {
+      setState(navigator.onLine ? "backoff" : "offline", {
+        closeCode: event.code,
+        closeReason: sanitizeCloseReason(event.code, event.reason),
+      });
+    }
     scheduleReconnect();
   });
   currentSocket.addEventListener("error", () => {});

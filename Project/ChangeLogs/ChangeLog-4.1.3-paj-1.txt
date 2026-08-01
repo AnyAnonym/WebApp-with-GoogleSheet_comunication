@@ -1,0 +1,32 @@
+[4.1.3-paj-1-2] - 2026-08-01
+Commit: 4.1.3-paj-1-2 | WebSocket-Statustexte vereinfacht
+
+  Changed
+  - [Software] Der WebSocket-Frontend-Client gibt in `getConnectionStatus()` ein nutzerfreundliches `statusText` aus und nutzt intern weiterhin technische Close-Codes ohne diese im UI anzuzeigen.
+  - [Software] `Frontend/JS/navigatorList.js` nutzt das neue neutralisierte Statusfeld, um Verbindungsanzeige-Texte zu vereinfachen.
+  - [Software] `Frontend/JS/scoreboardPolling.js` nutzt die neue `statusText`-Quelle für eine ruhiger formulierte Verbindungsanzeige.
+  - [Software] `dataClient` erweitert die Verbindungslogik um App-Version-Handling (inkl. Fetch-Fallback, Versionsmismatch-Reconnect mit begrenztem Reload-Fenster) und neutrale Fehlersignale bei Verbindungsabbruch.
+
+  Tests
+  - `node --test Backend/test/dataClient.test.js`
+
+[4.1.3-paj-1-1] - 2026-08-01
+Commit: 4.1.3-paj-1-1 | WebSocket-Status erweitert
+
+  Changed
+  - [Software] Der admin-geschuetzte `/status`-Providerstatus weist die globale WebSocket-Belegung und die Belegung je verbundener IP jeweils strukturiert mit `current`, `max` und einer lesbaren `text`-Darstellung `aktuell/max` aus.
+  - [Software] Die WebSocket-Clientliste ordnet Verbindungen ihrer IP sowie angemeldeten Benutzern ueber `userId` und den Klartextnamen `Nachname / Vorname` zu; fuer anonyme Clients und Monitorgeraete bleiben die Benutzerfelder `null`.
+
+  Sicherheit und Betrieb
+  - Die zusaetzlichen Verbindungsdetails bleiben Bestandteil des bereits admin-geschuetzten `/status`; Tokens, E-Mail-Adressen und weitere private Profildaten werden nicht ausgegeben.
+  - Es sind keine Migration und keine Konfigurationsaenderung erforderlich. Die angezeigten Maximalwerte verwenden die wirksamen Einstellungen `WS_MAX_CONNECTIONS` und `WS_MAX_CONNECTIONS_PER_IP`.
+
+  Tests
+  - `node --test test/server.integration.test.js` prueft Adminzugriff, globale und IP-bezogene `aktuell/max`-Werte sowie Benutzer- und Anonymzuordnung.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/ENDPOINTS.txt
+  - Im Vertrag fuer `GET /status` ergaenzen, dass `provider.clientCapacity` die globale WebSocket-Belegung als `{ current, max, text }` ausweist.
+  - Dokumentieren, dass `provider.connectionsByIp` je aktiver IP `{ ip, current, max, text }` liefert und `text` jeweils das Format `aktuell/max` besitzt.
+  - Dokumentieren, dass Eintraege in `provider.clients` zusaetzlich `ip`, `userId` und `userName` enthalten, wobei `userName` fuer Benutzer als `Nachname / Vorname` und Benutzerfelder fuer Nicht-Benutzer als `null` ausgegeben werden.

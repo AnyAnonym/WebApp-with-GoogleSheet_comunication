@@ -237,18 +237,70 @@ function profileName(profile) {
     .join(" ") || "Unbekanntes Profil";
 }
 
-function appendProfileField(container, label, value) {
+async function copyProfileValue(value, label) {
+  try {
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value);
+        copied = true;
+      } catch {}
+    }
+    if (!copied) {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.readOnly = true;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      try {
+        textarea.select();
+        copied = document.execCommand("copy");
+      } finally {
+        textarea.remove();
+      }
+      if (!copied) throw new Error("Clipboard unavailable");
+    }
+    window.showToast(`${label} kopiert.`, "success");
+  } catch {
+    window.showToast(`${label} konnte nicht kopiert werden.`, "error");
+  }
+}
+
+function appendProfileField(container, label, value, copyValue = "") {
   const row = document.createElement("p");
+  row.className = "profile-field";
   const strong = document.createElement("strong");
   strong.textContent = `${label}: `;
+  const valueElement = document.createElement("span");
+  valueElement.className = "profile-field-value";
+  valueElement.textContent = String(value || "---");
   row.appendChild(strong);
-  row.appendChild(document.createTextNode(String(value || "---")));
+  row.appendChild(valueElement);
+
+  if (copyValue) {
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "profile-copy-button";
+    copyButton.setAttribute("aria-label", `${label} kopieren`);
+    copyButton.title = `${label} kopieren`;
+    const icon = document.createElement("span");
+    icon.className = "profile-copy-icon";
+    icon.setAttribute("aria-hidden", "true");
+    copyButton.appendChild(icon);
+    copyButton.addEventListener("click", () => copyProfileValue(copyValue, label));
+    row.appendChild(copyButton);
+  }
+
   container.appendChild(row);
 }
 
 function appendContactFields(container, profile) {
-  appendProfileField(container, "E-Mail", profile.email);
-  appendProfileField(container, "Telefon", formatPhone(profile.phone));
+  const email = String(profile.email || "").trim();
+  const phone = String(profile.phone || "").trim();
+  const displayedPhone = formatPhone(phone);
+  appendProfileField(container, "E-Mail", email, email);
+  appendProfileField(container, "Telefon", displayedPhone, phone ? displayedPhone : "");
   appendProfileField(container, "Geburtsdatum", formatBirthDate(profile.birthDate));
 }
 
@@ -313,7 +365,6 @@ window.openProfileModal = async (options = {}) => {
 
     if (ownProfile) {
       appendContactFields(textElement, profile);
-      appendProfileField(textElement, "Geschlecht", profile.gender);
 
       const passwordButton = document.createElement("button");
       passwordButton.type = "button";

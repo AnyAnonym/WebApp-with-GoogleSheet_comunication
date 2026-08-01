@@ -1,3 +1,27 @@
+[4.2.0-paj-1-5] - 2026-08-01
+Commit: 4.2.0-paj-1-5 | Profilmodale zentriert und erweitert
+
+  Added
+  - [Software] E-Mail und Telefonnummer in eigenen und fremden Profilmodalen um kleine Kopierbuttons mit ueberlappendem Rechtecksymbol, Clipboard-Fallback und Rueckmeldung ergaenzt.
+  - [Software] Spielernamen in Gruppentabellen und Paarungen der Round-Robin-Ansicht mit dem gemeinsamen Profilmodal verknuepft und per Tastatur bedienbar gemacht.
+
+  Changed
+  - [Software] Die Geschlechtsanzeige aus dem Profilmodal der angemeldeten Person entfernt.
+  - [Repository] Paketversionen in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-5` gesetzt.
+
+  Fixed
+  - [Software] Gemeinsame Profil-, Login-, Navigations- und Passwortmodale in `Frontend/CSS/styles.css` auf den nach Safe-Area-Padding verfuegbaren Handy-Viewport ausgerichtet; Dialoge bleiben horizontal und vertikal zentriert und werden bei zu grossem Inhalt intern scrollbar.
+  - [Software] Platzdialoge, Monitor-Provisionierung sowie Lade- und Fehlerdialoge in `Frontend/CSS/styles.css` und `Frontend/CSS/scoreboard.css` nach demselben responsiven Zentrierungsprinzip vereinheitlicht.
+  - [Repository] JavaScript-Syntaxpruefung, statische Projektpruefung, Diff-Pruefung und alle 96 Backend-Tests erfolgreich abgeschlossen.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/index.txt
+    - Bei den gemeinsamen Profilmodalen ergaenzen, dass sichtbare E-Mail-Adressen und Telefonnummern ueber Symbolbuttons kopiert werden koennen.
+
+    Project/software/seiten/roundRobin.txt
+    - Unter Bedienung ergaenzen, dass Spielernamen in Gruppentabellen und Paarungen das gemeinsame Profilmodal oeffnen.
+
 [4.2.0-paj-1-4] - 2026-08-01
 Commit: 4.2.0-paj-1-4 | Turnierraster-Matchbox-Abstand vereinfacht
 

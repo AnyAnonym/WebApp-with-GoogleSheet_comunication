@@ -83,27 +83,27 @@ function getAppVersionForHello() {
 }
 
 function shouldReloadForVersionMismatch() {
-  const storage = window.sessionStorage || window.localStorage;
-  const markerValue = storage?.getItem?.(VERSION_MISMATCH_RELOAD_KEY);
-  const marker = Number(markerValue || 0);
-  const now = Date.now();
-  if (Number.isNaN(marker) || now - marker > 10 * 60 * 1000) {
-    storage?.setItem?.(VERSION_MISMATCH_RELOAD_KEY, String(now));
+  try {
+    const storage = window.sessionStorage;
+    if (!storage || storage.getItem(VERSION_MISMATCH_RELOAD_KEY)) return false;
+    storage.setItem(VERSION_MISMATCH_RELOAD_KEY, String(Date.now()));
     return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function clearVersionMismatchReloadMarker() {
-  const storage = window.sessionStorage || window.localStorage;
-  storage?.removeItem?.(VERSION_MISMATCH_RELOAD_KEY);
+  try {
+    window.sessionStorage?.removeItem(VERSION_MISMATCH_RELOAD_KEY);
+  } catch {}
 }
 
 function isVersionMismatchClose(code, reason = "") {
   const text = typeof reason === "string" ? reason : reason?.toString?.() || "";
   return code === VERSION_MISMATCH_CODE && /app[- ]?version/i.test(text);
 }
-const TERMINAL_CLOSE_CODES = new Set([1008, 4003, 4009]);
+const TERMINAL_CLOSE_CODES = new Set([1008, 4003, 4009, VERSION_MISMATCH_CODE]);
 const USER_FACING_STATE_TEXT = {
   idle: "Verbinden...",
   connecting: "Verbinden...",
@@ -115,12 +115,16 @@ const USER_FACING_STATE_TEXT = {
 };
 
 function sanitizeCloseReason(code, reason = "") {
-  if (code === VERSION_MISMATCH_CODE) return "updates-required";
+  if (isVersionMismatchClose(code, reason)) return "updates-required";
+  if (code === VERSION_MISMATCH_CODE) return "connection-incompatible";
   if (code === 4408 || code === 4000 || code === 4002) return "connection-timeout";
   return typeof reason === "string" && reason.trim() ? "connection-closed" : "connection-lost";
 }
 
-function resolveConnectionText(currentState) {
+function resolveConnectionText(currentState, details = {}) {
+  if (currentState === "stopped" && (details.closeCode || lastClose?.code) === VERSION_MISMATCH_CODE) {
+    return "Seite neu laden";
+  }
   return USER_FACING_STATE_TEXT[currentState] || USER_FACING_STATE_TEXT.idle;
 }
 const UNCERTAIN_OPERATION_ERRORS = new Set([
@@ -216,7 +220,7 @@ function getConnectionStatus(details = {}) {
     lastPongAt,
     lastClose,
     reconnectAttempt: connectAttempt,
-    statusText: resolveConnectionText(state),
+    statusText: resolveConnectionText(state, details),
     principal: welcome?.principal || null,
     ...details,
   };
@@ -242,6 +246,12 @@ function rejectPending(error) {
 function connectionError(message) {
   const error = new Error(message);
   error.code = "CONNECTION_LOST";
+  return error;
+}
+
+function offlineError() {
+  const error = new Error("WebSocket-Anfrage kann offline nicht gesendet werden");
+  error.code = "OFFLINE";
   return error;
 }
 
@@ -439,13 +449,6 @@ function connect() {
       setState("stopped", { closeCode: event.code, closeReason: sanitizeCloseReason(event.code, event.reason) });
       return;
     }
-    if (TERMINAL_CLOSE_CODES.has(event.code)) {
-      stopped = true;
-      terminallyStopped = true;
-      resolveConnectWaiters(new Error(`WebSocket dauerhaft getrennt (${event.code})`));
-      setState("stopped", { closeCode: event.code, closeReason: sanitizeCloseReason(event.code, event.reason) });
-      return;
-    }
     if (isVersionMismatchClose(event.code, event.reason)) {
       if (shouldReloadForVersionMismatch()) {
         location.reload();
@@ -461,6 +464,13 @@ function connect() {
       });
       return;
     }
+    if (TERMINAL_CLOSE_CODES.has(event.code)) {
+      stopped = true;
+      terminallyStopped = true;
+      resolveConnectWaiters(new Error(`WebSocket dauerhaft getrennt (${event.code})`));
+      setState("stopped", { closeCode: event.code, closeReason: sanitizeCloseReason(event.code, event.reason) });
+      return;
+    }
     if (state !== "stopped") {
       setState(navigator.onLine ? "backoff" : "offline", {
         closeCode: event.code,
@@ -473,6 +483,7 @@ function connect() {
 }
 
 function waitForConnection() {
+  if (!navigator.onLine || state === "offline") return Promise.reject(offlineError());
   if (state === "connected" && welcome) return Promise.resolve(welcome);
   if (stopped) return Promise.reject(new Error("WebSocket-Client wurde gestoppt"));
   connect();
@@ -652,6 +663,7 @@ export function disconnect() {
   socket = null;
   socketGeneration++;
   welcome = null;
+  lastClose = { code: 1000, reason: "Client stopped", at: Date.now() };
   rejectPending(new Error("WebSocket-Client wurde gestoppt"));
   resolveConnectWaiters(new Error("WebSocket-Client wurde gestoppt"));
   if (current && current.readyState < WebSocket.CLOSING) current.close(1000, "Client stopped");
@@ -661,6 +673,7 @@ export function disconnect() {
 window.addEventListener("offline", () => {
   if (state === "stopped") return;
   setState("offline");
+  resolveConnectWaiters(offlineError());
   socket?.close(4002, "Browser offline");
 });
 window.addEventListener("online", () => restartConnection().catch(() => {}));

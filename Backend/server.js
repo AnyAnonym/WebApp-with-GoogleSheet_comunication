@@ -62,16 +62,22 @@ function readiness({ repository, sheetService = null, initialized, shuttingDown 
   const poller = dataPoller.getStatus();
   const court = courtPoller.getStatus();
   const courtSource = courtPoller.getLastData().source;
+  const courtState = stateStore.getStatus();
+  const unresolvedActiveRules = (courtState.displayRulesMigration?.unresolved || []).filter(
+    (entry) => courtState.courts?.[entry.court]?.aktiv === 1,
+  );
   const activeCourt = court.courtActive["1"] || court.courtActive["2"];
   const courtReady = !activeCourt || !courtSource.stale;
-  const ready = initialized && !shuttingDown && repository.status().open && data.ready && poller.running && courtReady;
+  const displayRulesReady = unresolvedActiveRules.length === 0;
+  const ready = initialized && !shuttingDown && repository.status().open && data.ready
+    && poller.running && courtReady && displayRulesReady;
   return {
     ready,
     initialized,
     shuttingDown,
     data,
     poller: { running: poller.running, tickCount: poller.tickCount },
-    court: { ...court, ready: courtReady },
+    court: { ...court, ready: courtReady, displayRulesReady, unresolvedActiveRules },
     sheets: sheetService?.status?.() || null,
   };
 }
@@ -334,6 +340,7 @@ function createApplication(overrides = {}) {
     initializePromise = (async () => {
       const result = await dataPoller.initialLoad();
       if (shuttingDown) return { ...result, aborted: true };
+      stateStore.migrateLegacyCourtDisplayRules(dataStore.get("matchtyp"));
       dataPoller.start();
       const courts = stateStore.getScoreboardCourts();
       courtPoller.setCourtActive(

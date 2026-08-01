@@ -1,3 +1,252 @@
+[4.1.6-paj-1-2] - 2026-08-01
+Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
+
+  Changed
+  - [Repository] Paket- und Lockfile-Version auf den finalen Branch-Stand
+    `4.1.6-paj-1-2` gesetzt.
+  - [Software] Court-Zuweisungen speichern neben `matchtypId` einen versionierten
+    Snapshot der wirksamen Anzeigeregeln `Satztiebreak` und
+    `Entscheidender Satz`. Laufende Zuweisungen bleiben dadurch von spaeteren
+    Aenderungen derselben Matchtyp-Zeile unberuehrt; eine Neuzuweisung uebernimmt
+    den dann aktuellen Regelstand.
+    Der persistierte Vertrag lautet
+    `displayRules: { schemaVersion: 1, source: "matchtyp", matchtypId,
+    satztiebreak, entscheidenderSatz }`; Individualzuweisungen setzen
+    `matchtypId: ""` und `displayRules: null`.
+  - [Software] Die Scoreboard-Projektion verwendet ausschliesslich den
+    persistierten Regelsnapshot. Die Matchtyp-Revision bleibt als verpflichtendes
+    Kompatibilitaetsfeld im `scoreboardSnapshot`, ist aber keine Readiness-,
+    Subscription-, Invalidierungs- oder Projektionsabhaengigkeit mehr.
+  - [Software] Alte Court-Zustaende mit `matchtypId`, aber ohne Regelsnapshot,
+    werden nach dem ersten verwendbaren Matchtyp-Load ohne Score-Reset,
+    ScoreLog-Write oder Court-Event ergaenzt. Nicht aufloesbare Zustaende bleiben
+    unveraendert und erscheinen unter `state.displayRulesMigration.unresolved`
+    im Adminstatus; eine spaetere Tabellen-Recovery versucht die Migration erneut.
+    Der Diagnosestatus lautet `{ attempted, migratedCourts, unresolved }`; jeder
+    unresolved-Eintrag enthaelt `court`, `matchtypId` und einen der Gruende
+    `MATCHTYP_NOT_FOUND`, `MATCHTYP_SCHEMA_INVALID` oder
+    `MATCHTYP_RULES_INVALID`. Eine erfolgreiche Neuzuweisung entfernt den
+    betreffenden Diagnoseeintrag.
+  - [Software] Neue Zuweisungen und Legacy-Migrationen akzeptieren nur
+    symmetrische numerische Tie-Break-Ausloeser sowie `vollstaendiger Satz`,
+    `MT7` oder `MT10`. Projektionen ignorieren Snapshots mit falscher
+    Schemaversion, Quelle oder Matchtyp-ID. Ein nicht aufloesbarer aktiver
+    Legacy-Court blockiert Readiness bis zur Recovery, Neuzuweisung oder
+    Deaktivierung. Fuehrende Nullen im Tie-Break-Ausloeser werden numerisch
+    kanonisiert.
+  - [Software] Eine alte idempotente Operationsantwort ohne `displayRules`
+    behaelt ihre historischen Match-, Spieler- und Revisionsdaten und erhaelt
+    fuer Formkompatibilitaet `displayRules: null`; sie uebernimmt niemals Daten
+    einer spaeteren Zuweisung. Bekannte `courtAssign`-Wiederholungen bleiben auch
+    bei inzwischen nicht aktuellen Sheet-Tabellen abrufbar.
+  - [Software] Ein App-Versionskonflikt mit 4406 laedt die Seite weiterhin genau
+    einmal automatisch neu. Ein wiederholter Konflikt sowie generische
+    Protokollfehler mit 4406 stoppen kontrolliert und erzeugen keine
+    Reconnectschleife.
+  - [Software] Neue RPC-Requests werden im Browserzustand `offline` sofort mit
+    dem internen Fehler `OFFLINE` abgewiesen, statt bis zum Ablauf des
+    Wiederverbindungsfensters zu warten. Ein nachtraegliches Offline-Ereignis
+    lehnt auch bereits auf den Verbindungsaufbau wartende Requests sofort ab.
+  - [Infrastruktur] Die geheimnisfreie Umgebungsvorlage nennt die tatsaechlichen
+    Credential-Quellpfade, beschreibt die sichere Transport-Voreinstellung
+    korrekt und fuehrt `WS_HANDSHAKE_TIMEOUT_MS=10000` explizit auf.
+  - [Dokumentation] `-x` bezeichnet nun eindeutig uncommittete Aenderungen auf
+    Basis der aktuellen Branch-Commit-ID. Ein neuer Seitenbranch erhaelt zuerst
+    einen separat freizugebenden nummerierten Initialcommit ohne `-x`; der
+    folgende Dirty-Stand verwendet `<aktuelle-Commit-ID>-x`, waehrend der
+    Zielcommit die naechste lueckenlose Nummer erhaelt.
+  - [Dokumentation] Aktuelle Soll-Dokumente sollen keine fest verdrahtete
+    Anwendungsversion mehr enthalten. Die Checkout-Version kommt ausschliesslich
+    aus `Backend/package.json`; feste Versionen bleiben Historie und
+    releasebezogenen Protokollen vorbehalten.
+  - [Dokumentation] Das Doku-Routing verweist fuer externe Scoreboard-Einheit,
+    Receiver und Drehwertinterpretation direkt auf `Project/Scoreboard-Funktion.md`
+    sowie fuer Close-Codes, Reconnect und Versionsreload auf die spezialisierte
+    WebSocket-Close-Code-Referenz.
+
+  Added
+  - [Software] Automatisierte Tests fuer die Migration alter Court-Regelsnapshots,
+    die Unveraenderlichkeit laufender Regeln, Neuzuweisung, 4406-Aufteilung,
+    Reloadschutz und sofortige Offline-Ablehnung.
+
+  Fixed
+  - [Dokumentation] Den widerspruechlichen Workflow aus committedem `-x`-Stand,
+    naechster Commit-ID als Dirty-Version und gleichzeitigem Verbot von
+    `-x`-Commits auf eine einzige konsistente Regel reduziert.
+  - [Software] Generische 4406-Protokollfehler werden nicht mehr faelschlich als
+    notwendiges Anwendungsupdate bezeichnet und reconnecten nicht mehr endlos.
+
+  Sicherheit und Betrieb
+  - Der Court-Regelsnapshot enthaelt keine neuen personenbezogenen Daten. Bei der
+    ersten Bereitstellung muss der Adminstatus auf nicht aufloesbare Legacy-
+    Courts geprueft werden; betroffene Courts sind neu zuzuweisen.
+  - Der externe Courtstand bleibt die Quelle fuer Live-Scores. Die acht Scorewerte
+    liegen nur im Prozessspeicher und werden nicht aus dem dreispaltigen ScoreLog
+    rekonstruiert.
+  - `GET /status` bleibt admin-only und `no-store`. Die Clientdiagnose enthaelt
+    `clientCount`, `clientCapacity: { current, max, text }`,
+    `connectionsByIp: [{ ip, current, max, text }]` und je Client `id`, `ip`,
+    `connectedAt`, `lastMessageAt`, `lastPong`, `lastRequest`,
+    `pageType`, `appVersion`, `clientId`, `deviceId`, `principalType`, `role`,
+    `userId`, `userName`, `subscriptions` und `bufferedAmount`. Die Liste umfasst
+    nur aktuell verbundene Sockets und entfernt Eintraege beim Close.
+    `lastRequest` ist anfangs `null` und danach
+    `{ endpoint, at, durationMs, success }` mit optionalem Fehler-`code`.
+    IP, Benutzer-ID,
+    Klarname und stabile Client-/Geraetekennungen sind privilegierte Diagnosedaten
+    und duerfen nicht ungefiltert in oeffentliche Logs oder Tickets uebernommen
+    werden.
+
+  Tests
+  - `npm run check`: erfolgreich.
+  - `node --test test/dataClient.test.js`: 13 Tests erfolgreich.
+  - `node --test test/scoreboardDisplay.test.js test/stateStore.test.js`: 11 Tests
+    erfolgreich.
+  - `node --test test/server.integration.test.js`: erfolgreich.
+  - `npm run build`: statische Pruefung und alle 95 Tests erfolgreich.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/FACHKONZEPT.txt
+    - Feste Versionszeile entfernen.
+    - Als bestaetigte Gebrauchstauglichkeitsanforderung aufnehmen, dass
+      recoverbare Kommunikationsfehler, Reconnects und Versionsreloads moeglichst
+      automatisch erfolgen und sichtbare Meldungen kurz, neutral und
+      nichttechnisch bleiben.
+
+    Project/Scoreboard-Funktion.md
+    - Feste Versionszeile entfernen.
+    - Persistierten Snapshot der bei Court-Zuweisung wirksamen Anzeigeregeln und
+      Wirkung erst nach Neuzuweisung dokumentieren.
+    - Klarstellen, dass Live-Scores nur im Prozessspeicher liegen, aktive Courts
+      nach Neustart aus der externen Quelle aufgebaut werden und ScoreLog nicht
+      zur Rekonstruktion dient.
+
+    Project/software/SOFTWARE-DOKU.txt
+    - Feste Versionszeile entfernen; der Index beschreibt den aktuellen Main-
+      Sollstand ohne eigene Anwendungsversion.
+
+    Project/software/DATENBANK.txt
+    - Feste Versionszeile und releasebezogene Rolloutformulierung entfernen.
+    - Begruenden, dass Sheets autoritative Fach-/Stammdaten und SQLite lokalen
+      Sicherheits-, Steuerungs-, Idempotenz- und Recovery-State enthaelt und
+      keine zweite autoritative Fachdatenbank ist.
+    - Exakten Court-Vertrag fuer `displayRules` einschliesslich `null` bei
+      Individualzuweisung sowie Legacy-Migrations- und Diagnoseschema
+      beschreiben.
+    - Validierungsregeln, Readiness-Blockade aktiver unresolved Courts und
+      kompatible Behandlung alter idempotenter Operationsantworten beschreiben.
+
+    Project/software/ARCHITEKTUR.txt
+    - Feste Versionszeile entfernen.
+    - Matchtyp-Regelsnapshot, entfallene Live-Matchtyp-Abhaengigkeit des
+      Scoreboards, volatile Scorewerte und Legacy-Migration dokumentieren.
+    - App-Versionsreload, generischen terminalen 4406, sofortige Offline-
+      Ablehnung und ruhige nichttechnische UI-Semantik beschreiben.
+    - `/status`-Verbindungsdaten als fluechtige privilegierte Diagnosedaten
+      einordnen.
+    - Aktive unresolved Legacy-Regeln als Readiness-Blocker dokumentieren.
+
+    Project/software/ENDPOINTS.txt
+    - Feste Versionszeile und 4.1.0-Beispiele durch Platzhalter ersetzen.
+    - Vollstaendiges `/status`-Provider-Clientschema, `no-store`, Lebensdauer und
+      Schutz der Diagnosefelder dokumentieren.
+    - Exakten `displayRules`- und Legacy-Migrationsstatus dokumentieren. Die
+      Matchtyp-Revision bleibt aus Kompatibilitaetsgruenden informativ im
+      Scoreboard-Snapshot, ist aber keine Live-Abhaengigkeit mehr.
+    - `clientCount`, globale `clientCapacity`, `connectionsByIp` und alle oben
+      genannten Clientfelder als exakten `/status`-Vertrag aufnehmen.
+    - Fuer `/ready` und `/health` dokumentieren, dass aktive unresolved
+      Legacy-Courts bis zu Recovery, Neuzuweisung oder Deaktivierung not-ready
+      liefern.
+    - Fuer `courtAssign` die Ablehnung fehlender/ungueltiger Matchtyp-Regeln mit
+      `SHEET_SCHEMA`, tabellenunabhaengige bekannte Wiederholungen und
+      `displayRules: null` in historischen Legacy-Antworten dokumentieren.
+    - Exakten App-Versionsvergleich sowie versionsbezogene und generische
+      4406-Faelle unterscheiden.
+
+    Project/software/WEBSOCKET-CLOSE-CODES.txt
+    - Feste Versionszeile entfernen.
+    - App-Versions-4406 mit einmaligem Reload und Schutzmarker von generischem,
+      terminalem Protokoll-4406 unterscheiden.
+    - Festhalten, dass der tabbezogene Reloadmarker bis zu einem erfolgreichen
+      `welcome` bestehen bleibt, gesperrter Session-Storage keinen ungeschuetzten
+      Reload ausloest und 4406 nicht explizit neu gestartet werden kann.
+    - Zehn Sekunden Handshake-Timeout als Kompromiss zwischen langsamen Clients
+      und belegter Verbindungskapazitaet erklaeren.
+
+    Project/software/seiten/index.txt
+    Project/software/seiten/bewerbe.txt
+    Project/software/seiten/bewerbsRaster.txt
+    Project/software/seiten/matches1.txt
+    Project/software/seiten/players.txt
+    Project/software/seiten/monitor.txt
+    Project/software/seiten/entryList.txt
+    Project/software/seiten/rangliste.txt
+    Project/software/seiten/roundRobin.txt
+    - Feste Versionszeile entfernen.
+
+    Project/software/seiten/navigator.txt
+    - Feste Versionszeile entfernen.
+    - In `navigator.txt` ergaenzen, dass eine Court-Zuweisung die wirksamen
+      Matchtyp-Anzeigeregeln mitspeichert und Individualzuweisungen sie leeren.
+
+    Project/software/seiten/scoreboard.txt
+    - Feste Versionszeile entfernen.
+    - Persistierten Regelsnapshot, entfallene Matchtyp-Subscription, volatile
+      Scorewerte und Verhalten alter nicht aufloesbarer Courts beschreiben.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Feste Versions- und Promotionziele entfernen und auf freigegebene
+      Paketversion/Commit verweisen.
+    - Root-/Operator-Steuerung gegen unprivilegierte Service-User abgrenzen.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Feste Versions- und Antwortwerte durch `<FREIGEGEBENE_VERSION>` ersetzen.
+    - Erklaeren, dass Zertifikate Hostnamen statt Ports pruefen, Caddy TLS auf
+      8081/8082 terminiert und Plain HTTP dort keine Redirect-Garantie besitzt.
+    - systemd-Steuerung durch root/autorisierte Betreiber, unprivilegierten
+      Node-Prozess und ein kurzes Journal-Follow-Runbook dokumentieren.
+    - `/status`-Diagnosedaten als geschuetzte personenbezogene Betriebsdaten
+      behandeln.
+
+    Project/server-configs/ROLLOUT-CHECKLIST.md
+    - Versionsneutralen Titel und Felder fuer freigegebene Version/Commit nutzen.
+    - Matchtyp-Regelmigration, nicht aufloesbare Courts, 4406-/Reloadvarianten,
+      sofortige Offline-Ablehnung, Plain-HTTP-Negativtest sowie Schutz der
+      `/status`-Diagnosedaten in die Abnahme aufnehmen.
+    - Pruefen, dass nur aktive unresolved Courts Readiness blockieren und
+      Recovery, Neuzuweisung oder Deaktivierung den Blocker kontrolliert loesen.
+
+    Project/2do/KOMMUNIKATION-ANALYSE.md
+    - Sofortige Offline-Ablehnung fuer neu gestartete und bereits auf Verbindung
+      wartende Requests als umgesetzt markieren.
+
+    Project/2do/LOGGING-ANALYSE.md
+    - Prozessstart eines bereits aktiven Courts von Aktivierungs-/Resetbaseline
+      unterscheiden und veraltete Aussage zu oeffentlichem `/status` korrigieren.
+
+    Project/DokuVersGit.txt
+    - Keine feste Dokumentversionszeile mehr einfuehren und generische Beispiele
+      mit Platzhaltern statt scheinbar aktueller Anwendungswerte fuehren.
+    - Verbindlich festhalten: neuer Branch mit separat freigegebenem Initialcommit
+      `<branchname>-1` ohne `-x`; danach Dirty-Stand `<aktuelle-ID>-x`; Zielcommit
+      mit naechster Nummer; kein Commit mit `-x`.
+    - Update-Matrix um Scoreboard-Funktion sowie WebSocket-Close-Codes ergaenzen.
+
+    AGENTS.md
+    - Keine feste Main-Version eintragen; die Checkout-Version bleibt
+      ausschliesslich aus `Backend/package.json` lesbar.
+    - Dieselbe Initialcommit-/Dirty-ID-/Zielcommit-Semantik wie in
+      `DokuVersGit.txt` kurz und widerspruchsfrei fuehren.
+    - Direktrouting fuer externe Scoreboard-Einheit/Receiver/Drehwertinterpretation
+      sowie WebSocket-Close-Codes/Reconnect/Versionsreload beibehalten.
+
+    PAJ-VERSION-RELOAD-TEST.txt
+    - Releasewerte durch `<ALTE_VERSION>` und `<NEUE_VERSION>` ersetzen und den
+      Test fuer kuenftige PAJ-Promotions wiederverwendbar machen.
+
+
 [4.1.6-paj-1-1] - 2026-08-01
 Commit: 4.1.6-paj-1-1 | Branch-Stand nummeriert initialisiert
 

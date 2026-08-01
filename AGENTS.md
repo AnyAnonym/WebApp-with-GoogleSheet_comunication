@@ -56,7 +56,8 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
 
 - Einzige Quelle im jeweiligen Checkout: `Backend/package.json`, Feld `"version"`
 - Laufzeitabruf je System: `GET /version`
-- Aktueller Main-Stand: `4.1.6`
+- Aktuelle Soll-Dokumente enthalten keine fest verdrahtete Anwendungsversion;
+  historische Versionsangaben stehen im Changelog.
 
 ## Dokumentierter Infrastruktur-Sollstand
 
@@ -87,8 +88,10 @@ Project/     Dokumentation und Konfigurationsvorlagen
 | Zweck, Zielgruppen, Nutzungsszenarien oder fachliche Anforderungen | `Project/FACHKONZEPT.txt` |
 | Konkrete HTML-Seite | Bei bekanntem Dokumentnamen direkt `Project/software/seiten/<dokumentname>.txt`, sonst Zuordnung in `Project/software/SOFTWARE-DOKU.txt` |
 | HTTP/WS, Parameter, Requests oder Responses | `Project/software/ENDPOINTS.txt` |
+| WebSocket-Close-Code, Reconnect oder Versionsreload | `Project/software/WEBSOCKET-CLOSE-CODES.txt` |
 | Tabellen, Spalten, Formate, IDs oder Beziehungen | `Project/software/DATENBANK.txt` |
 | Module, Datenfluss, Cache, Polling, State oder Auth | `Project/software/ARCHITEKTUR.txt` |
+| Externe Scoreboard-Einheit, Receiver oder Drehwertinterpretation | `Project/Scoreboard-Funktion.md` |
 | Unklare oder projektweite Softwarefrage | `Project/software/SOFTWARE-DOKU.txt` |
 | Server, Ports, Caddy oder systemd | `Project/server-configs/SERVER-DOKU.txt`, danach nur die relevante Detaildatei |
 | Zeitpunkt oder Grund einer versionierten Aenderung | `Project/ChangeLogs/ChangeLog-main.txt` |
@@ -149,9 +152,9 @@ dort beschriebene Workflow zu befolgen.
 ### Seitenbranch-Kurzregel
 
 1. Im sauberen Seitenbranch entspricht die sichtbare Paketversion exakt der
-   Branch-Commit-ID, zum Beispiel `3.1.12-paj-1-2`. Mit der ersten beabsichtigten
-   Aenderung wird sie auf die naechste ID plus `-x` gesetzt, zum Beispiel
-   `3.1.12-paj-1-3-x`. Dieser online testbare Wert kennzeichnet uncommittete
+   Branch-Commit-ID, zum Beispiel `<branchname>-2`. Mit der ersten beabsichtigten
+   Aenderung wird an diese aktuelle ID `-x` angehaengt, zum Beispiel
+   `<branchname>-2-x`. Dieser online testbare Wert kennzeichnet uncommittete
    Entwicklung und steht gleichzeitig in package.json, Lockfile und offenem
    Branch-Changelogabschnitt.
 2. Ein Seitenbranch darf beliebig viele aufeinanderfolgende Implementierungs-,
@@ -183,25 +186,28 @@ dort beschriebene Workflow zu befolgen.
 
 1. Jede neue Aufgabe aus einem vollstaendig committeden Arbeitsbaum beginnt vor
    jeder anderen Aenderung zwingend mit einem neuen `-x`-Entwicklungsstand.
-2. In einem Seitenbranch wird dafuer nur die laufende Branch-Commitnummer erhoeht,
-   zum Beispiel von `4.1.1-paj-1-1` auf `4.1.1-paj-1-2-x`. Der noch unbekannte
-   fachliche Umfang beeinflusst diese Nummer nicht.
+2. In einem bestehenden Seitenbranch wird dafuer an die aktuelle
+   Branch-Commit-ID `-x` angehaengt, zum Beispiel von `<branchname>-1` auf
+   `<branchname>-1-x`. Der naechste Zielcommit ist `<branchname>-2`.
 3. Auf main muss vor jedem `-x`-Stand gefragt werden, ob ein Seitenbranch angelegt
-   werden soll. Bei Zustimmung wird zuerst der Seitenbranch angelegt und dessen
-   erste Commit-ID plus `-x` vorbereitet.
+   werden soll. Bei Zustimmung wird zuerst der Seitenbranch angelegt, dessen
+   nummerierter Initialstand ohne `-x` vorbereitet und vor dem Initialcommit
+   gesondert um Freigabe gefragt. Erst nach dem ausgefuehrten Initialcommit wird
+   dessen ID plus `-x` gesetzt.
 4. Lehnt der User den Seitenbranch ab, ist eine ausdrueckliche Freigabe als
    direkte Main-Ausnahme erforderlich. Dann wird die naechste Patchversion plus
-   `-x` als vorlaeufiger Arbeitsstand verwendet, zum Beispiel `4.1.2-x` nach
-   `4.1.1`; die endgueltige SemVer-Stufe wird erst spaeter bestimmt.
+   `-x` als vorlaeufiger Arbeitsstand verwendet; die endgueltige SemVer-Stufe wird
+   erst spaeter bestimmt.
 5. Der jeweilige `-x`-Stand muss gleichzeitig in package.json, Lockfile und dem
    offenen Branch-Changelogabschnitt beziehungsweise ChangeLog-main.tmp stehen.
 6. Ist diese Vorbereitung nicht ausdruecklich beauftragt, muss vor Arbeitsbeginn
    danach gefragt werden. Ohne Bestaetigung wird nicht implementiert; Arbeit ohne
    `-x` ist nicht zulaessig.
 7. Erst auf Aufforderung `dokumentieren` werden Dokumentation und Changelog
-   finalisiert. Im Seitenbranch wird `<Commit-ID>-x` zu `<Commit-ID>`; bei einer
-   direkten Main-Ausnahme wird nach bestaetigter SemVer-Zielversion der
-   vorlaeufige Patch-`-x`-Stand durch die endgueltige Version ersetzt.
+   finalisiert. Im Seitenbranch wird die Paketversion von
+   `<aktuelle-Commit-ID>-x` auf die naechste Commit-ID gesetzt; bei einer direkten
+   Main-Ausnahme wird nach bestaetigter SemVer-Zielversion der vorlaeufige
+   Patch-`-x`-Stand durch die endgueltige Version ersetzt.
 8. Commit und Push benoetigen jeweils eine eigene ausdrueckliche Aufforderung.
    Sie werden niemals selbststaendig ausgefuehrt.
 9. Jeder Commit muss alle auftragsbezogenen neuen, geaenderten, geloeschten und

@@ -1,12 +1,15 @@
 const { AppError } = require("./errors.js");
+const { inspectMatchtypDisplayRules } = require("./scoreboardDisplay.js");
 
 const listeners = new Set();
 let repository = null;
+let displayRulesMigration = null;
 
 const DEFAULT_COURT = Object.freeze({
   matchId: "",
   bewerbId: "",
   matchtypId: "",
+  displayRules: null,
   bewerb: "",
   homePlayerIds: [],
   guestPlayerIds: [],
@@ -23,11 +26,35 @@ function ensureReady() {
 
 function init(stateRepository) {
   repository = stateRepository;
+  displayRulesMigration = { attempted: false, migratedCourts: [], unresolved: [] };
   for (const court of ["1", "2"]) {
     const key = `court:${court}`;
     const current = repository.getState(key, DEFAULT_COURT);
     if (current.revision === 0) repository.setState(key, DEFAULT_COURT, 0);
   }
+}
+
+function migrateLegacyCourtDisplayRules(matchtypen) {
+  ensureReady();
+  const result = { attempted: true, migratedCourts: [], unresolved: [] };
+  for (const court of ["1", "2"]) {
+    const key = `court:${court}`;
+    const snapshot = repository.getState(key, DEFAULT_COURT);
+    const matchtypId = String(snapshot.value.matchtypId || "").trim();
+    if (!matchtypId || Object.hasOwn(snapshot.value, "displayRules")) continue;
+    const inspectedRules = inspectMatchtypDisplayRules(matchtypen, matchtypId);
+    if (!inspectedRules.rules) {
+      result.unresolved.push({ court, matchtypId, reason: inspectedRules.reason });
+      continue;
+    }
+    repository.setState(key, { ...snapshot.value, displayRules: inspectedRules.rules }, snapshot.revision);
+    result.migratedCourts.push(court);
+  }
+  displayRulesMigration = result;
+  if (result.unresolved.length) {
+    console.warn("stateStore: Legacy-Court-Anzeigeregeln konnten nicht aufgeloest werden:", result.unresolved);
+  }
+  return structuredClone(result);
 }
 
 function emit(event) {
@@ -94,10 +121,23 @@ function applyCourtOperation(court, operation, update, onApplied) {
     },
   });
   if (outcome.snapshot) {
+    if (operation.endpoint === "courtAssign" && displayRulesMigration) {
+      displayRulesMigration.unresolved = displayRulesMigration.unresolved.filter((entry) => entry.court !== court);
+    }
     onApplied?.(outcome.result.court);
     emit({ type: "court", court, value: outcome.result.court });
   }
-  return outcome.repeated ? { ...outcome.result, repeated: true } : outcome.result;
+  let result = outcome.result;
+  if (outcome.repeated && result?.court && !Object.hasOwn(result.court, "displayRules")) {
+    result = {
+      ...result,
+      court: {
+        ...result.court,
+        displayRules: null,
+      },
+    };
+  }
+  return outcome.repeated ? { ...result, repeated: true } : result;
 }
 
 function getNavigatorTarget(monitorId) {
@@ -147,6 +187,7 @@ function getStatus() {
   return {
     ready: !!repository,
     courts: repository ? getScoreboardCourts() : null,
+    displayRulesMigration: structuredClone(displayRulesMigration),
   };
 }
 
@@ -159,6 +200,7 @@ module.exports = {
   getScoreboardCourts,
   getStatus,
   init,
+  migrateLegacyCourtDisplayRules,
   onChange,
   setNavigatorTarget,
   setScoreboardCourt,

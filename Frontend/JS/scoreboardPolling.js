@@ -842,7 +842,6 @@ try {
   subscribe("matches", (data) => handleTableInvalidation("matches1", data));
   subscribe("players", (data) => handleTableInvalidation("players", data));
   subscribe("bewerbe", (data) => handleTableInvalidation("bewerbe", data));
-  subscribe("matchtyp", (data) => handleTableInvalidation("matchtyp", data));
   onConnectionState(handleConnectionState);
   onResync(handleResync);
   window.addEventListener("resize", schedulePlayerNameSizing);

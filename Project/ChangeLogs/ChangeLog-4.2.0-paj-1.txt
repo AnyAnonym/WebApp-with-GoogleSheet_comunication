@@ -1,3 +1,16 @@
+[4.2.0-paj-1-3] - 2026-08-01
+Commit: 4.2.0-paj-1-3 | Matchfilter auf vollstaendige Paarungen umgestellt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-3` gesetzt.
+  - [Software] In `Matches1.html` den Filter `Forderung ohne Spieldatum` durch `Vollständige Spielpaarung ohne Termin` ersetzt; angezeigt werden nur undatierte Einzel mit zwei Hauptspielern beziehungsweise Doppel mit vier vollstaendigen Spielerpositionen.
+  - [Software] Statische Pruefungen und die manuelle Funktionspruefung des neuen Filters erfolgreich abgeschlossen.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/seiten/matches1.txt
+  - In der Filterliste `Forderung ohne Spieldatum` durch `Vollständige Spielpaarung ohne Termin` ersetzen und die Vollstaendigkeitsregel fuer Einzel und Doppel ergaenzen.
+
 [4.2.0-paj-1-2] - 2026-08-01
 Commit: 4.2.0-paj-1-2 | Schnellablauf fuer Seitenbranch-Start eingefuehrt
 

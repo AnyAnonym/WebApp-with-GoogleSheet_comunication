@@ -256,8 +256,12 @@ function getFilteredMatches() {
   else if (currentCategory === "open") matches = matches.filter((m) => !m.isPlayed);
 
   // Optionale Filter
-  if (document.getElementById("filterForderung")?.checked) {
-    matches = matches.filter((m) => m.fordDateRaw && !m.matchDateRaw);
+  if (document.getElementById("filterCompleteWithoutDate")?.checked) {
+    matches = matches.filter((m) => {
+      const hasCompletePrimaryPlayers = !!m.p1.id && !!m.p3.id;
+      const hasCompletePartners = (!!m.p2.id) === (!!m.p4.id);
+      return !m.matchDateRaw && hasCompletePrimaryPlayers && hasCompletePartners;
+    });
   }
   if (document.getElementById("filterBewerb")?.checked) {
     const val = document.getElementById("filterBewerbSelect")?.value;
@@ -420,7 +424,7 @@ function initControls() {
   });
 
   // Filter-Checkboxen
-  ["filterForderung", "filterBewerb", "filterSpieler", "filterDatum", "filterMissing"].forEach((id) => {
+  ["filterCompleteWithoutDate", "filterBewerb", "filterSpieler", "filterDatum", "filterMissing"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", (e) => {
       // Enable/Disable zugehörige Inputs
       if (id === "filterBewerb") document.getElementById("filterBewerbSelect").disabled = !e.target.checked;

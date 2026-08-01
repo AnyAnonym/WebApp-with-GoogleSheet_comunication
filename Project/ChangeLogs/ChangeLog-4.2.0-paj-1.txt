@@ -1,3 +1,19 @@
+[4.2.0-paj-1-2] - 2026-08-01
+Commit: 4.2.0-paj-1-2 | Schnellablauf fuer Seitenbranch-Start eingefuehrt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-2` gesetzt.
+  - [Dokumentation] `AGENTS.md` auf einen knappen Verweis und die Grenzen des neuen Schnellauftrags `herrichten` reduziert.
+  - [Dokumentation] `Project/DokuVersGit.txt` um einen eigenstaendig lesbaren Schnellablauf erweitert; `herrichten` autorisiert Branchanlage, Initialstand, Initialcommit und anschliessenden `-x`-Stand ohne Zwischenfrage.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  AGENTS.md
+  - Den knappen Git-/Versionierungsverweis und den Autorisierungsumfang des Schnellauftrags `herrichten` uebernehmen.
+
+  Project/DokuVersGit.txt
+  - Den eigenstaendig lesbaren Schnellablauf `herrichten` samt Initialcommit-Freigabe, Sicherheitsgrenzen und Abbruchbedingungen uebernehmen.
+
 [4.2.0-paj-1-1] - 2026-08-01
 Commit: 4.2.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
@@ -6,7 +22,3 @@ Commit: 4.2.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-1` gesetzt.
-
-Dokumentationsuebernahme beim Main-Versionssprung
-
-  Keine.

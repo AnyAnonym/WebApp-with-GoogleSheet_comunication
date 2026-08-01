@@ -26,8 +26,9 @@ moeglichst wenigen Datei- und Suchzugriffen.
    unberuehrt.
 7. Nach jedem erledigten Arbeitsauftrag, der Dateien verändert hat, ist in der
    Zusammenfassung eine vollständige Liste aller geaenderten Dateien auszugeben.
-8. Nach einem vorbereitenden Versionierungsschritt (`-x`-Setzung) wird vor jedem
-   Commit explizit beim User nachgefragt, ob der Commit jetzt erfolgen soll.
+8. Fachliche Commits werden nur auf ausdruecklichen Userauftrag erstellt. Der
+   rein vorbereitende Initialcommit eines mit `herrichten` beauftragten neuen
+   Seitenbranches ist davon ausgenommen und im Startauftrag bereits freigegeben.
 9. Bei laengeren OpenCode-Sessions mit wiederkehrenden Phasen aus Vorbereitung,
    Umsetzung und Abschluss soll vor einer neuen Phase knapp geprueft werden, ob
    ein Modell- oder Reasoning-Wechsel den Kontext- und Kontingentverbrauch senkt,
@@ -141,79 +142,18 @@ Anwendungsseite.
 
 ## Dokumentation, Versionierung und Git
 
-Dokumentations- oder Versionsaenderungen sowie `commit`, `push` und `merge`
-werden nur auf ausdruecklichen Userauftrag ausgefuehrt. Ein eindeutiger Auftrag
-gilt als Freigabe fuer genau die darin genannten Schritte; nur bei unklarem
-Umfang oder zusaetzlichen Schritten ist nachzufragen.
+Die alleinige Detailregel ist `Project/DokuVersGit.txt`; dieser Abschnitt
+wiederholt sie bewusst nicht.
 
-Vor dem ersten solchen Schritt ist `Project/DokuVersGit.txt` zu lesen und der
-dort beschriebene Workflow zu befolgen.
+Schnellauftrag `herrichten`:
 
-### Seitenbranch-Kurzregel
-
-1. Im sauberen Seitenbranch entspricht die sichtbare Paketversion exakt der
-   Branch-Commit-ID, zum Beispiel `<branchname>-2`. Mit der ersten beabsichtigten
-   Aenderung wird an diese aktuelle ID `-x` angehaengt, zum Beispiel
-   `<branchname>-2-x`. Dieser online testbare Wert kennzeichnet uncommittete
-   Entwicklung und steht gleichzeitig in package.json, Lockfile und offenem
-   Branch-Changelogabschnitt.
-2. Ein Seitenbranch darf beliebig viele aufeinanderfolgende Implementierungs-,
-   Test- und Korrekturcommits besitzen. Jeder Commit erhaelt die naechste
-   lueckenlose Nummer und einen eigenen Abschnitt im temporaeren Branch-Changelog.
-3. Neue Anwendungsstaende werden im Seitenbranch ausschliesslich im detaillierten
-   `Project/ChangeLogs/ChangeLog-<Branchname>.txt` beschrieben. Permanente
-   Software-, Seiten-, Datenbank- und Serverdokumentation bleibt bis zum
-   bestaetigten Main-Merge unveraendert.
-4. Das temporaere Changelog enthaelt eine dateigenaue Liste aller beim spaeteren
-   Main-Versionssprung zu aktualisierenden Dokumente und der jeweils zu
-   uebernehmenden Fakten. Es ist bis dahin die alleinige fachliche
-   Dokumentationsquelle fuer den Branchstand.
-5. `Project/DokuVersGit.txt` und `AGENTS.md` sind organisatorische Ausnahmen und
-   duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch angepasst
-   werden.
-6. Erst beim bestaetigten Merge werden Branch-Changelog und Uebernahmeliste in
-   `ChangeLog-main.txt` sowie alle betroffenen permanenten Dokumente eingearbeitet.
-   Danach wird das temporaere Branch-Changelog im Merge-Commit entfernt.
-7. Integrierte Seitenbranches bleiben lokal und remote dauerhaft als historische
-   Staende erhalten. Sie werden weder geloescht noch fuer neue Arbeiten
-   wiederverwendet.
-8. Erst auf Aufforderung `dokumentieren` wird `-x` nach fachlichem Abschluss
-   entfernt und der Changelogabschnitt finalisiert. Folgen danach weitere
-   inhaltliche Aenderungen, ist vorher wieder der `-x`-Stand herzustellen. Ein
-   Commit darf niemals `-x` enthalten.
-
-### Verpflichtender Arbeits- und Commitablauf
-
-1. Jede neue Aufgabe aus einem vollstaendig committeden Arbeitsbaum beginnt vor
-   jeder anderen Aenderung zwingend mit einem neuen `-x`-Entwicklungsstand.
-2. In einem bestehenden Seitenbranch wird dafuer an die aktuelle
-   Branch-Commit-ID `-x` angehaengt, zum Beispiel von `<branchname>-1` auf
-   `<branchname>-1-x`. Der naechste Zielcommit ist `<branchname>-2`.
-3. Auf main muss vor jedem `-x`-Stand gefragt werden, ob ein Seitenbranch angelegt
-   werden soll. Bei Zustimmung wird zuerst der Seitenbranch angelegt, dessen
-   nummerierter Initialstand ohne `-x` vorbereitet und vor dem Initialcommit
-   gesondert um Freigabe gefragt. Erst nach dem ausgefuehrten Initialcommit wird
-   dessen ID plus `-x` gesetzt.
-4. Lehnt der User den Seitenbranch ab, ist eine ausdrueckliche Freigabe als
-   direkte Main-Ausnahme erforderlich. Dann wird die naechste Patchversion plus
-   `-x` als vorlaeufiger Arbeitsstand verwendet; die endgueltige SemVer-Stufe wird
-   erst spaeter bestimmt.
-5. Der jeweilige `-x`-Stand muss gleichzeitig in package.json, Lockfile und dem
-   offenen Branch-Changelogabschnitt beziehungsweise ChangeLog-main.tmp stehen.
-6. Ist diese Vorbereitung nicht ausdruecklich beauftragt, muss vor Arbeitsbeginn
-   danach gefragt werden. Ohne Bestaetigung wird nicht implementiert; Arbeit ohne
-   `-x` ist nicht zulaessig.
-7. Erst auf Aufforderung `dokumentieren` werden Dokumentation und Changelog
-   finalisiert. Im Seitenbranch wird die Paketversion von
-   `<aktuelle-Commit-ID>-x` auf die naechste Commit-ID gesetzt; bei einer direkten
-   Main-Ausnahme wird nach bestaetigter SemVer-Zielversion der vorlaeufige
-   Patch-`-x`-Stand durch die endgueltige Version ersetzt.
-8. Commit und Push benoetigen jeweils eine eigene ausdrueckliche Aufforderung.
-   Sie werden niemals selbststaendig ausgefuehrt.
-9. Jeder Commit muss alle auftragsbezogenen neuen, geaenderten, geloeschten und
-   umbenannten Dateien einschliesslich Paket-, Lockfile-, Versions-, Doku- und
-   Changelog-Dateien enthalten. Unabhaengige Aenderungen bleiben unberuehrt.
-10. Vor und nach dem Commit werden Status, staged Diff, unstaged Diff und untracked
-   Dateien gegen den Auftragsumfang geprueft. Verbleibende auftragsbezogene
-   Dateien machen den Commit unvollstaendig und blockieren Abschlussmeldung und
-   Push.
+- Auf sauberem `main` autorisiert `herrichten` den vollstaendigen vorbereitenden
+  Seitenbranch-Start einschliesslich Branchanlage, nummeriertem Initialstand,
+  Initialcommit und anschliessendem `-x`-Arbeitsstand ohne Zwischenfrage.
+- Dafuer ist nur der am Anfang von `Project/DokuVersGit.txt` stehende Abschnitt
+  `0. SCHNELLABLAUF HERRICHTEN` zu lesen. Weitere Abschnitte werden nur bei einer
+  dort genannten Abweichung oder fuer spaetere Arbeitsphasen gelesen.
+- `herrichten` autorisiert keinen fachlichen Commit, kein `dokumentieren`, keinen
+  Push, Merge, Netzwerkabgleich oder direkte Main-Aenderung.
+- Ohne den eindeutigen Auftrag `herrichten` gelten die normalen Freigabe- und
+  Rueckfrageregeln aus `Project/DokuVersGit.txt`.

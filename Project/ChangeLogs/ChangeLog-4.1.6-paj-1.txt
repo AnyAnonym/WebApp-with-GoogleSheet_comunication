@@ -1,3 +1,31 @@
+[4.1.6-paj-1-4] - 2026-08-01
+Commit: 4.1.6-paj-1-4 | Migrationsdiagnose erhalten
+
+  Changed
+  - [Repository] Paket- und Lockfile-Version auf den finalen Branch-Stand
+    `4.1.6-paj-1-4` gesetzt.
+  - [Software] `displayRulesMigration.migratedCourts` behaelt die seit
+    Prozessstart erfolgreich migrierten Courts auch bei idempotenten weiteren
+    Migrationsaufrufen. `unresolved` bildet weiterhin den jeweils aktuellen
+    Versuch ab.
+  - [Software] Der Rueckgabewert eines Migrationsaufrufs bleibt ein Delta des
+    aktuellen Versuchs, damit spaetere Matchtyp-Aenderungen ohne neue Migration
+    keine unnoetigen Scoreboard-Events publizieren.
+
+  Added
+  - [Software] Regressionstest fuer einen idempotenten zweiten Migrationsaufruf,
+    wie er beim Initialstart nach dem Matchtyp-Listener erfolgt.
+
+  Fixed
+  - [Software] Der redundante Migrationsaufruf nach dem Initialload leerte die
+    erfolgreiche `migratedCourts`-Diagnose, obwohl der Court bereits korrekt und
+    ohne Event migriert worden war.
+
+  Tests
+  - `node --test test/stateStore.test.js`: 6 Tests erfolgreich.
+  - `npm run build`: statische Pruefung und alle 96 Tests erfolgreich.
+
+
 [4.1.6-paj-1-3] - 2026-08-01
 Commit: 4.1.6-paj-1-3 | Matchtyp-Readiness korrigiert
 
@@ -168,6 +196,8 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Exakten Court-Vertrag fuer `displayRules` einschliesslich `null` bei
       Individualzuweisung sowie Legacy-Migrations- und Diagnoseschema
       beschreiben.
+    - `migratedCourts` als seit Prozessstart kumulative Erfolgsdiagnose und
+      `unresolved` als aktuellen Versuch dokumentieren.
     - Validierungsregeln, Readiness-Blockade aktiver unresolved Courts und
       kompatible Behandlung alter idempotenter Operationsantworten beschreiben.
     - Bestehende Court-Zustaende ohne `matchtypId` bleiben lesbar, erhalten aber
@@ -178,6 +208,8 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Feste Versionszeile entfernen.
     - Matchtyp-Regelsnapshot, entfallene Live-Matchtyp-Abhaengigkeit des
       Scoreboards, volatile Scorewerte und Legacy-Migration dokumentieren.
+    - Erhaltene `migratedCourts`-Diagnose bei redundanten Migrationsaufrufen
+      festhalten.
     - App-Versionsreload, generischen terminalen 4406, sofortige Offline-
       Ablehnung und ruhige nichttechnische UI-Semantik beschreiben.
     - `/status`-Verbindungsdaten als fluechtige privilegierte Diagnosedaten
@@ -194,6 +226,8 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Exakten `displayRules`- und Legacy-Migrationsstatus dokumentieren. Die
       Matchtyp-Revision bleibt aus Kompatibilitaetsgruenden informativ im
       Scoreboard-Snapshot, ist aber keine Live-Abhaengigkeit mehr.
+    - Lebensdauer von `migratedCourts` und aktuelle Semantik von `unresolved`
+      unterscheiden.
     - `clientCount`, globale `clientCapacity`, `connectionsByIp` und alle oben
       genannten Clientfelder als exakten `/status`-Vertrag aufnehmen.
     - Fuer `/ready` und `/health` dokumentieren, dass aktive unresolved
@@ -264,6 +298,8 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Sehr alte Courts ohne `matchtypId` separat erkennen und neu zuweisen; stale
       Matchtyp-Daten allein duerfen bei vorhandenen Snapshots Readiness nicht
       blockieren.
+    - Nach dem Initialstart pruefen, dass erfolgreich migrierte Courts trotz des
+      idempotenten Folgeaufrufs in `migratedCourts` sichtbar bleiben.
 
     Project/2do/KOMMUNIKATION-ANALYSE.md
     - Sofortige Offline-Ablehnung fuer neu gestartete und bereits auf Verbindung

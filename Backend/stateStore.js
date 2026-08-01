@@ -50,7 +50,10 @@ function migrateLegacyCourtDisplayRules(matchtypen) {
     repository.setState(key, { ...snapshot.value, displayRules: inspectedRules.rules }, snapshot.revision);
     result.migratedCourts.push(court);
   }
-  displayRulesMigration = result;
+  displayRulesMigration = {
+    ...result,
+    migratedCourts: [...new Set([...(displayRulesMigration?.migratedCourts || []), ...result.migratedCourts])],
+  };
   if (result.unresolved.length) {
     console.warn("stateStore: Legacy-Court-Anzeigeregeln konnten nicht aufgeloest werden:", result.unresolved);
   }

@@ -41,7 +41,9 @@ test("Legacy-Courts erhalten Anzeigeregeln ohne Court-Event", () => {
   });
   assert.equal(repository.getState("court:1", {}).revision, 3);
 
-  stateStore.migrateLegacyCourtDisplayRules(matchtypen);
+  const repeated = stateStore.migrateLegacyCourtDisplayRules(matchtypen);
+  assert.deepEqual(repeated, { attempted: true, migratedCourts: [], unresolved: [] });
+  assert.deepEqual(stateStore.getStatus().displayRulesMigration, result);
   assert.equal(repository.getState("court:1", {}).revision, 3);
   unsubscribe();
   repository.close();

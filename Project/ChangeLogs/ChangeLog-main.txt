@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.4
+Stand: 4.1.5
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,20 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+
+[4.1.5] - 2026-08-01
+Commit: 4.1.5 | PAJ-Test fuer automatischen Versionsreload dokumentiert
+Quelle: direkte Main-Ausnahme
+
+  Added
+  - [Dokumentation] Eine kurze Root-Testanweisung beschreibt den PAJ-Praxistest
+    fuer den einmaligen automatischen Browserreload von 4.1.4 auf 4.1.5 samt
+    Vorbereitung, Sollverhalten und Fehlerkriterien.
+
+  Changed
+  - [Software] Paket- und Laufzeitversion wurden auf 4.1.5 erhoeht, damit der
+    dokumentierte WebSocket-App-Versionskonflikt auf PAJ ausgeloest werden kann.
 
 
 [4.1.4] - 2026-08-01

@@ -1,3 +1,15 @@
+[4.2.0-paj-1-4] - 2026-08-01
+Commit: 4.2.0-paj-1-4 | Turnierraster-Matchbox-Abstand vereinfacht
+
+  Changed
+  - [Software] Die vertikale Platzierungslogik in `Frontend/JS/bewerbsRaster.js` vereinfacht: Abstand wird nur noch aus der Matchboxhöhe plus Datumshöhe sowie fixen Zusatzabständen (4px Datum-zu-Box, 12px Abstand zur vorherigen Box) berechnet.
+  - [Software] Datum- und Boxabstände in `Frontend/CSS/styles.css` auf eine feste 4px-Ausblendposition für Datum (`.bracket-match-date`) gesetzt.
+  - [Repository] Paketversionen in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-4` gesetzt.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Keine.
+
 [4.2.0-paj-1-3] - 2026-08-01
 Commit: 4.2.0-paj-1-3 | Matchfilter auf vollstaendige Paarungen umgestellt
 

@@ -1717,7 +1717,31 @@ body.bracket-page {
   align-items: center;
 }
 
+.bracket-stage {
+  position: relative;
+  width: fit-content;
+}
+
+.bracket-column-bands {
+  position: absolute;
+  inset: -8px 0 0;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(200px, 1fr));
+  pointer-events: none;
+}
+
+.bracket-column-band {
+  background: #edf3fb;
+}
+
+.bracket-column-band:nth-child(even) {
+  background: #f5f5f5;
+}
+
 .bracket-header-row {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: repeat(var(--cols, 4), minmax(200px, 1fr));
   gap: 56px;
@@ -1739,8 +1763,8 @@ body.bracket-page {
 .bracket-grid {
   display: grid;
   grid-template-columns: repeat(var(--cols, 4), minmax(200px, 1fr));
-  grid-template-rows: repeat(var(--rows, 16), 1fr);
-  gap: 12px 56px;
+  grid-template-rows: repeat(var(--rows, 16), var(--row-height, 28px));
+  gap: 0 56px;
   justify-items: center;
   align-items: start;
   width: fit-content;
@@ -1764,14 +1788,31 @@ body.bracket-page {
 }
 
 .bracket-match {
+  width: 200px;
+  position: relative;
+  z-index: 2;
+}
+
+.bracket-match-box {
   display: flex;
   flex-direction: column;
   border: 2px solid #666;
   border-radius: 6px;
   overflow: hidden;
-  width: 200px;
-  position: relative;
-  z-index: 2;
+  width: 100%;
+}
+
+.bracket-match-date {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .bracket-player {
@@ -1788,11 +1829,29 @@ body.bracket-page {
 }
 
 .bracket-player .player-result {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: baseline;
+  column-gap: 0.3ch;
   font-weight: 600;
   color: #555;
   flex-shrink: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.bracket-player .set-result {
+  text-align: right;
+}
+
+.bracket-player .set-result.two-digit {
+  min-width: 2ch;
+}
+
+.bracket-player .set-result-separator {
+  color: #888;
+  font-weight: 400;
 }
 .bracket-player.winner {
   background: #e8f5e9;

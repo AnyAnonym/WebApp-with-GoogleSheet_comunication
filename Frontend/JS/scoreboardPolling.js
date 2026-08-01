@@ -464,12 +464,16 @@ function updateStatus() {
     : connectionStatus.connected ? "connected" : "reconnecting";
   const synchronized = connectionStatus.connected && scoreboardSynchronized;
 
+  const connectionText = typeof connectionStatus?.statusText === "string" && connectionStatus.statusText.trim().length
+    ? connectionStatus.statusText
+    : null;
+
   const connectionLabels = {
     connected: "Verbunden",
-    reconnecting: "Verbindung wird wiederhergestellt",
-    stale: "Daten veraltet",
+    reconnecting: "Bitte kurz warten",
+    stale: "Daten werden aktualisiert",
   };
-  setStatusText(connectionElement, connectionLabels[connectionState]);
+  setStatusText(connectionElement, connectionText || connectionLabels[connectionState]);
   setStatusClass(connectionElement, connectionState);
   setStatusText(syncElement, synchronized ? "Synchronisiert" : "Nicht synchronisiert");
   setStatusClass(syncElement, synchronized ? "synchronized" : "unsynchronized");

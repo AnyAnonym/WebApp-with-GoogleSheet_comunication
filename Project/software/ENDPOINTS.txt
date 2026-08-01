@@ -68,11 +68,18 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
   aktiven Courts eine nicht stale Courtquelle.
 
 ----- GET /status (admin) -----
-  Verlangt ein gueltiges Admin-Sessioncookie. Liefert detaillierte Readiness,
-  Tabellenalter/Revisionen/Fehler, WebSocket-Clients, Monitor-/Court-State,
-  SheetService-Queues und `pendingMetadataIntents`. Die Antwort darf keine
-  Cookies, Tokens, Passwortwerte, privaten Schluessel oder ScoreLog-Pendingwerte
-  enthalten.
+   Verlangt ein gueltiges Admin-Sessioncookie. Liefert detaillierte Readiness,
+   Tabellenalter/Revisionen/Fehler sowie `provider`, Monitor-/Court-State,
+   SheetService-Queues und `pendingMetadataIntents`.
+
+   `provider` enthält:
+   - `clientCapacity`: `{ current, max, text }`, z.B. `2/200`
+   - `connectionsByIp`: `[ { ip, current, max, text } ]`
+   - `clients`: bestehend aus `ip`, `userId` und `userName` (bei Benutzern),
+     `userId`/`userName` sind bei nicht angemeldeten Benutzern `null`.
+
+   Die Antwort darf keine Cookies, Tokens, Passwortwerte, privaten Schluessel oder
+   ScoreLog-Pendingwerte enthalten.
 
 ----- /api/session -----
   GET (public):
@@ -161,7 +168,7 @@ Origin. Standardlimits: 200 Verbindungen gesamt, 20 pro IP, 16 KiB Payload,
 8 parallele RPCs, 32 Subscriptions, Nachrichtenrate 20/s mit Burst 40 und 1 MiB
 maximal gepufferte Ausgangsdaten. Per-message compression ist deaktiviert.
 
-Innerhalb standardmaessig 5 Sekunden muss der Client senden:
+Innerhalb standardmaessig 10 Sekunden muss der Client senden:
 
   {
     "v": 2,
@@ -173,9 +180,11 @@ Innerhalb standardmaessig 5 Sekunden muss der Client senden:
     "appVersion": "4.1.0"
   }
 
-`clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
-`appVersion` ist optional/null und maximal 32 Zeichen. Die Rolle kommt nie aus
-diesen Feldern, sondern nur aus Session- beziehungsweise Monitorcookie.
+    `clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
+`appVersion` ist Pflichttext mit maximal 64 Zeichen und muss mit `GET /version`
+(`serverVersion`) übereinstimmen. Bei Abweichung schliesst der Server den
+WebSocket mit 4406. Die Rolle kommt nie aus diesen Feldern, sondern nur aus
+Session- beziehungsweise Monitorcookie.
 
 Serverantwort:
 

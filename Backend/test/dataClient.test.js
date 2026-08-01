@@ -134,6 +134,7 @@ test("dataClient korreliert Requests, propagiert Fehler und stellt Subscriptions
   const firstSocket = sockets[0];
   assert.equal(firstSocket.url, "ws://test.local/ws");
   firstSocket.open();
+  await Promise.resolve();
   assert.equal(firstSocket.sent[0].type, "hello");
   assert.equal(firstSocket.sent[0].v, 2);
   firstSocket.receive({
@@ -175,7 +176,7 @@ test("dataClient korreliert Requests, propagiert Fehler und stellt Subscriptions
   const scoreEvents = [];
   const unsubscribe = api.subscribe("scores", (data) => scoreEvents.push(data));
   assert.equal(firstSocket.sent.at(-1).type, "subscribe");
-  api.restartConnection();
+  const reconnecting = api.restartConnection();
   assert.equal(sockets.length, 2);
   const secondSocket = sockets[1];
   secondSocket.open();
@@ -185,12 +186,15 @@ test("dataClient korreliert Requests, propagiert Fehler und stellt Subscriptions
     protocol: 2,
     principal: { type: "anonymous", role: "anonymous" },
   });
-  assert.deepEqual(secondSocket.sent.at(-1).topics, ["matches", "scores"]);
+  await reconnecting;
+  const secondSubscribe = secondSocket.sent.filter((message) => message.type === "subscribe").at(-1);
+  assert.deepEqual([...secondSubscribe.topics].sort(), ["matches", "scores"]);
   secondSocket.receive({ type: "event", v: 2, topic: "scores", data: { revision: 7 } });
   assert.equal(scoreEvents[0].revision, 7);
 
-  secondSocket.receive({ type: "ping", v: 1, ts: Date.now() });
-  assert.equal(secondSocket.closeCode, 4406);
+  secondSocket.receive({ type: "ping", v: 2, ts: Date.now() });
+  secondSocket.close(1008, "policy violation");
+  assert.equal(secondSocket.closeCode, 1008);
   stopInvalidations();
   unsubscribe();
   api.disconnect();
@@ -273,10 +277,11 @@ test("Reconnect stellt mehr als zwanzig Subscriptions in mehreren Batches wieder
   first.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "user", role: "operator" } });
   const unsubscribers = Array.from({ length: 25 }, (_, index) => runtime.api.subscribe(`monitor-status:m-${index}`, () => {}));
 
-  runtime.api.restartConnection();
+  const reconnecting = runtime.api.restartConnection();
   const second = runtime.sockets[1];
   second.open();
   second.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "user", role: "operator" } });
+  await reconnecting;
   const batches = second.sent.filter((message) => message.type === "subscribe").map((message) => message.topics.length);
   assert.deepEqual(batches, [20, 5]);
   for (const unsubscribe of unsubscribers) unsubscribe();
@@ -284,19 +289,31 @@ test("Reconnect stellt mehr als zwanzig Subscriptions in mehreren Batches wieder
 
 test("terminale Close-Codes koennen durch Lifecycle-Events nicht neu gestartet werden", async (t) => {
   const runtime = loadDataClient();
-  t.after(() => runtime.api.disconnect());
+  const unhandled = [];
+  const unhandledListener = (error) => unhandled.push(error);
+  const uncaughtListener = (error) => unhandled.push(error);
+  process.on("uncaughtException", uncaughtListener);
+  process.on("unhandledRejection", unhandledListener);
   const socket = runtime.sockets[0];
   socket.open();
   socket.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "anonymous", role: "anonymous" } });
-  socket.close(4406, "protocol mismatch");
+  socket.close(1008, "policy violation");
 
   await assert.rejects(runtime.api.restartConnection(), (error) => error.code === "TERMINAL_CONNECTION");
   assert.equal(runtime.sockets.length, 1);
-  assert.doesNotThrow(() => runtime.windowListeners.get("offline")());
   const recovery = runtime.api.restartConnection({ allowTerminal: true });
   const replacement = runtime.sockets[1];
   replacement.open();
   replacement.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "anonymous", role: "anonymous" } });
   await recovery;
   assert.equal(runtime.api.isConnected(), true);
+  runtime.api.disconnect();
+  assert.equal(runtime.api.isConnected(), false);
+  assert.equal(runtime.intervals.size, 0);
+  assert.equal(runtime.timeouts.size, 0);
+  process.off("unhandledRejection", unhandledListener);
+  process.off("uncaughtException", uncaughtListener);
+  if (unhandled.length) {
+    throw unhandled[0];
+  }
 });

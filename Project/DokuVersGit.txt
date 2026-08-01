@@ -66,18 +66,24 @@ Verpflichtender Beginn jeder neuen Arbeit:
 5. Bestaetigt der User den Seitenbranch, wird zuerst der freie Branchname nach
    Abschnitt 4 bestimmt und der Branch angelegt. Danach wird dessen erste
    Branch-Commit-ID plus `-x` nach Punkt 3 vorbereitet.
-6. Lehnt der User den Seitenbranch ab, darf nur nach ausdruecklicher Freigabe der
+6. Der erste Commit auf einem neuen Seitenbranch ist die vorbereitende Versions-
+    Reserve. Er setzt die Paket- und Changelog-Version auf
+    `<naechste-Branch-Commitnummer>-x` und hat z.B. die Form
+   `<branchname>-1 | Branch-Stand auf -x initialisiert`.
+7. Der fachliche erste Commit darf erst nach dieser Vorbereitungs-Commit erfolgen
+   und entfernt danach das `-x` in der finalen Commit-Version.
+8. Lehnt der User den Seitenbranch ab, darf nur nach ausdruecklicher Freigabe der
    direkten Main-Ausnahme weitergearbeitet werden. Dann wird die aktuelle
    Main-Patchversion um eins erhoeht und mit `-x` als vorlaeufiger Arbeitsstand
    in package.json, package-lock.json und ChangeLog-main.tmp gesetzt.
-7. Enthaelt der Auftrag die jeweils erforderliche Versionsvorbereitung nicht
+9. Enthaelt der Auftrag die jeweils erforderliche Versionsvorbereitung nicht
    ausdruecklich, muss vor jeder Aenderung gefragt werden, ob der verpflichtende
    `-x`-Entwicklungsstand angelegt werden soll. Ohne Bestaetigung wird die Aufgabe
    nicht umgesetzt.
-8. Ein Verzicht auf den `-x`-Stand ist nicht zulaessig. Die Rueckfrage dient der
+10. Ein Verzicht auf den `-x`-Stand ist nicht zulaessig. Die Rueckfrage dient der
    notwendigen Freigabe fuer Versionierungs- und Dokumentationsdateien, nicht der
    Wahl zwischen Arbeit mit oder ohne `-x`.
-9. Erst nach dem vollstaendig angelegten und geprueften `-x`-Stand beginnen die
+11. Erst nach dem vollstaendig angelegten und geprueften `-x`-Stand beginnen die
    eigentlichen Aenderungen.
 
 
@@ -144,7 +150,8 @@ GET /version diesen `-x`-Stand auf dem Testsystem anzeigen.
 
 In einem Seitenbranch reserviert `-x` ausschliesslich die naechste laufende
 Branch-Commitnummer. Der fachliche Umfang der bevorstehenden Aenderung und eine
-spaetere Main-SemVer-Stufe spielen dafuer keine Rolle.
+spaetere Main-SemVer-Stufe spielen dafuer keine Rolle. Der erste Commit des
+Branches ist regelmaessig die vorbereitende `-x`-Version auf `-1`.
 
 Bei einer ausdruecklich freigegebenen direkten Main-Ausnahme wird als
 vorlaeufiger Arbeitsstand immer die naechste Patchversion verwendet:
@@ -254,6 +261,8 @@ Beispiele:
 Die laufende Nummer beginnt je Branch bei 1 und wird lueckenlos erhoeht. Auch
 ein erforderlicher Merge von main in den Seitenbranch erhaelt die naechste
 Branch-Commitnummer. Branch-Commits benoetigen einen ausdruecklichen Auftrag.
+Der erste Commit ist im Normalfall die vorbereitende `-x`-Version mit der
+Commit-ID `...-1-x`.
 
 Main- oder Merge-Commit:
 

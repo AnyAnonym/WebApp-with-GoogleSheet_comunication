@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.3
+Stand: 4.1.4
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -18,6 +18,33 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
 
+
+[4.1.4] - 2026-08-01
+Commit: 4.1.4 | WebSocket-Hello erzwingt Versionsgleichheit
+Quelle: 4.1.3-paj-1
+
+  Changed
+  - [Dokumentation] In den Workflow-Regeln wurde nachgefasst, dass nach jedem
+    erledigten auftragsbezogenen Aenderungsumfang eine vollstaendige Liste geaenderter
+    Dateien auszugeben ist und bei aufbereiteten `-x`-Schritten vor jedem Commit
+    explizit nach Freigabe zu fragen ist.
+  - [Dokumentation] `Project/software/ENDPOINTS.txt` erweitert die WS-Handshakespezifikation
+    (`appVersion` Pflicht, Abgleich mit `GET /version`, 4406 bei Abweichung) und
+    beschreibt die `/status`-Providerstruktur (`clientCapacity`, `connectionsByIp`,
+    Client-`ip`/`userId`/`userName`).
+  - [Software] Frontend zeigt nutzerfreundliche WebSocket-Statustexte im
+    Reconnect-/Meldungsverhalten.
+  - [Software] Backend-Handshake setzt App-Version im `hello` als harte Pflicht; bei
+    Ungueltigkeit oder Versionsmismatch wird mit 4406 getrennt.
+  - [Software] `/status` liefert zusätzliche WebSocket-Providerkennzahlen inklusive
+    Kapazität und IP-Verteilung.
+  - [Infrastruktur] `WS_HANDSHAKE_TIMEOUT_MS` wurde auf 10000 ms erhöht.
+
+  Tests
+  - [Software] WebSocket-/Versionsmismatch-/`/status`-Verhalten in
+    `Backend/test/dataClient.test.js` und `Backend/test/server.integration.test.js` ergänzt.
+  - [Infrastruktur] `npm test` vollständig ausgeführt; relevante Backend-Tests
+    sowie die neuen WebSocket-/Statusfälle bestanden.
 
 [4.1.3] - 2026-07-31
 Commit: 4.1.3 | Scoreboard-Zaehlarten und mobile Darstellung erweitert

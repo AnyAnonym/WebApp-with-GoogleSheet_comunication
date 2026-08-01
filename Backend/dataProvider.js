@@ -494,16 +494,19 @@ function refreshPrincipal(info) {
     const device = dependencies.repository.authenticateMonitor(info.monitorToken);
     if (!device) throw new AppError("DEVICE_REVOKED", "Monitor-Geraet ist nicht mehr gueltig", 401);
     info.principal = { type: "device", id: device.monitorId, role: "device", name: device.label };
+    info.user = null;
     return { principal: info.principal, auth: null };
   }
   if (info.sessionToken) {
     const auth = dependencies.authService.getUserForToken(info.sessionToken);
     if (auth) {
       info.principal = auth.principal;
+      info.user = auth.user;
       return { principal: auth.principal, auth };
     }
   }
   info.principal = { type: "anonymous", id: info.id, role: "anonymous", name: "" };
+  info.user = null;
   return { principal: info.principal, auth: null };
 }
 
@@ -639,9 +642,15 @@ async function handleMessage(info, raw) {
     const clientId = stringValue(message.clientId, "clientId", { max: 64 });
     const deviceId = stringValue(message.deviceId, "deviceId", { max: 64 });
     const pageType = stringValue(message.pageType, "pageType", { max: 64 });
-    const appVersion = message.appVersion === null || message.appVersion === undefined
-      ? null
-      : stringValue(message.appVersion, "appVersion", { max: 32 });
+    if (typeof message.appVersion !== "string" || message.appVersion.length === 0 || message.appVersion.length > 64) {
+      info.ws.close(4406, "App-Version ungueltig");
+      return;
+    }
+    const appVersion = message.appVersion;
+    if (appVersion !== dependencies.appVersion) {
+      info.ws.close(4406, `App-Version inkompatibel (${appVersion} != ${dependencies.appVersion})`);
+      return;
+    }
     if (pageType === "monitor" && info.monitorToken) {
       const device = dependencies.repository.authenticateMonitor(info.monitorToken);
       if (device) info.principal = { type: "device", id: device.monitorId, role: "device", name: device.label };
@@ -786,6 +795,7 @@ function init(server, options) {
       inflight: 0,
       rateLimiter: new TokenBucketLimiter({ rate: WS_REQUEST_RATE, burst: WS_REQUEST_BURST }),
       principal: { type: "anonymous", id: "", role: "anonymous", name: "" },
+      user: null,
       sessionToken: cookies[SESSION_COOKIE] || "",
       monitorToken: cookies[MONITOR_COOKIE] || "",
     };
@@ -839,8 +849,22 @@ function init(server, options) {
 function getStatus() {
   return {
     clientCount: clients.size,
+    clientCapacity: {
+      current: clients.size,
+      max: WS_MAX_CONNECTIONS,
+      text: `${clients.size}/${WS_MAX_CONNECTIONS}`,
+    },
+    connectionsByIp: [...connectionsByIp.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([ip, current]) => ({
+        ip,
+        current,
+        max: WS_MAX_CONNECTIONS_PER_IP,
+        text: `${current}/${WS_MAX_CONNECTIONS_PER_IP}`,
+      })),
     clients: [...clients.values()].map((info) => ({
       id: info.id,
+      ip: info.ip,
       connectedAt: info.connectedAt,
       lastMessageAt: info.lastMessageAt,
       lastPong: info.lastPong,
@@ -851,6 +875,8 @@ function getStatus() {
       deviceId: info.deviceId || null,
       principalType: info.principal.type,
       role: info.principal.role,
+      userId: info.principal.type === "user" ? info.principal.id : null,
+      userName: info.user ? [info.user.lastName, info.user.firstName].filter(Boolean).join(" / ") : null,
       subscriptions: [...info.subscriptions],
       bufferedAmount: info.ws.bufferedAmount,
     })),

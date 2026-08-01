@@ -183,11 +183,12 @@ function notifyStatusListeners(status) {
 }
 
 function connectionLabel(snapshot) {
+  if (snapshot.statusText) return snapshot.statusText;
   if (snapshot.state === "connected") return "Verbunden";
-  if (snapshot.state === "stale") return "Verbindung veraltet";
-  if (snapshot.state === "offline") return "Browser offline";
-  if (snapshot.state === "backoff") return "Verbindung wird wiederhergestellt";
-  if (snapshot.state === "connecting") return "Verbindung wird hergestellt";
+  if (snapshot.state === "stale") return "Bitte kurz warten";
+  if (snapshot.state === "offline") return "Bitte kurz warten";
+  if (snapshot.state === "backoff") return "Bitte kurz warten";
+  if (snapshot.state === "connecting") return "Verbinden...";
   return "Nicht verbunden";
 }
 

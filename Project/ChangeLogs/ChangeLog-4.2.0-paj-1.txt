@@ -1,3 +1,22 @@
+[4.2.0-paj-1-6] - 2026-08-01
+Commit: 4.2.0-paj-1-6 | Mobile Scoreboard-Matchlinks ergaenzt
+
+  Added
+  - [Software] Im Scoreboard-Handylayout bis 1000px rechts oben in Platz 1 die Schaltflaeche `Naechste Spiele` und in Platz 2 `Letzte Spiele` ergaenzt; beide oeffnen `Matches1.html` mit der passenden Kategorie.
+
+  Changed
+  - [Software] `Matches1.html` wertet den auf `played` und `open` begrenzten URL-Parameter `category` fuer die initial aktive Matchkategorie aus; ohne gueltigen Parameter bleibt `played` der Standard.
+  - [Repository] Paketversionen in `Backend/package.json` und `Backend/package-lock.json` auf `4.2.0-paj-1-6` gesetzt.
+  - [Repository] JavaScript-Syntaxpruefung, statische Projektpruefung, Diff-Pruefung und alle 96 Backend-Tests erfolgreich abgeschlossen.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/scoreboard.txt
+    - Die mobilen Schaltflaechen fuer offene und gespielte Matches samt Zielansichten dokumentieren.
+
+    Project/software/seiten/matches1.txt
+    - Die URL-Parameter fuer die initiale Auswahl offener beziehungsweise gespielter Matches dokumentieren.
+
 [4.2.0-paj-1-5] - 2026-08-01
 Commit: 4.2.0-paj-1-5 | Profilmodale zentriert und erweitert
 

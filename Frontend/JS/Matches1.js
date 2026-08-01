@@ -10,7 +10,8 @@ let allMatches = [];
 let playerMap = new Map();
 let playerFilterList = []; // {id, display: "Nachname Vorname"} für Filter-Dropdown
 let bewerbMap = new Map();
-let currentCategory = "played";
+const requestedCategory = new URLSearchParams(window.location.search).get("category");
+let currentCategory = ["played", "open"].includes(requestedCategory) ? requestedCategory : "played";
 
 // ── Hilfsfunktionen ──
 
@@ -410,6 +411,7 @@ function renderMatches() {
 function initControls() {
   // Kategorie-Buttons
   document.querySelectorAll(".m1-cat-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.cat === currentCategory);
     btn.addEventListener("click", () => {
       document.querySelectorAll(".m1-cat-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");

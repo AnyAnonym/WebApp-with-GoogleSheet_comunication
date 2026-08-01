@@ -1,8 +1,6 @@
 ================================================================================
 Monitor-Ausgabe - Adressiertes fernsteuerbares Anzeigegeraet
 ================================================================================
-Stand: v4.0.0
-
 -- Funktion und Dateien --
   HTML: Frontend/monitor.html
   JS:   Frontend/JS/monitorPolling.js

@@ -1,8 +1,6 @@
 ================================================================================
 Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
 ================================================================================
-Stand: v4.0.0
-
 -- Funktion und Dateien --
   HTML: Frontend/Bewerbe.html
   JS:   Frontend/JS/bewerbeList.js

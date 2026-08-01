@@ -24,7 +24,7 @@ const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules } = require("./matchRules.js");
-const { projectScoreboardScores } = require("./scoreboardDisplay.js");
+const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const {
   booleanValue,
@@ -145,12 +145,11 @@ function compileNavigator(params) {
 function scoreboardScores(scoreSnapshot = courtPoller.getLastData()) {
   return projectScoreboardScores(scoreSnapshot, {
     courts: stateStore.getScoreboardCourts(),
-    matchtypen: dataStore.get("matchtyp"),
   });
 }
 
 function scoreboardSnapshot() {
-  for (const table of ["players", "bewerbe", "matchtyp", "matches1"]) {
+  for (const table of ["players", "bewerbe", "matches1"]) {
     if (!dataStore.isTableCurrent(table)) throw new AppError("DATA_NOT_READY", "Scoreboard-Daten sind nicht aktuell", 503);
   }
   return {
@@ -210,12 +209,9 @@ function resolveCourtAssignment(params) {
       || (competition && competitionMatchtypIndex >= 0 ? competition[competitionMatchtypIndex] : "")
       || "",
     ).trim();
-    if (matchtypId) {
-      const matchtypen = dataStore.get("matchtyp");
-      const matchtypIdIndex = headerIndex(headerOf(matchtypen), "id");
-      const matchtypExists = matchtypIdIndex >= 0 && matchtypen.slice(1)
-        .some((entry) => String(entry[matchtypIdIndex] || "").trim() === matchtypId);
-      if (!matchtypExists) throw new AppError("SHEET_SCHEMA", "Zugeordneter Matchtyp wurde nicht gefunden", 503);
+    const inspectedRules = inspectMatchtypDisplayRules(dataStore.get("matchtyp"), matchtypId);
+    if (matchtypId && !inspectedRules.rules) {
+      throw new AppError("SHEET_SCHEMA", "Zugeordneter Matchtyp fehlt oder besitzt ungueltige Anzeigeregeln", 503);
     }
     return {
       court,
@@ -223,6 +219,7 @@ function resolveCourtAssignment(params) {
         matchId,
         bewerbId: competitionId,
         matchtypId,
+        displayRules: inspectedRules.rules,
         bewerb: competition ? String(competition[competitionNameIndex] || "").trim() : "",
         homePlayerIds: homeIds,
         guestPlayerIds: guestIds,
@@ -250,6 +247,7 @@ function resolveCourtAssignment(params) {
       matchId: "",
       bewerbId: "",
       matchtypId: "",
+      displayRules: null,
       bewerb: "Individual",
       homePlayerIds: homeIds,
       guestPlayerIds: guestIds,
@@ -403,7 +401,6 @@ const endpoints = {
     handler: (rawParams, context) => {
       const params = requireObject(rawParams);
       const opId = operationId(params.operationId);
-      requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
       const court = idValue(params.court, "court");
       if (!['1', '2'].includes(court)) throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
       const expectedRevision = integerValue(params.expectedRevision, "expectedRevision", { min: 1 });
@@ -422,6 +419,7 @@ const endpoints = {
         payload,
         expectedRevision,
       }, (current) => {
+        requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
         const assignment = resolveCourtAssignment(request);
         return { ...assignment.data, aktiv: current.aktiv };
       }, () => courtPoller.resetCourtScore(court));
@@ -840,6 +838,13 @@ function init(server, options) {
     if (event.type === "court") publish("scoreboard-state", { courts: stateStore.getScoreboardCourts() });
   }));
   unsubscribeCallbacks.push(dataStore.onChange((event) => {
+    if (event.table === "matchtyp" && event.current) {
+      const migration = stateStore.migrateLegacyCourtDisplayRules(dataStore.get("matchtyp"));
+      if (migration.migratedCourts.length) {
+        publish("scoreboard-state", { courts: stateStore.getScoreboardCourts() });
+        publish("scores", scoreboardScores());
+      }
+    }
     const topicByTable = { matches1: "matches", players: "players", bewerbe: "bewerbe", bewerbsart: "bewerbsart", matchtyp: "matchtyp", entryList: "entryList", rlPlatzierung: "ranking", navigator: "navigator" };
     const topic = topicByTable[event.table];
     if (topic) publish(topic, event);

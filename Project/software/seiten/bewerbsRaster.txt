@@ -1,8 +1,6 @@
 ================================================================================
 Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
 ================================================================================
-Stand: v4.1.0
-
 -- Funktion und Dateien --
   HTML: Frontend/bewerbsRaster.html
   JS:   Frontend/JS/bewerbsRaster.js, bei Gruppenansicht zusaetzlich RoundRobin.js

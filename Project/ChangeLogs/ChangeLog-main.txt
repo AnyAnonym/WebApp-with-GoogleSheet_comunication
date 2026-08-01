@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.1.6
+Stand: 4.2.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,106 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.2.0] - 2026-08-01
+Commit: 4.2.0 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
+Quelle: 4.1.6-paj-1
+
+  Changed
+  - [Software] Court-Zuweisungen speichern neben `matchtypId` einen versionierten
+    Snapshot der wirksamen Anzeigeregeln `Satztiebreak` und
+    `Entscheidender Satz`. Laufende Zuweisungen bleiben dadurch von spaeteren
+    Aenderungen derselben Matchtyp-Zeile unberuehrt; eine Neuzuweisung uebernimmt
+    den dann aktuellen Regelstand. Individualzuweisungen speichern keine
+    Matchtyp-Regeln.
+  - [Software] Die Scoreboard-Projektion verwendet ausschliesslich den
+    persistierten Regelsnapshot. Die Matchtyp-Revision bleibt als informatives
+    Kompatibilitaetsfeld im `scoreboardSnapshot`, ist aber keine Live-,
+    Readiness-, Subscription-, Invalidierungs- oder Projektionsabhaengigkeit mehr.
+  - [Software] Die globale Readiness nimmt die Aktualitaet der Matchtyp-Tabelle
+    nach erfolgreicher Regelsnapshot-Persistenz aus. Der Tabellenstatus bleibt
+    diagnostizierbar, neue Zuweisungen verlangen aktuelle Matchtyp-Daten und
+    aktive unresolved Legacy-Regeln blockieren weiterhin.
+  - [Software] Alte Court-Zustaende mit `matchtypId`, aber ohne Regelsnapshot,
+    werden nach dem ersten verwendbaren Matchtyp-Load ohne Score-Reset,
+    ScoreLog-Write oder Court-Event migriert. Nicht aufloesbare Zustaende bleiben
+    diagnostizierbar; nur aktive betroffene Courts blockieren Readiness bis zur
+    Recovery, Neuzuweisung oder Deaktivierung.
+  - [Software] `state.displayRulesMigration.migratedCourts` behaelt erfolgreich
+    migrierte Courts fuer die Prozesslaufzeit dedupliziert. Der Rueckgabewert
+    eines Versuchs bleibt ein Delta, sodass idempotente Folgeaufrufe keine
+    unnoetigen Scoreboard-Events erzeugen; `unresolved` bleibt aktuell.
+  - [Software] Neue Zuweisungen und Legacy-Migrationen validieren die benoetigten
+    Matchtyp-Regeln. Bekannte idempotente `courtAssign`-Wiederholungen bleiben
+    auch bei inzwischen nicht aktuellen Sheet-Tabellen abrufbar; historische
+    Antworten uebernehmen keine Daten spaeterer Zuweisungen.
+  - [Software] Numerisch symmetrische Tie-Break-Ausloeser werden vor dem Vergleich
+    kanonisiert; auch gemischte fuehrende Nullen wie `03-3` ergeben `3-3`.
+  - [Software] Ein App-Versionskonflikt mit 4406 laedt die Seite weiterhin genau
+    einmal automatisch neu. Wiederholte Konflikte und generische 4406-
+    Protokollfehler stoppen kontrolliert ohne Reconnectschleife.
+  - [Software] Neue und bereits auf einen Verbindungsaufbau wartende RPC-Requests
+    werden im Browserzustand `offline` sofort mit `OFFLINE` abgewiesen.
+  - [Infrastruktur] Die Umgebungsvorlage dokumentiert die tatsaechlichen
+    Credential-Quellpfade, sichere Transport-Voreinstellung und den expliziten
+    WebSocket-Handshake-Timeout. Betriebs- und Rolloutdokumentation ist
+    versionsneutral und erweitert die Abnahme fuer Migration, Readiness,
+    WebSocket-Lifecycle, Transport und geschuetzte Diagnosedaten.
+  - [Dokumentation] Aktuelle Soll-Dokumente beziehen die Checkout-Version nur aus
+    `Backend/package.json`; feste Versionswerte bleiben auf Historie und
+    releasebezogene Protokolle begrenzt.
+  - [Dokumentation] Der Branchworkflow verwendet fuer uncommittete Entwicklung
+    `<aktuelle-Commit-ID>-x`, waehrend der Zielcommit die naechste lueckenlose
+    Nummer erhaelt. Der nummerierte Initialcommit eines neuen Seitenbranches wird
+    separat freigegeben und enthaelt kein `-x`.
+  - [Dokumentation] Fach-, Software-, Seiten-, Datenbank-, WebSocket-, Server- und
+    Analysedokumentation wurde auf den neuen Court-Regelvertrag, die volatile
+    Scorehaltung und das aktuelle Kommunikations- und Diagnoseverhalten
+    abgeglichen.
+
+  Added
+  - [Software] Automatisierte Tests fuer die Migration alter Court-Regelsnapshots,
+    die Unveraenderlichkeit laufender Regeln, Neuzuweisung, 4406-Aufteilung,
+    Reloadschutz, sofortige Offline-Ablehnung, Matchtyp-Readiness und stale
+    idempotente `courtAssign`-Wiederholungen und erhaltene Migrationsdiagnose.
+
+  Fixed
+  - [Software] Generische 4406-Protokollfehler werden nicht mehr faelschlich als
+    notwendiges Anwendungsupdate behandelt und reconnecten nicht mehr endlos.
+  - [Software] Eine stale oder temporaer nicht geladene Matchtyp-Tabelle machte
+    den Gesamtprozess trotz vollstaendig persistierter Court-Regeln not-ready.
+  - [Software] Der redundante Migrationsaufruf nach dem Initialload leerte die
+    erfolgreiche `migratedCourts`-Diagnose.
+  - [Dokumentation] Den widerspruechlichen Workflow aus committedem `-x`-Stand,
+    naechster Commit-ID als Dirty-Version und gleichzeitigem Verbot von
+    `-x`-Commits auf eine konsistente Regel reduziert.
+
+  Sicherheit und Betrieb
+  - Der Court-Regelsnapshot enthaelt keine neuen personenbezogenen Daten. Beim
+    ersten Deployment ist der Adminstatus auf nicht aufloesbare aktive Legacy-
+    Courts zu pruefen. Sehr alte Match-Courts ohne `matchtypId` muessen
+    kontrolliert neu zugewiesen werden.
+  - `/status` bleibt admin-only und `no-store`. IP-Adressen, Benutzeridentitaeten,
+    Klarnamen und stabile Client-/Geraetekennungen sind privilegierte fluechtige
+    Diagnosedaten und duerfen nicht ungefiltert veroeffentlicht werden.
+  - Die acht Live-Scorewerte liegen nur im Prozessspeicher. Das dreispaltige
+    ScoreLog wird nicht zur Rekonstruktion verwendet.
+
+  Bekannte Einschraenkung
+  - Ein vor der Handlerausfuehrung abgewiesener RPC erzeugt keinen neuen
+    `/status`-`lastRequest`-Datensatz, kann aber dessen vorhandene `supportId` mit
+    der ID der neuen Fehlerantwort ueberschreiben. Die uebrigen Felder beschreiben
+    weiterhin den vorherigen Handlerrequest; die Support-ID darf dann nicht
+    isoliert dem angezeigten Endpoint zugeordnet werden.
+
+  Tests
+  - `npm run check`: erfolgreich.
+  - `node --test test/dataClient.test.js`: 13 Tests erfolgreich.
+  - `node --test test/scoreboardDisplay.test.js test/stateStore.test.js`: 12 Tests
+    erfolgreich.
+  - `node --test test/server.integration.test.js`: erfolgreich.
+  - `npm run build`: statische Pruefung und alle 96 Tests erfolgreich.
+
 
 [4.1.6] - 2026-08-01
 Commit: 4.1.6 | Workflow fuer phasenabhaengige Modellwahl ergaenzt

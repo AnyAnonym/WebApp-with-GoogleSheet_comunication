@@ -1,8 +1,6 @@
 ================================================================================
 Eintragungsliste - Anmeldung / Nennung fuer einen Bewerb
 ================================================================================
-Stand: v4.0.0
-
 -- Funktion und Dateien --
   HTML: Frontend/entryList.html
   JS:   Frontend/JS/entryList.js

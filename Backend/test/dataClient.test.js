@@ -53,13 +53,25 @@ class FakeWebSocket {
   }
 }
 
-function loadDataClient({ cryptoImplementation } = {}) {
+function loadDataClient({ cryptoImplementation, online = true, sessionStorage, storageValues = new Map() } = {}) {
   FakeWebSocket.instances = [];
   const intervals = new Set();
   const timeouts = new Set();
   const windowListeners = new Map();
   const documentListeners = new Map();
-  const localValues = new Map();
+  const reloads = [];
+  const storage = {
+    getItem(key) { return storageValues.get(key) || null; },
+    setItem(key, value) { storageValues.set(key, String(value)); },
+    removeItem(key) { storageValues.delete(key); },
+  };
+  const location = {
+    href: "http://test.local/scoreboard.html",
+    pathname: "/scoreboard.html",
+    protocol: "http:",
+    reload() { reloads.push(Date.now()); },
+  };
+  const navigatorState = { onLine: online };
   const trackedSetTimeout = (callback, delay, ...args) => {
     const timer = setTimeout(() => {
       timeouts.delete(timer);
@@ -93,16 +105,16 @@ function loadDataClient({ cryptoImplementation } = {}) {
       hidden: false,
       addEventListener(type, callback) { documentListeners.set(type, callback); },
     },
-    localStorage: {
-      getItem(key) { return localValues.get(key) || null; },
-      setItem(key, value) { localValues.set(key, String(value)); },
-    },
-    navigator: { onLine: true },
+    localStorage: storage,
+    location,
+    navigator: navigatorState,
     setInterval: trackedSetInterval,
     setTimeout: trackedSetTimeout,
     window: {
       APP_VERSION: "test",
-      location: { href: "http://test.local/scoreboard.html", pathname: "/scoreboard.html", protocol: "http:" },
+      localStorage: storage,
+      location,
+      sessionStorage: sessionStorage || storage,
       addEventListener(type, callback) { windowListeners.set(type, callback); },
     },
   });
@@ -120,7 +132,10 @@ function loadDataClient({ cryptoImplementation } = {}) {
   return {
     api: context.__dataClientExports,
     intervals,
+    navigator: navigatorState,
+    reloads,
     sockets: FakeWebSocket.instances,
+    storageValues,
     timeouts,
     windowListeners,
   };
@@ -316,4 +331,111 @@ test("terminale Close-Codes koennen durch Lifecycle-Events nicht neu gestartet w
   if (unhandled.length) {
     throw unhandled[0];
   }
+});
+
+test("App-Versionskonflikt laedt einmal neu und stoppt bei Wiederholung", async (t) => {
+  const storageValues = new Map();
+  const firstRuntime = loadDataClient({ storageValues });
+  t.after(() => firstRuntime.api.disconnect());
+  const firstSocket = firstRuntime.sockets[0];
+  firstSocket.open();
+  await Promise.resolve();
+  firstSocket.close(4406, "App-Version inkompatibel");
+  assert.equal(firstRuntime.reloads.length, 1);
+  assert.ok(storageValues.has("epiber-app-version-reload"));
+  const secondRuntime = loadDataClient({ storageValues });
+  t.after(() => secondRuntime.api.disconnect());
+  let latestStatus;
+  secondRuntime.api.onConnectionState((status) => { latestStatus = status; });
+  const secondSocket = secondRuntime.sockets[0];
+  secondSocket.open();
+  await Promise.resolve();
+  secondSocket.close(4406, "App-Version inkompatibel");
+  assert.equal(secondRuntime.reloads.length, 0);
+  assert.equal(latestStatus.state, "stopped");
+  assert.equal(latestStatus.closeReason, "updates-required");
+  assert.equal(latestStatus.terminalReason, "version-mismatch");
+  assert.equal(latestStatus.statusText, "Seite neu laden");
+  await assert.rejects(secondRuntime.api.restartConnection(), (error) => error.code === "TERMINAL_CONNECTION");
+  assert.equal(secondRuntime.sockets.length, 1);
+});
+
+test("erfolgreiches Welcome entfernt den Versionskonflikt-Marker", (t) => {
+  const storageValues = new Map([["epiber-app-version-reload", String(Date.now())]]);
+  const runtime = loadDataClient({ storageValues });
+  t.after(() => runtime.api.disconnect());
+  const socket = runtime.sockets[0];
+  socket.open();
+  socket.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "anonymous", role: "anonymous" } });
+  assert.equal(storageValues.has("epiber-app-version-reload"), false);
+});
+
+test("generischer 4406 ist terminal und kein Update-Hinweis", async (t) => {
+  const runtime = loadDataClient();
+  t.after(() => runtime.api.disconnect());
+  let latestStatus;
+  runtime.api.onConnectionState((status) => { latestStatus = status; });
+  const socket = runtime.sockets[0];
+  socket.open();
+  await Promise.resolve();
+  socket.close(4406, "Protokollversion inkompatibel");
+  assert.equal(latestStatus.state, "stopped");
+  assert.equal(latestStatus.closeReason, "connection-incompatible");
+  assert.equal(latestStatus.statusText, "Seite neu laden");
+  assert.equal(runtime.reloads.length, 0);
+  let lateStatus;
+  runtime.api.onConnectionState((status) => { lateStatus = status; });
+  assert.equal(lateStatus.statusText, "Seite neu laden");
+  await assert.rejects(runtime.api.restartConnection(), (error) => error.code === "TERMINAL_CONNECTION");
+  assert.equal(runtime.sockets.length, 1);
+
+  const recovered = runtime.api.restartConnection({ allowTerminal: true });
+  const recoveredSocket = runtime.sockets[1];
+  recoveredSocket.open();
+  await Promise.resolve();
+  recoveredSocket.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "anonymous", role: "anonymous" } });
+  await recovered;
+  runtime.api.disconnect();
+  runtime.api.onConnectionState((status) => { lateStatus = status; });
+  assert.equal(lateStatus.statusText, "Bitte kurz warten");
+});
+
+test("neue Requests werden offline sofort abgelehnt", async (t) => {
+  const runtime = loadDataClient({ online: false });
+  t.after(() => runtime.api.disconnect());
+  assert.equal(runtime.sockets.length, 0);
+  await assert.rejects(runtime.api.request("players", {}), (error) => {
+    assert.equal(error.code, "OFFLINE");
+    assert.match(error.message, /offline/);
+    return true;
+  });
+  assert.equal(runtime.timeouts.size, 0);
+});
+
+test("wartende Requests werden beim Offline-Ereignis sofort abgelehnt", async (t) => {
+  const runtime = loadDataClient();
+  t.after(() => runtime.api.disconnect());
+  const request = runtime.api.request("players", {});
+  runtime.navigator.onLine = false;
+  runtime.windowListeners.get("offline")();
+  await assert.rejects(request, (error) => error.code === "OFFLINE");
+});
+
+test("gesperrter Session-Storage verursacht keine Reloadschleife", async (t) => {
+  const blockedStorage = {
+    getItem() { throw new Error("blocked"); },
+    setItem() { throw new Error("blocked"); },
+    removeItem() { throw new Error("blocked"); },
+  };
+  const runtime = loadDataClient({ sessionStorage: blockedStorage });
+  t.after(() => runtime.api.disconnect());
+  let latestStatus;
+  runtime.api.onConnectionState((status) => { latestStatus = status; });
+  const socket = runtime.sockets[0];
+  socket.open();
+  await Promise.resolve();
+  socket.close(4406, "App-Version inkompatibel");
+  assert.equal(runtime.reloads.length, 0);
+  assert.equal(latestStatus.state, "stopped");
+  assert.equal(latestStatus.terminalReason, "version-mismatch");
 });

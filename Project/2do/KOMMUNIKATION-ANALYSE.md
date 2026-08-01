@@ -760,6 +760,12 @@ Anwendungsstate, WebSocket-v2, Clientzustandsmaschine und Browser-Lifecycle,
 Subscriptions und Resync, adressierte Monitorsteuerung, stabile Sheets-Writes,
 Court-Poller-Haertung, Liveness/Readiness und Graceful Shutdown.
 
+Die sofortige Offline-Ablehnung ist ebenfalls umgesetzt. Das gilt sowohl fuer
+Requests, die bei bereits erkanntem Offline-Zustand neu gestartet werden, als
+auch fuer Requests, die beim `offline`-Ereignis bereits auf eine Verbindung
+warten; beide erhalten unmittelbar den Fehlercode `OFFLINE` statt erst nach dem
+Verbindungs- oder Request-Timeout.
+
 Der finale Scoreboard-Stand wertet Verbindung, Synchronisation und Datenalter
 intern aus und verwendet Lade-/Fehleroverlays, zeigt aber keine separaten
 Verbindungs-, Synchronisations- oder Court-Quellen-Badges. `Logging` und

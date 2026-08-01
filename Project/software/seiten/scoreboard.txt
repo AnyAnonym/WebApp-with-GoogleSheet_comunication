@@ -1,8 +1,6 @@
 ================================================================================
 Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
 ================================================================================
-Stand: v4.1.3
-
 -- Funktion und Dateien --
   HTML: Frontend/scoreboard.html
   JS:   Frontend/JS/scoreboardPolling.js
@@ -16,13 +14,15 @@ Stand: v4.1.3
 -- Snapshot, Push und Resync --
   Das fruehere Ein-/Fuenf-Sekunden-Polling ist entfernt. `scoreboardSnapshot`
   liefert atomar oeffentliche Spieler-, Bewerbs-, Matches1-, Court- und Scoredaten
-  samt Tabellen- und Score-Revisionen. Danach liefern `scores` und
-  `scoreboard-state` direkte Aenderungen; `matches`, `players`, `bewerbe` und
-  `matchtyp`
-  invalidieren den Snapshot. Revisionen verhindern Rueckschritte. Reconnect,
-  Protokoll-Resync, Luecken oder veraltete Invalidierungsrevisionen erzwingen einen
-  neuen Snapshot; Fehler werden mit exponentiellem Retry bis 30 Sekunden erneut
-  versucht. Neuere Pushes waehrend eines Snapshots gewinnen gegen dessen Stand.
+  samt Tabellen- und Score-Revisionen. Der Court-State enthaelt dabei auch die bei
+  der Zuweisung persistierten `displayRules`. Danach liefern `scores` und
+  `scoreboard-state` direkte Aenderungen; `matches`, `players` und `bewerbe`
+  invalidieren den Snapshot. Das Scoreboard abonniert `matchtyp` nicht und besitzt
+  fuer bereits zugewiesene Courts keine Live-Abhaengigkeit von der Matchtyp-
+  Tabelle. Revisionen verhindern Rueckschritte. Reconnect, Protokoll-Resync,
+  Luecken oder veraltete Invalidierungsrevisionen erzwingen einen neuen Snapshot;
+  Fehler werden mit exponentiellem Retry bis 30 Sekunden erneut versucht. Neuere
+  Pushes waehrend eines Snapshots gewinnen gegen dessen Stand.
 
 -- Court-Aktivitaet und Score-Uebernahme --
   Scores inaktiver Plaetze bleiben auf ihrem letzten Stand eingefroren und werden
@@ -35,6 +35,9 @@ Stand: v4.1.3
   Reset setzt zuvor alle Saetze und Punkte sichtbar auf 0. Nach einem
   Backendneustart uebernehmen in SQLite bereits aktive Plaetze ihren ersten
   externen Stand sofort; dieser Wiederanlaufstand erzeugt keinen ScoreLog-Eintrag.
+  Die Scorewerte, externen Baselines und Score-Revisionen liegen nur im
+  Prozessspeicher. Nach einem Neustart werden sie fuer aktive Courts aus der
+  externen Quelle neu aufgebaut; `ScoreLog` dient nicht zur Rekonstruktion.
 
   Sind beide Plaetze inaktiv, laeuft kein Court-Polling. Wird mindestens einer
   aktiviert, startet es wieder; deaktiviert sich der letzte aktive Platz, werden
@@ -45,11 +48,26 @@ Stand: v4.1.3
 
 -- Matchtyp und Anzeigeprojektion --
   Bei der Court-Zuweisung ueberschreibt `Matches1.MatchtypID` den Standard des
-  Bewerbs; die aufgeloeste ID bleibt im SQLite-Court-State bis zur Neuzuweisung
-  fixiert. Entspricht Satz 1 oder 2 dem konfigurierten `Satztiebreak`, erscheinen
-  die Werte der dritten physischen Drehspalte im Punktefeld und Satz 3 zeigt 0.
-  Bei `Entscheidender Satz=MT7|MT10` ist die dritte Satzspalte tuerkis. Rohscores
-  und ScoreLog werden nicht veraendert.
+  Bewerbs. Die aufgeloeste ID und ihre zu diesem Zeitpunkt wirksamen
+  `displayRules` bleiben gemeinsam im SQLite-Court-State bis zur Neuzuweisung
+  fixiert; spaetere Aenderungen der Matchtyp-Tabelle veraendern ein laufendes Match
+  nicht. Individualzuweisungen speichern keine Matchtyp-Regeln. Entspricht Satz 1
+  oder 2 dem persistierten `Satztiebreak`, erscheinen die Werte der dritten
+  physischen Drehspalte im Punktefeld und Satz 3 zeigt 0. Bei persistiertem
+  `Entscheidender Satz=MT7|MT10` ist die dritte Satzspalte tuerkis. Rohscores und
+  ScoreLog werden nicht veraendert.
+
+  Beim Start versucht das Backend, alte Court-Zustaende mit Matchtyp-ID, aber ohne
+  `displayRules`, einmal aus der aktuellen Matchtyp-Tabelle zu migrieren. Nicht
+  aufloesbare alte Courts bleiben unveraendert als unresolved markiert; es wird
+  keine Live-Regel ersatzweise geraten. Fuer sie entfaellt die besondere
+  Matchtyp-Anzeigeprojektion. Solange ein solcher Court aktiv ist, liefern
+  Readiness und Health not-ready. Recovery der Matchtyp-Daten oder eine
+  Neuzuweisung loest den Zustand; Deaktivierung entfernt den Readiness-Blocker,
+  behaelt den unresolved Court-State aber fuer Diagnose und spaetere Recovery bei.
+  Noch aeltere Courts ohne `matchtypId` sind keiner Regelzeile sicher zuordenbar,
+  werden nicht automatisch migriert und muessen fuer die Matchtyp-Projektion neu
+  zugewiesen werden.
 
 -- Lade- und Statusverhalten --
   Inhalt wird erst nach validiertem Erst-Snapshot eingeblendet und dann als

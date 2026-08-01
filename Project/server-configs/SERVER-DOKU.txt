@@ -1,8 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Stand: v4.1.0
-Letzte Aenderung: 30.07.2026
+Letzte Aenderung: 01.08.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -41,7 +40,7 @@ Client leitet die WebSocket-Adresse same-origin aus window.location und dem Pfad
 Caddy liefert das jeweilige Frontend aus und proxyt nur diese Backendpfade:
   /ws, /api/*, /live, /ready, /health, /version, /status
 
-Zu den 4.1.0-HTTP-Routen gehoeren `POST /api/password-setup` fuer die
+Zu den HTTP-Routen gehoeren `POST /api/password-setup` fuer die
 freigegebene Erstvergabe und `POST /api/admin/password-setup` zum Setzen oder
 Aufheben dieser Freigabe durch Administratoren.
 
@@ -79,21 +78,29 @@ PK     | noch verbindlich festzulegen                        | /srv/http/ePiber/
 Spreadsheet-IDs und Dateinamen sind keine Secrets. Schluesselinhalte, Tokens,
 Cookies und lokale `.env`-Werte duerfen nicht dokumentiert oder versioniert werden.
 
+Installation, Deployment sowie Start, Stop, Neustart und Reload von systemd und
+Caddy erfolgen ausschliesslich durch root oder einen dafuer autorisierten
+Betreiber, zum Beispiel ueber gezielt eingerichtetes sudo oder polkit. Die
+Service-User `piber`, `paj` und `pk` sind unprivilegierte Benutzer ohne Login-Shell;
+sie fuehren nur den jeweiligen Node-Prozess aus und erhalten weder allgemeine
+sudo-Rechte noch die Berechtigung, Dienste oder Deployments selbst zu steuern.
+
 
 ================================================================================
 INSTALLATION UND FREIGABE
 ================================================================================
 
-Die ausfuehrliche Installation steht in SERVER-SETUP.txt. Vor jeder Promotion
-ist ROLLOUT-CHECKLIST.md vollstaendig abzuarbeiten. Vorgeschriebene Reihenfolge:
+Die ausfuehrliche Installation steht in SERVER-SETUP.txt. Vor jeder Freigabe ist
+ROLLOUT-CHECKLIST.md vollstaendig abzuarbeiten. Vorgeschriebene Reihenfolge:
 
   1. PAJ installieren, migrieren und vollstaendig abnehmen.
   2. Identischen bestaetigten Stand auf PK installieren und Smoke-Test ausfuehren.
   3. Identischen bestaetigten Stand zuletzt auf Live installieren.
 
-Zielversion dieser Dokumentation ist 4.1.0. `Backend/package.json`,
-`Backend/package-lock.json`, Buildstand und Antwort von `/version` muessen vor
-einer Promotion exakt 4.1.0 melden.
+Die freigegebene Version wird fuer jeden Rollout aus `Backend/package.json` des
+freigegebenen Commits uebernommen. `Backend/package-lock.json`, installierter
+Commit, Buildstand und Antwort von `/version` muessen dazu passen; Dokumente in
+diesem Verzeichnis definieren kein festes Versions- oder Commitziel.
 
 
 ================================================================================

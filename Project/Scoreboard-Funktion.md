@@ -1,7 +1,5 @@
 # Externe Scoreboard-Einheit
 
-Stand: v4.1.3, 2026-07-31
-
 ## Zweck und Abgrenzung
 
 Die externe Scoreboard-Einheit erfasst die direkt am Tennisplatz eingestellten
@@ -108,9 +106,11 @@ Live-Spielstaende.
 
 ## Matchtyp und Interpretation der Drehwerte
 
-Die Google-Sheets-Tabelle `Matchtyp` wird von ePiber geladen. Sie liefert die
-Regeln, mit denen ePiber die vom externen Scoreboard gelesenen Drehwerte fuer die
-Anzeige in `Frontend/scoreboard.html` interpretiert.
+Die Google-Sheets-Tabelle `Matchtyp` wird von ePiber geladen. Bei einer
+Court-Zuweisung liefert sie die Regeln, mit denen ePiber die vom externen
+Scoreboard gelesenen Drehwerte fuer die Anzeige in `Frontend/scoreboard.html`
+interpretiert. Die laufende Anzeige liest diese Tabelle nicht erneut, sondern
+verwendet den bei der Zuweisung persistent gespeicherten Regelsnapshot.
 
 In einem spaeteren Schritt sollen dieselben Regeln auch als Grundlage fuer eine
 semantische Pruefung von Matchergebnissen dienen. Die Anzeigeinterpretation ist
@@ -161,22 +161,47 @@ Grundsaetzlich gilt fuer ein Match der Wert `MatchtypID Standard` des zugehoerig
 Bewerbs. Ist beim konkreten Match in `Matches1.MatchtypID` ein Wert eingetragen,
 ueberschreibt dieser den Standard des Bewerbs.
 
-Der so aufgeloeste Wert wird bei der Court-Zuweisung als `matchtypId` im
-persistenten SQLite-Court-State gespeichert. Er bleibt fuer die Dauer dieser
-Zuweisung unveraendert. Eine spaetere Aenderung der Matchtyp-Zuordnung in
-`Matches1` oder `Bewerb` wirkt deshalb nicht auf ein bereits laufendes Match,
-sondern erst nach einer erneuten Court-Zuweisung.
+Der so aufgeloeste Wert wird bei der Court-Zuweisung zusammen mit den zu diesem
+Zeitpunkt wirksamen Anzeigeregeln im persistenten SQLite-Court-State gespeichert:
 
-Court-Zuweisungen, die bereits vor Einfuehrung dieses Felds gespeichert wurden,
-besitzen noch keine `matchtypId`. Sie muessen nach dem ersten Rollout einmal neu
-zugewiesen werden, bevor die Matchtyp-abhaengige Tie-Break-Anzeige fuer sie gilt.
+```text
+displayRules: {
+  schemaVersion: 1,
+  source: "matchtyp",
+  matchtypId,
+  satztiebreak,
+  entscheidenderSatz
+}
+```
+
+`satztiebreak` ist der kanonisierte symmetrische numerische Ausloeser, zum
+Beispiel `6-6`. `entscheidenderSatz` ist `vollstaendiger Satz`, `MT7` oder `MT10`.
+Eine Individualzuweisung speichert `matchtypId: ""` und `displayRules: null`.
+
+`matchtypId` und `displayRules` bleiben fuer die Dauer der Zuweisung unveraendert.
+Spaetere Aenderungen der Zuordnung in `Matches1` oder `Bewerb` und spaetere
+Aenderungen derselben `Matchtyp`-Zeile wirken deshalb erst nach einer erneuten
+Court-Zuweisung. Die Scoreboard-Projektion verwendet keine Live-Matchtyp-Regeln.
+
+Alte Court-Zustaende mit `matchtypId`, aber ohne `displayRules`, werden nach dem
+ersten verwendbaren Matchtyp-Load ohne Score-Reset, ScoreLog-Write oder
+Court-Event ergaenzt. Ist die ID, das Tabellenschema oder die Regel ungueltig,
+bleibt der Zustand unveraendert und die Migration wird bei einer spaeteren
+Tabellen-Recovery erneut versucht. Ein solcher nicht aufgeloester aktiver Court
+macht `/ready` und `/health` bis zur Recovery, Neuzuweisung oder Deaktivierung
+not-ready.
+
+Noch aeltere Court-Zustaende ohne `matchtypId` bleiben lesbar, koennen aber keiner
+Matchtyp-Zeile und damit keinem Regelsnapshot sicher zugeordnet werden. Sie werden
+nicht automatisch migriert und muessen fuer die Matchtyp-Anzeigeprojektion
+kontrolliert neu zugewiesen werden.
 
 ### Darstellung eines Satz-Tie-Breaks
 
 Die dritte physische Drehspalte wird waehrend eines Tie-Breaks im ersten oder
 zweiten Satz als Tie-Break-Zaehler verwendet. ePiber erkennt diesen Zustand,
 wenn der aktuelle Stand des ersten oder zweiten Satzes dem Wert `Satztiebreak`
-des aufgeloesten Matchtyps entspricht.
+im persistierten `displayRules`-Snapshot entspricht.
 
 In diesem Zustand gilt fuer die digitale Anzeige:
 
@@ -194,6 +219,13 @@ Entscheidungssatz wird durch diese Anzeigeregel nicht umgedeutet.
 Die externen Rohdaten und das ScoreLog bleiben unveraendert. Die Umdeutung findet
 ausschliesslich in der fuer das digitale Scoreboard ausgegebenen Anzeigeprojektion
 statt.
+
+Die acht aktuellen Scorewerte liegen nur im Prozessspeicher. Nach einem
+Backendneustart wird der Stand eines laut SQLite aktiven Courts aus der externen
+Quelle neu aufgebaut; deren erster gueltiger Stand wird sofort angezeigt, aber
+nicht ins ScoreLog geschrieben. Das dreispaltige ScoreLog dient ausschliesslich
+der Protokollierung spaeterer Aenderungen und wird niemals zur Rekonstruktion des
+Live-Stands gelesen.
 
 ## Datenfluss
 
@@ -227,10 +259,12 @@ Voraussetzungen erfuellt sein:
 - Der Receiver ist mit dem Vereins-WLAN verbunden.
 - Der Receiver hat eine Verbindung zum externen Scorer-Server aufgebaut.
 - Die JSON-Datenquelle des externen Systems ist erreichbar und aktuell.
-- Die Tabelle `Matchtyp` und die Matchtyp-Zuordnung des laufenden Matches sind
-  fuer die korrekte Interpretation eines Satz-Tie-Breaks verfuegbar.
-- Nach einer beabsichtigten Aenderung der Matchtyp-Zuordnung wird das Match erneut
-  dem Court zugewiesen, damit der neue Wert fuer diese Zuweisung uebernommen wird.
+- Fuer eine neue Matchzuweisung sind die Tabelle `Matchtyp`, die aufgeloeste
+  Matchtyp-Zuordnung und gueltige Anzeigeregeln verfuegbar. Die laufende Anzeige
+  benoetigt danach keine aktuelle Matchtyp-Tabelle.
+- Nach einer beabsichtigten Aenderung der Matchtyp-Zuordnung oder ihrer Regeln
+  wird das Match erneut dem Court zugewiesen, damit der neue Regelsnapshot fuer
+  diese Zuweisung uebernommen wird.
 
 Nach einem Neustart oder WLAN-Verlust des Receivers muss vor Ort geprueft werden,
 ob die WLAN-Verbindung besteht. Falls nicht, muss sie ueber das Touchdisplay und

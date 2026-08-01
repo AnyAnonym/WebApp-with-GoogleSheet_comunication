@@ -1,17 +1,18 @@
-# ePiber 4.1.3 Rollout-Checkliste
+# ePiber Rollout-Checkliste
 
-Stand: 31.07.2026
+Stand: 01.08.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> Live**. Jede Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
 ## Freigabeprotokoll
 
 - [ ] Release-Commit: `____________________________`
+- [ ] Freigegebene Version: `<FREIGEGEBENE_VERSION>`
 - [ ] Verantwortliche Person: `____________________________`
 - [ ] Zweite pruefende Person: `____________________________`
 - [ ] Wartungsfenster und Kommunikationsweg festgelegt.
 - [ ] Vorheriger freigegebener Commit/Release fuer Rollback notiert: `____________________________`
-- [ ] `Backend/package.json`, `Backend/package-lock.json` und Release-Commit melden exakt `4.1.3`.
+- [ ] `Backend/package.json` und `Backend/package-lock.json` melden exakt `<FREIGEGEBENE_VERSION>` und gehoeren zum eingetragenen Release-Commit.
 - [ ] `git status` des Deploymentstands ist sauber; keine lokalen Code-/Vorlagenaenderungen werden ausgerollt.
 
 ## 1. Google-Sheets-Backup und Schema
@@ -71,7 +72,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Im `Backend/` des Releasecheckouts ist `npm ci --omit=dev` erfolgreich.
 - [ ] `npm run build` ist erfolgreich; statischer Check und vollstaendige Testsuite sind gruen.
 - [ ] `npm audit --omit=dev` meldet keine nicht akzeptierte Produktionsluecke.
-- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der installierten 4.1.3-Vorlage erfolgreich.
+- [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der Vorlage aus dem eingetragenen Release-Commit erfolgreich.
 - [ ] Alle drei installierten Units bestehen `systemd-analyze verify`.
 - [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Loopbackports.
 - [ ] Caddy-Roots zeigen exakt auf die jeweiligen `Frontend/`-Verzeichnisse; Backend, `.env`, Credentials und SQLite sind nicht statisch erreichbar.
@@ -90,18 +91,23 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Konsistentes SQLite-Backup erstellt. Bei gestopptem Dienst wurden DB, WAL und SHM gemeinsam behandelt; alternativ wurde ein SQLite-Onlinebackup verwendet.
 - [ ] Sandbox und leere Capability-Sets entsprechen der Vorlage; es wurden keine pauschalen Schreib- oder Home-Ausnahmen hinzugefuegt.
 - [ ] `KillSignal=SIGTERM`, `SHUTDOWN_GRACE_MS=90000` und `TimeoutStopSec=95` stimmen zusammen.
+- [ ] Installation und Dienststeuerung erfolgen nur durch root oder autorisierte Betreiber; die `nologin`-Service-User `piber`, `paj` und `pk` koennen weder Deployments noch Caddy-/systemd-Dienste steuern und fuehren nur den Node-Prozess aus.
+- [ ] Der Dienst wurde mit parallel laufendem `journalctl -u <unit> -f --since now` neu gestartet; Start, Initialisierung und Testfehler wurden zeitlich zugeordnet, und exportierte Auszuege wurden vor Ablage auf Geheimnisse und personenbezogene Daten geprueft.
 
 ## 6. Health, Status und Transport
 
-- [ ] `/version` liefert HTTP 200 und exakt Version `4.1.3`.
+- [ ] `/version` liefert HTTP 200 und exakt Version `<FREIGEGEBENE_VERSION>` aus dem eingetragenen Release-Commit.
 - [ ] `/live` liefert HTTP 200 mit `status: ok`.
 - [ ] `/ready` und `/health` liefern nach Initialisierung HTTP 200 mit `status: ready`.
 - [ ] Anonymes `/status` wird mit 401 abgewiesen.
 - [ ] Admin-`/status` zeigt plausible Tabellenalter, Poller, Courtquelle, Provider, Monitor-, SQLite- und Sheets-Zustaende.
 - [ ] Admin-`/status` enthaelt keine Cookies, Tokens, Passwortwerte, privaten Schluessel oder `.env`-Secrets.
+- [ ] `/status` bleibt `no-store`; Zugriff und Auswertung sind auf Admins und autorisierte Betreiber fuer den Betriebszweck begrenzt. IP-Adressen, Benutzer-IDs/-namen sowie Client-/Geraetekennungen werden als geschuetzte personenbezogene Diagnosedaten weder oeffentlich angezeigt noch ungefiltert in Journale, Tickets, Screenshots oder Freigabeprotokolle uebernommen.
 - [ ] `pendingMetadataIntents` ist 0; es gibt und braucht keinen `scoreLogPending`-Wert.
 - [ ] Browser-DevTools zeigen HTTPS, WSS-101-Upgrade auf same-origin `/ws`, Hello/Welcome-Protokoll v2 und keine CSP-, Zertifikats-, Origin- oder Mixed-Content-Fehler.
 - [ ] Externe Firewall erlaubt 80, 443, 8081 und 8082; Backendports 8080, 8083 und 8084 sind extern nicht erreichbar.
+- [ ] Das Zertifikat wird an Live, PAJ und PK fuer den Hostnamen `epiber.at` ohne Warnung validiert; die Portnummer ist kein Zertifikatsname.
+- [ ] Negative Klartextprobe fuer `http://epiber.at:8081` und `http://epiber.at:8082`: Weder Anwendung noch API-Daten werden ueber Plain HTTP ausgeliefert. Ablehnung, Verbindungsabbruch oder TLS-Fehler sind zulaessig; ein Redirect auf HTTPS wird auf diesen Ports nicht vorausgesetzt.
 
 ## 7. Rollen und Fachfunktionen auf PAJ
 
@@ -139,7 +145,15 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Namen, gemeinsame Heim-/Gast-Feldhoehen, Scores, Satzwerte, Datum/Bewerb, Seitenpanel, Topausrichtung und `100dvh` sind ohne Abschneiden oder Ueberlagerung korrekt.
 - [ ] Scoreboard-Snapshot, Score-/Tabellen-Subscriptions, Revisionen und Resync liefern nach Reload und Reconnect konsistente Daten.
 - [ ] Tabelle `Matchtyp` besitzt mindestens `ID`, `Satztiebreak` und `Entscheidender Satz`; `Matches1.MatchtypID` ueberschreibt den Bewerbsstandard.
-- [ ] Bereits vor dem Rollout gespeicherte laufende Court-Zuweisungen wurden einmal neu zugewiesen und enthalten danach eine `matchtypId`.
+- [ ] Neue Matchtyp-Zuweisungen persistieren `displayRules: { schemaVersion: 1, source: "matchtyp", matchtypId, satztiebreak, entscheidenderSatz }`; Individualzuweisungen persistieren `matchtypId: ""` und `displayRules: null`.
+- [ ] Sehr alte persistierte Match-Courts ohne `matchtypId` wurden separat erkannt und kontrolliert neu zugewiesen; sie werden weder automatisch migriert noch als unresolved Matchtyp-ID diagnostiziert.
+- [ ] Ein kontrollierter Legacy-Court mit `matchtypId`, aber ohne `displayRules`, wird nach dem ersten verwendbaren Matchtyp-Load ohne Score-Reset, ScoreLog-Write oder Court-Event migriert. Admin-`/status` zeigt `state.displayRulesMigration.attempted: true`, den Court in `migratedCourts` und kein `unresolved` fuer diesen Court.
+- [ ] Der idempotente Migrationsfolgeaufruf beim Initialstart behaelt den erfolgreich migrierten Court in `state.displayRulesMigration.migratedCourts`; ohne neue Migration entstehen dadurch keine weiteren Scoreboard-State-/Score-Events.
+- [ ] Nicht aufloesbare Legacy-Courts bleiben unveraendert. Admin-`/status` listet je Eintrag unter `state.displayRulesMigration.unresolved` exakt `court`, `matchtypId` und einen Grund `MATCHTYP_NOT_FOUND`, `MATCHTYP_SCHEMA_INVALID` oder `MATCHTYP_RULES_INVALID`.
+- [ ] Nur ein aktiver unresolved Court blockiert Readiness: `/ready` und `/health` liefern 503, waehrend Admin-`/status` `status.court.displayRulesReady: false` und den Court unter `status.court.unresolvedActiveRules` zeigt. Derselbe unresolved Court blockiert im deaktivierten Zustand nicht und bleibt zur Diagnose unter `state.displayRulesMigration.unresolved` sichtbar.
+- [ ] Recovery der Matchtyp-Tabelle migriert den Legacy-Court beim erneuten Load und entfernt diesen Readiness-Blocker. Alternativ entfernt eine erfolgreiche Neuzuweisung den unresolved Eintrag; eine Deaktivierung entfernt nur den Readiness-Blocker. Sind alle anderen Bedingungen erfuellt, werden `/ready` und `/health` danach wieder gruen; Reaktivierung ohne Recovery oder Neuzuweisung blockiert erneut.
+- [ ] Bei bereits vollstaendigen Court-Regelsnapshots blockiert eine stale oder temporaer nicht geladene Matchtyp-Tabelle allein `/ready` und `/health` nicht. Admin-`/status` zeigt ihren Tabellenzustand weiterhin, und eine neue Matchtyp-Zuweisung wird bis zu aktuellen Daten kontrolliert abgewiesen.
+- [ ] Aenderungen einer Matchtyp-Zeile veraendern den persistierten `displayRules`-Snapshot einer laufenden Zuweisung nicht; erst eine erfolgreiche Neuzuweisung uebernimmt die dann aktuellen Regeln.
 - [ ] Satz-Tie-Break in Satz 1/2 verschiebt die dritte Drehspalte ins Punktefeld und zeigt Satz 3 als 0; `MT7`/`MT10` markiert Satz 3 tuerkis.
 - [ ] Zweistellige Werte in Satz 3 und Punktewerte wie 40 werden am Fernseher nicht abgeschnitten; der mobile Zurueck-Pfeil ist erreichbar und zentriert.
 - [ ] Deaktivieren eines Platzes friert dessen letzten akzeptierten Score ein; spaete oder weitere externe Pollantworten dieses Platzes erzeugen keine Scoreaenderung und keine dadurch ausgeloeste Revision.
@@ -157,12 +171,17 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 - [ ] Kurzzeitiger WebSocket-Abbruch fuehrt zu Backoff mit Jitter, Reconnect, Welcome, Subscription-Wiederherstellung und Resync.
 - [ ] Pending Requests werden bei Verbindungsverlust abgewiesen; Writes werden nicht blind automatisch wiederholt.
+- [ ] Ein neu gestarteter RPC-Request wird bei bereits offline erkanntem Browserzustand sofort mit `OFFLINE` abgewiesen, ohne Socketaufbau oder Warten auf das Wiederverbindungsfenster.
+- [ ] Ein bereits auf den Verbindungsaufbau wartender RPC-Request wird beim nachtraeglichen Offline-Ereignis sofort mit `OFFLINE` abgewiesen und wartet nicht bis zum Verbindungstimeout.
 - [ ] Browser offline/online wurde getestet; UI meldet Offlinezustand und synchronisiert nach Rueckkehr.
 - [ ] WLAN-Wechsel zwischen zwei Netzen und kurzzeitiger Paketverlust wurden auf Desktop, Mobil und Kiosk getestet.
 - [ ] Geraete-Standby fuer kurze und laengere Zeit wurde getestet; Session, WSS, Scoreboard und Monitorstatus erholen sich kontrolliert.
 - [ ] Tab im Hintergrund und Rueckkehr in den Vordergrund aktualisieren Verbindung, Session und zeitabhaengige Fachansichten.
 - [ ] Vor-/Zurueck-Navigation aus dem BFCache (`pagehide/pageshow persisted`) erzeugt weder tote Sockets noch doppelte Subscriptions/Writes.
 - [ ] Terminale WebSocket-Codes reconnecten nicht endlos; eine gueltige Monitor-Neuanmeldung kann kontrolliert neu verbinden.
+- [ ] Ein serverseitiger 4406 mit App-Versionsgrund setzt tabbezogen den Session-Storage-Marker `epiber-app-version-reload` und loest genau einen automatischen Reload aus.
+- [ ] Ein erfolgreiches Welcome entfernt `epiber-app-version-reload`. Tritt der App-Versions-4406 bei gesetztem Marker erneut auf, stoppt der Client terminal ohne weiteren Reload und ohne Reconnectschleife; bei nicht nutzbarem Session Storage wird ebenfalls nicht automatisch neu geladen.
+- [ ] Ein generischer 4406, etwa wegen inkompatibler Protokollversion, ist terminal und erzeugt weder App-Update-Marker noch automatischen Reload oder Reconnectschleife; er wird nicht als App-Versionskonflikt gewertet.
 
 ## 10. Last, Dauerbetrieb und SIGTERM
 
@@ -228,9 +247,9 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 
 ## Erfolgskriterien
 
-- [ ] Alle drei Systeme liefern exakt Version `4.1.3` und verwenden den identischen freigegebenen Commit.
+- [ ] Alle drei Systeme liefern exakt Version `<FREIGEGEBENE_VERSION>` und verwenden den identischen freigegebenen Commit.
 - [ ] Alle drei Systeme sind ausschliesslich ueber HTTPS/WSS erreichbar; Backends lauschen nur an Loopback.
-- [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets und keine pending Metadata.
+- [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets, keine pending Metadata und keine aktiven unresolved Court-Regeln.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.
 - [ ] Keine falsche, doppelte oder verlorene fachliche Aenderung wurde in Sheets festgestellt.
 - [ ] `Logging` und `ScoreLog` sind unveraendert dreispaltig; keine Event-ID-/Pending-Migration wurde eingefuehrt.

@@ -4,6 +4,7 @@ const { WebSocket } = require("ws");
 const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
+const { TABLE_CONFIG } = require("../config.js");
 const dataStore = require("../dataStore.js");
 const { createApplication } = require("../server.js");
 const { StateRepository } = require("../stateRepository.js");
@@ -84,6 +85,15 @@ function nextClose(socket) {
   return new Promise((resolve) => {
     socket.once("close", (code, reason) => resolve({ code, reason: reason?.toString?.() || "" }));
   });
+}
+
+async function waitFor(predicate, timeoutMs, message) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(message);
 }
 
 function rejectedUpgrade(url, origin) {
@@ -312,9 +322,13 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const adminClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: cookie });
   assert.equal((await adminClient.handshake()).principal.role, "admin");
-  const statusResponse = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
-  assert.equal(statusResponse.status, 200);
-  const statusPayload = await statusResponse.json();
+  let statusPayload;
+  await waitFor(async () => {
+    const statusResponse = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
+    assert.equal(statusResponse.status, 200);
+    statusPayload = await statusResponse.json();
+    return statusPayload.provider.clientCapacity.current === 2;
+  }, 1000, "Geschlossene Versionskonflikt-Verbindung blieb im Providerstatus");
   assert.deepEqual(statusPayload.provider.clientCapacity, { current: 2, max: 200, text: "2/200" });
   assert.deepEqual(statusPayload.provider.connectionsByIp, [{
     ip: "127.0.0.1",
@@ -457,7 +471,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal(acknowledgement.data.success, true);
   }
 
-  const assignment = await adminClient.request("courtAssign", {
+  const assignment = await operatorClient.request("courtAssign", {
     court: "1",
     matchId: "m1",
     operationId: "00000000-0000-4000-8000-000000000303",
@@ -465,6 +479,16 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(assignment.data.court.homePlayer, "Ada Admin");
   assert.equal(assignment.data.court.matchtypId, "2");
+  assert.deepEqual(assignment.data.court.displayRules, {
+    schemaVersion: 1,
+    source: "matchtyp",
+    matchtypId: "2",
+    satztiebreak: "3-3",
+    entscheidenderSatz: "MT10",
+  });
+  dataStore.set("matchtyp", [["ID", "Bezeichnung", "Satztiebreak", "Entscheidender Satz"], ["1", "Normal", "6-6", "vollstaendiger Satz"], ["2", "Geaendert", "4-4", "MT7"]], { source: "test-edit" });
+  const persistedAssignment = await adminClient.request("getScoreboardCourts");
+  assert.deepEqual(persistedAssignment.data.courts["1"].displayRules, assignment.data.court.displayRules);
   const assignedScores = await adminClient.request("courtScores");
   const assignedCourtScore = assignedScores.data.data.courts.find((court) => court.platz === "1");
   assert.deepEqual(assignedCourtScore, {
@@ -472,14 +496,20 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     satz1home: "0", satz1gast: "0", satz2home: "0", satz2gast: "0",
     satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
   });
-  const activation = await adminClient.request("courtSetActive", {
+  const reassignmentRequest = {
     court: "1",
-    active: false,
-    operationId: "00000000-0000-4000-8000-000000000304",
+    matchId: "m1",
+    operationId: "00000000-0000-4000-8000-000000000309",
     expectedRevision: assignment.data.court.revision,
+  };
+  const reassignment = await operatorClient.request("courtAssign", reassignmentRequest);
+  assert.deepEqual(reassignment.data.court.displayRules, {
+    schemaVersion: 1,
+    source: "matchtyp",
+    matchtypId: "2",
+    satztiebreak: "4-4",
+    entscheidenderSatz: "MT7",
   });
-  assert.equal(activation.data.court.aktiv, 0);
-
   const deviceClosed = new Promise((resolve) => deviceClient.socket.once("close", (code) => resolve(code)));
   const rotated = await adminClient.request("monitorRotate", {
     monitorId,
@@ -502,6 +532,21 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const oversizedClosed = new Promise((resolve) => oversizedClient.socket.once("close", (code) => resolve(code)));
   oversizedClient.socket.send("x".repeat(20000));
   assert.equal(await oversizedClosed, 1009);
+
+  const currentTables = Object.fromEntries(Object.keys(TABLE_CONFIG).map((table) => [table, dataStore.get(table)]));
+  dataStore.resetForTests();
+  for (const [table, values] of Object.entries(currentTables)) {
+    if (table !== "matchtyp") dataStore.set(table, values, { source: "stale-matchtyp-test" });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 5100)); // Replenish the shared per-IP write token.
+  const staleMatchtypReplay = await operatorClient.request("courtAssign", {
+    court: "1",
+    matchId: "m1",
+    operationId: "00000000-0000-4000-8000-000000000303",
+    expectedRevision: 1,
+  });
+  assert.equal(staleMatchtypReplay.data.error, undefined);
+  assert.deepEqual(staleMatchtypReplay.data.court.displayRules, assignment.data.court.displayRules);
 
   await publicClient.close();
   await adminClient.close();

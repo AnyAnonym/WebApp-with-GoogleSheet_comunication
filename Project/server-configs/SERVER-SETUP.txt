@@ -1,8 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Stand: v4.1.0
-Letzte Aenderung: 30.07.2026
+Letzte Aenderung: 01.08.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -88,11 +87,20 @@ WebSockets verwenden entsprechend `wss://epiber.at/ws`,
 `wss://epiber.at:8081/ws` und `wss://epiber.at:8082/ws`. HTTP oder `ws://` ist
 fuer keines der drei Systeme ein freigegebener Browsertransport.
 
-Caddy terminiert TLS fuer alle Origins. Nur Caddy ist extern erreichbar. Die
-Firewall gibt TCP 80 und 443 fuer Zertifikat/Redirect sowie TCP 8081 und 8082
-fuer die HTTPS-Testsysteme frei. TCP 8080, 8083 und 8084 bleibt gesperrt. DNS
-`epiber.at` zeigt auf den Server; Zertifikate muessen den Host an allen drei
-externen Ports ohne Browserwarnung abdecken.
+Caddy terminiert TLS fuer alle Origins, ausdruecklich auch auf den Ports 8081 und
+8082. Nur Caddy ist extern erreichbar. Die Firewall gibt TCP 80 und 443 fuer
+Zertifikat und den HTTP-zu-HTTPS-Weg der Live-Origin sowie TCP 8081 und 8082 fuer
+die HTTPS-Testsysteme frei. TCP 8080, 8083 und 8084 bleibt gesperrt. DNS
+`epiber.at` zeigt auf den Server. Zertifikate validieren den Hostnamen
+`epiber.at`, nicht einen Port; dasselbe passende Hostzertifikat muss daher an
+allen drei TLS-Listenern ohne Browserwarnung geliefert werden.
+
+Die expliziten Caddy-Adressen `https://epiber.at:8081` und
+`https://epiber.at:8082` garantieren auf diesen Ports keinen Redirect fuer
+Plain-HTTP-Anfragen. Die Abnahme muss negativ pruefen, dass
+`http://epiber.at:8081` und `http://epiber.at:8082` keine Anwendung und keine
+API-Antwort ueber Klartext ausliefern. Verbindungsabbruch, TLS-Fehler oder eine
+andere Ablehnung sind dort zulaessig; ein HTTP-Redirect ist kein Erfolgskriterium.
 
 
 ================================================================================
@@ -112,10 +120,10 @@ Im jeweiligen Backend-Verzeichnis reproduzierbar installieren und pruefen:
   npm audit --omit=dev
 
 `npm ci` muss das versionierte `package-lock.json` unveraendert verwenden. Der
-Build fuehrt den statischen Check und die Tests aus. Fuer 4.1.0 muessen
-`package.json`, `package-lock.json` und die spaetere `/version`-Antwort exakt
-uebereinstimmen. Ein Branchsuffix oder eine geaenderte Lockdatei stoppt den
-Rollout.
+Build fuehrt den statischen Check und die Tests aus. `package.json`,
+`package-lock.json` und die spaetere `/version`-Antwort muessen exakt
+`<FREIGEGEBENE_VERSION>` melden und zum freigegebenen Commit gehoeren. Ein
+Branchsuffix oder eine geaenderte Lockdatei stoppt den Rollout.
 
 
 ================================================================================
@@ -131,6 +139,13 @@ Einmalig als root:
   install -d -o root -g root -m 0755 /srv/http/ePiber/piber
   install -d -o root -g root -m 0755 /srv/http/ePiber/paj
   install -d -o root -g root -m 0755 /srv/http/ePiber/pk
+
+Alle Installations- und `systemctl`-Befehle dieses Dokuments werden als root oder
+durch einen ausdruecklich autorisierten Betreiber ueber eng begrenztes sudo oder
+polkit ausgefuehrt. Die Service-User `piber`, `paj` und `pk` besitzen eine
+`nologin`-Shell, starten weder interaktive Sitzungen noch Deployments und duerfen
+Caddy oder systemd-Dienste nicht selbst steuern. systemd wechselt nur fuer den
+Node-Prozess auf den jeweiligen unprivilegierten Service-User.
 
 Deployments erfolgen kontrolliert; Service-User benoetigen Leserechte auf Code
 und `.env`, aber keine Schreibrechte im Checkout. Caddy benoetigt Leserechte auf
@@ -237,7 +252,8 @@ ProtectHome sowie Kernel-, ControlGroup- und Clock-Schutz; keine Capabilities,
 keine SUID/SGID-, Realtime-, Namespace- oder fremde Architekturfreigabe; nur
 AF_UNIX, AF_INET und AF_INET6.
 
-Vorlagen aus einem bestaetigten 4.1.0-Checkout installieren:
+Vorlagen aus dem freigegebenen Commit mit Paketversion
+`<FREIGEGEBENE_VERSION>` installieren:
 
   install -o root -g root -m 0644 Project/server-configs/systemd/*.service /etc/systemd/system/
   systemd-analyze verify /etc/systemd/system/epiber-piber.service
@@ -266,6 +282,20 @@ Jeweils nach Migration, Installation und Build starten, zunaechst nur PAJ:
   systemctl status epiber-paj
   journalctl -u epiber-paj --since "10 minutes ago"
 
+Kurzes Journal-Follow-Runbook fuer root oder autorisierte Betreiber:
+
+  1. In einem separaten Terminal `journalctl -u epiber-paj -f --since now`
+     starten; fuer PK oder Live den Unitnamen entsprechend ersetzen.
+  2. Im Arbeitsterminal den Dienst neu starten und die vorgesehenen Health- und
+     Funktionstests ausfuehren.
+  3. Im Follow-Terminal Startmeldung, Initialisierung, Testzeitpunkt und neue
+     Warnungen/Fehler beobachten; bei einem Fehler den Zeitpunkt und die
+     betroffene Unit festhalten.
+  4. Follow mit Ctrl-C beenden und den relevanten Zeitraum bei Bedarf mit
+     `journalctl -u <unit> --since "<ZEITPUNKT>" --no-pager` erneut ausgeben.
+     Personenbezogene Werte und Geheimnisse nicht ungefiltert in Tickets oder
+     Freigabeprotokolle uebernehmen.
+
 Oeffentliche Checks pro Origin:
 
   curl --fail --show-error https://epiber.at:8081/version
@@ -275,9 +305,9 @@ Oeffentliche Checks pro Origin:
 
 Fuer PK Port 8082, fuer Live keinen Port angeben. Erwartung:
 
-  /version    HTTP 200 und exakt {"version":"4.1.0"}
-  /live       HTTP 200, status ok, Version 4.1.0
-  /ready      HTTP 200, status ready, Version 4.1.0
+  /version    HTTP 200 und exakt {"version":"<FREIGEGEBENE_VERSION>"}
+  /live       HTTP 200, status ok, Version <FREIGEGEBENE_VERSION>
+  /ready      HTTP 200, status ready, Version <FREIGEGEBENE_VERSION>
   /health     wie /ready; waehrend Initialisierung/Fehler HTTP 503
 
 `/status` ist absichtlich admin-geschuetzt. Es ist im Browser mit einer echten
@@ -288,6 +318,15 @@ Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
 zeigen und darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
 akteursbezogen ueber den RPC `operationStatus` abgefragt. Es gibt im bestaetigten
 dreispaltigen ScoreLog-Vertrag keinen `scoreLogPending`-Status.
+
+Die `/status`-Antwort ist trotz fehlender Secrets eine geschuetzte Sammlung
+personenbezogener Betriebsdiagnosen. Sie kann insbesondere IP-Adressen,
+Benutzer-IDs und -namen sowie stabile Client-/Geraetekennungen verbundener
+Sockets enthalten. Zugriff und Auswertung sind auf Administratoren und
+autorisierte Betreiber fuer den konkreten Betriebszweck zu begrenzen. Antwort,
+Screenshots und Auszuege duerfen nicht auf oeffentlichen Anzeigen erscheinen und
+nicht ungefiltert in Journale, Tickets oder Freigabeprotokolle kopiert werden;
+die HTTP-Antwort bleibt `no-store`.
 
 Bei der Courtsteuerung friert das Deaktivieren eines Platzes den zuletzt
 akzeptierten Score ein. Ein expliziter Reset setzt nur diesen Platz sofort auf

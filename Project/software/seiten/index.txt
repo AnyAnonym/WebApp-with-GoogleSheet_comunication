@@ -1,8 +1,6 @@
 ================================================================================
 Dashboard / Willkommensseite - Startseite der Anwendung
 ================================================================================
-Stand: v4.1.0
-
 -- Funktion und Dateien --
   Zentrale Einstiegsseite mit Navbar, Willkommenstext und Footer.
   HTML: Frontend/index.html

@@ -1,8 +1,6 @@
 ================================================================================
 Matches-Uebersicht mit Filtern - Zentrale Match-Seite
 ================================================================================
-Stand: v4.0.0
-
 -- Funktion und Dateien --
   HTML: Frontend/Matches1.html
   JS:   Frontend/JS/Matches1.js

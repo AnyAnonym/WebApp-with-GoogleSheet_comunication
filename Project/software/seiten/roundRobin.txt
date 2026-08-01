@@ -1,8 +1,6 @@
 ================================================================================
 RoundRobin-Gruppenphase - Tabellen und Paarungslisten
 ================================================================================
-Stand: v4.1.0
-
 -- Funktion und Dateien --
   HTML: Frontend/RoundRobin.html
   JS:   Frontend/JS/RoundRobin.js

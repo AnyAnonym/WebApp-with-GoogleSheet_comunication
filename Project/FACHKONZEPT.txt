@@ -1,8 +1,6 @@
 ================================================================================
 FACHKONZEPT.txt - Produktvision und fachliches Lastenheft
 ================================================================================
-Stand: v4.1.3, 2026-07-31
-
 Dieses Dokument beschreibt ePiber aus Sicht der Benutzer und des Vereins. Es
 beantwortet, wofuer das System eingesetzt wird und welche fachlichen Aufgaben es
 abbilden soll. Technische Architektur, konkrete Datenformate und Implementierung
@@ -210,6 +208,11 @@ die angebotenen Anmeldefunktionen verwenden.
 
   LF-32 Ein Ausfall oder veralteter Datenstand darf Benutzern keinen irrefuehrend
         aktuellen Spielstand vermitteln. [Arbeitsannahme]
+
+  LF-33 Behebbare Kommunikationsfehler, Wiederverbindungen und aufgrund einer
+        neuen Anwendungsversion erforderliche Seitenreloads sollen soweit
+        moeglich automatisch erfolgen. Sichtbare Meldungen dazu sollen kurz,
+        neutral und ohne technische Detailangaben formuliert sein. [Bestaetigt]
 
 6.5 Semantische Ergebnispruefung
 

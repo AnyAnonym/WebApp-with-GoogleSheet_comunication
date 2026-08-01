@@ -1,8 +1,6 @@
 ================================================================================
 Ranglisten-Pyramide - Interaktive Forderungsrangliste
 ================================================================================
-Stand: v4.1.0
-
 -- Funktion und Dateien --
   HTML: Frontend/rangliste.html
   JS:   Frontend/JS/rangliste.js sowie Profil-/Aktionsmodale in modals.js

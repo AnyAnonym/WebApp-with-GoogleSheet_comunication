@@ -1,8 +1,6 @@
 ================================================================================
 WebSocket-Close-Codes - Bedeutung und Bewertung
 ================================================================================
-Stand: v4.1.0, 2026-07-30
-
 Dieses Dokument beschreibt die WebSocket-Schliesscodes des ePiber-Backends und
 des Browserclients. Eine typische Backendmeldung lautet:
 
@@ -100,14 +98,19 @@ Code | Bedeutung                    | Ausloeser / Erklaerung
      |                              | Monitor bereits in einem anderen Fenster
      |                              | verbunden ist. Der Code ist terminal.
 -----|------------------------------|---------------------------------------------
+4406 | App-Version inkompatibel      | Das `hello` enthaelt eine ungueltige oder von
+     |                              | der Backendversion abweichende App-Version.
+     |                              | Der Grund enthaelt `App-Version`. Der
+     |                              | Browserclient darf dafuer pro Tab genau einen
+     |                              | geschuetzten automatischen Reload versuchen.
+-----|------------------------------|---------------------------------------------
 4406 | ePiber-Protokoll inkompatibel | Das `hello`, die Protokollversion oder eine
      |                              | korrelierte Serverantwort ist ungueltig.
      |                              | Gruende sind `Protokollversion inkompatibel`,
      |                              | `Handshake fehlgeschlagen`, `Protocol
      |                              | mismatch` oder `Response endpoint mismatch`.
-     |                              | Hauefige Ursache ist ein alter Browser-Tab
-     |                              | mit veraltetem JavaScript. Der Code ist
-     |                              | terminal und stoppt automatische Reconnects.
+     |                              | Dieser generische 4406 ist terminal, stoppt
+     |                              | Reconnects und loest keinen Reload aus.
 -----|------------------------------|---------------------------------------------
 4408 | ePiber-Handshake-Timeout      | Die WebSocket-Verbindung wurde angenommen,
      |                              | aber innerhalb von `WS_HANDSHAKE_TIMEOUT_MS`
@@ -116,6 +119,13 @@ Code | Bedeutung                    | Ausloeser / Erklaerung
      |                              | Legacy-Clients, unterbrochene Ausfuehrung
      |                              | oder Netzwerkprobleme sein. Der Client darf
      |                              | mit Backoff erneut verbinden.
+
+Die zehn Sekunden bei 4000 und 4408 begrenzen unterschiedliche Seiten desselben
+Handshakes: Der Client wartet hoechstens zehn Sekunden auf ein gueltiges
+`welcome`, der Server hoechstens zehn Sekunden auf ein vollstaendiges gueltiges
+`hello`. Die Frist ist ein Kompromiss: Langsame Clients, Browserausfuehrung und
+Netzwerke erhalten ausreichend Zeit, zugleich belegen haengende oder alte Clients
+die globale und IP-bezogene Verbindungskapazitaet nicht unnoetig lange.
 
 
 ================================================================================
@@ -165,11 +175,22 @@ Der Browserclient behandelt folgende Codes als terminal:
   1008  Nachrichtenlimit beziehungsweise Richtlinienverstoss
   4003  Monitor-Token rotiert oder widerrufen
   4009  Monitor bereits in einem anderen Fenster verbunden
-  4406  Protokollversion beziehungsweise Nachrichtenkorrelation inkompatibel
+  4406  App-Version oder Protokoll beziehungsweise Nachrichtenkorrelation
+        inkompatibel
 
 Bei diesen Codes stoppt `Frontend/JS/dataClient.js` die automatische
-Wiederverbindung. Ein ausdruecklicher, fachlich erlaubter Neustart der Verbindung
-ist weiterhin moeglich.
+Wiederverbindung. Ein durch 4406 terminal gestoppter Client kann auch ueber den
+normalen expliziten Verbindungsneustart nicht neu gestartet werden; erforderlich
+ist eine Neuinitialisierung der Seite.
+
+Nur wenn der 4406-Grund `App-Version` enthaelt, versucht der Browser einen
+einmaligen automatischen Reload. Vor dem Reload schreibt er den tabbezogenen
+Marker `epiber-app-version-reload` in `sessionStorage`. Der Marker ueberlebt den
+Reload und wird erst nach einem erfolgreichen `welcome` entfernt. Ein weiterer
+App-Versions-4406 vor diesem `welcome` bleibt deshalb terminal und erzeugt keine
+Reloadschleife. Ist `sessionStorage` gesperrt oder nicht nutzbar, findet kein
+ungeschuetzter Reload statt; der Client stoppt stattdessen terminal. Ein
+generischer Protokoll-4406 setzt keinen Reloadmarker und loest keinen Reload aus.
 
 Bei temporaeren Gruenden wie 1012, 1013, 4000, 4001 und 4408 wird grundsaetzlich
 mit ansteigender Wartezeit bis maximal 30 Sekunden neu verbunden. Beim Wechsel
@@ -204,6 +225,12 @@ wurde.
   schliessen beziehungsweise Seite ohne Cache neu laden. Wiederholtes Auftreten
   nach Aktualisierung deutet auf einen Legacy-Client oder eine fehlerhafte
   Clientimplementierung hin.
+
+`4406 App-Version inkompatibel`
+  Ein bereits geladener Client passt nicht zur laufenden Backendversion. Der
+  Browser versucht einmalig einen durch `sessionStorage` geschuetzten Reload.
+  Bleibt der Konflikt danach bestehen oder ist der Speicher nicht nutzbar, stoppt
+  der Client terminal und zeigt nur die neutrale Aufforderung zum Neuladen.
 
 `4408 Handshake Timeout`
   Einzelne Meldungen sind meist harmlos. Viele Meldungen direkt nach einem

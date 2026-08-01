@@ -1,8 +1,6 @@
 ================================================================================
 Spielerverzeichnis - Aktive Mitglieder und Profile
 ================================================================================
-Stand: v4.1.0
-
 -- Funktion und Dateien --
   HTML: Frontend/players.html
   JS:   Frontend/JS/playerList.js sowie gemeinsames Profilmodal in modals.js

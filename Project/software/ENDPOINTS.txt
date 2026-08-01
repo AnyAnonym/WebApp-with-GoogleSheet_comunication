@@ -1,7 +1,6 @@
 ================================================================================
   ENDPOINTS.txt - HTTP- und WebSocket-v2-Referenz
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 Alle dynamischen Pfade werden vom Node.js-Backend bedient; Caddy terminiert in
@@ -54,7 +53,7 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 ================================================================================
 
 ----- GET /version (public) -----
-  200: `{ "version": "4.1.0" }`.
+  200: `{ "version": "<app-version>" }`.
 
 ----- GET /live (public) -----
   Prozess-Liveness. 200 mit `{ status: "ok", version }`; waehrend Shutdown 503
@@ -64,22 +63,87 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 ----- GET /ready und GET /health (public, identische Semantik) -----
   200 `{ status: "ready", version }` oder 503 `{ status: "not-ready", version }`.
   Readiness verlangt abgeschlossene Initialisierung, offene SQLite-Datenbank,
-  aktuelle Fast-/Slow-Sheetdaten, laufenden Poller, keinen Shutdown und bei
-  aktiven Courts eine nicht stale Courtquelle.
+  aktuelle Sheetdaten mit Ausnahme von `matchtyp`, laufenden Poller, keinen
+  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Der Matchtyp-
+  Tabellenstatus bleibt diagnostizierbar und neue Court-Zuweisungen verlangen
+  weiterhin aktuelle Matchtyp-Daten. Ein aktiver Legacy-Court, dessen
+  fehlender `displayRules`-Snapshot nicht aufgeloest werden konnte, liefert bis
+  zur Tabellen-Recovery, erfolgreichen Neuzuweisung oder Deaktivierung ebenfalls
+  503. Ein unresolved inaktiver Court blockiert Readiness nicht.
 
 ----- GET /status (admin) -----
-   Verlangt ein gueltiges Admin-Sessioncookie. Liefert detaillierte Readiness,
-   Tabellenalter/Revisionen/Fehler sowie `provider`, Monitor-/Court-State,
-   SheetService-Queues und `pendingMetadataIntents`.
+   Verlangt ein gueltiges Admin-Sessioncookie und liefert
+   `Cache-Control: no-store`. Das Top-Level-Objekt enthaelt `status`, `monitor`,
+   `provider`, `sheets` und `state`. `status` enthaelt detaillierte Readiness einschliesslich
+   `court.displayRulesReady` und `court.unresolvedActiveRules`; `state` enthaelt
+   unter anderem `displayRulesMigration` und die Court-Zustaende.
 
-   `provider` enthält:
-   - `clientCapacity`: `{ current, max, text }`, z.B. `2/200`
-   - `connectionsByIp`: `[ { ip, current, max, text } ]`
-   - `clients`: bestehend aus `ip`, `userId` und `userName` (bei Benutzern),
-     `userId`/`userName` sind bei nicht angemeldeten Benutzern `null`.
+   `monitor` ist `{ online, commandStatus }`. `online` ist die Liste aktuell
+   verbundener Monitor-IDs; `commandStatus` ordnet Monitor-IDs ihrem letzten
+   fluechtigen Navigationsstatus zu. Scrollstatus werden publiziert, aber nicht
+   in dieser Map gespeichert.
 
-   Die Antwort darf keine Cookies, Tokens, Passwortwerte, privaten Schluessel oder
-   ScoreLog-Pendingwerte enthalten.
+   `state.displayRulesMigration.migratedCourts` enthaelt dedupliziert alle seit
+   Prozessstart erfolgreich migrierten Courts und bleibt bei idempotenten
+   Folgeaufrufen erhalten. `unresolved` beschreibt den aktuellen
+   Migrationsversuch.
+
+   Exakter Providervertrag:
+
+   {
+     "clientCount": 2,
+     "clientCapacity": { "current": 2, "max": 200, "text": "2/200" },
+     "connectionsByIp": [
+       { "ip": "<ip>", "current": 2, "max": 20, "text": "2/20" }
+     ],
+     "clients": [
+       {
+         "id": "<connection-uuid>",
+         "ip": "<ip>",
+         "connectedAt": 0,
+         "lastMessageAt": 0,
+         "lastPong": 0,
+         "lastRequest": null,
+         "pageType": null,
+         "appVersion": null,
+         "clientId": null,
+         "deviceId": null,
+         "principalType": "anonymous|user|device",
+         "role": "anonymous|player|operator|admin|device",
+         "userId": null,
+         "userName": null,
+         "subscriptions": [],
+         "bufferedAmount": 0
+       }
+     ]
+   }
+
+   `clientCount` und `clientCapacity.current` zaehlen alle aktuell verbundenen
+   Sockets, auch vor abgeschlossenem Handshake; `clientCapacity.max` ist die
+   globale Verbindungskapazitaet. `connectionsByIp` ist nach IP sortiert und
+   verwendet die Pro-IP-Kapazitaet. Die Zeitfelder sind Unixzeit in Millisekunden.
+   Vor dem Handshake sind `pageType`, `appVersion`, `clientId` und `deviceId`
+   `null`. `userId` und `userName` sind nur fuer einen aktuellen Benutzer gesetzt,
+   sonst `null`; `userName` hat das Format `Nachname / Vorname` mit entfallenden
+   leeren Teilen. `subscriptions` enthaelt die aktuell registrierten Topics,
+   `bufferedAmount` die noch gepufferten Ausgangsbytes.
+
+   Nach einem bis zur Handlerausfuehrung zugelassenen RPC ist `lastRequest`:
+   `{ endpoint, at, durationMs, success, code?, supportId? }`. `code` erscheint
+   bei einem fehlgeschlagenen Request, `supportId` nach erfolgter Korrelation.
+   Fehler vor der Handlerausfuehrung, etwa unbekannter Endpoint, fehlende
+   Berechtigung, ungueltiger Vertrag oder Rate-Limit, erzeugen keinen neuen
+   `lastRequest`-Datensatz. Bekannte Diagnoseeinschraenkung: Existiert bereits ein
+   Datensatz, kann dessen `supportId` dennoch auf die Support-ID der neuen
+   Fehlerantwort wechseln, waehrend Endpoint, Zeit, Dauer und Erfolg zum
+   vorherigen Handlerrequest gehoeren. Die Support-ID darf in diesem Fall nicht
+   isoliert dem angezeigten Endpoint zugeordnet werden.
+   Die Listen entstehen bei jedem Aufruf aus den aktuell verbundenen Sockets und
+   verlieren einen Eintrag beim Close; sie sind nicht persistiert. IP,
+   Benutzer-ID, Klarname sowie stabile Client-/Geraetekennungen sind fluechtige
+   privilegierte Diagnosedaten und duerfen nicht ungefiltert in oeffentliche Logs
+   oder Tickets uebernommen werden. Die Antwort enthaelt keine Cookies, Tokens,
+   Passwortwerte, privaten Schluessel oder ScoreLog-Pendingwerte.
 
 ----- /api/session -----
   GET (public):
@@ -177,14 +241,15 @@ Innerhalb standardmaessig 10 Sekunden muss der Client senden:
     "clientId": "...",
     "deviceId": "...",
     "pageType": "scoreboard",
-    "appVersion": "4.1.0"
+    "appVersion": "<app-version>"
   }
 
-    `clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
+`clientId`, `deviceId` und `pageType` sind Pflichttexte mit maximal 64 Zeichen;
 `appVersion` ist Pflichttext mit maximal 64 Zeichen und muss mit `GET /version`
-(`serverVersion`) übereinstimmen. Bei Abweichung schliesst der Server den
-WebSocket mit 4406. Die Rolle kommt nie aus diesen Feldern, sondern nur aus
-Session- beziehungsweise Monitorcookie.
+(`serverVersion`) uebereinstimmen. Der Vergleich ist exakt und
+gross-/kleinschreibungssensitiv. Ein leerer, zu langer oder abweichender Wert
+schliesst mit einem App-Versionsgrund und 4406. Die Rolle kommt nie aus diesen
+Feldern, sondern nur aus Session- beziehungsweise Monitorcookie.
 
 Serverantwort:
 
@@ -193,7 +258,7 @@ Serverantwort:
     "type": "welcome",
     "protocol": 2,
     "connectionId": "UUID",
-    "serverVersion": "4.1.0",
+    "serverVersion": "<app-version>",
     "timing": { "pingIntervalMs": 25000, "staleAfterMs": 70000 },
     "principal": {
       "type": "anonymous|user|device",
@@ -203,10 +268,19 @@ Serverantwort:
     }
   }
 
-`user` erscheint nur bei Benutzern, `monitor` nur bei Geraeten. Falsche Version
-schliesst mit 4406, Handshake-Timeout mit 4408. Server-Ping enthaelt `ts`, Client
-antwortet mit Pong; tote Clients werden nach standardmaessig 75 Sekunden beendet.
-Die Bedeutungen aller verwendeten Codes und das Reconnect-Verhalten stehen in
+`user` erscheint nur bei Benutzern, `monitor` nur bei Geraeten. Ein 4406 mit
+App-Versionsgrund fuehrt clientseitig zu genau einem durch Session-Storage
+geschuetzten Reload. Der Marker wird erst nach einem erfolgreichen `welcome`
+geloescht; ein wiederholter Konflikt stoppt terminal. Ist Session-Storage nicht
+verfuegbar, erfolgt kein ungeschuetzter Reload. Generische 4406-Faelle wie eine
+Protokollabweichung, eine ungueltige Handshake-Nachricht oder ein falscher
+Responseendpoint stoppen ebenfalls terminal, aber ohne Reload oder
+Reconnectschleife. Handshake-Timeout schliesst mit 4408. Server-Ping enthaelt
+`ts`, Client antwortet mit Pong; tote Clients werden nach standardmaessig 75
+Sekunden beendet. Neue RPCs im Browserzustand `offline` sowie bei einem
+nachtraeglichen Offline-Ereignis bereits wartende Verbindungsanfragen werden
+sofort mit dem internen Clientfehler `OFFLINE` abgelehnt. Die Bedeutungen aller
+verwendeten Codes und das Reconnect-Verhalten stehen in
 `Project/software/WEBSOCKET-CLOSE-CODES.txt`.
 
 
@@ -267,14 +341,21 @@ PUBLIC:
 
   `getScoreboardCourts {}`
       Revisionierte persistente Court-Zustaende inklusive der bei Zuweisung
-      fixierten `matchtypId`.
+      fixierten `matchtypId` und `displayRules`. Der Regelvertrag ist
+      `{ schemaVersion:1, source:"matchtyp", matchtypId, satztiebreak,
+      entscheidenderSatz }`; bei Individualzuweisungen sind `matchtypId: ""` und
+      `displayRules: null` gesetzt.
 
   `courtScores {}`
-      Letzter normalisierter Court-Snapshot mit Revision und Quellenalter.
+      Letzter normalisierter Court-Snapshot mit Revision und Quellenalter. Die
+      acht Scorewerte liegen nur im Prozessspeicher und werden nach einem
+      Backendneustart fuer aktive Courts aus der externen Quelle aufgebaut.
 
   `scoreboardSnapshot {}`
       Atomarer Startsnapshot aus Personen-, Bewerb-, Match-, Court- und
-      Scoredaten samt Tabellenrevisionen einschliesslich `matchtyp`.
+      Scoredaten. `revisions.matchtyp` bleibt ein informatives
+      Kompatibilitaetsfeld, ist aber keine Live-, Readiness-, Subscription-,
+      Invalidierungs- oder Projektionsabhaengigkeit.
       `scores.courts[]` enthaelt zusaetzlich den abgeleiteten Boolean
       `satz3matchtiebreak`.
 
@@ -311,7 +392,20 @@ OPERATOR ODER ADMIN:
       Zuweisung setzt den Score dieses Courts auf acht `"0"`-Werte zurueck; eine
       idempotent wiedergegebene Operation loest keinen erneuten Reset aus.
       Fuer Matchzuweisungen wird `Matches1.MatchtypID` oder ersatzweise
-      `Bewerb.MatchtypID Standard` als `matchtypId` im Court-State fixiert.
+      `Bewerb.MatchtypID Standard` als `matchtypId` im Court-State fixiert. Ist
+      eine Matchtyp-ID zugeordnet, muessen ihre Anzeigeregeln einen symmetrischen
+      numerischen `Satztiebreak` und als `Entscheidender Satz`
+      `vollstaendiger Satz`, `MT7` oder `MT10` enthalten; eine fehlende Zeile,
+      fehlende Spalten oder ungueltige Regeln liefern `SHEET_SCHEMA`. Fuehrende
+      Nullen im Ausloeser werden kanonisiert. Der persistierte Snapshot ist
+      `{ schemaVersion:1, source:"matchtyp", matchtypId, satztiebreak,
+      entscheidenderSatz }` und bleibt bis zur Neuzuweisung unveraendert.
+      Individualzuweisungen speichern `matchtypId: ""` und `displayRules: null`.
+      Eine bekannte operationId-Wiederholung wird vor den Tabellenpruefungen
+      beantwortet und bleibt daher bei nicht aktuellen Sheet-Tabellen abrufbar.
+      Eine historische Operationsantwort ohne `displayRules` behaelt ihre
+      historischen Court-Daten und erhaelt nur fuer die Antwort
+      `displayRules: null`; sie uebernimmt keine spaetere Zuweisung.
 
   `courtSetActive { operationId, court, expectedRevision, active }`
       Revisionsgeschuetzte Aktivierung; `active` ist boolean.
@@ -409,7 +503,9 @@ Legacy-Ausnahmen:
     nichts; das gilt auch fuer den sofort angezeigten ersten externen Stand eines
     beim Prozessstart bereits aktiven Courts. Erst eine spaetere semantische
     Aenderung wird dreispaltig Fire-and-forget angehaengt, ohne operationId/EventID,
-    Retry, Readback, Pendingstatus, SQLite-Queue oder Shutdown-Drain.
+    Retry, Readback, Pendingstatus, SQLite-Queue oder Shutdown-Drain. ScoreLog
+    wird nie gelesen und nicht zur Rekonstruktion der volatilen Live-Scores
+    verwendet.
 
 
 ================================================================================

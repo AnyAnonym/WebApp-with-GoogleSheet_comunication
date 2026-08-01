@@ -1,7 +1,6 @@
 ================================================================================
   ARCHITEKTUR.txt - Module, Datenfluss und Sicherheitsarchitektur
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 
@@ -99,7 +98,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 `stateStore.js`
   Fachliche Sicht auf persistente Court- und Monitorzielwerte. Court 1/2 werden
   initial mit Revision 1 angelegt. Mutationen pruefen expectedRevision und
-  speichern Operation und State atomar in SQLite.
+  speichern Operation und State atomar in SQLite. Alte Court-Zustaende mit
+  `matchtypId`, aber ohne `displayRules`, werden nach einem verwendbaren
+  Matchtyp-Load migriert und mit exakten unresolved-Diagnosen im Status gefuehrt.
 
 `matchRules.js`
   Berechnet Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
@@ -115,8 +116,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 `scoreboardDisplay.js`
   Erzeugt ausschliesslich fuer Scoreboard-Snapshot und `scores`-Pushes eine
   Anzeigeprojektion der unveraenderten Court-Rohwerte. Der in SQLite fuer die
-  Court-Zuweisung gespeicherte Matchtyp steuert Satz-Tie-Break-Umdeutung und die
-  Kennzeichnung eines dritten Satzes als `MT7` beziehungsweise `MT10`.
+  Court-Zuweisung gespeicherte `displayRules`-Snapshot steuert Satz-Tie-Break-
+  Umdeutung und die Kennzeichnung eines dritten Satzes als `MT7` beziehungsweise
+  `MT10`; live geladene Matchtyp-Zeilen werden dabei nicht gelesen.
 
 `monitorBroker.js`
   Provisioniert, rotiert und widerruft gehashte Geraetetokens; erzwingt genau eine
@@ -265,7 +267,20 @@ der Client stellt groessere Mengen nach Reconnect in Batches wieder her.
 stale, backoff, offline, stopped. Socketgenerationen sperren alte Events aus;
 Reconnect verwendet exponentiellen Backoff mit Jitter, Stale-Watchdog und einen
 stabilen 30-Sekunden-Zeitraum. Pendingrequests werden bei Disconnect sofort
-abgelehnt. Terminalcodes werden nicht automatisch umgangen.
+abgelehnt. Neue Requests im Zustand offline und bereits auf einen Verbindungsaufbau
+wartende Requests bei einem Offline-Ereignis werden sofort mit dem internen Code
+`OFFLINE` abgelehnt. Terminalcodes werden nicht automatisch umgangen.
+
+Vor `hello` verwendet der Client eine bereits geladene `window.APP_VERSION` oder
+beschafft eine noch unbekannte App-Version ueber `GET /version` mit `no-store`.
+Der Server vergleicht sie im Handshake exakt mit der Backend-Paketversion. Nur ein
+4406 mit App-Versionsgrund loest, durch einen tabbezogenen
+Session-Storage-Marker geschuetzt, genau einen automatischen Reload aus. Der
+Marker bleibt bis zu einem erfolgreichen `welcome` bestehen. Ist Session-Storage
+nicht verfuegbar, erfolgt kein ungeschuetzter Reload. Ein wiederholter
+App-Versionskonflikt und generische 4406-Protokollfehler stoppen terminal ohne
+Reconnectschleife. Sichtbare Verbindungszustaende bleiben kurz, neutral und
+nichttechnisch; technische Gruende werden nicht direkt als UI-Text ausgegeben.
 
 Online/offline, Visibility, pagehide/pageshow und BFCache werden behandelt.
 Reconnect stellt Subscriptions wieder her und meldet Resync. Nur sichere Reads
@@ -301,8 +316,14 @@ Court-Zuweisung und Aktivierung sind operationId-idempotent, revisioniert und in
 SQLite persistent. Nur eine neu angewendete Zuweisung setzt den Score dieses
 Courts auf acht Nullwerte; idempotente Wiederholung setzt nicht erneut zurueck.
 Bei der Zuweisung ueberschreibt `Matches1.MatchtypID` den Bewerbsstandard; die
-aufgeloeste `matchtypId` wird im Court-State fixiert und aendert sich erst bei
-einer neuen Zuweisung.
+aufgeloeste `matchtypId` wird gemeinsam mit
+`displayRules: { schemaVersion: 1, source: "matchtyp", matchtypId,
+satztiebreak, entscheidenderSatz }` im Court-State fixiert. Individualzuweisungen
+speichern `matchtypId: ""` und `displayRules: null`. Neue Matchzuweisungen lehnen
+eine zugeordnete fehlende oder ungueltige Matchtyp-Regel mit `SHEET_SCHEMA` ab.
+Bekannte idempotente Wiederholungen werden vor Tabellenpruefungen beantwortet;
+alte Operationsantworten ohne `displayRules` erhalten nur in der Antwort
+`displayRules: null` und behalten ihre historischen Daten.
 Inaktive Courts frieren ihren sichtbaren Score ein, und bei zwei inaktiven Courts
 stoppt das externe Polling. Aktivierung und Reset erhoehen eine eigene Court-Epoch.
 Jeder Fetch merkt sich Aktivitaet und Epoch bei Beginn; seine Courtantwort wird
@@ -314,11 +335,32 @@ uebernimmt ein laut SQLite bereits aktiver Court seinen ersten externen Stand
 sofort in die Anzeige, ohne ihn zu protokollieren. Der normalisierte Snapshot
 enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler.
 
+Die acht Scorewerte liegen ausschliesslich im Prozessspeicher. Nach einem
+Backendneustart werden aktive Courts aus der externen Quelle aufgebaut; das
+dreispaltige ScoreLog wird nie zur Rekonstruktion gelesen.
+
 Die Scoreboard-Anzeigeprojektion verschiebt bei einem Satz-Tie-Break in Satz 1
 oder 2 die dritte physische Drehspalte in das Punktefeld und zeigt Satz 3 als 0.
 Bei `MT7`/`MT10` kennzeichnet `satz3matchtiebreak` den dritten Satz fuer die
 tuerkise Darstellung. Court-Rohwerte und dreispaltiges ScoreLog bleiben dabei
-unveraendert. Matchtyp-Aenderungen invalidieren den atomaren Scoreboard-Snapshot.
+unveraendert. Die Projektion verwendet ausschliesslich den persistierten
+Regelsnapshot. Spaetere Matchtyp-Aenderungen beeinflussen laufende Zuweisungen
+nicht; die Matchtyp-Revision bleibt im atomaren Scoreboard-Snapshot nur als
+informatives Kompatibilitaetsfeld und ist keine Live-, Readiness-, Subscription-,
+Invalidierungs- oder Projektionsabhaengigkeit.
+
+Legacy-Courts mit `matchtypId`, aber ohne Regelsnapshot, werden nach dem ersten
+verwendbaren Matchtyp-Load ohne Score-Reset, ScoreLog-Write oder Court-Event
+migriert. Nicht aufloesbare Courts bleiben unveraendert und werden mit `court`,
+`matchtypId` und dem Grund `MATCHTYP_NOT_FOUND`, `MATCHTYP_SCHEMA_INVALID` oder
+`MATCHTYP_RULES_INVALID` diagnostiziert. Tabellen-Recovery versucht die Migration
+erneut; eine erfolgreiche Neuzuweisung entfernt den betreffenden Eintrag.
+Der Adminstatus behaelt erfolgreich migrierte Court-IDs fuer die Lebensdauer des
+Prozesses dedupliziert in `migratedCourts`; der interne Rueckgabewert jedes
+Versuchs bleibt ein Delta, damit ein idempotenter Folgeaufruf keine neuen
+Scoreboard-Events ausloest. `unresolved` zeigt den jeweils aktuellen Versuch.
+Sehr alte Courts ohne `matchtypId` bleiben lesbar, sind aber nicht automatisch
+migrierbar und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
 
 
 ================================================================================
@@ -328,13 +370,26 @@ unveraendert. Matchtyp-Aenderungen invalidieren den atomaren Scoreboard-Snapshot
 `/live` prueft nur den Prozess. `/ready` und `/health` verlangen:
   - Initialisierung abgeschlossen und kein Shutdown,
   - offene SQLite-Datenbank,
-  - alle acht Tabellen innerhalb ihrer Altersgrenze,
+  - alle Tabellen ausser `matchtyp` innerhalb ihrer Altersgrenze,
   - laufenden Sheetpoller,
-  - bei aktivem Court eine frische externe Courtquelle.
+  - bei aktivem Court eine frische externe Courtquelle,
+  - keinen aktiven Court mit unresolved Legacy-Anzeigeregeln.
+
+Ein solcher aktiver Legacy-Court bleibt bis zur Tabellen-Recovery, erfolgreichen
+Neuzuweisung oder Deaktivierung not-ready. Ein unresolved inaktiver Court blockiert
+Readiness nicht. Die Aktualitaet der Matchtyp-Tabelle selbst ist nach dem
+persistierten Regelsnapshot kein globales Readiness-Gate. Ihr Zustand bleibt in
+`/status` diagnostizierbar; neue Court-Zuweisungen benoetigen weiterhin aktuelle
+Matchtyp-Daten.
 
 `/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
 SheetService- und Statewerte, einschliesslich `pendingMetadataIntents`, aber keine
-Secrets. Es existiert kein `scoreLogPending`.
+Secrets. Die Provider-Verbindungsdaten werden bei jedem Aufruf nur aus aktuell
+verbundenen Sockets erzeugt, beim Close entfernt und nicht persistiert. Sie sind
+fluechtige privilegierte Diagnosedaten; IP-Adressen, Benutzeridentitaeten,
+Klarnamen und stabile Client-/Geraetekennungen duerfen nicht ungefiltert in
+oeffentliche Logs oder Tickets gelangen. `/status` wird mit
+`Cache-Control: no-store` ausgeliefert. Es existiert kein `scoreLogPending`.
 
 Graceful Shutdown:
   1. Neue HTTP-/WS-Operationen werden mit 503 abgelehnt; Upgrades stoppen.

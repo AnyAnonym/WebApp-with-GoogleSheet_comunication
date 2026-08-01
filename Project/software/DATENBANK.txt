@@ -1,12 +1,12 @@
 ================================================================================
   DATENBANK.txt - Google-Sheets- und SQLite-Datenhaltung
   Projekt: ePiber / ASKOE Piberbach Tennis
-  Stand: v4.1.3, 2026-07-31
 ================================================================================
 
 Dieses Dokument beschreibt die beiden produktiven Datenhaltungen. Google Sheets
-enthaelt Fach- und Stammdaten. SQLite enthaelt lokalen, sicherheitsrelevanten und
-technischen Laufzeitstate. Spaltennamen werden im Backend getrimmt und fuer den
+ist die autoritative Quelle fuer Fach- und Stammdaten. SQLite enthaelt lokalen
+Sicherheits-, Steuerungs-, Idempotenz- und Recovery-State und ist keine zweite
+autoritative Fachdatenbank. Spaltennamen werden im Backend getrimmt und fuer den
 Vergleich kleingeschrieben. Zusaetzliche Sheet-Spalten duerfen vorhanden sein;
 oeffentliche Antworten enthalten nur explizit freigegebene Projektionen.
 
@@ -174,9 +174,29 @@ Matchtyp:
   NoAd                   | `N` ohne No-Ad-Regel, `J` mit No-Ad-Regel.
 
 Bei einer Court-Zuweisung gilt zuerst `Matches1.MatchtypID`, falls gesetzt,
-ansonsten `Bewerb.MatchtypID Standard`. Die aufgeloeste ID wird als `matchtypId`
-im persistenten Court-State gespeichert und bleibt bis zur naechsten Zuweisung
-unveraendert. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
+ansonsten `Bewerb.MatchtypID Standard`. Die aufgeloeste ID und die zu diesem
+Zeitpunkt wirksamen Regeln werden im persistenten Court-State gespeichert:
+
+  displayRules: {
+    schemaVersion: 1,
+    source: "matchtyp",
+    matchtypId: <aufgeloeste ID>,
+    satztiebreak: "<zahl>-<dieselbe zahl>",
+    entscheidenderSatz: "vollstaendiger Satz|MT7|MT10"
+  }
+
+Der Tie-Break-Ausloeser muss aus zwei gleichen nichtnegativen Ganzzahlen bestehen;
+fuehrende Nullen werden numerisch kanonisiert. Fehlende Matchtyp-Zeilen,
+fehlende Pflichtspalten, asymmetrische oder nichtnumerische Ausloeser und andere
+Werte fuer den entscheidenden Satz sind fuer eine zugeordnete Matchtyp-ID
+ungueltig. `courtAssign` lehnt diese Zuweisung mit `SHEET_SCHEMA` ab.
+Individualzuweisungen speichern `matchtypId: ""` und `displayRules: null`.
+
+`matchtypId` und `displayRules` bleiben bis zur naechsten Zuweisung unveraendert.
+Die Scoreboard-Projektion verwendet nur diesen Snapshot und ignoriert ihn bei
+falscher `schemaVersion`, anderer `source` oder einer von `matchtypId`
+abweichenden Snapshot-ID. Spaetere Sheet-Aenderungen wirken erst nach einer
+Neuzuweisung. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
 spaetere semantische Ergebnispruefung ist fachlich vorgesehen.
 
 RL-Platzierung:
@@ -270,6 +290,11 @@ oder beim Shutdown drainiert. Es existieren insbesondere kein EventID, kein
 Readback, kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer
 ScoreLog.
 
+Die acht aktuellen Scorewerte sind volatil und liegen nur im Prozessspeicher.
+Nach einem Backendneustart wird ein in SQLite aktiver Court aus der externen
+Quelle neu aufgebaut. ScoreLog wird nicht gelesen und dient nicht zur
+Rekonstruktion eines Live-Stands.
+
 
 ================================================================================
   8. SQLITE-STATE
@@ -286,8 +311,39 @@ Tabelle `app_state`:
   Monitorziele `monitor-target:<id>` und Metadaten-Intents. Compare-and-set
   meldet bei falscher Revision `REVISION_CONFLICT`.
   Court-Zustaende enthalten unter anderem Match-/Bewerbszuordnung, Spieler,
-  Aktivstatus und die bei der Zuweisung aufgeloeste `matchtypId`. Alte Zustaende
-  ohne dieses Feld bleiben lesbar und liefern bis zur Neuzuweisung eine leere ID.
+  Aktivstatus, die bei der Zuweisung aufgeloeste `matchtypId` und `displayRules`
+  nach dem oben beschriebenen Vertrag. Individualzuweisungen und neue
+  Matchzuweisungen ohne aufgeloeste Matchtyp-ID speichern `displayRules: null`.
+  Sehr alte Zustaende ohne Feld `matchtypId` bleiben mit leerer ID lesbar. Sie
+  koennen keinem Matchtyp sicher zugeordnet werden, erhalten deshalb keinen
+  Regelsnapshot und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
+
+Legacy-Migration fuer Court-Zustaende mit nichtleerer `matchtypId`, aber ohne
+Feld `displayRules`:
+  - Nach dem ersten verwendbaren Matchtyp-Load wird der Snapshot ohne Score-Reset,
+    ScoreLog-Write oder Court-Event revisioniert nachgetragen.
+  - Der Adminstatus fuehrt
+    `state.displayRulesMigration: { attempted, migratedCourts, unresolved }`.
+    `attempted` ist vor dem ersten Versuch `false`, danach `true`.
+    `migratedCourts` enthaelt dedupliziert die Court-IDs `"1"`/`"2"`, die seit
+    dem Prozessstart erfolgreich migriert wurden; idempotente Folgeaufrufe
+    entfernen diesen Betriebsnachweis nicht. `unresolved` bildet dagegen den
+    jeweils aktuellen Migrationsversuch ab.
+  - Jeder Eintrag in `unresolved` hat exakt `{ court, matchtypId, reason }`.
+    `reason` ist `MATCHTYP_NOT_FOUND`, `MATCHTYP_SCHEMA_INVALID` oder
+    `MATCHTYP_RULES_INVALID`.
+  - Nicht aufgeloeste Zustaende bleiben unveraendert. Eine spaetere Recovery der
+    Matchtyp-Tabelle versucht die Migration erneut. Eine erfolgreiche
+    Neuzuweisung entfernt den Diagnoseeintrag des Courts.
+  - Ein unresolved Court blockiert Readiness nur, solange er aktiv ist. Recovery,
+    Neuzuweisung oder Deaktivierung stellt diese Voraussetzung wieder her.
+
+Alte idempotente `courtAssign`-Operationsresultate bleiben autoritativ fuer ihre
+historischen Match-, Spieler- und Revisionswerte. Fehlt ihnen `displayRules`,
+erhaelt nur die wiedergegebene Antwort zur Formkompatibilitaet
+`displayRules: null`; sie uebernimmt keine Daten eines spaeteren Court-Zustands.
+Eine bekannte Wiederholung wird vor dem Tabellenzugriff aufgeloest und bleibt
+daher auch bei inzwischen nicht aktuellen Sheet-Tabellen abrufbar.
 
 Tabelle `sessions`:
   sid_hash PRIMARY KEY, user_id, email, created_at, expires_at, last_seen_at.
@@ -323,14 +379,15 @@ keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
 
 
 ================================================================================
-  9. ROLLOUT-PRUEFUNGEN
+  9. BEREITSTELLUNGSPRUEFUNGEN
 ================================================================================
 
-Vor v4.1.3 sind ein Sheet-Backup, die explizite Role-Migration, alle oben
-genannten Pflichtspalten, `Entrydate`, Schreibrechte fuer Personen, Matches1,
-EntryList, Logging und ScoreLog sowie eindeutige IDs/Metadaten zu pruefen. Keine
-EventID-Spalten fuer Logging/ScoreLog anlegen. Die vollstaendige verbindliche
-Liste steht in `Project/server-configs/ROLLOUT-CHECKLIST.md`.
+Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
+Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
+fuer Personen, Matches1, EntryList, Logging und ScoreLog sowie eindeutige
+IDs/Metadaten zu pruefen. Keine EventID-Spalten fuer Logging/ScoreLog anlegen.
+Die vollstaendige verbindliche Liste steht in
+`Project/server-configs/ROLLOUT-CHECKLIST.md`.
 
 
 ================================================================================

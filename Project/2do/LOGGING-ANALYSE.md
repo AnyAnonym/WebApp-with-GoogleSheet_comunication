@@ -318,11 +318,14 @@ Der letzte Score wird intern aktualisiert, bevor der Append erfolgreich abgeschl
 
 Der zuletzt bekannte Score befindet sich nur im Arbeitsspeicher. Nach einem Neustart wird der erste empfangene Stand erneut als Scoreaenderung protokolliert.
 
-Aktueller Stand seit v4.1.0: Der erste externe Stand nach Start, Aktivierung oder
-Reset wird nur als Baseline gespeichert und nicht geloggt. Erst eine spaetere
-Abweichung eines aktiven Courts aktualisiert Anzeige und ScoreLog. Die fehlende
-Score-Persistenz und damit der Verlust des sichtbaren In-Memory-Stands bei einem
-Backendneustart bleiben bestehen.
+Aktueller Stand seit v4.1.0: Ist ein Court beim Prozessstart bereits persistent
+aktiv, wird sein erster externer Stand in die Anzeige uebernommen, aber nicht im
+ScoreLog protokolliert. Erst eine folgende Abweichung wird geloggt. Nach einer
+Aktivierung oder dem Reset eines aktiven Courts dient der erste externe Stand
+dagegen als Aktivierungs-/Resetbaseline und bleibt noch unveroeffentlicht und
+ungeloggt; erst eine spaetere externe Abweichung aktualisiert Anzeige und
+ScoreLog. Die fehlende Score-Persistenz und damit der Verlust des sichtbaren
+In-Memory-Stands bei einem Backendneustart bleiben bestehen.
 
 ### 8.6 Fehlende fachliche Zuordnung
 
@@ -457,7 +460,12 @@ Der Endpoint weist daher primaer nach, dass der Node-Prozess HTTP-Anfragen beant
 
 ### 13.2 `/status`
 
-`/status` liefert den aktuellen In-Memory-Zustand, aber keine Historie. Der Endpoint ist ueber Caddy oeffentlich erreichbar und zeigt interne Client- und Pollinginformationen.
+Zum Analysezeitpunkt lieferte `/status` den aktuellen In-Memory-Zustand ohne
+Historie oeffentlich ueber Caddy aus. Im aktuellen Stand ist der Endpoint
+ausschliesslich fuer die Rolle `admin` erreichbar und wird mit `Cache-Control:
+no-store` ausgeliefert. Er enthaelt privilegierte und fluechtige Diagnosedaten,
+darunter interne Client-, Verbindungs-, Polling-, Court-, Monitor-, State- und
+SheetService-Zustaende; er ist deshalb kein oeffentlicher Health-Endpoint.
 
 ## 14. systemd und journald
 
@@ -1172,11 +1180,12 @@ Verbindungs- und Terminalzustaende; das Scoreboard wertet Connection-, Sync- und
 Stale-Zustaende intern aus, besitzt im finalen Bedienkonzept aber keine sichtbaren
 Status- oder Court-Quellen-Badges.
 
-Der admin-geschuetzte `/status` liefert Diagnosewerte zu Clients, Polling,
-Datenalter, Courtquelle, Monitoren, SheetService und offenen Metadata-Intents.
-Unbekannte Fachwrite-Ausgaenge werden akteursbezogen ueber `operationStatus`
-abgefragt. WebSocket-Verbindungen erfassen Client-/Seitentyp, letzte Aktivitaet
-sowie Close-Code und -Grund.
+Der admin-geschuetzte und mit `Cache-Control: no-store` ausgelieferte `/status`
+liefert privilegierte, fluechtige Diagnosewerte zu Clients, Polling, Datenalter,
+Courtquelle, Monitoren, Anwendungsstate, SheetService und offenen
+Metadata-Intents. Unbekannte Fachwrite-Ausgaenge werden akteursbezogen ueber
+`operationStatus` abgefragt. WebSocket-Verbindungen erfassen Client-/Seitentyp,
+letzte Aktivitaet sowie Close-Code und -Grund.
 Liveness und Readiness sind getrennt. Der geordnete Shutdown stoppt Poller und
 Timer, lehnt neue Arbeit ab, schliesst WebSockets mit Code 1012 und drainiert
 akzeptierte HTTP-/Sheets-Arbeit bis zur Grace-Deadline; eine Ueberschreitung wird
@@ -1192,12 +1201,15 @@ Das fachliche Spreadsheet-Logging wurde bewusst nicht neu entworfen:
 Beide Writer verwenden weiterhin `USER_ENTERED` und besitzen keine EventID-
 Spalte und keinen Tabellen-Readback. `ScoreLog` besitzt zudem keine Retry- oder
 Write-ahead-Queue, keine SQLite-Persistenz, keine Pendingwerte und keinen
-Shutdown-Drain. Seit v4.1.0 dienen erste externe Staende nach Start, Aktivierung
-oder Reset nur als ungeloggte Baseline; erst eine spaetere Abweichung eines
-aktiven Courts wird fire-and-forget geschrieben. Reset und eingefrorene inaktive
-Courts erzeugen keinen ScoreLog-Eintrag. Das SQLite-WAL betrifft ausschliesslich
-den Anwendungsstate und ist kein ScoreLog-WAL. Das umfassende Logging-/ScoreLog-
-Redesign bleibt einem eigenen spaeteren Branch vorbehalten.
+Shutdown-Drain. Seit v4.1.0 uebernimmt ein beim Prozessstart bereits aktiver
+Court seinen ersten externen Stand in die Anzeige, ohne ihn zu loggen. Nach
+Aktivierung oder Reset eines aktiven Courts bleibt der erste externe Stand als
+Vergleichsbaseline hingegen unveroeffentlicht und ungeloggt; erst die folgende
+externe Abweichung wird angezeigt und fire-and-forget geschrieben. Reset und
+eingefrorene inaktive Courts erzeugen keinen ScoreLog-Eintrag. Das SQLite-WAL
+betrifft ausschliesslich den Anwendungsstate und ist kein ScoreLog-WAL. Das
+umfassende Logging-/ScoreLog-Redesign bleibt einem eigenen spaeteren Branch
+vorbehalten.
 
 Weiterhin offen sind ein zentraler strukturierter Backend-Logger,
 konfigurierbare Loglevel, ein Metrikexport mit Alarmierung und ein eingerichtetes

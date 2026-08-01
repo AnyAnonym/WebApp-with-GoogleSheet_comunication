@@ -1,8 +1,6 @@
 ================================================================================
 DokuVersGit.txt - Dokumentation, Versionierung und Git
 ================================================================================
-Stand: 4.1.6
-
 Dieses Dokument ist die einzige aktive Regelquelle fuer Dokumentation,
 Versionierung und Git im ePiber-Projekt. Alle Pfade sind relativ zum
 Repository-Root, sofern sie nicht mit / beginnen.
@@ -60,26 +58,27 @@ koennen von diesen Regeln abweichen und werden nicht nachtraeglich umgeschrieben
 
 Verpflichtender Beginn jeder neuen Arbeit:
 
-1. Jede neue Aufgabe oder Aenderung beginnt bei einem vollstaendig committeden
-   Arbeitsbaum zwingend mit einem neuen `-x`-Entwicklungsstand. Fachliche,
-   organisatorische oder technische Dateien duerfen vorher nicht geaendert werden.
+1. Jede neue Aufgabe oder Aenderung beginnt in einem bestehenden, vollstaendig
+   committeden Arbeitszweig zwingend mit einem neuen `-x`-Entwicklungsstand.
+   Fachliche, organisatorische oder technische Dateien duerfen vorher nicht
+   geaendert werden.
 2. Zuerst werden Branch, Status und letzter Commit bestimmt.
-3. In einem Seitenbranch wird unabhaengig vom noch unbekannten Aenderungsumfang
-   nur die laufende Branch-Commitnummer erhoeht. Backend/package.json, das
-   Root-Paket in Backend/package-lock.json und der offene Abschnitt des
-   Branch-Changelogs werden gemeinsam auf
-   `<naechste-Branch-Commit-ID>-x` gesetzt.
+3. In einem bestehenden Seitenbranch werden Backend/package.json, das Root-Paket
+   in Backend/package-lock.json und der offene Abschnitt des Branch-Changelogs
+   gemeinsam auf `<aktuelle-Branch-Commit-ID>-x` gesetzt. Der Zielcommit erhaelt
+   spaeter die naechste lueckenlose Branch-Commitnummer.
 4. Auf main muss vor jedem `-x`-Stand und vor jeder sonstigen Aenderung gefragt
    werden, ob ein Seitenbranch angelegt werden soll.
 5. Bestaetigt der User den Seitenbranch, wird zuerst der freie Branchname nach
-   Abschnitt 4 bestimmt und der Branch angelegt. Danach wird dessen erste
-   Branch-Commit-ID plus `-x` nach Punkt 3 vorbereitet.
-6. Der erste Commit auf einem neuen Seitenbranch ist die vorbereitende Versions-
-    Reserve. Er setzt die Paket- und Changelog-Version auf
-    `<naechste-Branch-Commitnummer>-x` und hat z.B. die Form
-   `<branchname>-1 | Branch-Stand auf -x initialisiert`.
-7. Der fachliche erste Commit darf erst nach dieser Vorbereitungs-Commit erfolgen
-   und entfernt danach das `-x` in der finalen Commit-Version.
+   Abschnitt 4 bestimmt und der Branch angelegt. Danach werden Paket, Lockfile
+   und neues Branch-Changelog auf `<branchname>-1` gesetzt. Dieser rein
+   nummerierende Initialstand ist die einzige Ausnahme von Punkt 1.
+6. Auch der Initialcommit benoetigt eine eigene ausdrueckliche Freigabe und lautet
+   `<branchname>-1 | Branch-Stand nummeriert initialisiert`. Er darf kein `-x`
+   enthalten.
+7. Erst nach dem Initialcommit wird `<branchname>-1-x` als uncommittierter
+   Arbeitsstand vorbereitet. Der fachliche erste Zielcommit ist
+   `<branchname>-2`.
 8. Lehnt der User den Seitenbranch ab, darf nur nach ausdruecklicher Freigabe der
    direkten Main-Ausnahme weitergearbeitet werden. Dann wird die aktuelle
    Main-Patchversion um eins erhoeht und mit `-x` als vorlaeufiger Arbeitsstand
@@ -110,8 +109,8 @@ Die einzige kanonische Quelle ist:
 Die laufende Version wird je System ueber GET /version ausgegeben. Auf main
 muessen Paketversion und Versionsnummer im letzten Versionscommit uebereinstimmen.
 In einem sauberen, committed Seitenbranch muessen Paketversion und vollstaendige
-Branch-Commit-ID uebereinstimmen. Waehrend beabsichtigte, noch nicht committe
-Branch-Arbeit existiert, muss die Paketversion stattdessen die naechste
+Branch-Commit-ID uebereinstimmen. Waehrend beabsichtigte, noch nicht committete
+Branch-Arbeit existiert, muss die Paketversion stattdessen die aktuelle
 Branch-Commit-ID mit dem Zusatz `-x` ausweisen. Andere Abweichungen blockieren
 weitere Commits oder Versionierungen, bis der User die Korrektur bestaetigt hat.
 
@@ -132,23 +131,23 @@ vor jedem Branch-Commit die Paketversion auf die vollstaendige Commit-ID gesetzt
 
 Beispiel:
 
-  Branch:        3.1.12-paj-1
-  zweiter Commit 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
-  Paketversion:  3.1.12-paj-1-2
+  Branch:        <basisversion>-paj-1
+  zweiter Commit <branchname>-2 | Kommunikationsarchitektur abgesichert
+  Paketversion:  <branchname>-2
 
 Backend/package.json und das Root-Paket in Backend/package-lock.json muessen vor
 dem Commit denselben Wert erhalten. GET /version weist dadurch auf Testsystemen
 exakt den installierten Branch-Commit aus. Beim naechsten Branch-Commit wird die
 laufende Nummer in Commit-Nachricht und Paketdateien gemeinsam erhoeht.
 
-Entwicklungsstand vor dem Commit:
+Entwicklungsstand nach einem Commit:
 
-  <Branchname>-<naechsteLaufendeNummer>-x
+  <aktuelle-Branch-Commit-ID>-x
 
-Beispiel nach dem abgeschlossenen Commit `3.1.12-paj-1-2`:
+Beispiel nach dem abgeschlossenen Commit `<branchname>-2`:
 
-  beabsichtigte uncommittete Arbeit  3.1.12-paj-1-3-x
-  geplanter finaler Commit          3.1.12-paj-1-3
+  beabsichtigte uncommittete Arbeit  <branchname>-2-x
+  geplanter finaler Commit          <branchname>-3
 
 Der literale Zusatz `-x` signalisiert einen veraenderten, testbaren, aber noch
 nicht commitfaehigen Arbeitsstand. Er wird gleichzeitig in package.json, im
@@ -156,25 +155,24 @@ Root-Paket des package-lock.json und im offenen Abschnitt des temporaeren
 Branch-Changelogs gesetzt. Nach Deployment beziehungsweise Prozessneustart muss
 GET /version diesen `-x`-Stand auf dem Testsystem anzeigen.
 
-In einem Seitenbranch reserviert `-x` ausschliesslich die naechste laufende
-Branch-Commitnummer. Der fachliche Umfang der bevorstehenden Aenderung und eine
-spaetere Main-SemVer-Stufe spielen dafuer keine Rolle. Der erste Commit des
-Branches ist regelmaessig die vorbereitende `-x`-Version auf `-1`.
+In einem Seitenbranch bezeichnet `-x` ausschliesslich einen veraenderten Stand
+auf Basis des aktuellen Branch-Commits. Es reserviert keine Commitnummer. Der
+Zielcommit erhaelt bei der Finalisierung die naechste lueckenlose Nummer. Der
+erste Commit eines neuen Branches ist der nummerierte Initialstand auf `-1`.
 
 Bei einer ausdruecklich freigegebenen direkten Main-Ausnahme wird als
 vorlaeufiger Arbeitsstand immer die naechste Patchversion verwendet:
 
-  aktuelle Main-Version  4.1.1
-  vorlaeufige Arbeit      4.1.2-x
+  aktuelle Main-Version  <aktuelle-version>
+  vorlaeufige Arbeit      <naechste-patchversion>-x
 
 Dieser Wert nimmt die spaetere SemVer-Bewertung nicht vorweg. Nach bekanntem
-Aenderungsumfang kann er bei der Finalisierung beispielsweise zu 4.1.2, 4.2.0
-oder 5.0.0 werden.
+Aenderungsumfang kann er bei der Finalisierung zu einer bestaetigten PATCH-,
+MINOR- oder MAJOR-Version werden.
 
-In einem Seitenbranch wird die naechste laufende Nummer durch `-x` nur reserviert
-und erst durch den finalen Commit verbraucht. Werden die Aenderungen vollstaendig
-verworfen, werden Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID
-zurueckgestellt und der offene Changelogabschnitt entfernt. Bei einer direkten
+Werden die Aenderungen in einem Seitenbranch vollstaendig verworfen, werden
+Paket- und Lockfile-Version auf die aktuelle HEAD-Commit-ID zurueckgestellt und
+der offene Changelogabschnitt entfernt. Bei einer direkten
 Main-Ausnahme werden stattdessen die Paketdateien auf die aktuelle Main-Version
 zurueckgestellt und ChangeLog-main.tmp entfernt.
 
@@ -205,11 +203,11 @@ wird weder umgeschrieben noch amended.
 
 Bei mehreren Aenderungsarten gilt die hoechste erforderliche Stufe.
 
-Beispiele ab 3.1.11:
+Generische Beispiele fuer eine Basis `MAJOR.MINOR.PATCH`:
 
-  PATCH -> 3.1.12
-  MINOR -> 3.2.0
-  MAJOR -> 4.0.0
+  PATCH -> MAJOR.MINOR.(PATCH+1)
+  MINOR -> MAJOR.(MINOR+1).0
+  MAJOR -> (MAJOR+1).0.0
 
 Der Vorschlag ist eine fachliche Empfehlung. Der User kann eine andere gueltige
 SemVer-Version vorgeben; diese konkrete Nummer gilt mit seiner Antwort als
@@ -234,7 +232,7 @@ Branchname:
 
 Beispiel:
 
-  3.1.10-paj-1
+  <basisversion>-paj-1
 
 Regeln:
 
@@ -263,14 +261,14 @@ Commit im Seitenbranch:
 
 Beispiele:
 
-  3.1.10-paj-1-1 | Dokumentationsworkflow vereinheitlicht
-  3.1.10-paj-1-2 | Changelog-Historie nachgetragen
+  <branchname>-1 | Branch-Stand nummeriert initialisiert
+  <branchname>-2 | Dokumentationsworkflow vereinheitlicht
 
 Die laufende Nummer beginnt je Branch bei 1 und wird lueckenlos erhoeht. Auch
 ein erforderlicher Merge von main in den Seitenbranch erhaelt die naechste
 Branch-Commitnummer. Branch-Commits benoetigen einen ausdruecklichen Auftrag.
-Der erste Commit ist im Normalfall die vorbereitende `-x`-Version mit der
-Commit-ID `...-1-x`.
+Der erste Commit ist der nummerierte Initialstand `...-1` ohne `-x`; jeder
+weitere Commit beschreibt fachliche, technische oder dokumentarische Arbeit.
 
 Main- oder Merge-Commit:
 
@@ -278,7 +276,7 @@ Main- oder Merge-Commit:
 
 Beispiel:
 
-  3.1.11 | Dokumentations- und Versionsworkflow vereinheitlicht
+  <neue-version> | Dokumentations- und Versionsworkflow vereinheitlicht
 
 Mit "Commit-ID" ist in diesem Workflow die Commit-Nachricht gemeint, nicht der
 von Git erzeugte SHA-Hash. Der Kurzkommentar beschreibt den gesamten Umfang in
@@ -309,7 +307,7 @@ Temporaeres, versioniertes Seitenbranch-Log:
 
 Beispiel:
 
-  Project/ChangeLogs/ChangeLog-3.1.10-paj-1.txt
+  Project/ChangeLogs/ChangeLog-<basisversion>-paj-1.txt
 
 Regeln:
 
@@ -345,18 +343,19 @@ Regeln:
     zu pruefen und fortzuschreiben. Dadurch darf zwischen Branch-Implementierung
     und spaeterer Main-Dokumentation keine Information verloren gehen.
 12. Mit der ersten beabsichtigten Aenderung nach einem Branch-Commit wird ein
-    offener Abschnitt fuer `<naechste-Commit-ID>-x` angelegt und waehrend der
-    Entwicklung laufend fortgeschrieben. Er enthaelt bereits Zwischenstaende,
-    Tests, Migrationen, offene Punkte und Anpassungen der Uebernahmeliste.
+    offener Abschnitt fuer `<aktuelle-Commit-ID>-x` angelegt und waehrend der
+    Entwicklung laufend fortgeschrieben. `Zielcommit` nennt die naechste
+    lueckenlose Commit-ID. Der Abschnitt enthaelt bereits Zwischenstaende, Tests,
+    Migrationen, offene Punkte und Anpassungen der Uebernahmeliste.
 13. Der offene Abschnitt verwendet `In Arbeit`, `Zielcommit` und
     `Status: uncommitted`. Bei der Finalisierung werden Ueberschrift und
-    Zielcommit auf die Commit-ID ohne `-x` vereinheitlicht, das Abschlussdatum und
-    der konkrete Commit-Betreff gesetzt und der Statusvermerk entfernt.
+    Zielcommit auf die Zielcommit-ID ohne `-x` vereinheitlicht, das Abschlussdatum
+    und der konkrete Commit-Betreff gesetzt und der Statusvermerk entfernt.
 
 Format eines Branch-Abschnitts:
 
-  [3.1.12-paj-1-3-x] - In Arbeit seit <YYYY-MM-DD>
-  Zielcommit: 3.1.12-paj-1-3
+  [<branchname>-2-x] - In Arbeit seit <YYYY-MM-DD>
+  Zielcommit: <branchname>-3
   Status: uncommitted
 
     Changed
@@ -364,8 +363,8 @@ Format eines Branch-Abschnitts:
 
 Finalisiert:
 
-  [3.1.12-paj-1-2] - <YYYY-MM-DD>
-  Commit: 3.1.12-paj-1-2 | Kommunikationsarchitektur abgesichert
+  [<branchname>-3] - <YYYY-MM-DD>
+  Commit: <branchname>-3 | Kommunikationsarchitektur abgesichert
 
     Added
     - [Software] ...
@@ -380,9 +379,9 @@ Finalisiert:
 
 Format eines Main-Eintrags:
 
-  [3.1.11] - <YYYY-MM-DD>
-  Commit: 3.1.11 | Dokumentations- und Versionsworkflow vereinheitlicht
-  Quelle: 3.1.10-paj-1
+  [<neue-version>] - <YYYY-MM-DD>
+  Commit: <neue-version> | Dokumentations- und Versionsworkflow vereinheitlicht
+  Quelle: <branchname>
 
     Added
     - [Dokumentation] ...
@@ -419,9 +418,10 @@ nicht die einzelnen Changelog-Punkte.
    Branch-Changelogabschnitt und alle
    fuer diesen Branch ausdruecklich erlaubten Dokumentationsdateien vollstaendig
    aktualisiert.
-6. Im Seitenbranch wird gleichzeitig die vorbereitete Version in
-   Backend/package.json, Backend/package-lock.json und Branch-Changelog von
-   `<naechste-Branch-Commit-ID>-x` auf `<naechste-Branch-Commit-ID>` finalisiert.
+6. Im Seitenbranch werden Backend/package.json und das Root-Paket im Lockfile von
+   `<aktuelle-Branch-Commit-ID>-x` auf die naechste Branch-Commit-ID gesetzt. Der
+   offene Changelogabschnitt wird von der Arbeits-ID auf diese Zielcommit-ID
+   finalisiert.
 7. Diese Finalisierung erstellt noch keinen Commit und autorisiert weder Commit
    noch Push.
 8. Nach der Finalisierung duerfen nur noch Abschlusspruefung, Vollstaendigkeits-
@@ -461,6 +461,12 @@ fortlaufende Dokumentation. Fachliche Dokumentationsdateien werden erst bei der
 bestaetigten Main-Version aktualisiert und beschreiben danach den neuen
 aktuellen Main-Stand.
 
+Aktuelle Soll-Dokumente enthalten keine fest verdrahtete Anwendungsversion.
+Sie verweisen fuer den jeweiligen Checkout auf `Backend/package.json` und
+verwenden in Beispielen Platzhalter wie `<FREIGEGEBENE_VERSION>`. Konkrete
+Versionsnummern bleiben dem Changelog, historischen Migrationshinweisen und
+eindeutig releasebezogenen Protokollen vorbehalten.
+
 Organisatorische Ausnahmen sind Project/DokuVersGit.txt und AGENTS.md. Sie
 duerfen nach ausdruecklicher Userfreigabe bereits im Seitenbranch aktualisiert
 werden, damit Workflow- und Arbeitsregeln sofort fuer alle weiteren Commits
@@ -480,7 +486,11 @@ sind.
   Anforderungen oder Abgrenzungen  |
   Datenbankschema                   | Project/software/DATENBANK.txt
   Endpoint oder Protokoll           | Project/software/ENDPOINTS.txt
+  Close-Code, Reconnect oder        | Project/software/WEBSOCKET-CLOSE-CODES.txt
+  Versionsreload                    |
   Architektur, Cache, State, Auth   | Project/software/ARCHITEKTUR.txt
+  Externe Scoreboard-Einheit,       | Project/Scoreboard-Funktion.md
+  Receiver oder Drehwertauslegung   |
   Bestehende HTML-Seite             | Exakte Zuordnung aus SOFTWARE-DOKU.txt;
                                     | Project/software/seiten/<dokumentname>.txt
   Neue/entfernte Seite              | Seitendoku, SOFTWARE-DOKU.txt, AGENTS.md

@@ -17,9 +17,11 @@ function inspectMatchtypDisplayRules(matchtypen, matchtypId) {
   const trigger = String(row[tiebreakIndex] || "").trim().split("-").map((value) => value.trim());
   const decidingSetValue = String(row[decidingSetIndex] || "").trim();
   const decidingSetKey = decidingSetValue.toUpperCase().replaceAll("Ä", "AE");
-  if (trigger.length !== 2 || trigger.some((value) => !/^\d+$/.test(value)) || trigger[0] !== trigger[1]) {
+  if (trigger.length !== 2 || trigger.some((value) => !/^\d+$/.test(value))) {
     return { rules: null, reason: "MATCHTYP_RULES_INVALID" };
   }
+  const normalizedTrigger = trigger.map((value) => String(BigInt(value)));
+  if (normalizedTrigger[0] !== normalizedTrigger[1]) return { rules: null, reason: "MATCHTYP_RULES_INVALID" };
   if (!new Set(["VOLLSTAENDIGER SATZ", "MT7", "MT10"]).has(decidingSetKey)) {
     return { rules: null, reason: "MATCHTYP_RULES_INVALID" };
   }
@@ -27,7 +29,7 @@ function inspectMatchtypDisplayRules(matchtypen, matchtypId) {
     schemaVersion: DISPLAY_RULES_SCHEMA_VERSION,
     source: "matchtyp",
     matchtypId: id,
-    satztiebreak: trigger.map((value) => String(Number(value))).join("-"),
+    satztiebreak: normalizedTrigger.join("-"),
     entscheidenderSatz: decidingSetKey === "VOLLSTAENDIGER SATZ" ? "vollstaendiger Satz" : decidingSetKey,
   }, reason: null };
 }

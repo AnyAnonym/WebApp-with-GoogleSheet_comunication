@@ -200,3 +200,32 @@ test("Nicht aufloesbare Regeln eines aktiven Legacy-Courts blockieren Readiness"
     repository.close();
   }
 });
+
+test("Aktuelle Matchtyp-Daten sind nach dem Regelsnapshot keine globale Readiness-Abhaengigkeit", () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  stateStore.init(repository);
+  dataStore.resetForTests();
+  for (const table of Object.keys(TABLE_CONFIG)) {
+    if (table !== "matchtyp") dataStore.set(table, [["ID"]], { source: "test" });
+  }
+
+  const originalPollerStatus = dataPoller.getStatus;
+  const originalCourtStatus = courtPoller.getStatus;
+  const originalCourtData = courtPoller.getLastData;
+  dataPoller.getStatus = () => ({ running: true, tickCount: 0 });
+  courtPoller.getStatus = () => ({ courtActive: { "1": false, "2": false } });
+  courtPoller.getLastData = () => ({ source: { stale: true } });
+  try {
+    const status = readiness({ repository, initialized: true, shuttingDown: false });
+    assert.equal(status.ready, true);
+    assert.equal(status.data.ready, true);
+    assert.equal(status.data.tables.matchtyp.current, false);
+  } finally {
+    dataPoller.getStatus = originalPollerStatus;
+    courtPoller.getStatus = originalCourtStatus;
+    courtPoller.getLastData = originalCourtData;
+    dataStore.resetForTests();
+    repository.close();
+  }
+});

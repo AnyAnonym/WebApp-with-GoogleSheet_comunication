@@ -4,6 +4,7 @@ const { WebSocket } = require("ws");
 const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
+const { TABLE_CONFIG } = require("../config.js");
 const dataStore = require("../dataStore.js");
 const { createApplication } = require("../server.js");
 const { StateRepository } = require("../stateRepository.js");
@@ -470,7 +471,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal(acknowledgement.data.success, true);
   }
 
-  const assignment = await adminClient.request("courtAssign", {
+  const assignment = await operatorClient.request("courtAssign", {
     court: "1",
     matchId: "m1",
     operationId: "00000000-0000-4000-8000-000000000303",
@@ -501,7 +502,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     operationId: "00000000-0000-4000-8000-000000000309",
     expectedRevision: assignment.data.court.revision,
   };
-  const reassignment = await adminClient.request("courtAssign", reassignmentRequest);
+  const reassignment = await operatorClient.request("courtAssign", reassignmentRequest);
   assert.deepEqual(reassignment.data.court.displayRules, {
     schemaVersion: 1,
     source: "matchtyp",
@@ -531,6 +532,21 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const oversizedClosed = new Promise((resolve) => oversizedClient.socket.once("close", (code) => resolve(code)));
   oversizedClient.socket.send("x".repeat(20000));
   assert.equal(await oversizedClosed, 1009);
+
+  const currentTables = Object.fromEntries(Object.keys(TABLE_CONFIG).map((table) => [table, dataStore.get(table)]));
+  dataStore.resetForTests();
+  for (const [table, values] of Object.entries(currentTables)) {
+    if (table !== "matchtyp") dataStore.set(table, values, { source: "stale-matchtyp-test" });
+  }
+  await new Promise((resolve) => setTimeout(resolve, 5100)); // Replenish the shared per-IP write token.
+  const staleMatchtypReplay = await operatorClient.request("courtAssign", {
+    court: "1",
+    matchId: "m1",
+    operationId: "00000000-0000-4000-8000-000000000303",
+    expectedRevision: 1,
+  });
+  assert.equal(staleMatchtypReplay.data.error, undefined);
+  assert.deepEqual(staleMatchtypReplay.data.court.displayRules, assignment.data.court.displayRules);
 
   await publicClient.close();
   await adminClient.close();

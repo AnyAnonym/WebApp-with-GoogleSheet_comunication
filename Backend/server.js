@@ -59,6 +59,7 @@ function methodNotAllowed(response, allowed) {
 
 function readiness({ repository, sheetService = null, initialized, shuttingDown }) {
   const data = dataStore.getReadiness();
+  data.ready = Object.entries(data.tables).every(([table, status]) => table === "matchtyp" || status.current);
   const poller = dataPoller.getStatus();
   const court = courtPoller.getStatus();
   const courtSource = courtPoller.getLastData().source;

@@ -81,9 +81,11 @@ test("Ungueltige oder unpassende Anzeigeregeln werden nicht eingefroren oder ang
   const invalid = [["ID", "Satztiebreak", "Entscheidender Satz"], ["2", "3:3", "MT10"]];
   const asymmetric = [["ID", "Satztiebreak", "Entscheidender Satz"], ["2", "3-4", "MT10"]];
   const leadingZero = [["ID", "Satztiebreak", "Entscheidender Satz"], ["2", "03-03", "MT10"]];
+  const mixedLeadingZero = [["ID", "Satztiebreak", "Entscheidender Satz"], ["2", "03-3", "MT10"]];
   assert.equal(snapshotMatchtypDisplayRules(invalid, "2"), null);
   assert.equal(snapshotMatchtypDisplayRules(asymmetric, "2"), null);
   assert.equal(snapshotMatchtypDisplayRules(leadingZero, "2").satztiebreak, "3-3");
+  assert.equal(snapshotMatchtypDisplayRules(mixedLeadingZero, "2").satztiebreak, "3-3");
 
   const input = scores({ satz2home: "3", satz2gast: "3", satz3home: "5", satz3gast: "4" });
   const result = projectScoreboardScores(input, {

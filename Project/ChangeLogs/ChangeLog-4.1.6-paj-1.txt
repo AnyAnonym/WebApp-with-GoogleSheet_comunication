@@ -1,3 +1,35 @@
+[4.1.6-paj-1-3] - 2026-08-01
+Commit: 4.1.6-paj-1-3 | Matchtyp-Readiness korrigiert
+
+  Changed
+  - [Repository] Paket- und Lockfile-Version auf den finalen Branch-Stand
+    `4.1.6-paj-1-3` gesetzt.
+  - [Software] Die globale Readiness verlangt weiterhin aktuelle Fachtabellen,
+    nimmt `matchtyp` nach erfolgreicher Court-Regelauflosung aber aus. Der
+    Tabellenstatus bleibt diagnostizierbar; ein aktiver Legacy-Court ohne
+    aufloesbaren Regelsnapshot blockiert weiterhin ueber `displayRulesReady`.
+  - [Software] Numerisch symmetrische Tie-Break-Ausloeser werden erst kanonisiert
+    und danach verglichen. Dadurch ist auch eine gemischte Schreibweise wie
+    `03-3` gueltig und wird als `3-3` gespeichert.
+
+  Added
+  - [Software] Regressionstests fuer stale Matchtyp-Daten bei globaler Readiness,
+    numerisch symmetrische Ausloeser mit gemischten fuehrenden Nullen und eine
+    bekannte `courtAssign`-Wiederholung ohne aktuellen Matchtyp-Stand.
+
+  Fixed
+  - [Software] Eine stale oder temporaer nicht geladene Matchtyp-Tabelle machte
+    den Gesamtprozess trotz vollstaendig persistierter Court-Regeln not-ready.
+  - [Dokumentation] Die Main-Uebernahme behaelt den Rollouthinweis fuer sehr alte
+    Court-Zustaende ohne `matchtypId`; sie koennen nicht automatisch migriert
+    werden und muessen kontrolliert neu zugewiesen werden.
+
+  Tests
+  - `node --test test/scoreboardDisplay.test.js test/server.integration.test.js
+    test/stateStore.test.js`: erfolgreich.
+  - `npm run build`: statische Pruefung und alle 96 Tests erfolgreich.
+
+
 [4.1.6-paj-1-2] - 2026-08-01
 Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
 
@@ -121,6 +153,8 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Klarstellen, dass Live-Scores nur im Prozessspeicher liegen, aktive Courts
       nach Neustart aus der externen Quelle aufgebaut werden und ScoreLog nicht
       zur Rekonstruktion dient.
+    - Sehr alte Court-Zustaende ohne `matchtypId` als nicht automatisch
+      migrierbar kennzeichnen und kontrollierte Neuzuweisung verlangen.
 
     Project/software/SOFTWARE-DOKU.txt
     - Feste Versionszeile entfernen; der Index beschreibt den aktuellen Main-
@@ -136,6 +170,9 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
       beschreiben.
     - Validierungsregeln, Readiness-Blockade aktiver unresolved Courts und
       kompatible Behandlung alter idempotenter Operationsantworten beschreiben.
+    - Bestehende Court-Zustaende ohne `matchtypId` bleiben lesbar, erhalten aber
+      keinen Regelsnapshot und muessen fuer Matchtyp-Projektion neu zugewiesen
+      werden.
 
     Project/software/ARCHITEKTUR.txt
     - Feste Versionszeile entfernen.
@@ -146,6 +183,9 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - `/status`-Verbindungsdaten als fluechtige privilegierte Diagnosedaten
       einordnen.
     - Aktive unresolved Legacy-Regeln als Readiness-Blocker dokumentieren.
+    - Klarstellen, dass die Aktualitaet der Matchtyp-Tabelle selbst kein globales
+      Readiness-Gate mehr ist; ihr Status bleibt diagnostizierbar und neue
+      Zuweisungen benoetigen weiterhin aktuelle Matchtyp-Daten.
 
     Project/software/ENDPOINTS.txt
     - Feste Versionszeile und 4.1.0-Beispiele durch Platzhalter ersetzen.
@@ -159,6 +199,9 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Fuer `/ready` und `/health` dokumentieren, dass aktive unresolved
       Legacy-Courts bis zu Recovery, Neuzuweisung oder Deaktivierung not-ready
       liefern.
+    - Matchtyp-Aktualitaet aus dem globalen Tabellen-Readiness-Gate ausnehmen,
+      ohne die Tabellenstatusdiagnose oder Tabellenpruefung neuer Zuweisungen zu
+      entfernen.
     - Fuer `courtAssign` die Ablehnung fehlender/ungueltiger Matchtyp-Regeln mit
       `SHEET_SCHEMA`, tabellenunabhaengige bekannte Wiederholungen und
       `displayRules: null` in historischen Legacy-Antworten dokumentieren.
@@ -195,6 +238,7 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
     - Feste Versionszeile entfernen.
     - Persistierten Regelsnapshot, entfallene Matchtyp-Subscription, volatile
       Scorewerte und Verhalten alter nicht aufloesbarer Courts beschreiben.
+    - Fuer sehr alte Courts ohne `matchtypId` die notwendige Neuzuweisung nennen.
 
     Project/server-configs/SERVER-DOKU.txt
     - Feste Versions- und Promotionziele entfernen und auf freigegebene
@@ -217,6 +261,9 @@ Commit: 4.1.6-paj-1-2 | Matchtyp-Regeln und WebSocket-Lifecycle abgesichert
       `/status`-Diagnosedaten in die Abnahme aufnehmen.
     - Pruefen, dass nur aktive unresolved Courts Readiness blockieren und
       Recovery, Neuzuweisung oder Deaktivierung den Blocker kontrolliert loesen.
+    - Sehr alte Courts ohne `matchtypId` separat erkennen und neu zuweisen; stale
+      Matchtyp-Daten allein duerfen bei vorhandenen Snapshots Readiness nicht
+      blockieren.
 
     Project/2do/KOMMUNIKATION-ANALYSE.md
     - Sofortige Offline-Ablehnung fuer neu gestartete und bereits auf Verbindung

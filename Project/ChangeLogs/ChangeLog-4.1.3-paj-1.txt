@@ -1,3 +1,11 @@
+[4.1.3-paj-1-3-x] - In Arbeit seit 2026-08-01
+Zielcommit: 4.1.3-paj-1-3
+Status: uncommitted
+
+  Changed
+  - [Dokumentation] In den Versionierungsregeln wird festgelegt, dass der erste Commit
+    eines neuen Seitenbranches als vorbereitende `-x`-Version erfolgt (zumeist `...-1-x`).
+
 [4.1.3-paj-1-2] - 2026-08-01
 Commit: 4.1.3-paj-1-2 | WebSocket-Statustexte vereinfacht
 

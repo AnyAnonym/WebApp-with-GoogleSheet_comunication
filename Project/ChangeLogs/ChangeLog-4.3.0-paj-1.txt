@@ -1,3 +1,13 @@
+[4.3.0-paj-1-2] - 2026-08-03
+Commit: 4.3.0-paj-1-2 | Logging-Analyse und Umsetzungsplan dokumentiert
+
+  Added
+  - [Dokumentation] Aktualisierte Logging- und Observability-Analyse mit priorisiertem Restbacklog, aktuellen Diagnosequellen sowie einem empfohlenen Zielsetup aus journald, Loki, Prometheus und Grafana unter `Project/2do/LOGGING-ANALYSE-AKTUALISIERT.md` angelegt.
+  - [Dokumentation] Separaten Umsetzungsplan zur Einführung strukturierter Betriebslogs sowie zur Ablösung der Google-Sheets-Tabs `ScoreLog` und `Logging` durch getrennte SQLite-Dateien unter `Project/2do/LOGGING-UMSETZUNGSPLAN.md` angelegt.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-2` gesetzt.
+
 [4.3.0-paj-1-1] - 2026-08-02
 Commit: 4.3.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 

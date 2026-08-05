@@ -683,6 +683,11 @@ ausdruecklich als Ausnahme freigibt.
 
 Vollstaendigkeit eines Commits:
 
+**WICHTIG UND VERBINDLICH: Eine bestaetigte Dateiloeschung ist eine vollwertige
+auftragsbezogene Aenderung. Sie muss wie jede andere Aenderung gestaged und im
+vorgesehenen Commit enthalten sein; sie darf nicht vorsorglich unstaged
+zurueckbleiben.**
+
 1. Vor dem Staging werden Git-Status, Gesamtdiff, untracked Dateien, Loeschungen
    und Umbenennungen geprueft.
 2. Aus dem freigegebenen Auftrag und dem Gesamtdiff wird die vollstaendige Menge
@@ -692,7 +697,8 @@ Vollstaendigkeit eines Commits:
    Dokumentations- und Changelog-Dateien.
 4. Alle auftragsbezogenen Dateien muessen in denselben dafuer vorgesehenen Commit
    aufgenommen werden. Keine davon darf versehentlich unstaged oder untracked
-   zurueckbleiben.
+   zurueckbleiben. Das gilt ausdruecklich auch fuer bestaetigte Loeschungen; nach
+   dem Staging darf fuer sie im Kurzstatus kein unstaged ` D` mehr erscheinen.
 5. Unabhaengige Aenderungen des Users oder anderer Bearbeiter duerfen nicht
    aufgenommen, veraendert oder zurueckgesetzt werden.
 6. Vor dem Commit werden staged Diff, unstaged Diff und untracked Dateien
@@ -703,7 +709,8 @@ Vollstaendigkeit eines Commits:
    Aufforderung.
 8. Nach dem Commit werden Git-Status und Commit-Diff erneut geprueft. Bleibt eine
    auftragsbezogene Datei zurueck oder fehlt sie im Commit, gilt der Commit als
-   unvollstaendig.
+   unvollstaendig. Dies umfasst insbesondere eine bestaetigte Loeschung, die noch
+   als unstaged ` D` im Arbeitsbaum steht.
 9. Ein unvollstaendiger Commit darf nicht als abgeschlossen gemeldet und nicht
    gepusht werden. Der sichere Zustand und die fehlenden Dateien werden dem User
    gemeldet; eine Korrektur erfolgt nur im freigegebenen Workflow und niemals

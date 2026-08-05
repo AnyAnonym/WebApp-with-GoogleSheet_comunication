@@ -1,3 +1,25 @@
+[4.3.0-paj-1-3] - 2026-08-03
+Commit: 4.3.0-paj-1-3 | Commitregeln fuer Loeschungen verschaerft
+
+  Changed
+  - [Dokumentation] `Project/DokuVersGit.txt` hebt bestaetigte Dateiloeschungen als zwingend zu stagende auftragsbezogene Aenderungen hervor und verlangt ihre Kontrolle im Kurzstatus vor und nach dem Commit.
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-3` gesetzt.
+
+  Removed
+  - [Dokumentation] Einmalige Root-Testanweisung `PAJ-VERSION-RELOAD-TEST.txt` fuer den historischen Versionswechsel entfernt.
+  - [Repository] Nicht-kanonische und veraltete Root-Rolloutnotiz `abc.txt` entfernt.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/DokuVersGit.txt
+  - Bei der Commitvollstaendigkeit hervorgehoben festhalten, dass bestaetigte Dateiloeschungen zwingend gestaged und committed sowie vor und nach dem Commit im Kurzstatus kontrolliert werden muessen.
+
+  PAJ-VERSION-RELOAD-TEST.txt
+  - Die einmalige Testanweisung fuer den historischen PAJ-Versionswechsel entfernen.
+
+  abc.txt
+  - Die nicht-kanonische und veraltete Root-Rolloutnotiz entfernen.
+
 [4.3.0-paj-1-2] - 2026-08-03
 Commit: 4.3.0-paj-1-2 | Logging-Analyse und Umsetzungsplan dokumentiert
 

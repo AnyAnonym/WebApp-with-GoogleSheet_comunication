@@ -57,7 +57,7 @@ Damit waere Grafana die zentrale Ueberwachungsoberflaeche, Loki die Logsuche und
    Instanz. Es ersetzt weder Loki noch Prometheus und sollte nicht automatisiert
    als dauerhaftes Logarchiv gespeichert werden.
 
-## Implementierungsstatus 06.08.2026
+## Implementierungsstatus 07.08.2026
 
 Der Umsetzungsplan A bis D ist im Arbeitsstand umgesetzt:
 
@@ -73,6 +73,9 @@ Der Umsetzungsplan A bis D ist im Arbeitsstand umgesetzt:
 - Audit erfasst die festgelegten WS-/HTTP-Mutationen einschliesslich
   Monitor-Navigation/-Scroll sowie Auth-/Security-Aktionen mit serverseitigem
   Akteur und ohne Geheimnisse.
+- Login-Audits enthalten in SQLite den Namenssnapshot, die normalisierte gueltige
+  Login-E-Mail und die Quell-IP ohne automatische Bereinigung. Der JSON-Spiegel
+  maskiert E-Mail und IP; ungueltiger E-Mail-Rohtext wird nicht gespeichert.
 - Admin-`/status`, Readiness, Shutdown, Systemvorlagen, Datenbank-, Architektur-,
   Endpoint-, Scoreboard- und Rolloutdokumentation sind angeglichen.
 

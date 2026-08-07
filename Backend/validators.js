@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { domainToASCII } = require("node:url");
 const { AppError } = require("./errors.js");
 
 function requireObject(value, name = "params") {
@@ -46,10 +47,21 @@ function integerValue(value, name, { min = Number.MIN_SAFE_INTEGER, max = Number
 
 function emailValue(value) {
   const email = stringValue(value, "email", { max: 254 }).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const [local, domain, ...rest] = email.split("@");
+  const localValid = /^[\p{L}\p{N}\p{M}.!#$%&'*+/=?^_`{|}~-]+$/u.test(local || "")
+    && Buffer.byteLength(local || "", "utf8") <= 64
+    && !local.startsWith(".") && !local.endsWith(".") && !local.includes("..");
+  const asciiDomain = domainToASCII(domain || "");
+  const domainValid = asciiDomain.length <= 253
+    && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(asciiDomain);
+  if (rest.length || !localValid || !domainValid) {
     throw new AppError("VALIDATION_ERROR", "E-Mail-Adresse ist ungueltig");
   }
-  return email;
+  const normalized = `${local}@${asciiDomain}`;
+  if (Buffer.byteLength(normalized, "utf8") > 254) {
+    throw new AppError("VALIDATION_ERROR", "E-Mail-Adresse ist ungueltig");
+  }
+  return normalized;
 }
 
 function passwordHashValue(value, name = "passwordHash") {

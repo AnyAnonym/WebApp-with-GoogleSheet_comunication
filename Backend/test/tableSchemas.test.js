@@ -25,6 +25,15 @@ test("Personen-IDs, E-Mails und Rollen werden strukturell validiert", () => {
 
   const valid = peopleFixture();
   assert.equal(validateTableValues("players", valid), valid);
+
+  const idnDuplicate = peopleFixture();
+  idnDuplicate[1][3] = "üser@münchen.example";
+  idnDuplicate[2][3] = "üser@xn--mnchen-3ya.example";
+  assert.throws(() => validateTableValues("players", idnDuplicate), { code: "SHEET_SCHEMA" });
+
+  const invalidEmail = peopleFixture();
+  invalidEmail[1][3] = "<script>@example.test";
+  assert.throws(() => validateTableValues("players", invalidEmail), { code: "SHEET_SCHEMA" });
 });
 
 test("ungueltige Personenrollen warnen einmalig und fallen auf player zurueck", (t) => {

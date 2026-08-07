@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const net = require("node:net");
 const { AppError } = require("./errors.js");
 
 function randomToken(bytes = 32) {
@@ -60,10 +61,33 @@ function clearCookie(name, secure = true) {
   return serializeCookie(name, "", { maxAge: 0, secure });
 }
 
+function normalizeIp(value) {
+  let candidate = String(value || "").trim();
+  const zoneIndex = candidate.indexOf("%");
+  if (zoneIndex >= 0) {
+    const withoutZone = candidate.slice(0, zoneIndex);
+    if (net.isIP(withoutZone) !== 6) return "unknown";
+    candidate = withoutZone;
+  }
+  if (candidate.startsWith("::ffff:") && net.isIP(candidate.slice(7)) === 4) candidate = candidate.slice(7);
+  const family = net.isIP(candidate);
+  if (family === 4) return candidate;
+  if (family === 6) return new URL(`http://[${candidate}]/`).hostname.slice(1, -1);
+  return "unknown";
+}
+
+function isLoopbackIp(value) {
+  return value === "::1" || value === "127.0.0.1";
+}
+
 function getRequestIp(req) {
+  const remote = normalizeIp(req.socket.remoteAddress);
   const forwarded = req.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded) return forwarded.split(",")[0].trim();
-  return req.socket.remoteAddress || "unknown";
+  if (isLoopbackIp(remote) && typeof forwarded === "string" && forwarded) {
+    const client = normalizeIp(forwarded.split(",", 1)[0]);
+    if (client !== "unknown") return client;
+  }
+  return remote;
 }
 
 function assertAllowedOrigin(req, allowedOrigins, { required = true } = {}) {
@@ -192,6 +216,7 @@ module.exports = {
   getRequestIp,
   hashPayload,
   hashToken,
+  normalizeIp,
   parseCookies,
   randomToken,
   readJsonBody,

@@ -100,6 +100,7 @@ function writeAudit({ eventId, principal, endpoint, params, result = {}, interna
     eventId,
     actorType: principal.type,
     actorId: principal.id,
+    actorName: principal.name || "",
     role: principal.role,
     action: endpoint,
     targetType: projection.targetType,

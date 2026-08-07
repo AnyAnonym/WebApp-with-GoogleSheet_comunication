@@ -82,7 +82,8 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   ID                 | Eindeutige Personen-ID und serverseitige Principal-ID.
   Vorname            | Vorname.
   Nachname           | Nachname.
-  E-Mail             | Loginname; normalisiert kleingeschrieben und eindeutig.
+  E-Mail             | Loginname; lokaler Teil kleingeschrieben, Domain als
+                     | IDNA-ASCII/Punycode kanonisiert und danach eindeutig.
   PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
                      | 64-stellige SHA-256-Werte lesbar.
   KennwortVergessen  | `x` ist die Adminfreigabe fuer die einmalige erstmalige
@@ -307,22 +308,42 @@ Rekonstruktion eines Live-Stands.
 `/var/lib/epiber-<system>/audit.sqlite`:
 
 Tabelle `audit_log`:
-  event_id PRIMARY KEY, occurred_at, actor_type, actor_id, role, action,
-  target_type, target_id, request_id, operation_id, result, before_json,
-  after_json, error_code, instance, created_at, updated_at. `result` ist
+  event_id PRIMARY KEY, occurred_at, actor_type, actor_id, actor_name, role,
+  action, target_type, target_id, request_id, operation_id, result, before_json,
+  after_json, error_code, source_ip, attempted_email, instance, created_at,
+  updated_at. `result` ist
   `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
   derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
   Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
   Loeschpfad verfuegbarer Tombstone darf einen noch leeren Vorher-Zustand
   ergaenzen. Schlaegt der Auditabschluss nach ausgefuehrter Mutation fehl, wird
   der Clientausgang als `WRITE_OUTCOME_UNKNOWN` behandelt.
+  Nur der Uebergang einer identischen Aktion mit identischer Request- und
+  Operation-ID von `started` auf einen terminalen Zustand ist erlaubt. Eine
+  wiederverwendete, aktionsfremde oder bereits abgeschlossene Event-ID ergibt
+  `AUDIT_LOG_EVENT_CONFLICT` und vermischt keine Auditzeilen.
 
 Auditpflichtig sind Fachwrites, Courtsteuerung, Monitor-Navigation/-Scroll und
 Monitorverwaltung sowie Login/Logout, Passwortaenderungen/-freigaben/-reset und
 Monitor-Enrollment. Akteur und Rolle stammen serverseitig aus Session oder
-Geraetekontext. Passwortwerte, Hashes, Tokens, Cookies und E-Mail-Adressen werden
-nicht gespeichert. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard
-`*` aktiviert alle implementierten Aktionen.
+Geraetekontext. `actor_name` ist der Anzeigename zum Ereigniszeitpunkt und ersetzt
+die stabile `actor_id` nicht. Loginversuche speichern die vollstaendige
+normalisierte syntaktisch gueltige Eingabe mit hoechstens 64 UTF-8-Bytes im
+lokalen Teil, hoechstens 254 UTF-8-Bytes insgesamt und kanonischer
+IDNA-ASCII/Punycode-Domain in `attempted_email` sowie die
+serverseitig bestimmte, kanonisierte Quelladresse in `source_ip`; ungueltige E-Mail-Rohtexte
+werden nicht gespeichert. Bei erfolgreichem Login werden ID, damaliger Name und
+Rolle ergaenzt, bei einem Fehlschlag bleibt der Akteur anonym. Ein bestehendes
+Schema wird additiv migriert; alte Zeilen erhalten fuer die drei neuen Felder
+leere Werte.
+
+Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
+E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
+`/status` ausgegeben und unterliegen derzeit keiner automatischen Bereinigung.
+Eine spaetere kontrollierte Loeschung oder Anonymisierung muss auch SQLite-
+Backups beruecksichtigen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
+maskierte E-Mail- und IP-Werte. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken;
+Standard `*` aktiviert alle implementierten Aktionen.
 
 
 ================================================================================

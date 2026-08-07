@@ -1,6 +1,7 @@
 const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
+const { emailValue } = require("./validators.js");
 
 const VALID_ROLES = new Set(["player", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
@@ -53,8 +54,14 @@ function validateTableValues(tableName, values) {
       }
       const email = String(row[emailIndex] || "").trim().toLowerCase();
       if (!email) continue;
-      if (emails.has(email)) throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist nicht eindeutig", 503);
-      emails.add(email);
+      let normalizedEmail;
+      try {
+        normalizedEmail = emailValue(email);
+      } catch {
+        throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist ungueltig", 503);
+      }
+      if (emails.has(normalizedEmail)) throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist nicht eindeutig", 503);
+      emails.add(normalizedEmail);
     }
   }
   return values;

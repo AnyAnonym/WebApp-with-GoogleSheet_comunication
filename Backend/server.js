@@ -44,7 +44,7 @@ const { StateRepository } = require("./stateRepository.js");
 const { ScoreLogRepository } = require("./scoreLogRepository.js");
 const { AuditLogRepository } = require("./auditLogRepository.js");
 const logger = require("./logger.js");
-const { booleanValue, canonicalizeMonitorPath, idValue, passwordHashValue, stringValue } = require("./validators.js");
+const { booleanValue, canonicalizeMonitorPath, emailValue, idValue, passwordHashValue, stringValue } = require("./validators.js");
 
 function sendJson(response, status, body, headers = {}) {
   const text = JSON.stringify(body);
@@ -131,12 +131,13 @@ function createApplication(overrides = {}) {
     const supportId = crypto.randomUUID();
     let httpAudit = null;
     let httpActionCompleted = false;
-    const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null }) => {
+    const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null, sourceIp = "", attemptedEmail = "" }) => {
       if (!(AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action))) return;
       httpAudit = {
         eventId: supportId,
         actorType: principal?.type || "anonymous",
         actorId: principal?.id || "",
+        actorName: principal?.name || "",
         role: principal?.role || "anonymous",
         action,
         targetType,
@@ -144,6 +145,8 @@ function createApplication(overrides = {}) {
         requestId: supportId,
         result: "started",
         before,
+        sourceIp,
+        attemptedEmail,
       };
       auditLogRepository.record(httpAudit);
     };
@@ -152,7 +155,7 @@ function createApplication(overrides = {}) {
       if (result === "success") httpActionCompleted = true;
       const completedAudit = {
         ...httpAudit,
-        ...(principal ? { actorType: principal.type, actorId: principal.id, role: principal.role } : {}),
+        ...(principal ? { actorType: principal.type, actorId: principal.id, actorName: principal.name || "", role: principal.role } : {}),
         ...(targetType === undefined ? {} : { targetType }),
         ...(targetId === undefined ? {} : { targetId }),
         result,
@@ -244,9 +247,26 @@ function createApplication(overrides = {}) {
           assertAllowedOrigin(request, ALLOWED_ORIGINS);
           if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
           const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
-          beginAudit({ action: "login", targetType: "session" });
-          const result = await authService.login({ email: body.email, passwordHash: body.passwordHash, ip: getRequestIp(request) });
-          finishAudit({ principal: { type: "user", id: result.user.id, role: result.user.role }, targetType: "user", targetId: result.user.id });
+          const sourceIp = getRequestIp(request);
+          let attemptedEmail;
+          try {
+            attemptedEmail = emailValue(body.email);
+          } catch (error) {
+            beginAudit({ action: "login", targetType: "session", sourceIp, before: { identifierValid: false } });
+            throw error;
+          }
+          beginAudit({ action: "login", targetType: "session", sourceIp, attemptedEmail, before: { identifierValid: true } });
+          const result = await authService.login({ email: attemptedEmail, passwordHash: body.passwordHash, ip: sourceIp });
+          finishAudit({
+            principal: {
+              type: "user",
+              id: result.user.id,
+              name: [result.user.firstName, result.user.lastName].filter(Boolean).join(" "),
+              role: result.user.role,
+            },
+            targetType: "user",
+            targetId: result.user.id,
+          });
           const cookie = serializeCookie(SESSION_COOKIE, result.session.token, { maxAge: SESSION_TTL_MS / 1000, secure: COOKIE_SECURE });
           return sendJson(response, 200, { success: true, user: result.user, expiresAt: result.session.expiresAt, serverTime: Date.now() }, { "Set-Cookie": cookie });
         }

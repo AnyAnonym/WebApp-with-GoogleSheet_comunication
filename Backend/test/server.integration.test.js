@@ -180,16 +180,23 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(oversizedLogin.status, 413);
 
+  const invalidEmailLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "192.0.2.10" },
+    body: JSON.stringify({ email: "<script>@example.test", passwordHash: "b".repeat(64) }),
+  });
+  assert.equal(invalidEmailLogin.status, 400);
+
   const failedLogin = await fetch(`${httpBase}/api/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
-    body: JSON.stringify({ email: "ada@example.test", passwordHash: "b".repeat(64) }),
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "203.0.113.42" },
+    body: JSON.stringify({ email: " ADA@Example.Test ", passwordHash: "b".repeat(64) }),
   });
   assert.equal(failedLogin.status, 401);
 
   const loginResponse = await fetch(`${httpBase}/api/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "198.51.100.20" },
     body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
   });
   assert.equal(loginResponse.status, 200);
@@ -566,14 +573,28 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);
   }
   const serializedAudit = JSON.stringify(auditRows);
-  assert.equal(serializedAudit.includes("ada@example.test"), false);
+  assert.equal(serializedAudit.includes("ada@example.test"), true);
+  assert.equal(serializedAudit.includes("<script>@example.test"), false);
   assert.equal(serializedAudit.includes("a".repeat(64)), false);
   assert.equal(serializedAudit.includes(provisioned.data.monitor.token), false);
-  const failedLoginAudit = auditRows.find((row) => row.action === "login" && row.result === "failed");
+  const failedLoginAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "LOGIN_FAILED");
   assert.equal(failedLoginAudit.errorCode, "LOGIN_FAILED");
   assert.equal(failedLoginAudit.actorType, "anonymous");
+  assert.equal(failedLoginAudit.actorName, "");
+  assert.equal(failedLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(failedLoginAudit.sourceIp, "203.0.113.42");
+  const invalidEmailAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "VALIDATION_ERROR");
+  assert.equal(invalidEmailAudit.attemptedEmail, "");
+  assert.equal(invalidEmailAudit.sourceIp, "192.0.2.10");
+  assert.deepEqual(invalidEmailAudit.before, { identifierValid: false });
+  const successfulLoginAudit = auditRows.find((row) => row.action === "login" && row.result === "success");
+  assert.equal(successfulLoginAudit.actorId, "p1");
+  assert.equal(successfulLoginAudit.actorName, "Ada Admin");
+  assert.equal(successfulLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(successfulLoginAudit.sourceIp, "198.51.100.20");
   const courtAudit = auditRows.find((row) => row.action === "courtAssign" && row.result === "success");
   assert.equal(courtAudit.actorId, "p3");
+  assert.equal(courtAudit.actorName, "Olivia Operator");
   assert.equal(courtAudit.role, "operator");
 
   await publicClient.close();

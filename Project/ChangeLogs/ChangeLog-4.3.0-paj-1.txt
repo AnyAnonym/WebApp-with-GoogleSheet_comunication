@@ -1,3 +1,46 @@
+[4.3.0-paj-1-5] - 2026-08-07
+Commit: 4.3.0-paj-1-5 | Login-Audit um Name E-Mail und IP erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-5` gesetzt.
+  - [Datenbank] `audit_log` wird additiv um `actor_name`, `source_ip` und `attempted_email` erweitert; bestehende Zeilen und Event-IDs bleiben erhalten und erhalten leere Migrationswerte.
+  - [Software] Erfolgreiche Login-Audits speichern serverseitige ID, Namenssnapshot und Rolle sowie die normalisierte Login-E-Mail und Quell-IP; fehlgeschlagene Versuche speichern E-Mail und IP bei anonymem Akteur.
+  - [Software] Syntaktisch ungueltige E-Mail-Rohwerte werden nicht persistiert; der lokale Teil ist auf 64 UTF-8-Bytes und die kanonische Gesamtadresse auf 254 UTF-8-Bytes begrenzt. IDN-Domains werden einheitlich auf IDNA-ASCII/Punycode kanonisiert. Dieselbe Normalisierung bestimmt Personen-Eindeutigkeit, Login- und Rate-Limit-Identitaet. `X-Forwarded-For` wird nur bei einer Loopback-Verbindung vom lokalen Caddy akzeptiert und IP-Adressen werden kanonisiert.
+  - [Software] Audit-Event-IDs erlauben nur noch den korrelierten Uebergang von `started` auf einen terminalen Zustand; doppelte, aktionsfremde oder bereits abgeschlossene IDs werden mit `AUDIT_LOG_EVENT_CONFLICT` abgewiesen.
+  - [Software] Der Audit-Journalspiegel enthaelt Namen und stabile IDs, aber ausschliesslich maskierte E-Mail- und IP-Werte; die vollstaendigen personenbezogenen Werte bleiben auf die geschuetzte SQLite-Historie begrenzt.
+  - [Dokumentation] Datenbank-, Architektur-, Endpoint-, Betriebs-, Rollout- und Loggingdokumentation um Datenklassen, Proxy-Vertrauen und die vereinbarte unbefristete Speicherung bis zur spaeteren kontrollierten Loeschung oder Anonymisierung erweitert.
+
+  Sicherheit und Betrieb
+  - Vollstaendige Login-E-Mail und Quell-IP sowie Namenssnapshots sind personenbezogene Auditdaten. Sie werden nicht ueber `/status` ausgegeben und duerfen nur Administratoren und autorisierte Betreiber einsehen.
+  - Es gibt keine automatische Auditbereinigung. Eine spaetere Loeschung oder Anonymisierung muss kontrolliert erfolgen und vorhandene SQLite-Backups einbeziehen.
+  - Der lokale Loopback-Proxy ist eine Host-Vertrauensgrenze, keine kryptografisch nachgewiesene Caddy-Identitaet; lokale Prozesse duerfen den Backendport nicht unkontrolliert verwenden.
+
+  Tests
+  - Additive Migration bestehender Auditdateien, Audit-Lesefehler/Readiness, Event-ID-Konflikte, Erhalt des urspruenglichen Requestkontexts, Journalmaskierung, Proxy-Vertrauensgrenze, IP-Kanonisierung, E-Mail-Grenzen/IDN sowie erfolgreiche, fehlgeschlagene und syntaktisch ungueltige Loginversuche automatisiert abgedeckt.
+  - `npm run build`: statische Pruefung und alle 109 Tests erfolgreich.
+  - `git diff --check`: erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/DATENBANK.txt
+  - Neue Auditspalten, additive Migration, personenbezogene Datenklassen, unbefristete Speicherung und spaetere kontrollierte Bereinigung dokumentieren.
+
+  Project/software/ARCHITEKTUR.txt
+  - Namenssnapshot, Login-E-Mail, Quell-IP, Loopback-Proxyvertrauen und maskierten Journalspiegel in den Auditdatenfluss aufnehmen.
+
+  Project/software/ENDPOINTS.txt
+  - Login-Auditsemantik fuer erfolgreiche, fehlgeschlagene und syntaktisch ungueltige Versuche sowie die Trennung zwischen SQLite und Journalspiegel dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Praxispruefungen fuer Login-Auditfelder, Maskierung und Schutz gegen manipulierte Forwarded-Header aufnehmen.
+
+  Project/server-configs/SERVER-SETUP.txt
+  - Zugriffsschutz, Backupfolgen und spaetere Bereinigung personenbezogener Auditdaten dokumentieren.
+
+  Project/2do/LOGGING-UMSETZUNGSPLAN.md
+  Project/2do/LOGGING-ANALYSE-AKTUALISIERT.md
+  - Vereinbarte dauerhafte Login-Auditfelder, Journalmaskierung und offene spaetere Bereinigung als Implementierungsstatus fortschreiben.
+
 [4.3.0-paj-1-4] - 2026-08-07
 Commit: 4.3.0-paj-1-4 | Logging und Fachhistorien auf SQLite umgestellt
 

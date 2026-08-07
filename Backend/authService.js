@@ -21,6 +21,16 @@ function withAudit(result, audit) {
   return result;
 }
 
+function personEmailValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return emailValue(raw);
+  } catch {
+    throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist ungueltig", 503);
+  }
+}
+
 class AuthService {
   constructor({ repository, sheetService }) {
     this.repository = repository;
@@ -83,7 +93,7 @@ class AuthService {
       id: String(row[indexes.id] || "").trim(),
       firstName: String(row[indexes.firstName] || "").trim(),
       lastName: String(row[indexes.lastName] || "").trim(),
-      email: indexes.email < 0 ? "" : String(row[indexes.email] || "").trim().toLowerCase(),
+      email: indexes.email < 0 ? "" : personEmailValue(row[indexes.email]),
       storedPasswordHash: indexes.passwordHash < 0 ? "" : String(row[indexes.passwordHash] || "").trim(),
       phone: indexes.phone < 0 ? "" : String(row[indexes.phone] || "").trim(),
       birthDate: indexes.birthDate < 0 ? "" : String(row[indexes.birthDate] || "").trim(),

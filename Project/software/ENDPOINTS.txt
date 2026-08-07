@@ -157,7 +157,16 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
     (clientseitiger SHA-256-Credential). Prueft Loginlimits, aktive Person und
     Rolle, migriert einen Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte
     Sessions und setzt ein neues Sessioncookie. 200 liefert
-    `{ success, user, expiresAt, serverTime }`.
+    `{ success, user, expiresAt, serverTime }`. Jeder nach der Bodyannahme
+    verarbeitete Versuch wird auditiert. SQLite speichert die normalisierte
+    syntaktisch gueltige E-Mail mit maximal 64 UTF-8-Bytes vor `@`, maximal 254
+    UTF-8-Bytes nach der Kanonisierung und einer auf IDNA-ASCII/Punycode
+    kanonisierten Domain sowie die serverseitig bestimmte Quell-IP; bei
+    Erfolg zusaetzlich Benutzer-ID, damaligen Namen und Rolle. Ungueltiger
+    E-Mail-Rohtext wird nicht persistiert. Der Journalspiegel maskiert E-Mail und
+    IP. `X-Forwarded-For` wird nur innerhalb der lokalen Proxy-Vertrauensgrenze
+    bei einer Verbindung von `127.0.0.1` oder `::1` akzeptiert; die Proxyidentitaet
+    wird nicht kryptografisch nachgewiesen.
 
   DELETE (public, erlaubte Origin):
     Widerruft die aktuelle Session, loescht das Cookie und liefert
@@ -507,6 +516,11 @@ SQLite-Fachhistorien:
     Kann der Auditabschluss nach Rueckkehr der Mutation nicht sicher persistiert
     werden, erhaelt der Client `WRITE_OUTCOME_UNKNOWN` statt eines falschen
     Fehlschlag- oder Erfolgsnachweises.
+    Namen, Login-E-Mail und Quell-IP sind personenbezogene Auditfelder in SQLite;
+    sie erscheinen weder in `/status` noch vollstaendig im Journalspiegel.
+    Eine Event-ID darf nur dieselbe Aktion/Request-/Operation-Korrelation von
+    `started` auf einen terminalen Zustand aktualisieren; Wiederverwendung ergibt
+    `AUDIT_LOG_EVENT_CONFLICT`.
   - ScoreLog ist kein RPC-Fachwrite. Reset und erste externe Baseline schreiben
     nichts; das gilt auch fuer den sofort angezeigten ersten externen Stand eines
     beim Prozessstart bereits aktiven Courts. Eine spaetere semantische Aenderung

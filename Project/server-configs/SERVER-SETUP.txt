@@ -360,6 +360,13 @@ Screenshots und Auszuege duerfen nicht auf oeffentlichen Anzeigen erscheinen und
 nicht ungefiltert in Journale, Tickets oder Freigabeprotokolle kopiert werden;
 die HTTP-Antwort bleibt `no-store`.
 
+`audit.sqlite` enthaelt zusaetzlich geschuetzte personenbezogene Historie:
+Namenssnapshots sowie bei Loginversuchen vollstaendige normalisierte gueltige
+E-Mail-Adressen und Quell-IPs. Diese Werte werden derzeit nicht automatisch
+geloescht und muessen in Zugriffsschutz, Sicherung und einer spaeteren
+kontrollierten Loeschung oder Anonymisierung einschliesslich Backups
+beruecksichtigt werden. Der journald-Spiegel enthaelt E-Mail und IP nur maskiert.
+
 Bei der Courtsteuerung friert das Deaktivieren eines Platzes den zuletzt
 akzeptierten Score ein. Ein expliziter Reset setzt nur diesen Platz sofort auf
 Null. Aktivierung und Reset setzen eine neue Court-Epoch und warten auf eine

@@ -1,16 +1,24 @@
 # Logging-Umsetzungsplan (ScoreLog/Audit weg von Google Sheets)
 
-## Status 06.08.2026
+## Status 07.08.2026
 
 Etappen A bis D sowie der dokumentierte Querschnitt sind mit Branch-Commit
 `4.3.0-paj-1-4` umgesetzt. Die unter "Bewusst außerhalb dieses Branches"
 genannten Themen bleiben offen. Verbindliche Testergebnisse stehen im
 Branch-Changelog.
 
+Die mit Branch-Commit `4.3.0-paj-1-5` ergaenzte Login-Auditierung speichert
+Namenssnapshot, normalisierte gueltige Login-E-Mail und Quell-IP dauerhaft in
+SQLite. E-Mail und IP werden im JSON-Spiegel maskiert; ungueltiger E-Mail-Rohtext
+wird nicht persistiert. Es gibt weiterhin keine automatische fachliche
+Bereinigung; eine spaetere kontrollierte Loeschung oder Anonymisierung bleibt
+separate Folgearbeit.
+
 ## Entscheidungen
 1. Monitor-Navigations-/Scrollbefehle **werden** ins Auditlog aufgenommen.
 2. **Separate** SQLite-Dateien für Fachhistorie, getrennt vom Anwendungsstate.
 3. Google Sheets `ScoreLog` und `Logging` werden nicht mehr beschrieben **und** die Dokumentation wird auf „entfernt" umgestellt.
+4. Personenbezogene Login-Auditfelder bleiben bis zu einer spaeteren kontrollierten Loeschung oder Anonymisierung in SQLite erhalten; im Journal werden E-Mail und IP maskiert.
 
 ## Zielbild
 - Betriebslogs: strukturiertes JSON auf stdout → journald → optional Loki.

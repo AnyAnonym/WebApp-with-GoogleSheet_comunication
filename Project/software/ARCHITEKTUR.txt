@@ -238,6 +238,15 @@ Fachhistorien und Betriebslogs:
     Schlaegt der Auditabschluss nach Rueckkehr der Mutation fehl, wird der
     Clientausgang konservativ als `WRITE_OUTCOME_UNKNOWN` behandelt; ein
     vorhandener urspruenglicher Vorher-Zustand bleibt unveraendert.
+    Akteure erhalten zusaetzlich einen Namenssnapshot. Loginversuche speichern in
+    der geschuetzten SQLite-Historie die normalisierte gueltige Eingabe und die
+    Quell-IP; ungueltiger E-Mail-Rohtext bleibt leer. `X-Forwarded-For` gilt nur
+    bei einer Verbindung von `127.0.0.1` oder `::1` innerhalb der lokalen
+    Proxy-Vertrauensgrenze. Andere lokale Prozesse liegen damit ebenfalls in der
+    Host-Vertrauensgrenze; Caddy wird nicht kryptografisch identifiziert. Im Journalspiegel bleiben
+    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert.
+    Doppelte oder aktionsfremd wiederverwendete Audit-Event-IDs werden abgewiesen
+    und koennen terminale Zeilen nicht auf `started` zuruecksetzen.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der

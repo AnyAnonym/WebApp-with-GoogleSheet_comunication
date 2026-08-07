@@ -1,5 +1,12 @@
 # Logging-Umsetzungsplan (ScoreLog/Audit weg von Google Sheets)
 
+## Status 06.08.2026
+
+Etappen A bis D sowie der dokumentierte Querschnitt sind mit Branch-Commit
+`4.3.0-paj-1-4` umgesetzt. Die unter "Bewusst außerhalb dieses Branches"
+genannten Themen bleiben offen. Verbindliche Testergebnisse stehen im
+Branch-Changelog.
+
 ## Entscheidungen
 1. Monitor-Navigations-/Scrollbefehle **werden** ins Auditlog aufgenommen.
 2. **Separate** SQLite-Dateien für Fachhistorie, getrennt vom Anwendungsstate.

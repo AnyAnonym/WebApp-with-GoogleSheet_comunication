@@ -74,7 +74,7 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 ----- GET /status (admin) -----
    Verlangt ein gueltiges Admin-Sessioncookie und liefert
    `Cache-Control: no-store`. Das Top-Level-Objekt enthaelt `status`, `monitor`,
-   `provider`, `sheets` und `state`. `status` enthaelt detaillierte Readiness einschliesslich
+   `provider`, `sheets`, `state`, `scoreLog` und `auditLog`. `status` enthaelt detaillierte Readiness einschliesslich
    `court.displayRulesReady` und `court.unresolvedActiveRules`; `state` enthaelt
    unter anderem `displayRulesMigration` und die Court-Zustaende.
 
@@ -142,8 +142,10 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
    verlieren einen Eintrag beim Close; sie sind nicht persistiert. IP,
    Benutzer-ID, Klarname sowie stabile Client-/Geraetekennungen sind fluechtige
    privilegierte Diagnosedaten und duerfen nicht ungefiltert in oeffentliche Logs
-   oder Tickets uebernommen werden. Die Antwort enthaelt keine Cookies, Tokens,
-   Passwortwerte, privaten Schluessel oder ScoreLog-Pendingwerte.
+   oder Tickets uebernommen werden. `scoreLog` zeigt Oeffnungs-/Fehlerstatus,
+   Schreibzaehler und letzte Folgenummern je Court; `auditLog` zeigt nur Status
+   und Zaehler. Die Antwort enthaelt keine Fachereigniszeilen, Cookies, Tokens,
+   Passwortwerte oder privaten Schluessel.
 
 ----- /api/session -----
   GET (public):
@@ -379,7 +381,8 @@ AUTHENTICATED (player, operator oder admin):
       Entfernt nur den eigenen stabil aufgeloesten Eintrag.
 
   `withdrawFromRanking { operationId, bewerbId, rank, reason }`
-      rank 1..10000, reason 3..500 Zeichen. Dreispaltiger Legacy-Logging-Append.
+      rank 1..10000, reason 3..500 Zeichen. Der serverseitig validierte Rueckzug
+      wird idempotent im SQLite-Auditlog erfasst; es gibt keinen Logging-Sheetwrite.
 
 OPERATOR ODER ADMIN:
   `navigator { profil? }`
@@ -495,17 +498,23 @@ Der Browser wiederholt nur sichere Read-RPCs bis zu zweimal bei Request-Timeout
 oder Shutdown. Writes werden bei Transportverlust nicht automatisch wiederholt;
 ihre operationId bleibt fuer kontrollierte Wiederaufnahme erhalten.
 
-Legacy-Ausnahmen:
-  - Logging besitzt drei Spalten und keine EventID/Readback. Erfolgreich
-    abgeschlossene Operationen werden per operationId dedupliziert; ein
-    mehrdeutiger Append ist nicht sicher wiederholbar.
+SQLite-Fachhistorien:
+  - Jeder gueltige WS-Schreibversuch wird mit seiner Support-/Request-ID im
+    Auditlog als `started` angelegt und danach auf `success`, `failed` oder
+    `unknown` aktualisiert. Aktion, serverseitiger Akteur, Rolle, Ziel,
+    operationId und allowlist-basierter Vorher-/Nachher-Kontext werden ohne
+    Geheimnisse gespeichert. Dies umfasst auch Court- und Monitorsteuerung.
+    Kann der Auditabschluss nach Rueckkehr der Mutation nicht sicher persistiert
+    werden, erhaelt der Client `WRITE_OUTCOME_UNKNOWN` statt eines falschen
+    Fehlschlag- oder Erfolgsnachweises.
   - ScoreLog ist kein RPC-Fachwrite. Reset und erste externe Baseline schreiben
     nichts; das gilt auch fuer den sofort angezeigten ersten externen Stand eines
-    beim Prozessstart bereits aktiven Courts. Erst eine spaetere semantische
-    Aenderung wird dreispaltig Fire-and-forget angehaengt, ohne operationId/EventID,
-    Retry, Readback, Pendingstatus, SQLite-Queue oder Shutdown-Drain. ScoreLog
-    wird nie gelesen und nicht zur Rekonstruktion der volatilen Live-Scores
-    verwendet.
+    beim Prozessstart bereits aktiven Courts. Eine spaetere semantische Aenderung
+    wird mit Event-ID und transaktionaler Court-Folgenummer synchron in
+    `scorelog.sqlite` persistiert, bevor Anzeige und Push aktualisiert werden.
+    Bei Insertfehler bleibt der bisherige sichtbare Stand bestehen und ein
+    Folgepoll versucht die Quellaenderung erneut. ScoreLog wird nicht zur
+    Rekonstruktion der volatilen Live-Scores gelesen.
 
 
 ================================================================================

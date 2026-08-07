@@ -20,8 +20,9 @@
     |-- Cookie-/Rollenauthentifizierung und Datenprojektionen
     |-- Polling + revisionierter In-Memory-Cache
     |-- serialisierte/idempotente Google-Sheets-Writes
-    |-- persistenter SQLite-State
-    |-- externes Court-Polling + dreispaltiges Legacy-ScoreLog
+    |-- getrennter SQLite-State sowie Score-/Audit-Fachhistorien
+    |-- externes Court-Polling + persistentes SQLite-ScoreLog
+    |-- strukturierte redigierte JSON-Betriebslogs fuer journald
     `-- adressierter MonitorBroker
              |                         |
              v                         v
@@ -222,18 +223,25 @@ Pollfehler den neueren Cache ueberschreibt. Jede Tabelle besitzt Revision und
 maximales Alter. Fast ist standardmaessig nach 30 Sekunden, Slow nach 90 Sekunden
 nicht mehr current; betroffene Fachreads liefern 503 statt stale Rohdaten.
 
-Legacy-Grenze:
-  - Logging schreibt Timestamp, Type, Message mit USER_ENTERED. Ein erfolgreiches
-    Fachresultat ist operationId-dedupliziert, aber ein mehrdeutiger Append kann
-    ohne EventID/Readback nicht sicher wiederholt werden.
-  - ScoreLog schreibt Timestamp, PlatzNr, Score mit USER_ENTERED. Reset, erste
-    externe Baseline und der erste uebernommene Stand eines beim Prozessstart
-    bereits aktiven Courts werden nicht angehaengt; erst die naechste semantische
-    Aenderung eines aktiven Courts wird Fire-and-forget geschrieben. Es gibt
-    ausdruecklich keine EventID, keinen Retry, keinen Readback, keine Write-ahead-
-    /SQLite-Queue, keinen Pendingstatus und keinen Shutdown-Drain. Dieses
-    Legacyverhalten darf nicht mit der allgemeinen SheetService-Unknown-Semantik
-    gleichgesetzt werden.
+Fachhistorien und Betriebslogs:
+  - `scorelog.sqlite` und `audit.sqlite` sind getrennte SQLite-Systeme-of-Record
+    mit WAL, `synchronous=FULL`, Event-IDs und unbegrenzter fachlicher Historie.
+    Die frueheren Google-Sheets-Tabs `ScoreLog` und `Logging` werden nicht mehr
+    beschrieben.
+  - Scoreereignisse erhalten transaktionale Folgenummern pro Court und werden vor
+    Anzeige/Push synchron persistiert. Ein Insertfehler behaelt den bisherigen
+    sichtbaren Stand; ein Folgepoll versucht denselben Quellstand erneut.
+  - Audit schreibt vor einer Mutation `started` und aktualisiert dieselbe
+    Request-ID danach auf `success`, `failed` oder `unknown`. Erfasst werden
+    Fachwrites, Court-/Monitorsteuerung und Auth-/Security-Aktionen mit
+    serverseitigem Akteur und allowlist-basiertem Kontext ohne Geheimnisse.
+    Schlaegt der Auditabschluss nach Rueckkehr der Mutation fehl, wird der
+    Clientausgang konservativ als `WRITE_OUTCOME_UNKNOWN` behandelt; ein
+    vorhandener urspruenglicher Vorher-Zustand bleibt unveraendert.
+  - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
+    Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
+    uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der
+    Ueberwachung und ersetzen nie die SQLite-Historie.
 
 
 ================================================================================
@@ -333,16 +341,19 @@ als Baseline. Erst die folgende Abweichung aktualisiert Anzeige und ScoreLog; de
 Reset selbst publiziert Nullwerte, schreibt aber kein ScoreLog. Bei Prozessstart
 uebernimmt ein laut SQLite bereits aktiver Court seinen ersten externen Stand
 sofort in die Anzeige, ohne ihn zu protokollieren. Der normalisierte Snapshot
-enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler.
+enthaelt Revision, Quellenalter, Stale-Grenze und letzten Fehler. Eine zu
+protokollierende Abweichung wird zuerst in `scorelog.sqlite` persistiert und erst
+danach angezeigt und publiziert; bei lokalem Insertfehler bleibt der sichtbare
+Stand bis zu einem erfolgreichen Folgepoll unveraendert.
 
 Die acht Scorewerte liegen ausschliesslich im Prozessspeicher. Nach einem
 Backendneustart werden aktive Courts aus der externen Quelle aufgebaut; das
-dreispaltige ScoreLog wird nie zur Rekonstruktion gelesen.
+SQLite-ScoreLog wird nie zur Rekonstruktion gelesen.
 
 Die Scoreboard-Anzeigeprojektion verschiebt bei einem Satz-Tie-Break in Satz 1
 oder 2 die dritte physische Drehspalte in das Punktefeld und zeigt Satz 3 als 0.
 Bei `MT7`/`MT10` kennzeichnet `satz3matchtiebreak` den dritten Satz fuer die
-tuerkise Darstellung. Court-Rohwerte und dreispaltiges ScoreLog bleiben dabei
+tuerkise Darstellung. Court-Rohwerte und persistiertes ScoreLog bleiben dabei
 unveraendert. Die Projektion verwendet ausschliesslich den persistierten
 Regelsnapshot. Spaetere Matchtyp-Aenderungen beeinflussen laufende Zuweisungen
 nicht; die Matchtyp-Revision bleibt im atomaren Scoreboard-Snapshot nur als
@@ -369,7 +380,8 @@ migrierbar und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
 
 `/live` prueft nur den Prozess. `/ready` und `/health` verlangen:
   - Initialisierung abgeschlossen und kein Shutdown,
-  - offene SQLite-Datenbank,
+  - offene State-, ScoreLog- und Auditlog-SQLite-Datenbanken ohne letzten
+    Persistenzfehler,
   - alle Tabellen ausser `matchtyp` innerhalb ihrer Altersgrenze,
   - laufenden Sheetpoller,
   - bei aktivem Court eine frische externe Courtquelle,
@@ -383,24 +395,28 @@ persistierten Regelsnapshot kein globales Readiness-Gate. Ihr Zustand bleibt in
 Matchtyp-Daten.
 
 `/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
-SheetService- und Statewerte, einschliesslich `pendingMetadataIntents`, aber keine
+SheetService-, State-, ScoreLog- und Auditlogwerte, einschliesslich
+`pendingMetadataIntents`, aber keine
 Secrets. Die Provider-Verbindungsdaten werden bei jedem Aufruf nur aus aktuell
 verbundenen Sockets erzeugt, beim Close entfernt und nicht persistiert. Sie sind
 fluechtige privilegierte Diagnosedaten; IP-Adressen, Benutzeridentitaeten,
 Klarnamen und stabile Client-/Geraetekennungen duerfen nicht ungefiltert in
 oeffentliche Logs oder Tickets gelangen. `/status` wird mit
-`Cache-Control: no-store` ausgeliefert. Es existiert kein `scoreLogPending`.
+`Cache-Control: no-store` ausgeliefert. ScoreLog zeigt nur aggregierten
+Oeffnungs-/Fehlerstatus, Schreibzaehler und letzte Court-Folgenummern; Auditlog
+zeigt nur Oeffnungs-/Fehlerstatus und Zaehler, niemals Ereignisinhalte.
 
 Graceful Shutdown:
   1. Neue HTTP-/WS-Operationen werden mit 503 abgelehnt; Upgrades stoppen.
   2. Daten- und Courtpoller/Timer stoppen; laufender Courtfetch wird abgebrochen.
   3. MonitorBroker beendet Geraete und WebSockets schliessen mit 1012.
   4. Aktive WS-Handler, HTTP-Requests und SheetService-Arbeit werden drainiert.
-  5. SQLite schliesst erst danach.
+  5. Audit-, ScoreLog- und State-SQLite schliessen erst danach.
 
 Standard-Grace ist 90 Sekunden. Eine ueberschrittene Deadline ist
-`SHUTDOWN_TIMEOUT`, schliesst Verbindungen hart und fuehrt zu Fehlerexit. ScoreLog
-ist Fire-and-forget und gehoert bewusst nicht zum Drain.
+`SHUTDOWN_TIMEOUT`, schliesst Verbindungen hart und fuehrt zu Fehlerexit. Synchrone
+ScoreLog-/Auditwrites sind vor ihrer Erfolgsantwort abgeschlossen; die
+Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
 
 
 ================================================================================

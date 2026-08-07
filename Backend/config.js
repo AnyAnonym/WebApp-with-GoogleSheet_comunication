@@ -36,6 +36,11 @@ if (!/^[a-z0-9_-]{1,32}$/i.test(INSTANCE_ID)) {
   throw new Error("INSTANCE_ID enthaelt ungueltige Zeichen");
 }
 
+const LOG_LEVEL = String(process.env.LOG_LEVEL || "info").trim().toLowerCase();
+if (!["debug", "info", "warn", "error"].includes(LOG_LEVEL)) {
+  throw new Error("LOG_LEVEL muss debug, info, warn oder error sein");
+}
+
 const PORT = parseInteger("PORT", 8080, 1, 65535);
 const LISTEN_HOST = process.env.LISTEN_HOST || "127.0.0.1";
 const PUBLIC_ORIGIN = parseOrigin(process.env.PUBLIC_ORIGIN || `http://localhost:${PORT}`, "PUBLIC_ORIGIN");
@@ -57,6 +62,11 @@ if (!ALLOW_INSECURE_TRANSPORT && [...ALLOWED_ORIGINS].some((origin) => origin.st
 const SHEET_ID = process.env.SHEET_ID;
 const COURT_URL = process.env.COURT_URL;
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}.sqlite`);
+const SCORELOG_FILE = process.env.SCORELOG_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}-scorelog.sqlite`);
+const AUDITLOG_FILE = process.env.AUDITLOG_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}-audit.sqlite`);
+const SCORE_LOG_JOURNAL = parseBoolean("SCORE_LOG_JOURNAL", true);
+const AUDIT_LOG_JOURNAL = parseBoolean("AUDIT_LOG_JOURNAL", true);
+const AUDIT_ACTIONS = new Set(String(process.env.AUDIT_ACTIONS || "*").split(",").map((value) => value.trim()).filter(Boolean));
 
 const PROTOCOL_VERSION = 2;
 const SESSION_TTL_MS = parseInteger("SESSION_TTL_SECONDS", 28800, 300, 604800) * 1000;
@@ -124,6 +134,11 @@ function validateRuntimeConfig() {
   if (!path.isAbsolute(STATE_FILE) && STATE_FILE !== ":memory:") {
     errors.push("STATE_FILE muss absolut sein");
   }
+  for (const [name, filename] of [["SCORELOG_FILE", SCORELOG_FILE], ["AUDITLOG_FILE", AUDITLOG_FILE]]) {
+    if (!path.isAbsolute(filename) && filename !== ":memory:") errors.push(`${name} muss absolut sein`);
+  }
+  const persistentFiles = [STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE].filter((value) => value !== ":memory:");
+  if (new Set(persistentFiles).size !== persistentFiles.length) errors.push("STATE_FILE, SCORELOG_FILE und AUDITLOG_FILE muessen getrennte Dateien sein");
   if (READINESS_FAST_MAX_AGE_MS < POLL_BASE_INTERVAL * POLL_FAST_MULTIPLIER + GOOGLE_REQUEST_TIMEOUT_MS) {
     errors.push("READINESS_FAST_MAX_AGE_MS muss den schnellen Pollingabstand inklusive Timeout abdecken");
   }
@@ -139,6 +154,9 @@ function validateRuntimeConfig() {
 module.exports = {
   ALLOWED_ORIGINS,
   ALLOW_INSECURE_TRANSPORT,
+  AUDIT_ACTIONS,
+  AUDITLOG_FILE,
+  AUDIT_LOG_JOURNAL,
   COOKIE_SECURE,
   COURT_FETCH_TIMEOUT_MS,
   COURT_MAX_BACKOFF_MS,
@@ -152,6 +170,7 @@ module.exports = {
   HTTP_REQUEST_TIMEOUT_MS,
   INSTANCE_ID,
   LISTEN_HOST,
+  LOG_LEVEL,
   MONITOR_COOKIE,
   PASSWORD_RESET_TTL_MS,
   POLL_BASE_INTERVAL,
@@ -165,6 +184,8 @@ module.exports = {
   SESSION_COOKIE,
   SESSION_TTL_MS,
   SHEET_ID,
+  SCORELOG_FILE,
+  SCORE_LOG_JOURNAL,
   SHUTDOWN_GRACE_MS,
   STATE_FILE,
   TABLE_CONFIG,

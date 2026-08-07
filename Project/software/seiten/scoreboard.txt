@@ -33,8 +33,12 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   externe Stand wird nur als Baseline gespeichert; erst die naechste davon
   abweichende externe Aenderung wird angezeigt, publiziert und protokolliert. Ein
   Reset setzt zuvor alle Saetze und Punkte sichtbar auf 0. Nach einem
-  Backendneustart uebernehmen in SQLite bereits aktive Plaetze ihren ersten
-  externen Stand sofort; dieser Wiederanlaufstand erzeugt keinen ScoreLog-Eintrag.
+   Backendneustart uebernehmen in SQLite bereits aktive Plaetze ihren ersten
+   externen Stand sofort; dieser Wiederanlaufstand erzeugt keinen ScoreLog-Eintrag.
+  Spaetere protokollpflichtige Aenderungen werden zuerst in der separaten
+  `scorelog.sqlite` mit Event-ID, Court-Folgenummer und Matchkontext gespeichert
+  und erst danach angezeigt und publiziert. Bei einem Insertfehler bleibt der
+  bisherige sichtbare Stand bis zum erfolgreichen Folgepoll bestehen.
   Die Scorewerte, externen Baselines und Score-Revisionen liegen nur im
   Prozessspeicher. Nach einem Neustart werden sie fuer aktive Courts aus der
   externen Quelle neu aufgebaut; `ScoreLog` dient nicht zur Rekonstruktion.
@@ -55,7 +59,7 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   oder 2 dem persistierten `Satztiebreak`, erscheinen die Werte der dritten
   physischen Drehspalte im Punktefeld und Satz 3 zeigt 0. Bei persistiertem
   `Entscheidender Satz=MT7|MT10` ist die dritte Satzspalte tuerkis. Rohscores und
-  ScoreLog werden nicht veraendert.
+  persistierter ScoreLog-Inhalt werden nicht durch die Projektion umgedeutet.
 
   Beim Start versucht das Backend, alte Court-Zustaende mit Matchtyp-ID, aber ohne
   `displayRules`, einmal aus der aktuellen Matchtyp-Tabelle zu migrieren. Nicht

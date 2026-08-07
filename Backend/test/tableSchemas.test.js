@@ -4,6 +4,7 @@ const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const { validateTableValues } = require("../tableSchemas.js");
+const logger = require("../logger.js");
 const { roleValue } = require("../validators.js");
 
 test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
@@ -28,12 +29,16 @@ test("Personen-IDs, E-Mails und Rollen werden strukturell validiert", () => {
 
 test("ungueltige Personenrollen warnen einmalig und fallen auf player zurueck", (t) => {
   const warnings = [];
-  t.mock.method(console, "warn", (...args) => warnings.push(args.join(" ")));
+  t.mock.method(logger, "log", (level, event, fields) => warnings.push({ level, event, fields }));
   const invalid = peopleFixture("Court Boss");
 
   assert.equal(validateTableValues("players", invalid), invalid);
   assert.equal(validateTableValues("players", invalid), invalid);
   assert.equal(roleValue(invalid[1][9]), "player");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /court boss.*player/);
+  assert.deepEqual(warnings[0], {
+    level: "warn",
+    event: "player_role_fallback_applied",
+    fields: { invalidRole: "court boss", fallbackRole: "player" },
+  });
 });

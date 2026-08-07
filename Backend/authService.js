@@ -16,6 +16,11 @@ const DUMMY_SALT = Buffer.alloc(16);
 const DUMMY_KEY = Buffer.alloc(SCRYPT_KEY_LENGTH);
 const DUMMY_STORED_HASH = `scrypt$v1$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${DUMMY_SALT.toString("base64url")}$${DUMMY_KEY.toString("base64url")}`;
 
+function withAudit(result, audit) {
+  Object.defineProperty(result, "_audit", { value: audit, enumerable: false });
+  return result;
+}
+
 class AuthService {
   constructor({ repository, sheetService }) {
     this.repository = repository;
@@ -358,7 +363,7 @@ class AuthService {
       if (!currentPerson) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
       const attempt = this.repository.beginPasswordResetProof(resetToken, payloadHash, candidateHash);
       if (!attempt) throw new AppError("RESET_PROOF_INVALID", "Reset-Nachweis ist ungueltig oder abgelaufen", 401);
-      if (attempt.completed) return { success: true, repeated: true };
+      if (attempt.completed) return withAudit({ success: true, repeated: true }, { personId: currentPerson.id });
       if (!attempt.acquired) throw new AppError("RESET_IN_PROGRESS", "Passwort-Reset wird bereits verarbeitet", 409, { retryAfterMs: 2000 });
       this.repository.revokeUserSessions(currentPerson.id);
       try {
@@ -369,7 +374,7 @@ class AuthService {
       }
       this.repository.revokeUserSessions(currentPerson.id);
       this.repository.completePasswordResetProof(resetToken, payloadHash);
-      return { success: true };
+      return withAudit({ success: true }, { personId: currentPerson.id });
     });
   }
 
@@ -400,7 +405,7 @@ class AuthService {
         throw error;
       }
       this.repository.revokeUserSessions(person.id);
-      return { success: true };
+      return withAudit({ success: true }, { personId: person.id });
     });
   }
 }

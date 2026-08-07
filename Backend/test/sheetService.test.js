@@ -649,7 +649,7 @@ test("Shutdown fuehrt bereits angenommene Queue-Eintraege noch aus", async () =>
   repository.close();
 });
 
-test("Ranglistenrueckzug verwendet das dreispaltige Legacy-Logging", async () => {
+test("Ranglistenrueckzug wird lokal dedupliziert und schreibt kein Logging-Sheet", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
@@ -663,34 +663,28 @@ test("Ranglistenrueckzug verwendet das dreispaltige Legacy-Logging", async () =>
     reason: "Test rueckzug",
   };
 
-  assert.deepEqual(await service.withdrawFromRanking(principal, params), { success: true });
-  const loggingCalls = fake.calls.append.filter((call) => call.range === "Logging");
-  assert.equal(loggingCalls.length, 1);
-  assert.equal(loggingCalls[0].valueInputOption, "USER_ENTERED");
-  assert.equal(loggingCalls[0].values[0].length, 3);
-  assert.match(loggingCalls[0].values[0][0], /^\d{6}-\d{4}-\d{2}$/);
-  assert.equal(loggingCalls[0].values[0][1], "withdrawFromRanking");
-  assert.match(loggingCalls[0].values[0][2], /Ada Admin.*Rang 2.*cup-1.*Test rueckzug/);
+  const first = await service.withdrawFromRanking(principal, params);
+  assert.deepEqual(first, { success: true });
+  assert.deepEqual(first._audit, {
+    before: { bewerbId: "cup-1", rank: 2, membership: true },
+    after: { withdrawalRequested: true, reason: "Test rueckzug" },
+  });
+  assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 0);
 
   const repeated = await service.withdrawFromRanking(principal, params);
   assert.equal(repeated.repeated, true);
-  assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 1);
+  assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 0);
 
   await service.stop();
   repository.close();
 });
 
-test("unklarer Legacy-Logging-Append wird nicht blind wiederholt", async () => {
+test("Ranglistenrueckzug ist unabhaengig vom entfernten Logging-Sheet", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
   seedStore(fake.tables);
-  const append = fake.client.spreadsheets.values.append;
-  fake.client.spreadsheets.values.append = async (params) => {
-    const response = await append(params);
-    if (params.range === "Logging") throw new Error("append response lost");
-    return response;
-  };
+  fake.client.spreadsheets.values.append = async () => { throw new Error("Kein Append erwartet"); };
   const service = new SheetService({ repository, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = {
@@ -700,9 +694,9 @@ test("unklarer Legacy-Logging-Append wird nicht blind wiederholt", async () => {
     reason: "Test rueckzug",
   };
 
-  await assert.rejects(service.withdrawFromRanking(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
-  await assert.rejects(service.withdrawFromRanking(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
-  assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 1);
+  assert.deepEqual(await service.withdrawFromRanking(principal, params), { success: true });
+  const repeated = await service.withdrawFromRanking(principal, params);
+  assert.equal(repeated.repeated, true);
 
   await service.stop();
   repository.close();

@@ -3,16 +3,21 @@ const http = require("http");
 const { version: APP_VERSION } = require("./package.json");
 const {
   ALLOWED_ORIGINS,
+  AUDIT_ACTIONS,
+  AUDITLOG_FILE,
+  AUDIT_LOG_JOURNAL,
   COOKIE_SECURE,
   HTTP_BODY_LIMIT_BYTES,
   HTTP_HEADERS_TIMEOUT_MS,
   HTTP_KEEP_ALIVE_TIMEOUT_MS,
   HTTP_REQUEST_TIMEOUT_MS,
+  INSTANCE_ID,
   LISTEN_HOST,
   MONITOR_COOKIE,
   PORT,
   SESSION_COOKIE,
   SESSION_TTL_MS,
+  SCORELOG_FILE,
   SHUTDOWN_GRACE_MS,
   STATE_FILE,
   validateRuntimeConfig,
@@ -36,6 +41,9 @@ const {
 } = require("./security.js");
 const { SheetService } = require("./sheetService.js");
 const { StateRepository } = require("./stateRepository.js");
+const { ScoreLogRepository } = require("./scoreLogRepository.js");
+const { AuditLogRepository } = require("./auditLogRepository.js");
+const logger = require("./logger.js");
 const { booleanValue, canonicalizeMonitorPath, idValue, passwordHashValue, stringValue } = require("./validators.js");
 
 function sendJson(response, status, body, headers = {}) {
@@ -57,7 +65,7 @@ function methodNotAllowed(response, allowed) {
   }, { Allow: allowed.join(", ") });
 }
 
-function readiness({ repository, sheetService = null, initialized, shuttingDown }) {
+function readiness({ repository, scoreLogRepository = null, auditLogRepository = null, sheetService = null, initialized, shuttingDown }) {
   const data = dataStore.getReadiness();
   data.ready = Object.entries(data.tables).every(([table, status]) => table === "matchtyp" || status.current);
   const poller = dataPoller.getStatus();
@@ -70,7 +78,10 @@ function readiness({ repository, sheetService = null, initialized, shuttingDown 
   const activeCourt = court.courtActive["1"] || court.courtActive["2"];
   const courtReady = !activeCourt || !courtSource.stale;
   const displayRulesReady = unresolvedActiveRules.length === 0;
-  const ready = initialized && !shuttingDown && repository.status().open && data.ready
+  const scoreLog = scoreLogRepository?.status?.() || null;
+  const auditLog = auditLogRepository?.status?.() || null;
+  const persistenceReady = (!scoreLog || (scoreLog.open && scoreLog.ready)) && (!auditLog || (auditLog.open && auditLog.ready));
+  const ready = initialized && !shuttingDown && repository.status().open && persistenceReady && data.ready
     && poller.running && courtReady && displayRulesReady;
   return {
     ready,
@@ -80,13 +91,23 @@ function readiness({ repository, sheetService = null, initialized, shuttingDown 
     poller: { running: poller.running, tickCount: poller.tickCount },
     court: { ...court, ready: courtReady, displayRulesReady, unresolvedActiveRules },
     sheets: sheetService?.status?.() || null,
+    scoreLog,
+    auditLog,
   };
 }
 
 function createApplication(overrides = {}) {
   const repository = overrides.repository || new StateRepository(STATE_FILE);
   repository.init();
+  const scoreLogRepository = overrides.scoreLogRepository || new ScoreLogRepository(SCORELOG_FILE, { instanceId: INSTANCE_ID });
+  const auditLogRepository = overrides.auditLogRepository || new AuditLogRepository(AUDITLOG_FILE, {
+    instanceId: INSTANCE_ID,
+    journal: AUDIT_LOG_JOURNAL,
+  });
+  scoreLogRepository.init?.();
+  auditLogRepository.init?.();
   stateStore.init(repository);
+  courtPoller.configure({ scoreLog: scoreLogRepository, courtContext: (court) => stateStore.getCourt(court) });
   const sheetService = overrides.sheetService || new SheetService({ repository });
   const authService = overrides.authService || new AuthService({ repository, sheetService });
   const monitorBroker = overrides.monitorBroker || new MonitorBroker({ repository, stateStore, dataStore });
@@ -108,6 +129,46 @@ function createApplication(overrides = {}) {
   async function handler(request, response) {
     activeRequests++;
     const supportId = crypto.randomUUID();
+    let httpAudit = null;
+    let httpActionCompleted = false;
+    const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null }) => {
+      if (!(AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action))) return;
+      httpAudit = {
+        eventId: supportId,
+        actorType: principal?.type || "anonymous",
+        actorId: principal?.id || "",
+        role: principal?.role || "anonymous",
+        action,
+        targetType,
+        targetId,
+        requestId: supportId,
+        result: "started",
+        before,
+      };
+      auditLogRepository.record(httpAudit);
+    };
+    const finishAudit = ({ principal = null, targetType, targetId, after = null, result = "success", errorCode = null } = {}) => {
+      if (!httpAudit) return;
+      if (result === "success") httpActionCompleted = true;
+      const completedAudit = {
+        ...httpAudit,
+        ...(principal ? { actorType: principal.type, actorId: principal.id, role: principal.role } : {}),
+        ...(targetType === undefined ? {} : { targetType }),
+        ...(targetId === undefined ? {} : { targetId }),
+        result,
+        after,
+        errorCode,
+        finished: true,
+      };
+      auditLogRepository.record(completedAudit);
+      httpAudit = completedAudit;
+    };
+    const publicResult = (result) => {
+      if (!result || typeof result !== "object") return result;
+      const value = { ...result };
+      delete value._audit;
+      return value;
+    };
     try {
       const url = new URL(request.url, "http://backend.invalid");
       const pathname = url.pathname;
@@ -143,7 +204,7 @@ function createApplication(overrides = {}) {
 
       if (pathname === "/ready" || pathname === "/health") {
         if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
-        const status = readiness({ repository, sheetService, initialized, shuttingDown });
+        const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
         return sendJson(response, status.ready ? 200 : 503, { status: status.ready ? "ready" : "not-ready", version: APP_VERSION });
       }
 
@@ -158,10 +219,12 @@ function createApplication(overrides = {}) {
         if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
         authService.requireRole(sessionToken, ["admin"]);
         return sendJson(response, 200, {
-          status: readiness({ repository, sheetService, initialized, shuttingDown }),
+          status: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }),
           provider: dataProvider.getStatus(),
           monitor: monitorBroker.status(),
           sheets: sheetService.status(),
+          scoreLog: scoreLogRepository.status(),
+          auditLog: auditLogRepository.status(),
           state: stateStore.getStatus(),
         });
       }
@@ -181,13 +244,18 @@ function createApplication(overrides = {}) {
           assertAllowedOrigin(request, ALLOWED_ORIGINS);
           if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
           const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+          beginAudit({ action: "login", targetType: "session" });
           const result = await authService.login({ email: body.email, passwordHash: body.passwordHash, ip: getRequestIp(request) });
+          finishAudit({ principal: { type: "user", id: result.user.id, role: result.user.role }, targetType: "user", targetId: result.user.id });
           const cookie = serializeCookie(SESSION_COOKIE, result.session.token, { maxAge: SESSION_TTL_MS / 1000, secure: COOKIE_SECURE });
           return sendJson(response, 200, { success: true, user: result.user, expiresAt: result.session.expiresAt, serverTime: Date.now() }, { "Set-Cookie": cookie });
         }
         if (request.method === "DELETE") {
           assertAllowedOrigin(request, ALLOWED_ORIGINS);
+          const auth = authService.getUserForToken(sessionToken);
+          beginAudit({ action: "logout", principal: auth?.principal, targetType: "session", targetId: auth?.principal.id || "" });
           authService.logout(sessionToken);
+          finishAudit();
           return sendJson(response, 200, { success: true }, { "Set-Cookie": clearCookie(SESSION_COOKIE, COOKIE_SECURE) });
         }
         return methodNotAllowed(response, ["GET", "POST", "DELETE"]);
@@ -197,6 +265,7 @@ function createApplication(overrides = {}) {
         if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const auth = authService.requireUser(sessionToken);
+        beginAudit({ action: "passwordChange", principal: auth.principal, targetType: "user", targetId: auth.principal.id });
         limitHttpWrite(request, auth.principal.id);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
         const result = await authService.changeOwnPassword(
@@ -204,6 +273,7 @@ function createApplication(overrides = {}) {
           passwordHashValue(body.currentPasswordHash, "currentPasswordHash"),
           passwordHashValue(body.newPasswordHash, "newPasswordHash"),
         );
+        finishAudit({ after: { credentialChanged: true, sessionsRevoked: true } });
         const cookie = serializeCookie(SESSION_COOKIE, result.session.token, { maxAge: SESSION_TTL_MS / 1000, secure: COOKIE_SECURE });
         return sendJson(response, 200, {
           success: true,
@@ -219,11 +289,13 @@ function createApplication(overrides = {}) {
         const ip = getRequestIp(request);
         if (!passwordResetLimiter.take(ip)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Reset-Versuche", 429);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        beginAudit({ action: "passwordReset", targetType: "user" });
         const result = await authService.resetPassword(
           stringValue(body.resetToken, "resetToken", { min: 32, max: 128, pattern: /^[A-Za-z0-9_-]+$/ }),
           passwordHashValue(body.newPasswordHash, "newPasswordHash"),
         );
-        return sendJson(response, 200, result);
+        finishAudit({ targetId: result._audit?.personId || "", after: { credentialChanged: true, sessionsRevoked: true } });
+        return sendJson(response, 200, publicResult(result));
       }
 
       if (pathname === "/api/password-setup") {
@@ -232,11 +304,13 @@ function createApplication(overrides = {}) {
         const ip = getRequestIp(request);
         if (!passwordResetLimiter.take(`setup:${ip}`)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Versuche", 429);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        beginAudit({ action: "passwordSetup", targetType: "user" });
         const result = await authService.setupPassword(
           body.email,
           passwordHashValue(body.newPasswordHash, "newPasswordHash"),
         );
-        return sendJson(response, 200, result);
+        finishAudit({ targetId: result._audit?.personId || "", after: { credentialChanged: true, sessionsRevoked: true } });
+        return sendJson(response, 200, publicResult(result));
       }
 
       if (pathname === "/api/admin/password-reset") {
@@ -245,10 +319,12 @@ function createApplication(overrides = {}) {
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        beginAudit({ action: "adminPasswordResetProof", principal: auth.principal, targetType: "user", targetId: String(body.personId || "") });
         const result = authService.createPasswordReset(
           sessionToken,
           idValue(body.personId, "personId"),
         );
+        finishAudit({ after: { resetProofCreated: true, expiresAt: result.expiresAt } });
         return sendJson(response, 200, result);
       }
 
@@ -258,11 +334,13 @@ function createApplication(overrides = {}) {
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        beginAudit({ action: "adminPasswordSetup", principal: auth.principal, targetType: "user", targetId: String(body.personId || "") });
         const result = await authService.setPasswordSetupAllowed(
           sessionToken,
           idValue(body.personId, "personId"),
           booleanValue(body.allowed, "allowed"),
         );
+        finishAudit({ after: { allowed: result.allowed } });
         return sendJson(response, 200, result);
       }
 
@@ -272,11 +350,13 @@ function createApplication(overrides = {}) {
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        beginAudit({ action: "adminPasswordSet", principal: auth.principal, targetType: "user", targetId: String(body.personId || "") });
         const result = await authService.setPasswordAsAdmin(
           sessionToken,
           idValue(body.personId, "personId"),
           passwordHashValue(body.newPasswordHash, "newPasswordHash"),
         );
+        finishAudit({ after: { credentialChanged: true, sessionsRevoked: true } });
         return sendJson(response, 200, result);
       }
 
@@ -291,14 +371,19 @@ function createApplication(overrides = {}) {
             throw new AppError("DEVICE_LOGIN_RATE_LIMIT", "Zu viele Geraete-Anmeldeversuche", 429);
           }
           const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+          beginAudit({ action: "monitorEnroll", targetType: "monitor" });
           const token = stringValue(body.token, "token", { min: 32, max: 128 });
           const device = repository.authenticateMonitor(token);
           if (!device) throw new AppError("DEVICE_LOGIN_FAILED", "Geraetetoken ist ungueltig", 401);
+          finishAudit({ principal: { type: "device", id: device.monitorId, role: "device" }, targetId: device.monitorId });
           const cookie = serializeCookie(MONITOR_COOKIE, token, { maxAge: 31536000, secure: COOKIE_SECURE });
           return sendJson(response, 200, { success: true, monitor: { id: device.monitorId, label: device.label } }, { "Set-Cookie": cookie });
         }
         if (request.method === "DELETE") {
           assertAllowedOrigin(request, ALLOWED_ORIGINS);
+          const device = repository.authenticateMonitor(cookies[MONITOR_COOKIE]);
+          beginAudit({ action: "monitorLogout", principal: device ? { type: "device", id: device.monitorId, role: "device" } : null, targetType: "monitor", targetId: device?.monitorId || "" });
+          finishAudit();
           return sendJson(response, 200, { success: true }, { "Set-Cookie": clearCookie(MONITOR_COOKIE, COOKIE_SECURE) });
         }
         return methodNotAllowed(response, ["GET", "POST", "DELETE"]);
@@ -306,14 +391,34 @@ function createApplication(overrides = {}) {
 
       sendJson(response, 404, { ...errorData(new AppError("NOT_FOUND", "Route wurde nicht gefunden", 404)), supportId });
     } catch (error) {
-      if (!(error instanceof AppError)) console.error(`server: HTTP-Fehler ${supportId}:`, error);
-      else if ((error.status || 500) >= 500) console.warn(`server: HTTP-Fehler ${supportId}: ${error.code}`);
+      let responseError = error;
+      if (httpAudit && !httpAudit.finished) {
+        try {
+          finishAudit({ result: httpActionCompleted || error.code === "WRITE_OUTCOME_UNKNOWN" ? "unknown" : "failed", errorCode: error.code || "INTERNAL_ERROR" });
+        } catch (auditError) {
+          logger.log("error", "audit_record_failed", { supportId, action: httpAudit.action, error: auditError });
+        }
+      }
+      if (httpActionCompleted && error.code !== "WRITE_OUTCOME_UNKNOWN") {
+        responseError = new AppError("WRITE_OUTCOME_UNKNOWN", "Aenderung ausgefuehrt, Auditabschluss ist unklar", 503);
+      }
+      if (!(error instanceof AppError) || (error.status || 500) >= 500) {
+        let route = "invalid";
+        try { route = new URL(request.url, "http://backend.invalid").pathname; } catch {}
+        logger.log(error instanceof AppError ? "warn" : "error", "http_request_failed", {
+          supportId,
+          method: request.method,
+          route,
+          status: error.status || 500,
+          error,
+        });
+      }
       if (!response.headersSent) {
         const headers = {
-          ...(error.details?.retryAfterMs ? { "Retry-After": String(Math.ceil(error.details.retryAfterMs / 1000)) } : {}),
-          ...(error.details?.sessionInvalidated ? { "Set-Cookie": clearCookie(SESSION_COOKIE, COOKIE_SECURE) } : {}),
+          ...(responseError.details?.retryAfterMs ? { "Retry-After": String(Math.ceil(responseError.details.retryAfterMs / 1000)) } : {}),
+          ...(responseError.details?.sessionInvalidated ? { "Set-Cookie": clearCookie(SESSION_COOKIE, COOKIE_SECURE) } : {}),
         };
-        sendJson(response, error.status || 500, { ...errorData(error), supportId }, headers);
+        sendJson(response, responseError.status || 500, { ...errorData(responseError), supportId }, headers);
       } else {
         response.destroy();
       }
@@ -329,6 +434,7 @@ function createApplication(overrides = {}) {
   server.maxHeadersCount = 100;
   dataProvider.init(server, {
     appVersion: APP_VERSION,
+    auditLogRepository,
     authService,
     canonicalizeMonitorPath,
     monitorBroker,
@@ -338,6 +444,7 @@ function createApplication(overrides = {}) {
 
   function initialize() {
     if (initializePromise) return initializePromise;
+    const startedAt = Date.now();
     initializePromise = (async () => {
       const result = await dataPoller.initialLoad();
       if (shuttingDown) return { ...result, aborted: true };
@@ -349,6 +456,7 @@ function createApplication(overrides = {}) {
         { initial: true },
       );
       initialized = true;
+      logger.log("info", "server_initialization_completed", { initialLoadSuccess: result.success, ready: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }).ready, durationMs: Date.now() - startedAt });
       cleanupTimer = setInterval(() => repository.cleanup(), 300000);
       cleanupTimer.unref?.();
       return result;
@@ -359,7 +467,8 @@ function createApplication(overrides = {}) {
   async function shutdown(signal = "SIGTERM") {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`server: ${signal}, kontrollierter Shutdown startet`);
+    const startedAt = Date.now();
+    logger.log("info", "server_shutdown_started", { signal, graceMs: SHUTDOWN_GRACE_MS, activeRequests, activeWrites: sheetService.status()?.activeWrites || 0 });
     if (cleanupTimer) clearInterval(cleanupTimer);
     cleanupTimer = null;
     const deadline = Date.now() + SHUTDOWN_GRACE_MS;
@@ -367,12 +476,14 @@ function createApplication(overrides = {}) {
       ? new Promise((resolve) => server.close(resolve))
       : Promise.resolve();
     const drains = (async () => {
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         dataPoller.stop(),
         courtPoller.stop(),
         dataProvider.shutdown(server),
         initializePromise || Promise.resolve(),
       ]);
+      const rejected = results.find((result) => result.status === "rejected");
+      if (rejected) throw rejected.reason;
       while (activeRequests > 0) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
@@ -392,10 +503,17 @@ function createApplication(overrides = {}) {
           );
         }),
       ]);
+      auditLogRepository.close?.();
+      scoreLogRepository.close?.();
       repository.close();
+      logger.log("info", "server_shutdown_completed", { signal, durationMs: Date.now() - startedAt });
     } catch (error) {
       server.closeAllConnections();
-      drains.finally(() => repository.close());
+      drains.finally(() => {
+        auditLogRepository.close?.();
+        scoreLogRepository.close?.();
+        repository.close();
+      });
       throw error;
     } finally {
       if (deadlineTimer) clearTimeout(deadlineTimer);
@@ -404,14 +522,16 @@ function createApplication(overrides = {}) {
 
   return {
     authService,
+    auditLogRepository,
     handler,
     initialize,
     monitorBroker,
     repository,
+    scoreLogRepository,
     server,
     sheetService,
     shutdown,
-    status: () => readiness({ repository, sheetService, initialized, shuttingDown }),
+    status: () => readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }),
   };
 }
 
@@ -422,36 +542,46 @@ async function start() {
     app.server.once("error", reject);
     app.server.listen(PORT, LISTEN_HOST, resolve);
   });
-  console.log(`ePiber-Backend v${APP_VERSION} auf http://${LISTEN_HOST}:${PORT}`);
-  app.initialize().catch((error) => console.error("server: Initialisierung fehlgeschlagen:", error));
+  logger.log("info", "server_listening", { host: LISTEN_HOST, port: PORT });
+  app.initialize().catch((error) => logger.log("error", "server_initialization_failed", { error }));
 
   let stopping = false;
   const stop = async (signal) => {
     if (stopping) return;
     stopping = true;
     const forceTimer = setTimeout(() => {
-      console.error("server: Shutdown-Timeout ueberschritten");
+      logger.log("error", "server_shutdown_timeout", { graceMs: SHUTDOWN_GRACE_MS });
       process.exit(1);
     }, SHUTDOWN_GRACE_MS + 2000);
     forceTimer.unref?.();
     try {
       await app.shutdown(signal);
       clearTimeout(forceTimer);
+      await logger.flush();
       process.exit(0);
     } catch (error) {
-      console.error("server: Shutdown fehlgeschlagen:", error);
+      logger.log("error", "server_shutdown_failed", { signal, error });
+      await logger.flush();
       process.exit(1);
     }
   };
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
+  process.on("unhandledRejection", (error) => {
+    logger.log("error", "server_unhandled_rejection", { error });
+    stop("unhandledRejection");
+  });
+  process.on("uncaughtException", (error) => {
+    logger.log("error", "server_uncaught_exception", { error });
+    stop("uncaughtException");
+  });
   return app;
 }
 
 if (require.main === module) {
   start().catch((error) => {
-    console.error("server: Start fehlgeschlagen:", error);
-    process.exit(1);
+    logger.log("error", "server_start_failed", { error });
+    logger.flush().finally(() => process.exit(1));
   });
 }
 

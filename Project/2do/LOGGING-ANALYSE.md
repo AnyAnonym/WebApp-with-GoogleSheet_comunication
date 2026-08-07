@@ -6,7 +6,7 @@ Gegenstand: Frontend, Backend, WebSocket, Google Sheets, systemd/journald und Ca
 
 Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die
 Verbesserungsvorschlaege waren damals nicht umgesetzt; der aktuelle Stand steht
-im Schlussabschnitt "Implementierungsstatus 2026-07-29/30".
+in den Implementierungsstatus-Abschnitten am Dateiende, zuletzt 2026-08-06.
 
 ## 1. Gesamtbild
 
@@ -1220,3 +1220,20 @@ Rollbackpruefungen sind noch nicht abgeschlossen; sie werden in der
 [Rollout-Checkliste](../server-configs/ROLLOUT-CHECKLIST.md) gefuehrt. Die
 dokumentierten Branch-Pruefungen sind keine Behauptung abschliessender Checks des
 offenen Main-Merges.
+
+## 25. Implementierungsstatus 2026-08-06
+
+Der Branch-Commit `4.3.0-paj-1-4` setzt die Etappen A bis D des separaten
+`LOGGING-UMSETZUNGSPLAN.md` um. Backend-Runtimelogs sind strukturierte,
+redigierte JSON-Ereignisse fuer stdout/stderr und journald. Die Google-Sheets-
+Writer fuer `ScoreLog` und `Logging` sind entfernt; Score- und Audit-Historie
+liegen unbegrenzt in getrennten SQLite-Dateien mit WAL, `synchronous=FULL`,
+Event-/Request-IDs und restriktiven Dateirechten.
+
+Scoreereignisse werden vor Anzeige und Push persistiert und bei lokalem
+Insertfehler erneut versucht. Audit umfasst die festgelegten Fach-, Court-,
+Monitor- und Auth-/Security-Mutationen. systemd-/journald-Vorlagen, Readiness,
+Adminstatus, Shutdown und kanonische Dokumentation wurden angepasst.
+
+Weiter offen bleiben Prometheus/Grafana/Loki/Alloy, Caddy-Access-Logging,
+Frontend-Fehlererfassung sowie die praktische PAJ-/PK-/Live-Rolloutabnahme.

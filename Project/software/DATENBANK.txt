@@ -251,49 +251,78 @@ Anforderungen:
   - Eigene Append-IDs erlauben Bestaetigungsreads. Unklarer Ausgang wird als
     `unknown` gespeichert; Wiederholung fuehrt nur Recovery/Bestaetigung aus.
 
-Diese Semantik gilt nicht fuer das unten beschriebene Legacy-ScoreLog.
+Diese Semantik betrifft die weiterhin in Google Sheets ausgefuehrten Fachwrites.
 
 
 ================================================================================
-  7. LEGACY-TABELLEN LOGGING UND SCORELOG
+  7. SQLITE-FACHHISTORIEN SCORELOG UND AUDITLOG
 ================================================================================
 
-Beide Tabs sind dreispaltige Append-Ziele ohne EventID-Spalte. Writes verwenden
-`USER_ENTERED`. Keine EventID-, Readback-, Retry-, SQLite-Pending- oder
-Write-ahead-Queue-Migration durchfuehren. Das Backend liest keine Kopfzeile und
-schreibt die Werte ausschliesslich anhand ihrer Position.
+Die Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend weder gelesen
+noch beschrieben. Es gibt keinen automatischen Import ihrer historischen Zeilen;
+vor einer Entfernung muessen die bisherigen Inhalte gesichert archiviert und die
+neuen SQLite-Systeme erfolgreich in Betrieb genommen sein.
+Fachhistorien liegen getrennt vom Anwendungsstate in zwei systemspezifischen
+SQLite-Dateien. Beide verwenden Modus 0600, WAL und `synchronous=FULL`; es gibt
+keine automatische fachliche Bereinigung.
 
-Logging:
-  Spalte 1 Timestamp | Spalte 2 Type | Spalte 3 Message
+`SCORELOG_FILE`, standardmaessig
+`Backend/.state/<INSTANCE_ID>-scorelog.sqlite`, produktiv
+`/var/lib/epiber-<system>/scorelog.sqlite`:
 
-Der derzeitige Ranglistenrueckzug schreibt Type `withdrawFromRanking`. Ein
-erfolgreicher Vorgang wird ueber seine operationId in SQLite dedupliziert. Ist
-der Legacy-Append mehrdeutig, gibt es mangels EventID und Tabellen-Readback
-keinen belastbaren Nachweis und keine sichere blinde Wiederholung.
+Tabelle `score_log_sequence`:
+  instance + court PRIMARY KEY, last_sequence. Folgenummern werden gemeinsam mit
+  dem Ereignis in einer `BEGIN IMMEDIATE`-Transaktion vergeben.
 
-ScoreLog:
-  Spalte 1 Timestamp | Spalte 2 PlatzNr | Spalte 3 Score
+Tabelle `score_log`:
+  event_id PRIMARY KEY, instance, court, sequence, occurred_at, score, match_id,
+  court_active, court_revision, created_at. Zusaetzlich ist
+  `(instance, court, sequence)` eindeutig. Eine wiederholte Event-ID ist nur mit
+  identischem Inhalt idempotent; anderer Inhalt ergibt
+  `SCORE_LOG_EVENT_CONFLICT`.
 
-Timestamp hat das Wiener Format `YYMMDD-HHMM-SS`. Score hat das Format
+Score hat das Format
 `S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`. Inaktive
 Courts frieren ihren letzten sichtbaren Stand ein; sind beide Courts inaktiv,
 laeuft kein externes Polling. Nach Aktivierung oder Reset ist die erste zulaessige
 externe Antwort dieses Courts nur die Baseline und veraendert weder Anzeige noch
 ScoreLog. Erst eine folgende Abweichung von dieser Baseline aktualisiert Anzeige
-und ScoreLog. Beim Prozessstart wird der erste externe Stand eines in SQLite
+und ScoreLog. Der SQLite-Insert erfolgt vor Anzeige und Push. Bei einem
+Insertfehler bleibt der sichtbare Stand unveraendert und derselbe Quellstand wird
+bei einem Folgepoll erneut versucht. Beim Prozessstart wird der erste externe Stand eines in SQLite
 bereits aktiven Courts dagegen sofort angezeigt, aber nicht ins ScoreLog
 geschrieben. Ein Reset setzt alle acht Scorewerte auf `"0"`, publiziert diesen
 Stand, erzeugt aber selbst keinen ScoreLog-Eintrag. Pro-Court-Epochen verwerfen
 Antworten eines vor Aktivitaetswechsel oder Reset begonnenen Fetches. Der Write
-ist bewusst Fire-and-forget: Fehler werden nur geloggt, nicht erneut versucht
-oder beim Shutdown drainiert. Es existieren insbesondere kein EventID, kein
-Readback, kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer
-ScoreLog.
+ist synchron, geordnet und vor Prozessende abgeschlossen. Der Adminstatus zeigt
+Oeffnungs-/Fehlerstatus, Schreibzaehler und letzte Folgenummer je Court.
 
 Die acht aktuellen Scorewerte sind volatil und liegen nur im Prozessspeicher.
 Nach einem Backendneustart wird ein in SQLite aktiver Court aus der externen
 Quelle neu aufgebaut. ScoreLog wird nicht gelesen und dient nicht zur
 Rekonstruktion eines Live-Stands.
+
+`AUDITLOG_FILE`, standardmaessig
+`Backend/.state/<INSTANCE_ID>-audit.sqlite`, produktiv
+`/var/lib/epiber-<system>/audit.sqlite`:
+
+Tabelle `audit_log`:
+  event_id PRIMARY KEY, occurred_at, actor_type, actor_id, role, action,
+  target_type, target_id, request_id, operation_id, result, before_json,
+  after_json, error_code, instance, created_at, updated_at. `result` ist
+  `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
+  derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
+  Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
+  Loeschpfad verfuegbarer Tombstone darf einen noch leeren Vorher-Zustand
+  ergaenzen. Schlaegt der Auditabschluss nach ausgefuehrter Mutation fehl, wird
+  der Clientausgang als `WRITE_OUTCOME_UNKNOWN` behandelt.
+
+Auditpflichtig sind Fachwrites, Courtsteuerung, Monitor-Navigation/-Scroll und
+Monitorverwaltung sowie Login/Logout, Passwortaenderungen/-freigaben/-reset und
+Monitor-Enrollment. Akteur und Rolle stammen serverseitig aus Session oder
+Geraetekontext. Passwortwerte, Hashes, Tokens, Cookies und E-Mail-Adressen werden
+nicht gespeichert. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard
+`*` aktiviert alle implementierten Aktionen.
 
 
 ================================================================================
@@ -373,9 +402,9 @@ Tabelle `login_failures`:
   E-Mail beziehungsweise IP werden nur gehasht gespeichert. Alte Eintraege
   werden bereinigt und die Tabelle ist gegen unbeschraenktes Wachstum begrenzt.
 
-SQLite enthaelt keine Logging- oder ScoreLog-Queue und keinen ScoreLog-Pending-
-Zaehler. Der Adminstatus darf Tabellenalter und `pendingMetadataIntents`, aber
-keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
+Der Adminstatus zeigt neben Tabellenalter und `pendingMetadataIntents` nur
+aggregierte ScoreLog-/Auditlog-Zustaende, aber keine Ereigniszeilen, Cookies,
+Tokens, Passwortwerte oder privaten Schluessel.
 
 
 ================================================================================
@@ -384,8 +413,9 @@ keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
 
 Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
 Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
-fuer Personen, Matches1, EntryList, Logging und ScoreLog sowie eindeutige
-IDs/Metadaten zu pruefen. Keine EventID-Spalten fuer Logging/ScoreLog anlegen.
+fuer Personen, Matches1 und EntryList sowie eindeutige IDs/Metadaten zu pruefen.
+ScoreLog- und Auditlog-Dateien muessen getrennt vom State angelegt, gesichert und
+mit ihren WAL-/SHM-Dateien konsistent behandelt werden.
 Die vollstaendige verbindliche Liste steht in
 `Project/server-configs/ROLLOUT-CHECKLIST.md`.
 

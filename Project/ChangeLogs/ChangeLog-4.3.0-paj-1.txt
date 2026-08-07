@@ -1,3 +1,90 @@
+[4.3.0-paj-1-4] - 2026-08-07
+Commit: 4.3.0-paj-1-4 | Logging und Fachhistorien auf SQLite umgestellt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-4` gesetzt.
+  - [Software] Backend-Runtimemeldungen auf einen zentralen einzeiligen JSON-Logger mit UTC-Zeit, Level, Service, Instanz, Paketversion, Eventnamen, rekursiver Geheimnis-Redaction, begrenzter Fehlerprojektion und `LOG_LEVEL` umgestellt; `console.*` verbleibt nur im Build-Checker.
+  - [Software] Court-Scoreaenderungen werden synchron und mit transaktionaler Court-Folgenummer in einer getrennten SQLite-Datei persistiert, bevor Anzeige und WebSocket-Push aktualisiert werden. Freeze, Reset, Aktivierungsbaseline und erster Wiederanlaufstand erzeugen keinen Eintrag; ein Insertfehler behaelt den sichtbaren Stand und wird beim Folgepoll erneut versucht.
+  - [Software] HTTP- und WebSocket-Mutationen schreiben einen serverseitig attribuierten Auditversuch und aktualisieren ihn auf `success`, `failed` oder `unknown`. Erfasst sind Fachwrites, Courtsteuerung, Monitor-Navigation/-Scroll/-Verwaltung sowie Login, Logout, Passwortaktionen und Monitor-Enrollment; Diffs sind auf erlaubte Felder begrenzt.
+  - [Software] Ein nach bereits ausgefuehrter Mutation fehlgeschlagener Auditabschluss liefert konservativ `WRITE_OUTCOME_UNKNOWN`. Der urspruengliche Vorher-Zustand bleibt erhalten, waehrend ein erst im unklaren Loeschpfad bekannter Tombstone einen leeren Vorher-Zustand ergaenzen kann.
+  - [Software] Readiness, Admin-`/status` und kontrollierter Shutdown beruecksichtigen die getrennten ScoreLog- und Auditlog-Repositories, ihre Fehlerzustaende, Zaehler und geordnete Schliessung.
+  - [Infrastruktur] Drei systemd-Vorlagen setzen getrennte State-, ScoreLog- und Auditlog-Pfade, explizite Journal-Ausgabe, eindeutige `SyslogIdentifier` sowie Rate-Limits von 1000 Ereignissen je 30 Sekunden.
+  - [Dokumentation] Software-, Scoreboard-, Server-, Rollout- und Logging-Dokumentation auf strukturierte Betriebslogs, SQLite-Fachhistorien und den Wegfall der beiden Sheet-Writer angeglichen.
+
+  Added
+  - [Software] `Backend/logger.js` als zentraler strukturierter und redigierender Backend-Logger angelegt.
+  - [Datenbank] `Backend/scoreLogRepository.js` und `Backend/auditLogRepository.js` mit getrennten SQLite-Dateien, WAL, `synchronous=FULL`, Modus 0600 und unbegrenzter Fachhistorie angelegt.
+  - [Software] Repository-, Logger-, Poller- und Integrationspruefungen fuer Reihenfolge, Deduplizierung, Fehlerwiederholung, Audit-Lifecycle, Akteurquelle und Geheimnisfreiheit ergaenzt.
+  - [Infrastruktur] journald-Drop-in `Project/server-configs/journald/epiber.conf` fuer persistente, auf 1 GiB und 14 Tage begrenzte lokale Diagnosehaltung angelegt.
+
+  Fixed
+  - [Software] ScoreLog-Verluste und Reihenfolgefehler des frueheren asynchronen Sheet-Appends beseitigt; lokal nicht persistierbare Quellstaende werden nicht mehr als erfolgreich sichtbar gemacht.
+  - [Software] Ranglistenrueckzug, EntryList-Loeschung und weitere Mutationen besitzen nun einen korrelierten, persistenten Auditnachweis ohne frei formulierte Sheet-Logzeilen oder Geheimnisse.
+
+  Removed
+  - [Software] Google-Sheets-Writer und Schemaanforderungen fuer die Tabs `ScoreLog` und `Logging` entfernt; produktive Sheet-Schreibrechte werden dafuer nicht mehr benoetigt.
+
+  Sicherheit und Betrieb
+  - Score- und Auditereignisse sind Fachhistorie in SQLite; journald-Spiegel und `/status` ersetzen weder Aufbewahrung noch Backup. Freier Speicher und konsistente Sicherungen aller drei SQLite-Dateien einschliesslich WAL/SHM sind im Rollout zu pruefen.
+  - Historische Zeilen der bisherigen Sheet-Tabs werden nicht automatisch importiert. Vor einer optionalen Entfernung der Tabs muessen ihre Inhalte separat gesichert archiviert sein.
+  - Auditakteure stammen ausschliesslich aus Session oder Geraeteprincipal. Passwortwerte, Hashes, Tokens, Cookies und E-Mail-Adressen werden weder in Auditdiffs noch in strukturierte Logs uebernommen.
+
+  Bekannte Einschraenkungen
+  - Prometheus, Grafana, Loki/Alloy, Caddy-Access-Logs und zentrale Frontend-Fehlererfassung bleiben ausserhalb dieses Branches.
+  - Installation des journald-Drop-ins, Neustart von journald, SQLite-Backups sowie die praktische PAJ-/PK-/Live-Abnahme bleiben manuelle Rolloutschritte.
+
+  Tests
+  - `node --test test/auditLogRepository.test.js test/logger.test.js test/scoreLogRepository.test.js test/courtPoller.test.js test/server.integration.test.js test/shutdown.test.js`: 13 Tests erfolgreich.
+  - `npm run build`: statische Pruefung und alle 103 Tests erfolgreich.
+  - `git diff --check`: erfolgreich.
+  - `systemd-analyze verify Project/server-configs/systemd/epiber-piber.service Project/server-configs/systemd/epiber-paj.service Project/server-configs/systemd/epiber-pk.service`: erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/2do/LOGGING-ANALYSE.md
+  - Implementierungsstatus 2026-08-06 fuer JSON-Betriebslogs, getrennte SQLite-Fachhistorien und verbleibende Observability-Arbeit uebernehmen.
+
+  Project/2do/LOGGING-ANALYSE-AKTUALISIERT.md
+  - Kurzuebersicht und Implementierungsstatus auf journald, `scorelog.sqlite`, `audit.sqlite` und die noch offenen Prometheus-/Grafana-/Loki-/Frontend-Themen aktualisieren.
+
+  Project/2do/LOGGING-UMSETZUNGSPLAN.md
+  - Entscheidungen und Umsetzungsstatus der Etappen A bis D sowie die bewusst ausgeschlossenen Folgethemen uebernehmen.
+
+  Project/Scoreboard-Funktion.md
+  - Persist-before-publish, Baseline-/Reset-/Freeze-Ausnahmen, Rohscore-Persistenz und getrennte SQLite-Scorehistorie dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Getrennte SQLite-Pfade, Rechte, Sicherung, Fachhistorienpruefungen, journald-Drop-in, Auditabnahme und Archivierung alter Sheet-Historien als Rollout-Gates uebernehmen.
+
+  Project/server-configs/SERVER-DOKU.txt
+  - `scorelog.sqlite`, `audit.sqlite` und `journald/epiber.conf` in Infrastrukturindex und Betriebsdaten aufnehmen.
+
+  Project/server-configs/SERVER-SETUP.txt
+  - Dateirechte, drei SQLite-Systeme, Backupverfahren, fehlenden automatischen Sheet-Historienimport, neue Umgebungswerte sowie journald-Installation und Diagnose dokumentieren.
+
+  Project/server-configs/systemd/epiber-piber.service
+  Project/server-configs/systemd/epiber-paj.service
+  Project/server-configs/systemd/epiber-pk.service
+  - Je System ScoreLog-/Auditlog-Pfade, `SyslogIdentifier`, Journal-Ausgabe und Journal-Rate-Limit uebernehmen.
+
+  Project/server-configs/journald/epiber.conf
+  - Neue Vorlage fuer persistente Journale mit 1-GiB-Grenze und 14 Tagen Maximalaufbewahrung aufnehmen.
+
+  Project/software/ARCHITEKTUR.txt
+  - Drei Logkanaele, Persist-before-publish, Audit-Lifecycle einschliesslich `WRITE_OUTCOME_UNKNOWN`, Readiness, Status und Shutdown der Fachhistorien dokumentieren.
+
+  Project/software/DATENBANK.txt
+  - Tabellen und Semantik von `scorelog.sqlite` und `audit.sqlite`, unbegrenzte Aufbewahrung, Tombstones, Dateirechte, Backups und fehlenden automatischen Import alter Sheet-Zeilen aufnehmen.
+
+  Project/software/ENDPOINTS.txt
+  - Auditpflichtige HTTP-/WS-Mutationen, Actorquelle, Unknown-Semantik und Wegfall der `Logging`-/`ScoreLog`-Sheetwrites dokumentieren.
+
+  Project/software/SOFTWARE-DOKU.txt
+  - Softwareindex um die getrennten ScoreLog-/Auditlog-Fachhistorien und den umgesetzten Loggingplan aktualisieren.
+
+  Project/software/seiten/scoreboard.txt
+  - Live-Score-Aufbau, Baseline-/Reset-Verhalten, SQLite-ScoreLog und unveraenderte Rohscore-Persistenz dokumentieren.
+
 [4.3.0-paj-1-3] - 2026-08-03
 Commit: 4.3.0-paj-1-3 | Commitregeln fuer Loeschungen verschaerft
 

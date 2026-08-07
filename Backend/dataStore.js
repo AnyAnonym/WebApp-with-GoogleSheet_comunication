@@ -1,5 +1,6 @@
 const { TABLE_CONFIG, READINESS_FAST_MAX_AGE_MS, READINESS_SLOW_MAX_AGE_MS } = require("./config.js");
 const { hashPayload } = require("./security.js");
+const logger = require("./logger.js");
 
 const store = {};
 const listeners = new Set();
@@ -49,7 +50,7 @@ function set(tableName, values, { source = "poll", readToken = null } = {}) {
       try {
         listener({ table: tableName, source, changed, recovered, current: true, ...snapshot });
       } catch (error) {
-        console.error("dataStore: Change-Listener fehlgeschlagen:", error.message);
+        logger.log("error", "data_change_listener_failed", { table: tableName, source, error });
       }
     }
   }
@@ -85,7 +86,7 @@ function markError(tableName, error, readToken = null) {
     try {
       listener({ table: tableName, source: "poll-error", changed: false, recovered: false, current: isTableCurrent(tableName), ...snapshot });
     } catch (listenerError) {
-      console.error("dataStore: Error-Listener fehlgeschlagen:", listenerError.message);
+      logger.log("error", "data_error_listener_failed", { table: tableName, error: listenerError });
     }
   }
   return snapshot;

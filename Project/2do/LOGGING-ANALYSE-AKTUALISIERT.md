@@ -1,17 +1,18 @@
 # Aktualisierte Analyse von Logging und Observability
 
-Stand: 03.08.2026
-Verglichener Stand: Implementierungsstatus v4.1.0 bis Main v4.3.0
+Stand: 06.08.2026
+Verglichener Stand: Implementierungsstatus v4.1.0 bis Branch-Commit 4.3.0-paj-1-4
 
 ## Kurzuebersicht: Wo Logs und Diagnosen zu finden sind
 
 ### Aktuell
 
-- Backend-Logs: `journalctl -u epiber-{paj|pk|piber}`
+- Strukturierte Backend-JSON-Logs: `journalctl -u epiber-{paj|pk|piber}`
 - Caddy-Meldungen: `journalctl -u caddy`
 - Frontend-Fehler: Browser-DevTools
 - Live-Diagnose: admin-geschuetztes `/status`
-- Fachlogs: Google Sheets `ScoreLog` und `Logging`
+- Scorehistorie: separate `scorelog.sqlite` je System
+- Fach-/Security-Audit: separate `audit.sqlite` je System
 - Kein Caddy-Access-Log, zentrales Dashboard oder Metriksystem vorhanden
 
 ### Empfohlenes Zielsetup
@@ -47,7 +48,7 @@ Damit waere Grafana die zentrale Ueberwachungsoberflaeche, Loki die Logsuche und
    koennen.
 6. Alarmierung ueber Grafana Alerting oder Alertmanager einrichten. Wesentliche
    Alarme sind fehlende Readiness, veraltete Sheet- oder Courtdaten, wiederholte
-   Pollerfehler, wachsende Score-/Auditqueues, Backend-Neustartschleifen und
+   Poller- oder Score-/Audit-Persistenzfehler, Backend-Neustartschleifen und
    knapper Speicherplatz.
 7. Score- und Auditereignisse nicht nur als Betriebslogs behandeln. Sie werden
    mit Event-ID und Correlation-ID dauerhaft und gesichert gespeichert,
@@ -56,7 +57,29 @@ Damit waere Grafana die zentrale Ueberwachungsoberflaeche, Loki die Logsuche und
    Instanz. Es ersetzt weder Loki noch Prometheus und sollte nicht automatisiert
    als dauerhaftes Logarchiv gespeichert werden.
 
-## Ausfuehrliche aktualisierte Analyse (unveraenderter Wortlaut)
+## Implementierungsstatus 06.08.2026
+
+Der Umsetzungsplan A bis D ist im Arbeitsstand umgesetzt:
+
+- Zentraler redigierender JSON-Logger mit `LOG_LEVEL`, Pflichtfeldern,
+  Fehlerprojektion und Tests; Runtime-`console.*` verbleibt nur im Build-Checker.
+- systemd-Units mit eindeutigen Journal-IDs und Rate-Limits sowie versionierte
+  journald-Vorlage fuer persistente, auf 1 GiB und 14 Tage begrenzte Speicherung.
+- Google-Sheets-Writer fuer `ScoreLog` und `Logging` entfernt.
+- Separate SQLite-Systeme-of-Record fuer Score- und Audit-Historie mit WAL,
+  `synchronous=FULL`, Modus 0600 und ohne automatische fachliche Bereinigung.
+- Scoreereignisse werden vor Anzeige/Push persistiert, pro Court nummeriert und
+  bei Insertfehler mit unveraendertem sichtbarem Stand erneut versucht.
+- Audit erfasst die festgelegten WS-/HTTP-Mutationen einschliesslich
+  Monitor-Navigation/-Scroll sowie Auth-/Security-Aktionen mit serverseitigem
+  Akteur und ohne Geheimnisse.
+- Admin-`/status`, Readiness, Shutdown, Systemvorlagen, Datenbank-, Architektur-,
+  Endpoint-, Scoreboard- und Rolloutdokumentation sind angeglichen.
+
+Prometheus/Grafana/Loki/Alloy, Caddy-Access-Logs und zentrale
+Frontend-Fehlererfassung bleiben bewusst ausserhalb dieses Arbeitsstands.
+
+## Ausfuehrliche aktualisierte Analyse (historischer Wortlaut vor Umsetzung)
 
 **Aktualisierter Befund**
 Die ursprüngliche Analyse betrachtet v3.0.2 und enthält einen Nachtrag bis v4.1.0. Seitdem wurden bis Main v4.3.0 folgende relevante Verbesserungen umgesetzt:

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { WebSocket, WebSocketServer } = require("ws");
 const {
   ALLOWED_ORIGINS,
+  AUDIT_ACTIONS,
   MONITOR_COOKIE,
   PROTOCOL_VERSION,
   SESSION_COOKIE,
@@ -26,6 +27,7 @@ const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = 
 const { analyzeMatchRules } = require("./matchRules.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
+const logger = require("./logger.js");
 const {
   booleanValue,
   idValue,
@@ -54,6 +56,62 @@ const PUBLIC_COLUMNS = {
   rlPlatzierung: ["id", "bewerbid", "personid", "rang"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
+
+function shouldAudit(action) {
+  return AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action);
+}
+
+function auditProjection(endpoint, params, result = {}, internal = null) {
+  switch (endpoint) {
+    case "addMatch":
+      return { targetType: "match", targetId: result.newMatchId || "", after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId } };
+    case "addEntryList":
+      return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
+    case "removeEntryList":
+      return { targetType: "entry", targetId: internal?.before?.recordId || "", before: internal?.before || null, after: internal?.after || null };
+    case "withdrawFromRanking":
+      return { targetType: "ranking", targetId: params.bewerbId, before: internal?.before || { bewerbId: params.bewerbId, rank: params.rank }, after: internal?.after || null };
+    case "courtAssign":
+    case "courtSetActive":
+      return {
+        targetType: "court",
+        targetId: params.court,
+        before: { expectedRevision: params.expectedRevision },
+        after: result.court ? { matchId: result.court.matchId || "", aktiv: result.court.aktiv, revision: result.court.revision } : null,
+      };
+    case "monitorNavigate":
+      return { targetType: "monitor", targetId: params.monitorId, after: { commandId: result.commandId || "", path: params.path, delivery: result.delivery || "" } };
+    case "monitorScroll":
+      return { targetType: "monitor", targetId: params.monitorId, after: { commandId: result.commandId || "", direction: params.direction, sequence: result.seq || 0 } };
+    case "monitorProvision":
+      return { targetType: "monitor", targetId: result.monitor?.monitorId || "", after: { monitorId: result.monitor?.monitorId || "", label: result.monitor?.label || params.label } };
+    case "monitorRotate":
+    case "monitorRevoke":
+      return { targetType: "monitor", targetId: params.monitorId, after: { monitorId: params.monitorId } };
+    default:
+      return { targetType: "", targetId: "", before: null, after: null };
+  }
+}
+
+function writeAudit({ eventId, principal, endpoint, params, result = {}, internal = null, outcome, error = null }) {
+  if (!dependencies.auditLogRepository || !shouldAudit(endpoint)) return;
+  const projection = auditProjection(endpoint, params, result, internal);
+  dependencies.auditLogRepository.record({
+    eventId,
+    actorType: principal.type,
+    actorId: principal.id,
+    role: principal.role,
+    action: endpoint,
+    targetType: projection.targetType,
+    targetId: projection.targetId,
+    requestId: eventId,
+    operationId: params.operationId || "",
+    result: outcome,
+    before: projection.before,
+    after: outcome === "success" ? projection.after : null,
+    errorCode: error?.code || null,
+  });
+}
 
 function requireCurrentTables(...tableNames) {
   for (const tableName of tableNames) {
@@ -583,7 +641,15 @@ function sendSubscriptionSnapshot(info, topic) {
   }
 }
 
-async function handleRequest(info, message) {
+async function handleRequest(info, message, supportId) {
+  const startedAt = Date.now();
+  info.lastRequest = {
+    endpoint: String(message.endpoint || "").slice(0, 64),
+    at: startedAt,
+    durationMs: 0,
+    success: false,
+    supportId,
+  };
   if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
   const endpoint = endpoints[message.endpoint];
   if (!endpoint || !Object.hasOwn(endpoints, message.endpoint)) throw new AppError("ENDPOINT_NOT_FOUND", "Unbekannter Endpoint", 404);
@@ -598,18 +664,45 @@ async function handleRequest(info, message) {
       throw new AppError("WRITE_RATE_LIMIT", "Zu viele Schreiboperationen", 429);
     }
   }
+  if (endpoint.write) {
+    writeAudit({ eventId: supportId, principal: authContext.principal, endpoint: message.endpoint, params, outcome: "started" });
+  }
   info.inflight++;
-  const startedAt = Date.now();
+  let actionCompleted = false;
   try {
-    const data = validateEndpointResponse(
-      message.endpoint,
-      await endpoint.handler(params, { ...authContext, info }),
-    );
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: true };
+    const rawData = await endpoint.handler(params, { ...authContext, info });
+    actionCompleted = true;
+    const internal = rawData?._audit || null;
+    const publicData = rawData && typeof rawData === "object" ? { ...rawData } : rawData;
+    if (publicData && typeof publicData === "object") delete publicData._audit;
+    const data = validateEndpointResponse(message.endpoint, publicData);
+    if (endpoint.write) {
+      writeAudit({ eventId: supportId, principal: authContext.principal, endpoint: message.endpoint, params, result: data, internal, outcome: "success" });
+    }
+    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: true, supportId };
     return data;
   } catch (error) {
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: false, code: error.code || "INTERNAL_ERROR" };
-    throw error;
+    let responseError = error;
+    if (endpoint.write) {
+      try {
+        writeAudit({
+          eventId: supportId,
+          principal: authContext.principal,
+          endpoint: message.endpoint,
+          params,
+          internal: error.details?.tombstone ? { before: error.details.tombstone, after: null } : null,
+          outcome: actionCompleted || error.code === "WRITE_OUTCOME_UNKNOWN" ? "unknown" : "failed",
+          error,
+        });
+      } catch (auditError) {
+        logger.log("error", "audit_record_failed", { supportId, action: message.endpoint, error: auditError });
+      }
+      if (actionCompleted && error.code !== "WRITE_OUTCOME_UNKNOWN") {
+        responseError = new AppError("WRITE_OUTCOME_UNKNOWN", "Aenderung ausgefuehrt, Auditabschluss ist unklar", 503);
+      }
+    }
+    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: false, code: responseError.code || "INTERNAL_ERROR", supportId };
+    throw responseError;
   } finally {
     info.inflight--;
   }
@@ -732,13 +825,21 @@ async function handleMessage(info, raw) {
     return;
   }
   try {
-    const data = await handleRequest(info, message);
+    const data = await handleRequest(info, message, supportId);
     if (info.lastRequest) info.lastRequest.supportId = supportId;
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data, supportId });
   } catch (error) {
     if (info.lastRequest) info.lastRequest.supportId = supportId;
-    if (!(error instanceof AppError)) console.error(`dataProvider: ${supportId} fehlgeschlagen:`, error);
-    else if ((error.status || 500) >= 500) console.warn(`dataProvider: ${supportId} fehlgeschlagen: ${error.code}`);
+    if (!(error instanceof AppError) || (error.status || 500) >= 500) {
+      logger.log(error instanceof AppError ? "warn" : "error", "ws_request_failed", {
+        supportId,
+        connectionId: info.id,
+        requestId: message.id,
+        endpoint: message.endpoint,
+        durationMs: info.lastRequest?.durationMs,
+        error,
+      });
+    }
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data: errorData(error), supportId });
   }
 }
@@ -803,7 +904,7 @@ function init(server, options) {
     connectionsByIp.set(ip, (connectionsByIp.get(ip) || 0) + 1);
     ws.on("message", (raw) => {
       const operation = handleMessage(info, raw).catch((error) => {
-        if (!(error instanceof AppError)) console.error(`dataProvider: Client ${info.id} Message-Fehler:`, error);
+        if (!(error instanceof AppError)) logger.log("error", "ws_message_handler_failed", { connectionId: info.id, handshakeComplete: info.handshake, pageType: info.pageType || null, error });
         send(info, { type: "error", error: errorData(error).error });
         if (!info.handshake) ws.close(error.status === 503 ? 1013 : 4406, "Handshake fehlgeschlagen");
       });
@@ -816,9 +917,15 @@ function init(server, options) {
       clients.delete(ws);
       const count = Math.max(0, (connectionsByIp.get(ip) || 1) - 1);
       if (count) connectionsByIp.set(ip, count); else connectionsByIp.delete(ip);
-      console.log(`dataProvider: Client ${info.id} getrennt (${code} ${reason.toString()})`);
+      logger.log(code === 1000 ? "debug" : "info", "ws_connection_closed", {
+        connectionId: info.id,
+        pageType: info.pageType || null,
+        closeCode: code,
+        durationMs: Date.now() - info.connectedAt,
+        handshakeComplete: info.handshake,
+      });
     });
-    ws.on("error", (error) => console.error(`dataProvider: Client ${info.id}:`, error.message));
+    ws.on("error", (error) => logger.log("error", "ws_socket_error", { connectionId: info.id, pageType: info.pageType || null, error }));
   });
 
   pingTimer = setInterval(() => {

@@ -31,12 +31,11 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
 - [ ] `EntryList` verwendet die Spalten `ID`, `BewerbID`, `PersonenID`, `Entrydate`; neue Werte haben das Format `YYMMDD-HHMM` (Wiener Zeit).
-- [ ] `Logging` bleibt exakt dreispaltig: `Timestamp`, `Type`, `Message`.
-- [ ] `ScoreLog` bleibt exakt dreispaltig: `Timestamp`, `PlatzNr`, `Score`.
-- [ ] Keine `EventID`-Spalte und keine Event-ID-, Retry-, Readback- oder Pending-Migration fuer `Logging` oder `ScoreLog` angelegt.
-- [ ] Insbesondere keine SQLite-`ScoreLog`-Queue, kein `scoreLogPending` und keine ScoreLog-Pending-Abnahme erwartet. ScoreLog bleibt Fire-and-forget.
+- [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend nicht mehr gelesen oder beschrieben. Ihre bisherigen Inhalte sind vor einer optionalen Entfernung separat gesichert archiviert; ein automatischer Import in SQLite findet nicht statt.
+- [ ] `scorelog.sqlite` und `audit.sqlite` sind als getrennte Fachhistorien angelegt und nicht mit `state.sqlite` zusammengelegt.
+- [ ] ScoreLog-Event-IDs, Court-Folgenummern sowie Audit-Request-/Operation-IDs sind eindeutig und nach Neustart fortsetzbar.
 - [ ] Eindeutige, nichtleere IDs und eindeutige Personen-E-Mail-Adressen stichprobenartig beziehungsweise automatisiert geprueft.
-- [ ] Schreibrechte auf `Personen`, `Matches1`, `EntryList`, `Logging` und `ScoreLog` praktisch mit dem vorgesehenen Service-Account bestaetigt.
+- [ ] Schreibrechte auf `Personen`, `Matches1` und `EntryList` praktisch mit dem vorgesehenen Service-Account bestaetigt; fuer `Logging` und `ScoreLog` sind keine Sheet-Schreibrechte mehr erforderlich.
 
 ## 2. Developer Metadata
 
@@ -86,9 +85,12 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `LISTEN_HOST=127.0.0.1`; Node lauscht Live auf 8080, PAJ auf 8083 und PK auf 8084 nur an Loopback.
 - [ ] `PUBLIC_ORIGIN` ist Live `https://epiber.at`, PAJ `https://epiber.at:8081`, PK `https://epiber.at:8082`.
 - [ ] `STATE_FILE` ist `/var/lib/epiber-<system>/state.sqlite`.
+- [ ] `SCORELOG_FILE` ist `/var/lib/epiber-<system>/scorelog.sqlite`; `AUDITLOG_FILE` ist `/var/lib/epiber-<system>/audit.sqlite`.
 - [ ] `StateDirectory=epiber-<system>`, Verzeichnismodus 0700, SQLite-Modus 0600 und `UMask=0077` bestaetigt.
-- [ ] SQLite verwendet Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat ausreichend freien Platz.
-- [ ] Konsistentes SQLite-Backup erstellt. Bei gestopptem Dienst wurden DB, WAL und SHM gemeinsam behandelt; alternativ wurde ein SQLite-Onlinebackup verwendet.
+- [ ] Alle drei SQLite-Dateien verwenden Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat fuer die unbegrenzte Fachhistorie ausreichend freien Platz.
+- [ ] Konsistente Backups aller drei SQLite-Dateien erstellt. Bei gestopptem Dienst wurden jeweilige DB, WAL und SHM gemeinsam behandelt; alternativ wurden SQLite-Onlinebackups verwendet.
+- [ ] journald-Drop-in ist installiert: persistente Speicherung, maximal 1 GiB und 14 Tage; die Werte passen zur Hostkapazitaet.
+- [ ] Jede ePiber-Unit besitzt eindeutigen `SyslogIdentifier`, explizite Journal-Ausgabe und Rate-Limit 1000/30s.
 - [ ] Sandbox und leere Capability-Sets entsprechen der Vorlage; es wurden keine pauschalen Schreib- oder Home-Ausnahmen hinzugefuegt.
 - [ ] `KillSignal=SIGTERM`, `SHUTDOWN_GRACE_MS=90000` und `TimeoutStopSec=95` stimmen zusammen.
 - [ ] Installation und Dienststeuerung erfolgen nur durch root oder autorisierte Betreiber; die `nologin`-Service-User `piber`, `paj` und `pk` koennen weder Deployments noch Caddy-/systemd-Dienste steuern und fuehren nur den Node-Prozess aus.
@@ -100,10 +102,10 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `/live` liefert HTTP 200 mit `status: ok`.
 - [ ] `/ready` und `/health` liefern nach Initialisierung HTTP 200 mit `status: ready`.
 - [ ] Anonymes `/status` wird mit 401 abgewiesen.
-- [ ] Admin-`/status` zeigt plausible Tabellenalter, Poller, Courtquelle, Provider, Monitor-, SQLite- und Sheets-Zustaende.
+- [ ] Admin-`/status` zeigt plausible Tabellenalter, Poller, Courtquelle, Provider, Monitor-, State-, ScoreLog-, Auditlog- und Sheets-Zustaende.
 - [ ] Admin-`/status` enthaelt keine Cookies, Tokens, Passwortwerte, privaten Schluessel oder `.env`-Secrets.
 - [ ] `/status` bleibt `no-store`; Zugriff und Auswertung sind auf Admins und autorisierte Betreiber fuer den Betriebszweck begrenzt. IP-Adressen, Benutzer-IDs/-namen sowie Client-/Geraetekennungen werden als geschuetzte personenbezogene Diagnosedaten weder oeffentlich angezeigt noch ungefiltert in Journale, Tickets, Screenshots oder Freigabeprotokolle uebernommen.
-- [ ] `pendingMetadataIntents` ist 0; es gibt und braucht keinen `scoreLogPending`-Wert.
+- [ ] `pendingMetadataIntents` ist 0; ScoreLog und Auditlog sind `open` und `ready`, ihre Zaehler/Folgenummern sind plausibel.
 - [ ] Browser-DevTools zeigen HTTPS, WSS-101-Upgrade auf same-origin `/ws`, Hello/Welcome-Protokoll v2 und keine CSP-, Zertifikats-, Origin- oder Mixed-Content-Fehler.
 - [ ] Externe Firewall erlaubt 80, 443, 8081 und 8082; Backendports 8080, 8083 und 8084 sind extern nicht erreichbar.
 - [ ] Das Zertifikat wird an Live, PAJ und PK fuer den Hostnamen `epiber.at` ohne Warnung validiert; die Portnummer ist kein Zertifikatsname.
@@ -125,7 +127,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Personenprofile zeigen anonym nur ID/Name und angemeldet die vorgesehenen Kontakt-/Geburtsdaten; Adminaktionen sind nur fuer Admin sichtbar und wirksam.
 - [ ] Login, eigene Passwortaenderung und Erstvergabe funktionieren mit mindestens einem freigegebenen Browser-Passwortmanager; `username`, `current-password`, `new-password` und `one-time-code` werden passend erkannt, ohne Passwortwerte in URL, Logs oder Storage zu schreiben.
 - [ ] Login-, Passwortaenderungs-, Reset-, Erstvergabe- und Admin-Passwortmodale schliessen nicht durch Backdropklick oder Escape, sondern nur explizit ueber Abbrechen/Schliessen; waehrend eines Requests sind Schliessen und Doppel-Submit gesperrt, danach werden Formulare und sichtbare Passwoerter zurueckgesetzt.
-- [ ] Matches/Forderungen, EntryList Add/Remove, Ranglistenrestriktionen und Loggingwrite wurden mit realistischen Daten geprueft.
+- [ ] Matches/Forderungen, EntryList Add/Remove und Ranglistenrestriktionen wurden mit realistischen Daten geprueft; jede Mutation erzeugt den vorgesehenen SQLite-Auditeintrag.
 - [ ] Unklare fachliche Writes werden als `unknown` behandelt und nicht automatisch erneut ausgefuehrt.
 
 ## 8. Browser, Kiosk, Monitor und Scoreboards auf PAJ
@@ -160,8 +162,8 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Expliziter Nullreset setzt ausschliesslich den gewaehlten Platz sofort auf `0-0/0-0/0-0/0-0`, erhoeht Revision/Push genau einmal und bleibt fuer Abonnenten nach Resync sichtbar.
 - [ ] Nach Aktivierung oder Nullreset wird der erste externe Stand nur als Baseline erfasst; ein unveraenderter Vorreset-Stand hebt den Nullreset nicht auf, erst eine spaetere semantische externe Aenderung wird uebernommen.
 - [ ] Court-Epoch-Fencing wurde mit einer vor Deaktivierung, Reaktivierung oder Reset gestarteten und erst danach eintreffenden Pollantwort getestet; die alte Antwort wird verworfen.
-- [ ] Eine akzeptierte externe Scoreaenderung erzeugt genau einen dreispaltigen `ScoreLog`-Append (`Timestamp`, `PlatzNr`, `Score`); Freeze, Nullreset, Baseline und unveraenderte Polls erzeugen keinen Eintrag.
-- [ ] ScoreLog-Fehler veraendern den sichtbaren Score nicht und loesen weder Retry noch SQLite-/Pendingstatus aus; erfolgreicher Wiederanlauf schreibt erst die naechste semantische Aenderung.
+- [ ] Eine akzeptierte externe Scoreaenderung erzeugt genau einen SQLite-ScoreLog-Eintrag mit Event-ID, Court-Folgenummer, Rohscore, Match-/Court-Kontext und UTC-Zeit; Freeze, Nullreset, Baseline und unveraenderte Polls erzeugen keinen Eintrag.
+- [ ] Ein ScoreLog-Insertfehler veraendert den sichtbaren Score nicht, macht ScoreLog/Readiness erkennbar ungesund und wird mit unveraendertem Quellstand bei einem Folgepoll erneut versucht; nach Recovery wird genau ein Ereignis persistiert und angezeigt.
 - [ ] Monitor-Enrollment mit Secure-Cookie funktioniert; Token erscheint danach weder in URL noch Storage/Logs.
 - [ ] Navigator kann mehrere Monitore getrennt auswaehlen, navigieren und scrollen; Status durchlaeuft die erwarteten ACK-/Load-Zustaende.
 - [ ] Monitorrotation und Revoke wirken sofort; Offline-, Timeout- und Terminalfehler sind sichtbar und korrekt korreliert.
@@ -191,8 +193,8 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Courtquelle, Google-Sheets-Fehler/Timeout und Wiederherstellung getestet; Readiness und sichtbare Stale-/Fehlerzustaende sind korrekt.
 - [ ] Ein kompletter Veranstaltungstag Dauerbetrieb auf PAJ ohne wachsende Ressourcen, Reconnectsturm, ungeklaerte Writes oder Datenabweichung absolviert.
 - [ ] Kontrolliertes `systemctl stop epiber-paj` sendet SIGTERM, setzt `/live` auf stopping/503, lehnt neue Arbeit ab und schliesst WebSockets mit 1012.
-- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, SQLite schliesst sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
-- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen gemaess Vertrag und konsistente Court-/Navigatorwerte.
+- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, alle drei SQLite-Datenbanken schliessen sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
+- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen, ScoreLog-Folgenummern und Audit-Historie gemaess Vertrag.
 - [ ] Erzwungener Shutdown-Timeout wurde als Fehlerfall erkannt und nicht als erfolgreiche Abnahme gewertet.
 
 ## 11. `pendingMetadataIntents` manuell klaeren
@@ -207,7 +209,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Wenn Existenz oder fachlicher Write-Ausgang nicht eindeutig beweisbar ist, bleibt der Intent pending, das System wird nicht promotet und die Klaerung wird eskaliert.
 - [ ] Eine direkte SQLite-Korrektur erfolgt nur bei gestopptem Dienst, nach Backup, mit dokumentiertem Key/Metadata-ID und gepruefter Einzelanweisung. Es gibt keinen allgemeinen Massenreset und kein Loeschen aller Intents.
 - [ ] Nach Neustart sind `/ready` gruen, `pendingMetadataIntents: 0`, Metadata und Zielzeile weiterhin eindeutig und der fachliche Zustand korrekt.
-- [ ] Niemals einen unbekannten Append oder die urspruengliche Benutzeraktion blind wiederholen. Besonders `Logging` und `ScoreLog` besitzen keine Event-ID-/Readbackgarantie; fuer ScoreLog existiert kein Pending-Mechanismus.
+- [ ] Niemals einen unbekannten Google-Sheet-Write oder die urspruengliche Benutzeraktion blind wiederholen. Score-/Audithistorien werden ueber ihre SQLite-Event-/Request-IDs korreliert; sie ersetzen nicht die bestehende Fachwrite-Unknown-Klaerung.
 
 ## 12. Rollbackprobe
 
@@ -252,7 +254,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets, keine pending Metadata und keine aktiven unresolved Court-Regeln.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.
 - [ ] Keine falsche, doppelte oder verlorene fachliche Aenderung wurde in Sheets festgestellt.
-- [ ] `Logging` und `ScoreLog` sind unveraendert dreispaltig; keine Event-ID-/Pending-Migration wurde eingefuehrt.
+- [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden nicht mehr beschrieben; getrennte SQLite-Fachhistorien sind konsistent, gesichert und ohne Geheimnisse.
 - [ ] Browser-, Kiosk-, Mobil-, Scoreboard-, Monitor-, Reconnect-, Standby-, BFCache- und WLAN-Matrix ist bestanden.
 - [ ] Erwartete und doppelte Spitzenlast, Veranstaltungstag-Dauerbetrieb und kontrollierter SIGTERM sind bestanden.
 - [ ] Praktischer Rollback ist innerhalb des dokumentierten Zeitfensters moeglich und getestet.

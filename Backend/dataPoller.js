@@ -8,6 +8,7 @@ const {
   TABLE_CONFIG,
 } = require("./config.js");
 const dataStore = require("./dataStore.js");
+const logger = require("./logger.js");
 const { validateTableValues } = require("./tableSchemas.js");
 
 let sheetsClient = null;
@@ -42,7 +43,7 @@ async function pollTable(sheets, tableName, range, source = "poll") {
     return { table: tableName, success: true, ignored: !!applied?.ignored };
   } catch (error) {
     const marked = dataStore.markError(tableName, error, readToken);
-    console.error(`dataPoller: Fehler beim Lesen von ${tableName} (${range}):`, error.message);
+    logger.log("warn", "sheets_table_poll_failed", { table: tableName, range, source, ignored: !!marked?.ignored, error });
     return { table: tableName, success: false, ignored: !!marked?.ignored, error: error.message };
   }
 }
@@ -77,14 +78,20 @@ async function runTick() {
     }
     if (results.length) {
       const failed = results.filter((result) => !result.success).length;
-      console.log(`dataPoller: Tick #${tickCount}, ${results.length - failed}/${results.length} Tabellen aktualisiert`);
+      logger.log("debug", "sheets_poll_tick_completed", {
+        tick: tickCount,
+        attempted: results.length,
+        applied: results.filter((result) => result.success && !result.ignored).length,
+        ignored: results.filter((result) => result.ignored).length,
+        failed,
+      });
     }
     return results;
   })();
   try {
     return await activePoll;
   } catch (error) {
-    console.error("dataPoller: Tick-Fehler:", error.message);
+    logger.log("error", "sheets_poll_tick_failed", { tick: tickCount, error });
     return null;
   } finally {
     activePoll = null;
@@ -92,7 +99,7 @@ async function runTick() {
 }
 
 async function initialLoad() {
-  console.log("dataPoller: Initiales Laden aller Tabellen...");
+  logger.log("info", "sheets_initial_load_started", { tableCount: Object.keys(TABLE_CONFIG).length });
   let sheets;
   try {
     sheets = await getSheetsClient();
@@ -101,14 +108,19 @@ async function initialLoad() {
       dataStore.markError(table, error);
       return { table, success: false, error: error.message };
     });
-    console.error("dataPoller: Google-Client konnte nicht initialisiert werden:", error.message);
+    logger.log("error", "sheets_client_initialization_failed", { tableCount: results.length, error });
     return { success: false, results };
   }
   const results = await Promise.all(Object.entries(TABLE_CONFIG).map(
     ([name, config]) => pollTable(sheets, name, config.range, "initial"),
   ));
   const failed = results.filter((result) => !result.success);
-  console.log(`dataPoller: Initiales Laden abgeschlossen (${results.length - failed.length}/${results.length}).`);
+  logger.log(failed.length ? "warn" : "info", "sheets_initial_load_completed", {
+    total: results.length,
+    succeeded: results.length - failed.length,
+    failed: failed.length,
+    success: failed.length === 0,
+  });
   return { success: failed.length === 0, results };
 }
 
@@ -118,7 +130,7 @@ function start() {
   tickCount = 0;
   tickTimerId = setInterval(runTick, POLL_BASE_INTERVAL);
   tickTimerId.unref?.();
-  console.log(`dataPoller: Gestartet (Grundtakt ${POLL_BASE_INTERVAL}ms)`);
+  logger.log("info", "sheets_poller_started", { baseIntervalMs: POLL_BASE_INTERVAL, fastMultiplier: POLL_FAST_MULTIPLIER, slowMultiplier: POLL_SLOW_MULTIPLIER });
 }
 
 async function stop() {
@@ -126,7 +138,7 @@ async function stop() {
   if (tickTimerId) clearInterval(tickTimerId);
   tickTimerId = null;
   if (activePoll) await activePoll.catch(() => {});
-  console.log("dataPoller: Gestoppt");
+  logger.log("info", "sheets_poller_stopped", { tickCount });
 }
 
 function getStatus() {

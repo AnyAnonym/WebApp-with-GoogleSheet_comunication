@@ -216,16 +216,19 @@ Tie-Break-Stand steht, werden die drei Satzspalten und die externen Punkte wiede
 unveraendert angezeigt. Ein Tie-Break oder Match-Tie-Break im echten dritten
 Entscheidungssatz wird durch diese Anzeigeregel nicht umgedeutet.
 
-Die externen Rohdaten und das ScoreLog bleiben unveraendert. Die Umdeutung findet
+Die externen Rohdaten und der im SQLite-ScoreLog gespeicherte Rohscore bleiben
+unveraendert. Die Umdeutung findet
 ausschliesslich in der fuer das digitale Scoreboard ausgegebenen Anzeigeprojektion
 statt.
 
 Die acht aktuellen Scorewerte liegen nur im Prozessspeicher. Nach einem
 Backendneustart wird der Stand eines laut SQLite aktiven Courts aus der externen
 Quelle neu aufgebaut; deren erster gueltiger Stand wird sofort angezeigt, aber
-nicht ins ScoreLog geschrieben. Das dreispaltige ScoreLog dient ausschliesslich
-der Protokollierung spaeterer Aenderungen und wird niemals zur Rekonstruktion des
-Live-Stands gelesen.
+nicht ins ScoreLog geschrieben. `scorelog.sqlite` protokolliert spaetere
+Aenderungen mit Event-ID, Court-Folgenummer, Match-/Court-Kontext und UTC-Zeit,
+wird aber niemals zur Rekonstruktion des Live-Stands gelesen. Der Insert erfolgt
+vor Anzeige und Push; bei einem lokalen Persistenzfehler bleibt der bisherige
+sichtbare Stand bis zum erfolgreichen Folgeversuch erhalten.
 
 ## Datenfluss
 

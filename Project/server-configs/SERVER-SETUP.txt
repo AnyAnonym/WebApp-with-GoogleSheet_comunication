@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Letzte Aenderung: 01.08.2026
+Letzte Aenderung: 06.08.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -21,6 +21,7 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- contracts.js            Maschinenpruefbare RPC-Vertraege
 |   |-- security.js             Cookies, Originpruefung, Limits und Hashing
 |   |-- errors.js               Einheitliche Fehlercodes und Support-IDs
+|   |-- logger.js               Redigierte strukturierte JSON-Betriebslogs
 |   |-- validators.js           Eingabevalidierung
 |   |-- dataProvider.js         WebSocket v2, RPCs, Topics und Zugriffsrollen
 |   |-- sheetService.js         Serialisierte/idempotente Google-Sheets-Writes
@@ -33,6 +34,8 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- monitorBroker.js        Adressierte Monitorcommands und ACK-Status
 |   |-- stateStore.js           Court- und Monitor-Anwendungsstate
 |   |-- stateRepository.js      Persistenter SQLite-State
+|   |-- scoreLogRepository.js   Separate dauerhafte Scorehistorie
+|   |-- auditLogRepository.js   Separate dauerhafte Audit-Historie
 |   |-- package.json            Kanonische Version, Node/npm-Anforderungen
 |   |-- package-lock.json       Versioniertes npm-Lockfile (Lockfile v3)
 |   |-- .env.example            Geheimnisfreie Vorlage
@@ -159,13 +162,22 @@ Empfohlene lokale Rechte pro Instanz:
   Credential-Quelldatei:         root:root, 0600
   /var/lib/epiber-<system>/:      <service-user>:<service-user>, 0700
   state.sqlite:                  <service-user>:<service-user>, 0600
+  scorelog.sqlite:               <service-user>:<service-user>, 0600
+  audit.sqlite:                  <service-user>:<service-user>, 0600
 
 `StateDirectory=epiber-<system>` legt `/var/lib/epiber-<system>` mit dem in der
-Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite` mit WAL, Foreign Keys,
-`synchronous=FULL` und Modus 0600. SQLite enthaelt Sessions, gehashte Tokens,
+Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite`, `scorelog.sqlite` und
+`audit.sqlite` getrennt mit WAL, Foreign Keys, `synchronous=FULL` und Modus 0600.
+Der State enthaelt Sessions, gehashte Tokens,
 Resetnachweise, Monitorgeraete, idempotente Operationen, Loginlimits, Court-/
-Navigator-State und Metadata-Intents. SQLite-Datei, `-wal` und `-shm` nur bei
-gestopptem Dienst gemeinsam sichern oder mit einem SQLite-Onlinebackup sichern.
+Navigator-State und Metadata-Intents. ScoreLog und Auditlog enthalten die
+unbegrenzt aufbewahrte Fachhistorie. Jede SQLite-Datei mit ihrem `-wal` und
+`-shm` nur bei gestopptem Dienst gemeinsam sichern oder je Datenbank ein
+SQLite-Onlinebackup erstellen.
+
+Historische Zeilen der bisherigen Google-Sheets-Tabs `ScoreLog` und `Logging`
+werden nicht automatisch in diese Datenbanken importiert. Vor einer optionalen
+Entfernung der Tabs sind ihre Inhalte separat gesichert zu archivieren.
 
 
 ================================================================================
@@ -182,8 +194,11 @@ PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | 8083
 PK     | vor Deployment festlegen                            | 8084
 
 `COURT_URL` muss HTTPS verwenden. `GOOGLE_APPLICATION_CREDENTIALS`,
-`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID` und `STATE_FILE` nicht in `.env`
-duplizieren; diese Werte setzt die systemd-Unit verbindlich.
+`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID`, `STATE_FILE`, `SCORELOG_FILE` und
+`AUDITLOG_FILE` nicht in `.env` duplizieren; diese Werte setzt die systemd-Unit
+verbindlich. `LOG_LEVEL`, `SCORE_LOG_JOURNAL`, `AUDIT_LOG_JOURNAL` und
+`AUDIT_ACTIONS` koennen lokal anhand der geheimnisfreien Vorlage eingestellt
+werden.
 
 Credential-Quelldateien:
 
@@ -240,12 +255,16 @@ Die drei Vorlagen setzen je System:
   LISTEN_HOST                            127.0.0.1
   PUBLIC_ORIGIN                          jeweilige HTTPS-Origin
   STATE_FILE                             /var/lib/epiber-<system>/state.sqlite
+  SCORELOG_FILE                          /var/lib/epiber-<system>/scorelog.sqlite
+  AUDITLOG_FILE                          /var/lib/epiber-<system>/audit.sqlite
   GOOGLE_APPLICATION_CREDENTIALS         %d/google-service-account
   LoadCredential                         root-kontrollierte Quelldatei
   SHUTDOWN_GRACE_MS                      90000
   KillSignal/TimeoutStopSec              SIGTERM / 95 Sekunden
   StateDirectory/Mode                    epiber-<system> / 0700
   UMask                                  0077
+  SyslogIdentifier                       epiber-<system>
+  Journal-Rate-Limit                     1000 Events je 30 Sekunden
 
 Sandbox: NoNewPrivileges, PrivateTmp, PrivateDevices, ProtectSystem=strict,
 ProtectHome sowie Kernel-, ControlGroup- und Clock-Schutz; keine Capabilities,
@@ -262,10 +281,22 @@ Vorlagen aus dem freigegebenen Commit mit Paketversion
   systemctl daemon-reload
   systemctl enable epiber-piber epiber-paj epiber-pk
 
+Die journald-Vorlage als root installieren und journald neu starten:
+
+  install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+  install -o root -g root -m 0644 Project/server-configs/journald/epiber.conf /etc/systemd/journald.conf.d/epiber.conf
+  systemctl restart systemd-journald
+
+Die Vorlage speichert persistent, begrenzt alle Systemjournale gemeinsam auf 1 GiB
+und behaelt Eintraege maximal 14 Tage. Diese Werte sind vor Installation gegen
+Platzangebot und betriebliche Aufbewahrungsanforderungen zu pruefen. journald ist
+trotz Persistenz nur Diagnosekanal; Score-/Audit-Historie bleibt in SQLite.
+
 Nicht alle Systeme bei einer Versionspromotion gleichzeitig starten. Die
 Reihenfolge PAJ, PK, Live einhalten. Beim Stop sendet systemd SIGTERM. Der Server
 nimmt keine neue Arbeit an, setzt Liveness auf stopping, stoppt Poller, schliesst
-WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst SQLite. Nach 95
+WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst alle drei
+SQLite-Datenbanken. Nach 95
 Sekunden greift systemd ein; ein Timeout oder Exitcode ungleich null ist ein
 fehlgeschlagener Rollout und kein erfolgreicher Stop.
 Die Bewertung aller dabei beobachteten Codes, insbesondere 1012, erfolgt nach
@@ -315,9 +346,10 @@ Admin-Session oder mit einem kontrolliert bereitgestellten Sessioncookie zu
 pruefen; ein anonymer Curl muss 401 liefern. Der Detailstatus muss Readiness,
 Poller, Tabellenalter/-fehler, Courtquelle, WebSocketprovider, Monitore,
 Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
-zeigen und darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
-akteursbezogen ueber den RPC `operationStatus` abgefragt. Es gibt im bestaetigten
-dreispaltigen ScoreLog-Vertrag keinen `scoreLogPending`-Status.
+zeigen. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
+Schreibzaehler liefern; Ereigniszeilen werden ueber `/status` nicht ausgegeben.
+Die Antwort darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
+akteursbezogen ueber den RPC `operationStatus` abgefragt.
 
 Die `/status`-Antwort ist trotz fehlender Secrets eine geschuetzte Sammlung
 personenbezogener Betriebsdiagnosen. Sie kann insbesondere IP-Adressen,
@@ -334,8 +366,10 @@ Null. Aktivierung und Reset setzen eine neue Court-Epoch und warten auf eine
 gegenueber der ersten externen Baseline geaenderte Quelle; dadurch koennen weder
 die unveraenderte externe Vorreset-Anzeige noch ein vor dem Zustandswechsel
 gestarteter Poll den Nullstand ueberschreiben. Nur danach akzeptierte semantische
-Scoreaenderungen werden in das dreispaltige Fire-and-forget-`ScoreLog` geschrieben;
-Reset und Baseline selbst erzeugen keinen ScoreLog-Eintrag. Bei Prozessstart
+Scoreaenderungen werden vor Anzeige und Push synchron in `scorelog.sqlite`
+geschrieben; Reset und Baseline selbst erzeugen keinen ScoreLog-Eintrag. Bei
+Insertfehler bleibt der bisherige sichtbare Score erhalten und der Folgepoll
+versucht die Aenderung erneut. Bei Prozessstart
 uebernimmt ein in SQLite bereits aktiver Platz den ersten externen Stand sofort in
 die Anzeige, ohne diesen Wiederanlaufstand zu protokollieren.
 
@@ -357,7 +391,7 @@ und keine Mixed-Content-, CSP-, Zertifikats- oder Originfehler zeigen.
 Die vollstaendige fachliche und technische Abnahme steht in
 ROLLOUT-CHECKLIST.md. Kurzregel:
 
-  1. Sheets und SQLite sichern, Schema/Credentials pruefen.
+  1. Sheets sowie alle drei SQLite-Datenbanken sichern, Schema/Credentials pruefen.
   2. Exakten Release-Commit und Lockfile auf PAJ installieren und abnehmen.
   3. Exakt denselben Commit auf PK installieren und Smoke-/Integrationscheck.
   4. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.

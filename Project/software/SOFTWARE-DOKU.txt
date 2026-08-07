@@ -18,8 +18,8 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   Funktion.md                  | JSON-Datenfluss und Matchtyp-Auswertung.
   software/SOFTWARE-DOKU.txt   | Dieser Index.
   software/DATENBANK.txt       | Google-Sheets-Schema und -Projektionen,
-                               | SQLite-Schema/State, Idempotenz, Legacy-
-                               | Logging und ScoreLog.
+                               | SQLite-State, Idempotenz sowie getrennte
+                               | ScoreLog- und Auditlog-Fachhistorien.
   software/ARCHITEKTUR.txt     | Backend-/Frontendmodule, Cookie-/Rollenauth,
                                | Cache, SheetService, Court, Monitor,
                                | WebSocket v2, Readiness und Shutdown.
@@ -79,8 +79,12 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
       Kommunikationsanalyse und verbleibende manuelle Risiken.
 
   `Project/2do/LOGGING-ANALYSE.md`
-      Logging-/Observability-Analyse; das dreispaltige Legacy-Logging- und
-      ScoreLog-Redesign ist weiterhin gesonderte spaetere Arbeit.
+      Historische Logging-/Observability-Analyse mit aktuellem Status des
+      strukturierten Loggings und der SQLite-Score-/Audit-Persistenz.
+
+  `Project/2do/LOGGING-UMSETZUNGSPLAN.md`
+      Umgesetzter Plan fuer JSON-Betriebslogs, journald sowie getrennte
+      SQLite-Dateien fuer ScoreLog und Auditlog; Grafana/Loki bleibt Folgearbeit.
 
 
 ================================================================================

@@ -1,5 +1,6 @@
 const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
+const logger = require("./logger.js");
 
 const VALID_ROLES = new Set(["player", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
@@ -48,7 +49,7 @@ function validateTableValues(tableName, values) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
       if (role && !VALID_ROLES.has(role) && !warnedInvalidRoles.has(role)) {
         warnedInvalidRoles.add(role);
-        console.warn(`tableSchemas: Ungueltige Personenrolle ${JSON.stringify(role)} wird als player behandelt`);
+        logger.log("warn", "player_role_fallback_applied", { invalidRole: role, fallbackRole: "player" });
       }
       const email = String(row[emailIndex] || "").trim().toLowerCase();
       if (!email) continue;

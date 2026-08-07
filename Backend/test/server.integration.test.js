@@ -180,6 +180,13 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(oversizedLogin.status, 413);
 
+  const failedLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ email: "ada@example.test", passwordHash: "b".repeat(64) }),
+  });
+  assert.equal(failedLogin.status, 401);
+
   const loginResponse = await fetch(`${httpBase}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local" },
@@ -342,6 +349,8 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const anonymousStatusClient = statusPayload.provider.clients.find((client) => client.principalType === "anonymous");
   assert.equal(anonymousStatusClient.userId, null);
   assert.equal(anonymousStatusClient.userName, null);
+  assert.equal(statusPayload.scoreLog.open, true);
+  assert.equal(statusPayload.auditLog.open, true);
   adminClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "directory", endpoint: "memberDirectory", params: {} }));
   const directory = await adminClient.next((message) => message.id === "directory");
   assert.equal(directory.type, "response");
@@ -547,6 +556,25 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(staleMatchtypReplay.data.error, undefined);
   assert.deepEqual(staleMatchtypReplay.data.court.displayRules, assignment.data.court.displayRules);
+
+  const auditRows = application.auditLogRepository.list();
+  const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
+  for (const action of [
+    "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
+    "passwordReset", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+  ]) {
+    assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);
+  }
+  const serializedAudit = JSON.stringify(auditRows);
+  assert.equal(serializedAudit.includes("ada@example.test"), false);
+  assert.equal(serializedAudit.includes("a".repeat(64)), false);
+  assert.equal(serializedAudit.includes(provisioned.data.monitor.token), false);
+  const failedLoginAudit = auditRows.find((row) => row.action === "login" && row.result === "failed");
+  assert.equal(failedLoginAudit.errorCode, "LOGIN_FAILED");
+  assert.equal(failedLoginAudit.actorType, "anonymous");
+  const courtAudit = auditRows.find((row) => row.action === "courtAssign" && row.result === "success");
+  assert.equal(courtAudit.actorId, "p3");
+  assert.equal(courtAudit.role, "operator");
 
   await publicClient.close();
   await adminClient.close();

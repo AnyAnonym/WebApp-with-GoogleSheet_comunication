@@ -1,16 +1,17 @@
-const { google } = require("googleapis");
+const crypto = require("crypto");
 const {
   COURT_FETCH_TIMEOUT_MS,
   COURT_MAX_BACKOFF_MS,
   COURT_MAX_RESPONSE_BYTES,
   COURT_POLL_INTERVAL,
   COURT_URL,
-  SHEET_ID,
+  SCORE_LOG_JOURNAL,
 } = require("./config.js");
+const logger = require("./logger.js");
 
 let fetchImplementation = globalThis.fetch;
-let sheetsClientFactory = null;
-let sheetsClient = null;
+let scoreLogRepository = null;
+let getCourtContext = () => ({ matchId: "", aktiv: 1, revision: 0 });
 let timer = null;
 let controller = null;
 let generation = 0;
@@ -45,42 +46,17 @@ let lastError = null;
 let onUpdate = null;
 let lastNotificationAt = 0;
 
-async function getSheetsClient() {
-  if (sheetsClient) return sheetsClient;
-  if (sheetsClientFactory) {
-    sheetsClient = await sheetsClientFactory();
-    return sheetsClient;
-  }
-  const auth = new google.auth.GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-  sheetsClient = google.sheets({ version: "v4", auth });
-  return sheetsClient;
-}
-
-function timestamp() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Vienna",
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}${values.month}${values.day}-${values.hour}${values.minute}-${values.second}`;
-}
-
 function scoreString(court) {
   return `${court.satz1home}-${court.satz1gast}/${court.satz2home}-${court.satz2gast}/${court.satz3home}-${court.satz3gast}/${court.punktehome}-${court.punktegast}`;
 }
 
 function cleanScore(value) {
   const result = String(value ?? "0").trim();
-  if (result.length > 20 || /[\x00-\x1f<>]/.test(result)) throw new Error("Ungueltiger Scorewert");
   if (!result) return "0";
   if (/^\d+$/.test(result)) return String(Number(result));
-  return result.toUpperCase();
+  const normalized = result.toUpperCase();
+  if (!/^(A|AD)$/.test(normalized)) throw new Error("Ungueltiger Scorewert");
+  return normalized;
 }
 
 function normalizeData(data, requiredCourts = courtActive) {
@@ -134,20 +110,6 @@ async function readBoundedText(response) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function writeScoreLog(platz, score) {
-  try {
-    const sheets = await getSheetsClient();
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: "ScoreLog",
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [[timestamp(), platz, score]] },
-    });
-  } catch (error) {
-    console.error("ScoreLog Fehler:", error.message);
-  }
-}
-
 function acceptCourtScores(courts, activeAtStart, epochAtStart) {
   let changed = false;
   const byCourt = new Map(lastCourts.map((court) => [court.platz, court]));
@@ -167,9 +129,35 @@ function acceptCourtScores(courts, activeAtStart, epochAtStart) {
     const suppressLog = suppressNextScoreLog[court.platz];
     suppressNextScoreLog[court.platz] = false;
     if (previous === current) continue;
+    if (!suppressLog) {
+      try {
+        if (!scoreLogRepository) throw new Error("ScoreLog-Repository ist nicht initialisiert");
+        const context = getCourtContext(court.platz);
+        const event = scoreLogRepository.append({
+          eventId: crypto.randomUUID(),
+          court: court.platz,
+          score: current,
+          matchId: context.matchId,
+          courtActive: context.aktiv === 1 || context.aktiv === true,
+          courtRevision: context.revision,
+        });
+        if (SCORE_LOG_JOURNAL) {
+          logger.log("info", "score_logged", {
+            eventId: event.eventId,
+            court: event.court,
+            sequence: event.sequence,
+            score: event.score,
+            matchId: event.matchId,
+            courtRevision: event.courtRevision,
+          });
+        }
+      } catch (error) {
+        logger.log("error", "score_log_write_failed", { court: court.platz, error });
+        continue;
+      }
+    }
     byCourt.set(court.platz, court);
     lastCourtScores[court.platz] = current;
-    if (!suppressLog) void writeScoreLog(court.platz, current);
     changed = true;
   }
   if (changed) lastCourts = [byCourt.get("1"), byCourt.get("2")];
@@ -204,7 +192,7 @@ function notify(changed) {
     lastNotificationAt = Date.now();
     onUpdate(snapshot(), { changed });
   } catch (error) {
-    console.error("courtPoller: Update-Callback fehlgeschlagen:", error.message);
+    logger.log("error", "court_update_callback_failed", { error });
   }
 }
 
@@ -247,9 +235,9 @@ async function poll(myGeneration = generation) {
     if (myGeneration !== generation || !running) return;
     failureCount++;
     lastError = { at: Date.now(), message: String(error.message || error).slice(0, 300) };
-    console.error("courtPoller: Poll-Fehler:", lastError.message);
-    notify(false);
     const backoff = Math.min(COURT_MAX_BACKOFF_MS, COURT_POLL_INTERVAL * (2 ** Math.min(failureCount, 5)));
+    logger.log("warn", "court_poll_failed", { consecutiveFailures: failureCount, backoffMs: backoff, error });
+    notify(false);
     const jitter = Math.floor(Math.random() * Math.max(1, backoff * 0.2));
     schedule(myGeneration, backoff + jitter);
   } finally {
@@ -270,10 +258,10 @@ function updatePollingState() {
   if (running) {
     lastSuccessAt = 0;
     lastError = null;
-    console.log("courtPoller: Polling gestartet");
+    logger.log("info", "court_poller_started", { activeCourts: Object.entries(courtActive).filter(([, active]) => active).map(([court]) => court), intervalMs: COURT_POLL_INTERVAL });
     schedule(generation, 0);
   } else {
-    console.log("courtPoller: Polling gestoppt");
+    logger.log("info", "court_poller_stopped", { pollCount, pushCount });
     notify(false);
   }
 }
@@ -338,15 +326,19 @@ async function stop() {
   if (controller) controller.abort(new Error("Shutdown"));
 }
 
-function setDependenciesForTests({ fetch: nextFetch, sheetsFactory } = {}) {
+function setDependenciesForTests({ fetch: nextFetch, scoreLog: nextScoreLog, courtContext } = {}) {
   if (nextFetch) fetchImplementation = nextFetch;
-  if (sheetsFactory) {
-    sheetsClientFactory = sheetsFactory;
-    sheetsClient = null;
-  }
+  if (nextScoreLog) scoreLogRepository = nextScoreLog;
+  if (courtContext) getCourtContext = courtContext;
+}
+
+function configure({ scoreLog, courtContext }) {
+  scoreLogRepository = scoreLog;
+  getCourtContext = courtContext;
 }
 
 module.exports = {
+  configure,
   getLastData,
   getStatus,
   poll,

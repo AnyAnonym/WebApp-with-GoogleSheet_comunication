@@ -27,7 +27,7 @@ function personEmailValue(value) {
   try {
     return emailValue(raw);
   } catch {
-    throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist ungueltig", 503);
+    return "";
   }
 }
 
@@ -260,12 +260,17 @@ class AuthService {
     });
   }
 
-  getUserForToken(token) {
+  getUserForToken(token, { allowLastKnownGoodRole = false } = {}) {
     const session = this.repository.getSession(token);
     if (!session) return null;
-    this.ensurePeopleAvailable();
+    const peopleCurrent = dataStore.isTableCurrent("players");
+    if (!peopleCurrent) {
+      const hasLastKnownGoodPeople = dataStore.getMeta("players")?.lastUpdate > 0;
+      if (!allowLastKnownGoodRole || !hasLastKnownGoodPeople) this.ensurePeopleAvailable();
+    }
     const person = this.findById(session.userId);
     if (!person || !person.active) {
+      if (!peopleCurrent) throw new AppError("PERSON_DATA_UNAVAILABLE", "Personendaten sind derzeit nicht aktuell", 503);
       this.repository.revokeSession(token);
       return null;
     }
@@ -276,20 +281,40 @@ class AuthService {
         id: person.id,
         email: person.email,
         role: person.role,
+        ...(!peopleCurrent ? { roleSource: "last_known_good" } : {}),
         name: [person.firstName, person.lastName].filter(Boolean).join(" "),
       },
       user: this.privateProfile(person),
     };
   }
 
-  requireUser(token) {
-    const auth = this.getUserForToken(token);
+  getDiagnosticIdentity(token) {
+    const session = this.repository.getSession(token);
+    if (!session) return null;
+    const peopleCurrent = dataStore.isTableCurrent("players");
+    let person = null;
+    try {
+      person = this.findById(session.userId);
+    } catch {}
+    if (!person?.active) {
+      if (peopleCurrent) this.repository.revokeSession(token);
+      return null;
+    }
+    return {
+      id: session.userId,
+      name: person ? [person.firstName, person.lastName].filter(Boolean).join(" ") : "",
+      role: person.role,
+    };
+  }
+
+  requireUser(token, options) {
+    const auth = this.getUserForToken(token, options);
     if (!auth) throw new AppError("AUTH_REQUIRED", "Anmeldung erforderlich", 401);
     return auth;
   }
 
-  requireRole(token, roles) {
-    const auth = this.requireUser(token);
+  requireRole(token, roles, options) {
+    const auth = this.requireUser(token, options);
     if (!roles.includes(auth.principal.role)) throw new AppError("FORBIDDEN", "Berechtigung fehlt", 403);
     return auth;
   }

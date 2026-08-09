@@ -1,6 +1,7 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readBewerbe = createEndpoint("bewerbe");
 const readBewerbsart = createEndpoint("bewerbsart");
@@ -343,7 +344,7 @@ async function loadBewerbe() {
     }
     hideLoadingOverlay();
   } catch (err) {
-    console.error("Fehler beim Laden:", err);
+    diagnostic.error("competitions_load_failed", err);
     showErrorOverlay("Fehler beim Laden der Bewerbe", () => {
       loadBewerbe().catch(() => {});
     });

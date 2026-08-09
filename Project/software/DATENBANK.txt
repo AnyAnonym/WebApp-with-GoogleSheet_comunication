@@ -35,9 +35,11 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
                   |                 |           | Entrydate
 
 Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
-Format `[A-Za-z0-9_.:-]{1,64}`. Personen-E-Mail-Adressen muessen, soweit gesetzt,
-ohne Beachtung der Gross-/Kleinschreibung eindeutig sein. Personen darf nicht
-leer sein.
+Format `[A-Za-z0-9_.:-]{1,64}`. Gueltige Personen-E-Mail-Adressen muessen, soweit
+gesetzt, nach der Kanonisierung eindeutig sein. Eine ungueltige E-Mail-Adresse
+blockiert den Tabellenload nicht, sondern wird fuer Authentifizierung und
+Projektionen wie eine leere E-Mail behandelt und mit Personen-ID, Sheetzeile und
+Fehlergrund strukturiert geloggt. Personen darf nicht leer sein.
 
 
 ================================================================================
@@ -84,6 +86,8 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   Nachname           | Nachname.
   E-Mail             | Loginname; lokaler Teil kleingeschrieben, Domain als
                      | IDNA-ASCII/Punycode kanonisiert und danach eindeutig.
+                     | Ungueltige Werte gelten technisch als leer und werden
+                     | mit Personen-ID und Sheetzeile geloggt.
   PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
                      | 64-stellige SHA-256-Werte lesbar.
   KennwortVergessen  | `x` ist die Adminfreigabe fuer die einmalige erstmalige
@@ -358,8 +362,10 @@ Foreign Keys, WAL und `synchronous=FULL`.
 Tabelle `app_state`:
   key TEXT PRIMARY KEY, value_json TEXT, revision INTEGER, updated_at INTEGER.
   Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
-  Monitorziele `monitor-target:<id>` und Metadaten-Intents. Compare-and-set
-  meldet bei falscher Revision `REVISION_CONFLICT`.
+  Monitorziele `monitor-target:<id>`, Metadaten-Intents sowie die
+  Frontend-Logging-Schluessel `frontend-logging:settings` und
+  `frontend-logging:targets`. Compare-and-set meldet bei falscher Revision
+  `REVISION_CONFLICT`.
   Court-Zustaende enthalten unter anderem Match-/Bewerbszuordnung, Spieler,
   Aktivstatus, die bei der Zuweisung aufgeloeste `matchtypId` und `displayRules`
   nach dem oben beschriebenen Vertrag. Individualzuweisungen und neue
@@ -367,6 +373,21 @@ Tabelle `app_state`:
   Sehr alte Zustaende ohne Feld `matchtypId` bleiben mit leerer ID lesbar. Sie
   koennen keinem Matchtyp sicher zugeordnet werden, erhalten deshalb keinen
   Regelsnapshot und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
+
+Frontend-Logging-State:
+  - `frontend-logging:settings` enthaelt Aktivierung, Basislevel, Freigabe
+    anonymer Events, Sampling, Batchgroesse, Flushintervall, Standardlevel/-dauer
+    fuer Zielpersonen und normale/gezielte Retentionvorgaben.
+  - `frontend-logging:targets` ordnet Personen-IDs `{ personId, level, createdAt,
+    expiresAt, createdBy }` zu. Abgelaufene Eintraege sind nicht mehr wirksam und
+    werden beim Lesen revisioniert entfernt.
+  - Die Einstellungen und Ziele sind Konfigurationsstate, keine Loghistorie.
+    Browserereignisse, IP-Adressen und Namenssnapshots werden nicht in
+    `STATE_FILE` gespeichert, sondern nur als strukturierte Betriebslogs
+    ausgegeben.
+  - Globale und zielbezogene Adminaenderungen werden getrennt im Auditlog als
+    `frontendLoggingSettings`, `frontendLoggingTargetSet` beziehungsweise
+    `frontendLoggingTargetRemove` festgehalten.
 
 Legacy-Migration fuer Court-Zustaende mit nichtleerer `matchtypId`, aber ohne
 Feld `displayRules`:

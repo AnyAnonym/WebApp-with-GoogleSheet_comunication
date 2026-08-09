@@ -31,8 +31,9 @@ Schutz:
   - OPTIONS antwortet 204 mit GET, POST, DELETE, OPTIONS, Credentials und
     `Content-Type`; es ist kein pauschal offener CORS-Handler.
 
-Erfolgsantworten besitzen ein routenspezifisches Objekt, meist `success: true`.
-Fehler verwenden:
+Jede HTTP-Antwort traegt eine serverseitig erzeugte UUID im Header
+`X-Request-ID`. Erfolgsantworten besitzen ein routenspezifisches Objekt, meist
+`success: true`. Fehler verwenden dieselbe UUID zusaetzlich als `supportId`:
 
   {
     "success": false,
@@ -44,8 +45,11 @@ Fehler verwenden:
     "supportId": "UUID"
   }
 
-`details` ist optional. Ratenlimits koennen `Retry-After` liefern. Ein Fehler
-nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
+`details` ist optional. Dies gilt einheitlich fuer Routing-, Methoden-, Parse-,
+Validierungs-, Auth- und Rate-Limit-Fehler. Ratenlimits koennen `Retry-After`
+liefern. Ein Fehler nach vorsorglichem Sessionwiderruf kann das Sessioncookie
+explizit loeschen. Jeder HTTP-Abschluss wird mit Request-ID, Methode, Route,
+Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert.
 
 
 ================================================================================
@@ -64,7 +68,9 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
   200 `{ status: "ready", version }` oder 503 `{ status: "not-ready", version }`.
   Readiness verlangt abgeschlossene Initialisierung, offene SQLite-Datenbank,
   aktuelle Sheetdaten mit Ausnahme von `matchtyp`, laufenden Poller, keinen
-  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Der Matchtyp-
+  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Court-Frische
+  richtet sich nach dem Alter des letzten Erfolgs; ein einzelner Folgefehler
+  innerhalb des Frischefensters setzt die Quelle nicht sofort stale. Der Matchtyp-
   Tabellenstatus bleibt diagnostizierbar und neue Court-Zuweisungen verlangen
   weiterhin aktuelle Matchtyp-Daten. Ein aktiver Legacy-Court, dessen
   fehlender `displayRules`-Snapshot nicht aufgeloest werden konnte, liefert bis
@@ -74,7 +80,12 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 ----- GET /status (admin) -----
    Verlangt ein gueltiges Admin-Sessioncookie und liefert
    `Cache-Control: no-store`. Das Top-Level-Objekt enthaelt `status`, `monitor`,
-   `provider`, `sheets`, `state`, `scoreLog` und `auditLog`. `status` enthaelt detaillierte Readiness einschliesslich
+   `provider`, `sheets`, `state`, `scoreLog`, `auditLog` und `authorization`.
+   `authorization` ist `{ role: "admin", roleSource: "current|last_known_good" }`.
+   Ist die Personenquelle stale, darf eine weiterhin gueltige bestehende Session
+   den letzten erfolgreich geladenen aktiven Admin-Snapshot verwenden; ohne
+   solchen Snapshot bleibt der Zugriff 503. Alle anderen geschuetzten Zugriffe
+   verlangen weiterhin aktuelle Personendaten. `status` enthaelt detaillierte Readiness einschliesslich
    `court.displayRulesReady` und `court.unresolvedActiveRules`; `state` enthaelt
    unter anderem `displayRulesMigration` und die Court-Zustaende.
 
@@ -102,9 +113,10 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
          "ip": "<ip>",
          "connectedAt": 0,
          "lastMessageAt": 0,
-         "lastPong": 0,
-         "lastRequest": null,
-         "pageType": null,
+          "lastPong": 0,
+          "lastRequest": null,
+          "requestHistory": [],
+          "pageType": null,
          "appVersion": null,
          "clientId": null,
          "deviceId": null,
@@ -128,16 +140,13 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
    leeren Teilen. `subscriptions` enthaelt die aktuell registrierten Topics,
    `bufferedAmount` die noch gepufferten Ausgangsbytes.
 
-   Nach einem bis zur Handlerausfuehrung zugelassenen RPC ist `lastRequest`:
-   `{ endpoint, at, durationMs, success, code?, supportId? }`. `code` erscheint
-   bei einem fehlgeschlagenen Request, `supportId` nach erfolgter Korrelation.
-   Fehler vor der Handlerausfuehrung, etwa unbekannter Endpoint, fehlende
-   Berechtigung, ungueltiger Vertrag oder Rate-Limit, erzeugen keinen neuen
-   `lastRequest`-Datensatz. Bekannte Diagnoseeinschraenkung: Existiert bereits ein
-   Datensatz, kann dessen `supportId` dennoch auf die Support-ID der neuen
-   Fehlerantwort wechseln, waehrend Endpoint, Zeit, Dauer und Erfolg zum
-   vorherigen Handlerrequest gehoeren. Die Support-ID darf in diesem Fall nicht
-   isoliert dem angezeigten Endpoint zugeordnet werden.
+   Jeder korrelierbare abgeschlossene RPC erzeugt atomar einen Datensatz
+   `{ endpoint, at, durationMs, success, code?, supportId, clientRequestId }`.
+   `lastRequest` ist der zuletzt abgeschlossene Datensatz; `requestHistory`
+   enthaelt hoechstens die letzten 20 Datensaetze in Abschlussreihenfolge. Auch
+   unbekannte Endpoints, fehlende Berechtigung, ungueltige Vertraege und
+   Rate-Limits werden erfasst. Ein paralleler Request kann keinen bestehenden
+   Datensatz nachtraeglich veraendern oder dessen Support-ID ueberschreiben.
    Die Listen entstehen bei jedem Aufruf aus den aktuell verbundenen Sockets und
    verlieren einen Eintrag beim Close; sie sind nicht persistiert. IP,
    Benutzer-ID, Klarname sowie stabile Client-/Geraetekennungen sind fluechtige
@@ -147,9 +156,74 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
    und Zaehler. Die Antwort enthaelt keine Fachereigniszeilen, Cookies, Tokens,
    Passwortwerte oder privaten Schluessel.
 
+----- GET /api/frontend-logging-policy (public) -----
+  Liefert `{ success, frontendLogging }`. Die Policy enthaelt nur technische
+  Steuerwerte: `enabled`, `level`, `targeted`, `expiresAt`,
+  `sampleRatePercent`, `batchSize` und `flushIntervalMs`. Bei gueltiger
+  Benutzersession wird eine aktive temporaere Zielrichtlinie anhand der
+  serverseitigen Personen-ID aufgeloest. Die Antwort enthaelt weder Name noch IP.
+
+----- POST /api/frontend-events (public, erlaubte Origin) -----
+  Nimmt ein gebuendeltes Objekt mit maximal 20 Ereignissen an:
+
+  {
+    "appVersion": "<client-version>",
+    "clientSessionId": "<ephemere Seiten-UUID>",
+    "pageType": "scoreboard",
+    "events": [{
+      "event": "rpc_request_failed",
+      "level": "warn",
+      "timestamp": "<UTC-ISO>",
+      "code": "REQUEST_TIMEOUT",
+      "category": "timeout",
+      "supportId": "<optionale Support-ID>",
+      "endpoint": "players",
+      "durationMs": 45000
+    }]
+  }
+
+  Ereignisnamen, ihr kanonisches Level und alle Felder besitzen eine feste
+  serverseitige Allowlist. Request-/Response-Payloads, URLs, DOM-Inhalte, freie
+  Meldungen, Stacks, Tokens, Cookies, Passwortwerte, E-Mail und Telefonnummern
+  werden nicht angenommen. Die Rate gilt pro serverseitig bestimmter Person oder
+  anonymer Quell-IP. Ohne wirksame Policy werden Ereignisse mit `accepted: 0`
+  verworfen.
+
+  Bei gueltiger Session ergaenzt ausschliesslich das Backend `actorId`,
+  `actorName`, `role` und `sourceIp`; anonyme Ereignisse erhalten nur die
+  serverseitig bestimmte IP und muessen global explizit freigegeben sein.
+  `X-Forwarded-For` gilt nur innerhalb der dokumentierten Loopback-
+  Vertrauensgrenze. Jedes angenommene Ereignis wird als strukturiertes
+  `frontend_client_event` nach stdout/stderr geschrieben und ist damit fuer den
+  spaeteren Alloy-/Loki-/Grafana-Pfad vorbereitet. `retentionClass` und
+  `retentionDays` sind Routingvorgaben; die tatsaechliche Loeschung muss Loki
+  konfigurieren.
+
+----- /api/admin/frontend-logging (admin) -----
+  GET liefert globale Einstellungen, deren Revision, die Revision der aktiven
+  Ziele, aktive Zielpersonen mit Name/ID/Rolle/Level/Ersteller/Ablauf/Restzeit
+  sowie die aktive Personenliste.
+
+  POST speichert revisionsgeschuetzt `{ expectedRevision, enabled, level,
+  includeAnonymous, sampleRatePercent, batchSize, flushIntervalMs,
+  defaultTargetLevel, defaultTargetDurationMinutes, normalRetentionDays,
+  targetedRetentionDays }`. Level sind `error|warn|info|debug`; Batchgroesse 1
+  bis 20, Flush 1000 bis 30000 ms, Sampling 0 bis 100 Prozent, normale Retention
+  1 bis 90 und gezielte Retention 1 bis 30 Tage. Die Retentionwerte werden nur als
+  Logfelder ausgegeben und noch nicht durch die Anwendung geloescht.
+
+----- /api/admin/frontend-logging/targets (admin) -----
+  POST mit `{ expectedRevision, personId, level, durationMinutes }` aktiviert oder
+  ersetzt eine temporaere Zielrichtlinie fuer eine aktive Person. Die Dauer liegt
+  zwischen 15 Minuten und dem serverseitigen Maximum, standardmaessig 1440
+  Minuten. DELETE mit `{ expectedRevision, personId }` entfernt sie. Abgelaufene
+  Ziele werden automatisch herausgefiltert. Aenderungen an globalen Einstellungen
+  und Zielpersonen werden mit serverseitigem Adminprincipal auditiert.
+
 ----- /api/session -----
   GET (public):
-    `{ success, authenticated, user|null, expiresAt|null, serverTime }`.
+    `{ success, authenticated, user|null, expiresAt|null, serverTime,
+    frontendLogging }`.
     `user` ist die private Eigenprojektion ohne Passwortdaten.
 
   POST (public, erlaubte Origin):
@@ -157,7 +231,7 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
     (clientseitiger SHA-256-Credential). Prueft Loginlimits, aktive Person und
     Rolle, migriert einen Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte
     Sessions und setzt ein neues Sessioncookie. 200 liefert
-    `{ success, user, expiresAt, serverTime }`. Jeder nach der Bodyannahme
+    `{ success, user, expiresAt, serverTime, frontendLogging }`. Jeder nach der Bodyannahme
     verarbeitete Versuch wird auditiert. SQLite speichert die normalisierte
     syntaktisch gueltige E-Mail mit maximal 64 UTF-8-Bytes vor `@`, maximal 254
     UTF-8-Bytes nach der Kanonisierung und einer auf IDNA-ASCII/Punycode
@@ -170,14 +244,15 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
 
   DELETE (public, erlaubte Origin):
     Widerruft die aktuelle Session, loescht das Cookie und liefert
-    `{ success: true }`.
+    `{ success: true, frontendLogging }` mit der danach anonym wirksamen Policy.
 
 ----- POST /api/password (authenticated) -----
   Body `{ currentPasswordHash, newPasswordHash }`, beide 64 Hexzeichen. Aendert
   nur das eigene Passwort. Der Benutzerwrite ist serialisiert; alle eigenen
   Sessions werden vor dem Sheet-Write widerrufen. Bei Erfolg wird eine neue
   Session samt Cookie erstellt. Bei fehlgeschlagenem/unklarem Write bleibt die
-  alte Session ungueltig und der Fehler markiert `sessionInvalidated`.
+  alte Session ungueltig und der Fehler markiert `sessionInvalidated`. Die
+  Erfolgsantwort enthaelt die Policy der neuen Session in `frontendLogging`.
 
 ----- POST /api/password-setup (public, erlaubte Origin) -----
   Body `{ email, newPasswordHash }`; `newPasswordHash` ist exakt 64 Hexzeichen.
@@ -304,12 +379,15 @@ Request:
 
 Response:
   `{ "v":2, "type":"response", "id":"...", "endpoint":"name",
-     "data":{ "success":true, ... }, "supportId":"connectionId:requestId" }`
+     "data":{ "success":true, ... }, "supportId":"serverseitige UUID" }`
 
-`id` (maximal 128) und `endpoint` (maximal 64, alphanumerischer Name) werden in
-jeder korrelierten Response gespiegelt. Fehler stehen in `data` im gemeinsamen
-Fehlerformat. Ein Client muss eine Response mit anderem Endpoint als
-Protokollfehler ablehnen. Unkorrelierbare Protokollfehler verwenden
+`id` (maximal 128, `[A-Za-z0-9_.:-]+`) ist die clientseitige Request-ID;
+`endpoint` ist ein maximal 64 Zeichen langer alphanumerischer Name. Beide werden
+in jeder korrelierten Response gespiegelt. `supportId` ist davon unabhaengig und
+wird fuer jeden korrelierbaren Request serverseitig neu erzeugt. Das strukturierte
+Abschlussereignis enthaelt beide IDs, Endpoint, Dauer, Ergebnis und Fehlercode.
+Fehler stehen in `data` im gemeinsamen Fehlerformat. Ein Client muss eine Response
+mit anderem Endpoint als Protokollfehler ablehnen. Unkorrelierbare Protokollfehler verwenden
 `{ type:"error", error:{ code, message } }`.
 
 Parameterobjekte sind geschlossen: unbekannte Felder sind ein

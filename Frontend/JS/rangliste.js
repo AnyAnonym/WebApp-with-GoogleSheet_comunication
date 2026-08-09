@@ -1,6 +1,7 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { ready, getUser, isAuthenticated, subscribeAuth } from "./authClient.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readRlPlatzierung     = createEndpoint("rlPlatzierung");
 const readPlayersList       = createEndpoint("players");
@@ -170,7 +171,7 @@ async function fetchMyState(rankedList) {
 async function applyAllRules(container, pyramid, rankedList) {
 
   // ── Schritt 1: Alle Daten PARALLEL laden (Promise.allSettled = kein Fail)
-  console.log("📊 Lade Ranglisten-Daten parallel...");
+  diagnostic.info("ranking_rules_load_started");
 
   const [busyRes, restrictRes, myRes] = await Promise.allSettled([
     fetchBusyIds(),
@@ -180,18 +181,18 @@ async function applyAllRules(container, pyramid, rankedList) {
 
   const busyData = busyRes.status === "fulfilled"
     ? busyRes.value
-    : (console.warn("⚠️ BusyIds nicht geladen:", busyRes.reason),
+    : (diagnostic.warn("ranking_busy_data_load_failed", { error: busyRes.reason }),
        { busyIds: new Set(), preMatches: [] });
 
   const { schutzzeitMap, sperrzeitMap } = restrictRes.status === "fulfilled"
     ? restrictRes.value
-    : (console.warn("⚠️ Beschränkungen nicht geladen:", restrictRes.reason),
+    : (diagnostic.warn("ranking_restrictions_load_failed", { error: restrictRes.reason }),
        { schutzzeitMap: new Map(), sperrzeitMap: new Map() });
   scheduleRestrictionExpiry([...schutzzeitMap.values(), ...sperrzeitMap.values()]);
 
   const myState = myRes.status === "fulfilled"
     ? myRes.value
-    : (console.warn("⚠️ Eigener Spieler nicht geladen:", myRes.reason), null);
+    : (diagnostic.warn("ranking_identity_state_load_failed", { error: myRes.reason }), null);
 
   const ruleDataComplete = busyRes.status === "fulfilled" && restrictRes.status === "fulfilled";
   let warning = document.getElementById("rankingDataWarning");
@@ -209,7 +210,11 @@ async function applyAllRules(container, pyramid, rankedList) {
     warning.hidden = ruleDataComplete;
   }
 
-  console.log(`✅ Daten geladen | Busy: ${busyData.busyIds.size} | Schutz: ${schutzzeitMap.size} | Sperre: ${sperrzeitMap.size}`);
+  diagnostic.info("ranking_rules_loaded", {
+    busyCount: busyData.busyIds.size,
+    protectionCount: schutzzeitMap.size,
+    blockingCount: sperrzeitMap.size,
+  });
 
   // ── Schritt 2: Meine Position in der Pyramide finden
   let myPlayerId = null, myRow = -1, myCol = -1;
@@ -255,9 +260,7 @@ async function applyAllRules(container, pyramid, rankedList) {
   const iAmBlocked     = myPlayerId ? sperrzeitMap.has(myPlayerId) : false;
   const myBlockedUntil = iAmBlocked ? sperrzeitMap.get(myPlayerId) : null;
 
-  if (iAmBlocked) {
-    console.log(`⛔ Du bist gesperrt bis: ${myBlockedUntil.toLocaleString("de-AT")}`);
-  }
+  if (iAmBlocked) diagnostic.info("ranking_current_player_blocked");
 
   // ── Schritt 4b: Habe ich selbst eine offene Forderung?
   const iAmBusy = myPlayerId ? busyData.busyIds.has(myPlayerId) : false;
@@ -357,10 +360,12 @@ async function applyAllRules(container, pyramid, rankedList) {
     // ── 4. Nicht forderbar, kein gelb/lila → bleibt grau (keine Klasse)
   });
 
-  console.log(`🎨 Forderbar: ${challengeableIds.size} | Busy: ${
-    [...challengeableIds].filter(id => busyData.busyIds.has(id)).length} | Schutz: ${
-    [...challengeableIds].filter(id => schutzzeitMap.has(id)).length} | Sperre: ${
-    [...challengeableIds].filter(id => sperrzeitMap.has(id)).length}`);
+  diagnostic.info("ranking_rules_applied", {
+    challengeableCount: challengeableIds.size,
+    busyCount: [...challengeableIds].filter((id) => busyData.busyIds.has(id)).length,
+    protectionCount: [...challengeableIds].filter((id) => schutzzeitMap.has(id)).length,
+    blockingCount: [...challengeableIds].filter((id) => sperrzeitMap.has(id)).length,
+  });
 
   return myState;
 }
@@ -421,7 +426,7 @@ export async function loadRanking() {
     })
     .sort((a, b) => a.rank - b.rank);
 
-  console.log(`🏆 ${rankedList.length} Spieler geladen (BewerbID: ${BEWERB_ID})`);
+  diagnostic.info("ranking_loaded", { playerCount: rankedList.length });
   return rankedList;
 }
 
@@ -619,7 +624,7 @@ subscribeAuth((user) => {
 
   rankingRefresh = queueRankingRefresh()
     .catch((error) => {
-      console.error("Rangliste konnte nach der Authentifizierungsänderung nicht aktualisiert werden:", error);
+      diagnostic.error("ranking_auth_refresh_failed", error);
     });
 });
 
@@ -648,7 +653,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     signalMonitorReady();
   } catch (error) {
-    console.error("Rangliste konnte nicht initialisiert werden:", error);
+    diagnostic.error("ranking_initialization_failed", error);
     const container = document.getElementById("rankingContainer");
     if (container) {
       const message = document.createElement("p");

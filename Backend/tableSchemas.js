@@ -5,6 +5,8 @@ const { emailValue } = require("./validators.js");
 
 const VALID_ROLES = new Set(["player", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
+const PLAYER_EMAIL_SUMMARY_EVERY = 10;
+let playerEmailIssueState = { signature: "", validations: 0, affectedCount: 0 };
 
 const REQUIRED_HEADERS = {
   players: ["id", "vorname", "nachname", "e-mail", "passwdhash", "aktiv", "role"],
@@ -16,6 +18,37 @@ const REQUIRED_HEADERS = {
   navigator: ["name", "ziel"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
+
+function reportPlayerEmailIssues(issues) {
+  if (!issues.length) {
+    if (playerEmailIssueState.signature) {
+      logger.log("info", "player_email_validation_recovered", {
+        table: "players",
+        previousAffectedCount: playerEmailIssueState.affectedCount,
+      });
+    }
+    playerEmailIssueState = { signature: "", validations: 0, affectedCount: 0 };
+    return;
+  }
+
+  const signature = JSON.stringify(issues);
+  const fields = {
+    table: "players",
+    affectedCount: issues.length,
+    affected: issues.slice(0, 20),
+    omittedCount: Math.max(0, issues.length - 20),
+  };
+  if (signature !== playerEmailIssueState.signature) {
+    logger.log("warn", "player_email_validation_issues", fields);
+    playerEmailIssueState = { signature, validations: 1, affectedCount: issues.length };
+    return;
+  }
+
+  playerEmailIssueState.validations++;
+  if (playerEmailIssueState.validations % PLAYER_EMAIL_SUMMARY_EVERY === 0) {
+    logger.log("warn", "player_email_validation_summary", fields);
+  }
+}
 
 function validateTableValues(tableName, values) {
   if (!Array.isArray(values) || !Array.isArray(values[0])) {
@@ -46,7 +79,8 @@ function validateTableValues(tableName, values) {
     const roleIndex = headerIndex(header, "role");
     const emailIndex = headerIndex(header, "e-mail");
     const emails = new Set();
-    for (const row of values.slice(1)) {
+    const emailIssues = [];
+    for (const [offset, row] of values.slice(1).entries()) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
       if (role && !VALID_ROLES.has(role) && !warnedInvalidRoles.has(role)) {
         warnedInvalidRoles.add(role);
@@ -58,11 +92,17 @@ function validateTableValues(tableName, values) {
       try {
         normalizedEmail = emailValue(email);
       } catch {
-        throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist ungueltig", 503);
+        emailIssues.push({
+          rowNumber: offset + 2,
+          personId: String(row[idIndex] || "").trim(),
+          reason: "INVALID_EMAIL",
+        });
+        continue;
       }
       if (emails.has(normalizedEmail)) throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist nicht eindeutig", 503);
       emails.add(normalizedEmail);
     }
+    reportPlayerEmailIssues(emailIssues);
   }
   return values;
 }

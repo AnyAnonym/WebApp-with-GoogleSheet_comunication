@@ -5,6 +5,7 @@ import {
   restartConnection,
   subscribe,
 } from "./dataClient.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readMonitorTarget = createEndpoint("monitorTarget");
 const acknowledgeMonitor = createEndpoint("monitorAck");
@@ -199,7 +200,7 @@ async function sendAcknowledgement(payload) {
       if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
-  console.warn("Monitor-ACK konnte nicht bestätigt werden:", lastError?.code || lastError?.message);
+  diagnostic.warn("monitor_ack_failed", { error: lastError });
   return false;
 }
 
@@ -450,7 +451,7 @@ async function applyScroll(command) {
   try {
     scrollBy.call(activeFrame.contentWindow, 0, command.deltaY);
   } catch (error) {
-    console.warn("Monitor konnte nicht scrollen:", error?.message);
+    diagnostic.warn("monitor_scroll_failed", { error });
     rememberAppliedScroll(command.commandId, "failed", "SCROLL_FAILED");
     await sendAcknowledgement({ kind: "scroll", commandId: command.commandId, status: "failed", errorCode: "SCROLL_FAILED" });
     return;
@@ -472,11 +473,11 @@ function handleMonitorCommand(command) {
   if (command.monitorId !== device.id) return;
   if (command.kind === "navigate") {
     beginNavigation(command).catch((error) => {
-      console.error("Navigationskommando fehlgeschlagen:", error);
+      diagnostic.error("monitor_navigation_command_failed", error);
     });
   } else {
     scrollChain = scrollChain.then(() => applyScroll(command)).catch((error) => {
-      console.error("Scrollkommando fehlgeschlagen:", error);
+      diagnostic.error("monitor_scroll_command_failed", error);
     });
   }
 }
@@ -503,7 +504,7 @@ async function synchronizeTarget() {
       setOverlay("Warte auf Navigation...", "waiting");
     }
   } catch (error) {
-    console.warn("Monitorziel konnte nicht synchronisiert werden:", error?.message);
+    diagnostic.warn("monitor_target_synchronization_failed", { error });
   }
 }
 

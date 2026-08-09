@@ -20,6 +20,7 @@ function renderHeader() {
         <a href="Matches1.html" class="${activeClass("Matches1.html")}">Matches</a>
         <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
         <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
+        <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
       </nav>
 
       <div class="header-center">
@@ -57,6 +58,7 @@ function renderMobileNav() {
           <a href="Matches1.html" class="${activeClass("Matches1.html")}">Matches</a>
           <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
           <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
+          <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
         </nav>
       </div>
     </div>
@@ -84,6 +86,9 @@ function renderAuthState(user, authState = {}) {
   });
   document.querySelectorAll('[data-auth="required"]').forEach((element) => {
     element.hidden = !resolved || !authenticated;
+  });
+  document.querySelectorAll('[data-role="admin"]').forEach((element) => {
+    element.hidden = !resolved || user?.role !== "admin";
   });
   document.querySelectorAll(".authUnavailable").forEach((element) => {
     const visible = !resolved;

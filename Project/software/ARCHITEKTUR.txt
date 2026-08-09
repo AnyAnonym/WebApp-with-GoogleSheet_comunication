@@ -43,7 +43,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   MonitorBroker; konfiguriert HTTP und WebSocket. Der Port wird vor dem
   asynchronen Initialload geoeffnet, aber Readiness bleibt bis zu aktuellem
   Initialstate false. HTTP kennt korrekte 404/405/503, Body-/Header-/Requestlimits
-  und die Session-/Passwort-/Monitor-APIs.
+  und die Session-/Passwort-/Monitor-APIs. Jeder Request erhaelt eine serverseitige
+  `X-Request-ID` und ein strukturiertes Abschlussereignis; ein dauerhafter
+  Server-Error-Handler behandelt auch spaetere Listenerfehler.
 
 `config.js`
   Validiert Instanz, Loopback, Origins, HTTPS-Modus, absolute SQLite-Datei,
@@ -65,7 +67,17 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Projektionen, prueft scrypt/Legacy-Credentials mit Dummy-Verifikation,
   serialisiert Operationen je Benutzer und orchestriert Login, Migration,
   Logout, Eigenwechsel, Resetnachweis, adminfreigegebene erstmalige Vergabe und
-  Admin-Passwortsetzung.
+  Admin-Passwortsetzung. Ausschliesslich der Adminstatus darf innerhalb einer
+  weiterhin gueltigen bestehenden Session einen zuvor erfolgreich geladenen
+  aktiven Admin-Rollensnapshot verwenden, wenn die Personenquelle stale ist.
+
+`frontendLoggingService.js`
+  Verwaltet revisionsgeschuetzte globale Browserdiagnose-Einstellungen und
+  automatisch ablaufende Zielpersonen in `app_state`. Es berechnet die wirksame
+  Policy, validiert eine feste Event-/Feld-Allowlist, begrenzt Ereignisse pro
+  Person beziehungsweise IP und reichert angenommene Events ausschliesslich
+  serverseitig mit Personen-ID, Klarname, Rolle und Quell-IP an. Fachpayloads und
+  freie Fehlertexte werden nicht angenommen.
 
 `stateRepository.js`
   Kapselt SQLite mit WAL/FULL, Dateirechten, Transaktionen, revisioniertem
@@ -77,7 +89,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Laedt beim Start alle acht Tabellen parallel. Danach Basis-Tick 5 Sekunden,
   Fast-Kategorie standardmaessig alle 10 Sekunden und Slow-Kategorie alle
   30 Sekunden. Pro Tick gibt es keinen Overlap; Google-Requests besitzen
-  Timeouts und jede Antwort wird gegen `tableSchemas.js` validiert.
+  Timeouts und jede Antwort wird gegen `tableSchemas.js` validiert. Ergebnisse
+  unterscheiden `applied`, `ignored_stale`, `failed` und `recovered`; identische
+  Fehlerfolgen werden nach dem ersten Ereignis nur periodisch zusammengefasst.
 
 `tableSchemas.js`, `tableUtils.js`
   Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs und E-Mails und
@@ -111,8 +125,11 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Pollt nur wenn mindestens ein Court aktiv ist. AbortController, Fetch-Timeout,
   Antwortgroessenlimit, JSON-/Strukturvalidierung, semantische Score-
   Normalisierung, exponentieller Backoff mit Jitter, Heartbeats, Revisionen und
-  dynamische Stale-Grenze schuetzen die externe Quelle. Pro-Court-Epochen sperren
-  alte Fetchantworten nach Aktivitaetswechsel oder Score-Reset aus.
+  dynamische Stale-Grenze schuetzen die externe Quelle. Stale richtet sich nach
+  dem Alter des letzten Erfolgs, nicht nach einem einzelnen Folgefehler. Ausfall,
+  periodische Fehlerzusammenfassung und Recovery tragen Fehlerfolge und Dauer.
+  Pro-Court-Epochen sperren alte Fetchantworten nach Aktivitaetswechsel oder
+  Score-Reset aus.
 
 `scoreboardDisplay.js`
   Erzeugt ausschliesslich fuer Scoreboard-Snapshot und `scores`-Pushes eine
@@ -131,6 +148,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Implementiert WebSocket-Upgrade, v2-Handshake, Principal-Refresh, Rollenmatrix,
   RPC-Routing, Support-ID-Korrelation, Ping/Pong, Kapazitaets-/Rate-/Backpressure-
   Limits, Topiczugriff, initiale Subscription-Snapshots und Shutdown mit 1012.
+  Client-Request-ID und serverseitige Support-UUID bleiben getrennt. Jeder
+  korrelierbare Abschluss erzeugt einen unveraenderlichen Datensatz; pro Socket
+  bleiben hoechstens die letzten 20 Datensaetze erhalten.
 
 
 ================================================================================
@@ -144,11 +164,19 @@ Login migriert einen alten SHA-256-Sheetwert per Compare-and-set; unbekannte ode
 inaktive Benutzer durchlaufen eine Dummy-scrypt-Pruefung und erhalten denselben
 Loginfehler. Loginlimits gelten kombiniert fuer IP/E-Mail und IP. Eine globale
 Grenze laesst hoechstens vier scrypt-Verifikationen oder -Erzeugungen gleichzeitig
-zu; das schliesst negative oeffentliche Erstvergaben ein.
+zu; das schliesst negative oeffentliche Erstvergaben ein. Eine syntaktisch
+ungueltige Personen-E-Mail wird fuer Authentifizierung und Projektionen wie ein
+leerer Wert behandelt, damit sie andere Personen nicht blockiert. Der Sheetload
+protokolliert betroffene Personen-IDs und Zeilennummern beim ersten Auftreten,
+periodisch waehrend des Bestands und bei Recovery; der ungueltige E-Mail-Wert
+selbst wird nicht geloggt. Kanonisch doppelte gueltige E-Mails bleiben ein fataler
+Schemafehler.
 
 Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
 Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash. Rollen werden
-bei jedem HTTP-/RPC-Zugriff aus der aktuellen Personenzeile ermittelt:
+bei jedem HTTP-/RPC-Zugriff aus der aktuellen Personenzeile ermittelt. Nur
+`/status` darf bei stale Personen innerhalb einer gueltigen bestehenden Session
+den letzten erfolgreich geladenen aktiven Admin-Rollensnapshot verwenden:
 
   Rolle/Principal | Rechte
   ----------------|-------------------------------------------------------------
@@ -251,6 +279,20 @@ Fachhistorien und Betriebslogs:
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der
     Ueberwachung und ersetzen nie die SQLite-Historie.
+  - Browserdiagnose fliesst bei aktivierter Policy als gebuendelte same-origin
+    HTTP-Anfrage zum Backend. Der Browser sendet nur erlaubte technische Felder;
+    Sessionidentitaet und IP werden dort nicht vertraut. Das Backend schreibt je
+    angenommenem Eintrag `frontend_client_event` mit `frontendEvent`,
+    `frontendLevel`, `actorId`, `actorName`, `role`, `sourceIp`, Support-ID und
+    technischen Dimensionen. `retentionClass` und `retentionDays` bereiten die
+    spaetere Alloy-/Loki-Routing- und Retentionkonfiguration vor, erzwingen sie
+    aber noch nicht.
+  - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
+    bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
+    `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale
+    Labels. Vom Browser gemeldete Version, Personen-ID, Klarname, IP, Support-ID
+    und ephemere Seitensitzung bleiben JSON-Felder und duerfen nicht zu Labels
+    oder ungefilterten Ticketinhalten werden.
 
 
 ================================================================================
@@ -262,7 +304,8 @@ clientId, deviceId und pageType senden. `welcome` liefert Serverversion,
 Connection-ID, Timing und den serverseitigen Principal. Jede weitere Nachricht
 traegt `v:2`.
 
-RPC-Responses spiegeln id und endpoint und tragen eine Support-ID. Der Client
+RPC-Responses spiegeln id und endpoint und tragen eine unabhaengige serverseitige
+Support-UUID. Der Client
 weist einen falschen Responseendpoint als Protokollfehler ab. Ungueltige JSON-,
 Message-, Endpoint- oder Parameterfehler erhalten nach Moeglichkeit genau eine
 korrelierte Response. Rollen werden vor jedem geschuetzten Request und Topic
@@ -393,7 +436,8 @@ migrierbar und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
     Persistenzfehler,
   - alle Tabellen ausser `matchtyp` innerhalb ihrer Altersgrenze,
   - laufenden Sheetpoller,
-  - bei aktivem Court eine frische externe Courtquelle,
+  - bei aktivem Court eine anhand des letzten Erfolgs noch frische externe
+    Courtquelle; ein einzelner Folgefehler setzt sie nicht sofort stale,
   - keinen aktiven Court mit unresolved Legacy-Anzeigeregeln.
 
 Ein solcher aktiver Legacy-Court bleibt bis zur Tabellen-Recovery, erfolgreichen
@@ -405,7 +449,8 @@ Matchtyp-Daten.
 
 `/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
 SheetService-, State-, ScoreLog- und Auditlogwerte, einschliesslich
-`pendingMetadataIntents`, aber keine
+`pendingMetadataIntents`, Quelle der verwendeten Adminrolle sowie einer
+begrenzten atomaren RPC-Abschlusshistorie je verbundenem Socket, aber keine
 Secrets. Die Provider-Verbindungsdaten werden bei jedem Aufruf nur aus aktuell
 verbundenen Sockets erzeugt, beim Close entfernt und nicht persistiert. Sie sind
 fluechtige privilegierte Diagnosedaten; IP-Adressen, Benutzeridentitaeten,
@@ -436,9 +481,20 @@ Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
                       operationId-Lebenszyklus.
 `authClient.js`       HTTP-Cookiesession, SHA-256-Credential, Web Locks,
                       Cross-Tab- und WS-Synchronisation.
+`diagnostics.js`      Benannte, levelgesteuerte Browserdiagnose mit Feldgrenzen,
+                       rekursiver Redaction, kontrollierter Fehlerprojektion,
+                       Policy-Uebernahme, Sampling, begrenzter Queue und
+                       gebuendeltem same-origin Transport. Ein temporaer
+                       ausgewaehlter Benutzer sieht einen neutralen Hinweis mit
+                       Ablaufzeit.
+`adminLogging.js`     Adminoberflaeche fuer globale Level-, Sampling-, Batch-,
+                       Flush- und Retentionvorgaben sowie temporaere Zielpersonen
+                       mit Restzeit und revisionsgeschuetzten Aenderungen.
 `navbar.js`           Navigation und sessiongetriebene Login-/Profilanzeige.
 `modals.js`           Profil, Login, Passwort/Reset und Fachdialoge; sichere
-                      kontextabhaengige Profilprojektionen.
+                      kontextabhaengige Profilprojektionen. Profilinhalt und
+                      Aktionshandler werden beim Schliessen und Identitaetswechsel
+                      vollstaendig entfernt.
 `loadingHelper.js`    Abschlussgarantien sowie fokussierbare, schliessbare
                       Fehleranzeigen mit erhaltener Support-ID.
 `staticReady.js`      Bereitschaft statischer Seiten im Monitorkontext.
@@ -448,7 +504,8 @@ Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
 Fachseiten abonnieren tabellenspezifische Invalidierungen statt kurzer Polltimer.
 Externe Daten werden ueber sichere DOM-Knoten oder begrenztes Escaping gerendert.
 Externe Font-/Script-Abhaengigkeiten, SDK.js und rankingSidebar.js sind entfernt.
-Die elf fachlichen Seitendokumente sind in `SOFTWARE-DOKU.txt` indiziert.
+Die elf fachlichen Seitendokumente und die Logging-Administrationsseite sind in
+`SOFTWARE-DOKU.txt` indiziert.
 
 Login-, Eigenwechsel-, Reset-, Erstvergabe- und Admin-Passwortdialoge verlangen
 eine explizite Schliessen-/Abbrechen-Aktion; Klick auf den Hintergrund und Escape

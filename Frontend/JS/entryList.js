@@ -1,7 +1,8 @@
 import { createEndpoint, getOperationId, releaseOperationId, subscribeInvalidations } from "./dataClient.js";
 import { ready, getUser, subscribeAuth } from "./authClient.js";
-import { callWithRetry, errorMessage, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
+import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readEntryList     = createEndpoint("entryList");
 const readPlayersList   = createEndpoint("players");
@@ -338,7 +339,7 @@ async function loadEntries() {
     container.appendChild(table);
     hideLoadingOverlay();
   } catch (err) {
-    console.error("Fehler beim Laden der Einträge:", err);
+    diagnostic.error("entry_list_load_failed", err);
     showErrorOverlay(errorMessage(err, "Fehler beim Laden der Einträge"), () => {
       loadEntries().catch(() => {});
     });
@@ -382,7 +383,7 @@ async function handleEntrySubmit(btn) {
     }
   } catch (err) {
     releaseOperationId(operationKey, err);
-    console.error("Fehler beim Eintragen:", err);
+    diagnostic.error("entry_list_add_failed", err);
     showToast("Fehler: " + (err.message || err), "error");
   }
 
@@ -451,7 +452,7 @@ async function handleEntryRemove(btn) {
     }
   } catch (err) {
     releaseOperationId(operationKey, err);
-    console.error("Fehler beim Austragen:", err);
+    diagnostic.error("entry_list_remove_failed", err);
     showToast("Fehler: " + (err.message || err), "error");
   }
 
@@ -531,7 +532,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     signalMonitorReady();
   } catch (error) {
-    console.error("Entrylist konnte nicht initialisiert werden:", error);
+    diagnostic.error("entry_list_initialization_failed", error);
     signalMonitorFailed(error.code || "ENTRY_LIST_LOAD_FAILED");
   }
 });

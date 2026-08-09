@@ -40,9 +40,15 @@ let revision = 0;
 let pollCount = 0;
 let pushCount = 0;
 let failureCount = 0;
+let failureStartedAt = 0;
 let lastAttemptAt = 0;
 let lastSuccessAt = 0;
 let lastError = null;
+let lastPollDurationMs = 0;
+let loggedFailureCode = null;
+let loggedFailureOccurrences = 0;
+let suppressedFailures = 0;
+let failureSummaryEvery = 10;
 let onUpdate = null;
 let lastNotificationAt = 0;
 
@@ -57,6 +63,14 @@ function cleanScore(value) {
   const normalized = result.toUpperCase();
   if (!/^(A|AD)$/.test(normalized)) throw new Error("Ungueltiger Scorewert");
   return normalized;
+}
+
+function errorCodeOf(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  if (/^[A-Z][A-Z0-9_]{0,63}$/.test(code)) return code;
+  if (error?.name === "SyntaxError") return "INVALID_JSON";
+  if (error?.name === "AbortError") return "COURT_FETCH_TIMEOUT";
+  return "COURT_POLL_FAILED";
 }
 
 function normalizeData(data, requiredCourts = courtActive) {
@@ -179,8 +193,11 @@ function snapshot() {
       lastAttemptAt,
       lastSuccessAt,
       ageMs: lastSuccessAt ? now - lastSuccessAt : null,
-      stale: running && (!!lastError || !lastSuccessAt || now - lastSuccessAt > staleAfterMs),
+      stale: running && (!lastSuccessAt || now - lastSuccessAt > staleAfterMs),
       staleAfterMs,
+      failureStartedAt,
+      consecutiveFailures: failureCount,
+      outageDurationMs: failureStartedAt ? Math.max(0, now - failureStartedAt) : 0,
       lastError,
     },
   };
@@ -209,22 +226,43 @@ async function poll(myGeneration = generation) {
     return;
   }
   lastAttemptAt = Date.now();
+  const startedAt = lastAttemptAt;
   const activeAtStart = { ...courtActive };
   const epochAtStart = { ...courtEpoch };
   const localController = new AbortController();
   controller = localController;
-  const timeout = setTimeout(() => localController.abort(new Error("Court-Fetch Timeout")), COURT_FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => localController.abort(
+    Object.assign(new Error("Court-Fetch Timeout"), { code: "COURT_FETCH_TIMEOUT" }),
+  ), COURT_FETCH_TIMEOUT_MS);
   try {
     const response = await fetchImplementation(COURT_URL, { cache: "no-store", signal: localController.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { code: `HTTP_${response.status}` });
     const text = await readBoundedText(response);
     const courts = normalizeData(JSON.parse(text), activeAtStart);
     const changed = acceptCourtScores(courts, activeAtStart, epochAtStart);
-    const recovered = failureCount > 0 || lastError !== null || lastSuccessAt === 0;
+    const recovered = failureCount > 0;
+    const recoveredErrorCode = lastError?.code || null;
+    const recoveredErrorSequence = failureCount;
+    const outageDurationMs = recovered ? Math.max(0, Date.now() - failureStartedAt) : 0;
     pollCount++;
     failureCount = 0;
+    failureStartedAt = 0;
     lastSuccessAt = Date.now();
+    lastPollDurationMs = lastSuccessAt - startedAt;
     lastError = null;
+    if (recovered) {
+      logger.log("info", "court_poll_recovered", {
+        result: "recovered",
+        durationMs: lastPollDurationMs,
+        errorCode: recoveredErrorCode,
+        errorSequence: recoveredErrorSequence,
+        outageDurationMs,
+        suppressedFailures,
+      });
+    }
+    loggedFailureCode = null;
+    loggedFailureOccurrences = 0;
+    suppressedFailures = 0;
     if (changed) {
       revision++;
       pushCount++;
@@ -233,10 +271,42 @@ async function poll(myGeneration = generation) {
     schedule(myGeneration, COURT_POLL_INTERVAL);
   } catch (error) {
     if (myGeneration !== generation || !running) return;
+    const failedAt = Date.now();
+    lastPollDurationMs = failedAt - startedAt;
+    if (failureCount === 0) failureStartedAt = failedAt;
     failureCount++;
-    lastError = { at: Date.now(), message: String(error.message || error).slice(0, 300) };
+    const errorCode = errorCodeOf(error);
+    lastError = { at: failedAt, code: errorCode, message: String(error.message || error).slice(0, 300) };
     const backoff = Math.min(COURT_MAX_BACKOFF_MS, COURT_POLL_INTERVAL * (2 ** Math.min(failureCount, 5)));
-    logger.log("warn", "court_poll_failed", { consecutiveFailures: failureCount, backoffMs: backoff, error });
+    if (failureCount === 1 || loggedFailureCode !== errorCode) {
+      logger.log("warn", "court_poll_failed", {
+        result: "failed",
+        durationMs: lastPollDurationMs,
+        errorCode,
+        errorSequence: failureCount,
+        outageDurationMs: failedAt - failureStartedAt,
+        backoffMs: backoff,
+        suppressedFailures,
+      });
+      loggedFailureCode = errorCode;
+      loggedFailureOccurrences = 1;
+      suppressedFailures = 0;
+    } else {
+      loggedFailureOccurrences++;
+      suppressedFailures++;
+      if (loggedFailureOccurrences % failureSummaryEvery === 0) {
+        logger.log("warn", "court_poll_failure_summary", {
+          result: "failed",
+          durationMs: lastPollDurationMs,
+          errorCode,
+          errorSequence: failureCount,
+          outageDurationMs: failedAt - failureStartedAt,
+          backoffMs: backoff,
+          suppressedFailures,
+        });
+        suppressedFailures = 0;
+      }
+    }
     notify(false);
     const jitter = Math.floor(Math.random() * Math.max(1, backoff * 0.2));
     schedule(myGeneration, backoff + jitter);
@@ -255,6 +325,10 @@ function updatePollingState() {
   if (controller) controller.abort(new Error("Court-Polling gestoppt"));
   running = shouldRun;
   failureCount = 0;
+  failureStartedAt = 0;
+  loggedFailureCode = null;
+  loggedFailureOccurrences = 0;
+  suppressedFailures = 0;
   if (running) {
     lastSuccessAt = 0;
     lastError = null;
@@ -314,6 +388,10 @@ function getStatus() {
     lastAttemptAt,
     lastSuccessAt,
     lastError,
+    lastPollDurationMs,
+    failureStartedAt,
+    consecutiveFailures: failureCount,
+    outageDurationMs: failureStartedAt ? Math.max(0, Date.now() - failureStartedAt) : 0,
     revision,
   };
 }
@@ -326,10 +404,11 @@ async function stop() {
   if (controller) controller.abort(new Error("Shutdown"));
 }
 
-function setDependenciesForTests({ fetch: nextFetch, scoreLog: nextScoreLog, courtContext } = {}) {
+function setDependenciesForTests({ fetch: nextFetch, scoreLog: nextScoreLog, courtContext, summaryEvery } = {}) {
   if (nextFetch) fetchImplementation = nextFetch;
   if (nextScoreLog) scoreLogRepository = nextScoreLog;
   if (courtContext) getCourtContext = courtContext;
+  if (summaryEvery) failureSummaryEvery = summaryEvery;
 }
 
 function configure({ scoreLog, courtContext }) {

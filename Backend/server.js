@@ -29,6 +29,7 @@ const courtPoller = require("./courtPoller.js");
 const stateStore = require("./stateStore.js");
 const { AuthService } = require("./authService.js");
 const { AppError, errorData } = require("./errors.js");
+const { FrontendLoggingService } = require("./frontendLoggingService.js");
 const { MonitorBroker } = require("./monitorBroker.js");
 const {
   assertAllowedOrigin,
@@ -46,22 +47,27 @@ const { AuditLogRepository } = require("./auditLogRepository.js");
 const logger = require("./logger.js");
 const { booleanValue, canonicalizeMonitorPath, emailValue, idValue, passwordHashValue, stringValue } = require("./validators.js");
 
+const RESPONSE_REQUEST_ID = Symbol("responseRequestId");
+const RESPONSE_ERROR_CODE = Symbol("responseErrorCode");
+
 function sendJson(response, status, body, headers = {}) {
   const text = JSON.stringify(body);
+  response[RESPONSE_ERROR_CODE] = body?.error?.code || response[RESPONSE_ERROR_CODE] || null;
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(text),
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     ...headers,
+    ...(response[RESPONSE_REQUEST_ID] ? { "X-Request-ID": response[RESPONSE_REQUEST_ID] } : {}),
   });
   response.end(text);
 }
 
-function methodNotAllowed(response, allowed) {
+function methodNotAllowed(response, allowed, supportId) {
   sendJson(response, 405, {
     ...errorData(new AppError("METHOD_NOT_ALLOWED", "HTTP-Methode ist nicht erlaubt", 405)),
-    supportId: crypto.randomUUID(),
+    supportId,
   }, { Allow: allowed.join(", ") });
 }
 
@@ -110,6 +116,12 @@ function createApplication(overrides = {}) {
   courtPoller.configure({ scoreLog: scoreLogRepository, courtContext: (court) => stateStore.getCourt(court) });
   const sheetService = overrides.sheetService || new SheetService({ repository });
   const authService = overrides.authService || new AuthService({ repository, sheetService });
+  const frontendLoggingService = overrides.frontendLoggingService || new FrontendLoggingService({
+    repository,
+    authService,
+    log: logger.log,
+    appVersion: APP_VERSION,
+  });
   const monitorBroker = overrides.monitorBroker || new MonitorBroker({ repository, stateStore, dataStore });
   let initialized = false;
   let shuttingDown = false;
@@ -117,6 +129,7 @@ function createApplication(overrides = {}) {
   let cleanupTimer = null;
   let initializePromise = null;
   const httpWriteLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 6, idleMs: 900000 });
+  const frontendLoggingAdminLimiter = new TokenBucketLimiter({ rate: 1, burst: 20, idleMs: 900000 });
   const deviceLoginLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 10, idleMs: 900000 });
   const passwordResetLimiter = new TokenBucketLimiter({ rate: 0.1, burst: 5, idleMs: 900000 });
 
@@ -126,11 +139,20 @@ function createApplication(overrides = {}) {
     }
   }
 
+  function limitFrontendLoggingAdmin(request, principalId) {
+    if (!frontendLoggingAdminLimiter.take(`principal:${principalId}`) || !frontendLoggingAdminLimiter.take(`ip:${getRequestIp(request)}`)) {
+      throw new AppError("WRITE_RATE_LIMIT", "Zu viele Logging-Aenderungen", 429);
+    }
+  }
+
   async function handler(request, response) {
     activeRequests++;
     const supportId = crypto.randomUUID();
+    const startedAt = Date.now();
+    response[RESPONSE_REQUEST_ID] = supportId;
     let httpAudit = null;
     let httpActionCompleted = false;
+    let route = "invalid";
     const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null, sourceIp = "", attemptedEmail = "" }) => {
       if (!(AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action))) return;
       httpAudit = {
@@ -175,6 +197,7 @@ function createApplication(overrides = {}) {
     try {
       const url = new URL(request.url, "http://backend.invalid");
       const pathname = url.pathname;
+      route = pathname;
       const origin = request.headers.origin;
       if (origin && ALLOWED_ORIGINS.has(origin)) {
         response.setHeader("Access-Control-Allow-Origin", origin);
@@ -190,23 +213,24 @@ function createApplication(overrides = {}) {
           "Access-Control-Allow-Headers": "Content-Type",
           "Access-Control-Allow-Credentials": "true",
           "Vary": "Origin",
+          "X-Request-ID": supportId,
         });
         response.end();
         return;
       }
 
       if (pathname === "/version") {
-        if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
         return sendJson(response, 200, { version: APP_VERSION });
       }
 
       if (pathname === "/live") {
-        if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
         return sendJson(response, shuttingDown ? 503 : 200, { status: shuttingDown ? "stopping" : "ok", version: APP_VERSION });
       }
 
       if (pathname === "/ready" || pathname === "/health") {
-        if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
         const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
         return sendJson(response, status.ready ? 200 : 503, { status: status.ready ? "ready" : "not-ready", version: APP_VERSION });
       }
@@ -217,11 +241,36 @@ function createApplication(overrides = {}) {
 
       const cookies = parseCookies(request.headers.cookie);
       const sessionToken = cookies[SESSION_COOKIE] || "";
+      const diagnosticIdentity = () => authService.getDiagnosticIdentity(sessionToken);
+
+      if (pathname === "/api/frontend-logging-policy") {
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
+        return sendJson(response, 200, {
+          success: true,
+          frontendLogging: frontendLoggingService.getPolicy(diagnosticIdentity()?.id || null),
+        });
+      }
+
+      if (pathname === "/api/frontend-events") {
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
+        assertAllowedOrigin(request, ALLOWED_ORIGINS);
+        const body = await readJsonBody(request, HTTP_BODY_LIMIT_BYTES);
+        const result = frontendLoggingService.recordBatch({
+          body,
+          identity: diagnosticIdentity(),
+          sourceIp: getRequestIp(request),
+        });
+        return sendJson(response, 200, result);
+      }
 
       if (pathname === "/status") {
-        if (request.method !== "GET") return methodNotAllowed(response, ["GET"]);
-        authService.requireRole(sessionToken, ["admin"]);
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
+        const statusAuth = authService.requireRole(sessionToken, ["admin"], { allowLastKnownGoodRole: true });
         return sendJson(response, 200, {
+          authorization: {
+            role: statusAuth.principal.role,
+            roleSource: statusAuth.principal.roleSource || "current",
+          },
           status: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }),
           provider: dataProvider.getStatus(),
           monitor: monitorBroker.status(),
@@ -241,6 +290,7 @@ function createApplication(overrides = {}) {
             user: auth?.user || null,
             expiresAt: auth?.session.expiresAt || null,
             serverTime: Date.now(),
+            frontendLogging: frontendLoggingService.getPolicy(auth?.principal.id || null),
           });
         }
         if (request.method === "POST") {
@@ -268,7 +318,13 @@ function createApplication(overrides = {}) {
             targetId: result.user.id,
           });
           const cookie = serializeCookie(SESSION_COOKIE, result.session.token, { maxAge: SESSION_TTL_MS / 1000, secure: COOKIE_SECURE });
-          return sendJson(response, 200, { success: true, user: result.user, expiresAt: result.session.expiresAt, serverTime: Date.now() }, { "Set-Cookie": cookie });
+          return sendJson(response, 200, {
+            success: true,
+            user: result.user,
+            expiresAt: result.session.expiresAt,
+            serverTime: Date.now(),
+            frontendLogging: frontendLoggingService.getPolicy(result.user.id),
+          }, { "Set-Cookie": cookie });
         }
         if (request.method === "DELETE") {
           assertAllowedOrigin(request, ALLOWED_ORIGINS);
@@ -276,13 +332,16 @@ function createApplication(overrides = {}) {
           beginAudit({ action: "logout", principal: auth?.principal, targetType: "session", targetId: auth?.principal.id || "" });
           authService.logout(sessionToken);
           finishAudit();
-          return sendJson(response, 200, { success: true }, { "Set-Cookie": clearCookie(SESSION_COOKIE, COOKIE_SECURE) });
+          return sendJson(response, 200, {
+            success: true,
+            frontendLogging: frontendLoggingService.getPolicy(null),
+          }, { "Set-Cookie": clearCookie(SESSION_COOKIE, COOKIE_SECURE) });
         }
-        return methodNotAllowed(response, ["GET", "POST", "DELETE"]);
+        return methodNotAllowed(response, ["GET", "POST", "DELETE"], supportId);
       }
 
       if (pathname === "/api/password") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const auth = authService.requireUser(sessionToken);
         beginAudit({ action: "passwordChange", principal: auth.principal, targetType: "user", targetId: auth.principal.id });
@@ -300,11 +359,59 @@ function createApplication(overrides = {}) {
           user: result.user,
           expiresAt: result.session.expiresAt,
           serverTime: Date.now(),
+          frontendLogging: frontendLoggingService.getPolicy(result.user.id),
         }, { "Set-Cookie": cookie });
       }
 
+      if (pathname === "/api/admin/frontend-logging") {
+        if (request.method === "GET") {
+          authService.requireRole(sessionToken, ["admin"]);
+          return sendJson(response, 200, frontendLoggingService.adminView());
+        }
+        if (request.method === "POST") {
+          assertAllowedOrigin(request, ALLOWED_ORIGINS);
+          const auth = authService.requireRole(sessionToken, ["admin"]);
+          limitFrontendLoggingAdmin(request, auth.principal.id);
+          const body = await readJsonBody(request, Math.min(4096, HTTP_BODY_LIMIT_BYTES));
+          const before = frontendLoggingService.settingsSnapshot();
+          beginAudit({
+            action: "frontendLoggingSettings",
+            principal: auth.principal,
+            targetType: "frontend-logging",
+            targetId: "global",
+            before,
+          });
+          const stored = frontendLoggingService.updateSettings(body);
+          finishAudit({ after: { ...stored.value, revision: stored.revision } });
+          return sendJson(response, 200, { success: true, settings: { ...stored.value, revision: stored.revision } });
+        }
+        return methodNotAllowed(response, ["GET", "POST"], supportId);
+      }
+
+      if (pathname === "/api/admin/frontend-logging/targets") {
+        if (!["POST", "DELETE"].includes(request.method)) return methodNotAllowed(response, ["POST", "DELETE"], supportId);
+        assertAllowedOrigin(request, ALLOWED_ORIGINS);
+        const auth = authService.requireRole(sessionToken, ["admin"]);
+        limitFrontendLoggingAdmin(request, auth.principal.id);
+        const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
+        const personId = idValue(body.personId, "personId");
+        const before = frontendLoggingService.targetsSnapshot().value[personId] || null;
+        beginAudit({
+          action: request.method === "POST" ? "frontendLoggingTargetSet" : "frontendLoggingTargetRemove",
+          principal: auth.principal,
+          targetType: "user",
+          targetId: personId,
+          before,
+        });
+        const result = request.method === "POST"
+          ? frontendLoggingService.setTarget(body, auth.principal)
+          : frontendLoggingService.removeTarget(body);
+        finishAudit({ after: request.method === "POST" ? result.target : { removed: result.removed } });
+        return sendJson(response, 200, { success: true, ...result });
+      }
+
       if (pathname === "/api/password-reset") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const ip = getRequestIp(request);
         if (!passwordResetLimiter.take(ip)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Reset-Versuche", 429);
@@ -319,7 +426,7 @@ function createApplication(overrides = {}) {
       }
 
       if (pathname === "/api/password-setup") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const ip = getRequestIp(request);
         if (!passwordResetLimiter.take(`setup:${ip}`)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Versuche", 429);
@@ -334,7 +441,7 @@ function createApplication(overrides = {}) {
       }
 
       if (pathname === "/api/admin/password-reset") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
@@ -349,7 +456,7 @@ function createApplication(overrides = {}) {
       }
 
       if (pathname === "/api/admin/password-setup") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
@@ -365,7 +472,7 @@ function createApplication(overrides = {}) {
       }
 
       if (pathname === "/api/admin/password") {
-        if (request.method !== "POST") return methodNotAllowed(response, ["POST"]);
+        if (request.method !== "POST") return methodNotAllowed(response, ["POST"], supportId);
         assertAllowedOrigin(request, ALLOWED_ORIGINS);
         const auth = authService.requireRole(sessionToken, ["admin"]);
         limitHttpWrite(request, auth.principal.id);
@@ -406,7 +513,7 @@ function createApplication(overrides = {}) {
           finishAudit();
           return sendJson(response, 200, { success: true }, { "Set-Cookie": clearCookie(MONITOR_COOKIE, COOKIE_SECURE) });
         }
-        return methodNotAllowed(response, ["GET", "POST", "DELETE"]);
+        return methodNotAllowed(response, ["GET", "POST", "DELETE"], supportId);
       }
 
       sendJson(response, 404, { ...errorData(new AppError("NOT_FOUND", "Route wurde nicht gefunden", 404)), supportId });
@@ -440,14 +547,29 @@ function createApplication(overrides = {}) {
         };
         sendJson(response, responseError.status || 500, { ...errorData(responseError), supportId }, headers);
       } else {
+        response[RESPONSE_ERROR_CODE] = responseError.code || "INTERNAL_ERROR";
         response.destroy();
       }
     } finally {
+      const status = Number(response.statusCode) || 500;
+      const errorCode = response[RESPONSE_ERROR_CODE] || null;
+      logger.log(status >= 500 ? "warn" : "info", "http_request_completed", {
+        supportId,
+        method: request.method,
+        route,
+        status,
+        durationMs: Date.now() - startedAt,
+        result: status < 400 ? "success" : status < 500 ? "rejected" : "failed",
+        errorCode,
+      });
       activeRequests = Math.max(0, activeRequests - 1);
     }
   }
 
   const server = http.createServer(handler);
+  server.on("error", (error) => {
+    logger.log("error", "http_server_error", { listening: server.listening, error });
+  });
   server.requestTimeout = HTTP_REQUEST_TIMEOUT_MS;
   server.headersTimeout = HTTP_HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = HTTP_KEEP_ALIVE_TIMEOUT_MS;
@@ -543,6 +665,7 @@ function createApplication(overrides = {}) {
   return {
     authService,
     auditLogRepository,
+    frontendLoggingService,
     handler,
     initialize,
     monitorBroker,
@@ -559,8 +682,12 @@ async function start() {
   validateRuntimeConfig();
   const app = createApplication();
   await new Promise((resolve, reject) => {
-    app.server.once("error", reject);
-    app.server.listen(PORT, LISTEN_HOST, resolve);
+    const onStartupError = (error) => reject(error);
+    app.server.once("error", onStartupError);
+    app.server.listen(PORT, LISTEN_HOST, () => {
+      app.server.off("error", onStartupError);
+      resolve();
+    });
   });
   logger.log("info", "server_listening", { host: LISTEN_HOST, port: PORT });
   app.initialize().catch((error) => logger.log("error", "server_initialization_failed", { error }));

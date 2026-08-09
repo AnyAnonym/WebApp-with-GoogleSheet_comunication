@@ -17,6 +17,8 @@ let tickCount = 0;
 let tickTimerId = null;
 let activePoll = null;
 let stopping = false;
+const FAILURE_SUMMARY_EVERY = 10;
+const failureLogs = new Map();
 
 async function getSheetsClient() {
   if (sheetsClient) return sheetsClient;
@@ -32,6 +34,7 @@ async function getSheetsClient() {
 }
 
 async function pollTable(sheets, tableName, range, source = "poll") {
+  const startedAt = Date.now();
   const readToken = dataStore.beginRead(tableName);
   try {
     const response = await sheets.spreadsheets.values.get({
@@ -39,12 +42,91 @@ async function pollTable(sheets, tableName, range, source = "poll") {
       range,
     }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
     const values = validateTableValues(tableName, response.data.values || []);
-    const applied = dataStore.set(tableName, values, { source, readToken });
-    return { table: tableName, success: true, ignored: !!applied?.ignored };
+    const stored = dataStore.set(tableName, values, { source, readToken });
+    const result = stored?.result || (stored?.ignored ? "ignored_stale" : "applied");
+    const durationMs = Date.now() - startedAt;
+    if (result === "recovered") {
+      const failureLog = failureLogs.get(tableName);
+      logger.log("info", "sheets_table_poll_recovered", {
+        table: tableName,
+        range,
+        source,
+        result,
+        durationMs,
+        errorCode: stored.recoveredErrorCode,
+        errorSequence: stored.recoveredErrorSequence,
+        outageDurationMs: stored.outageDurationMs,
+        suppressedFailures: failureLog?.suppressedFailures || 0,
+      });
+      failureLogs.delete(tableName);
+    } else {
+      if (result === "applied") failureLogs.delete(tableName);
+      logger.log("debug", "sheets_table_poll_completed", { table: tableName, range, source, result, durationMs });
+    }
+    return {
+      table: tableName,
+      success: true,
+      ignored: result === "ignored_stale",
+      result,
+      durationMs,
+      errorCode: result === "recovered" ? stored.recoveredErrorCode : null,
+      errorSequence: result === "recovered" ? stored.recoveredErrorSequence : 0,
+      outageDurationMs: stored?.outageDurationMs || 0,
+    };
   } catch (error) {
-    const marked = dataStore.markError(tableName, error, readToken);
-    logger.log("warn", "sheets_table_poll_failed", { table: tableName, range, source, ignored: !!marked?.ignored, error });
-    return { table: tableName, success: false, ignored: !!marked?.ignored, error: error.message };
+    const stored = dataStore.markError(tableName, error, readToken);
+    const durationMs = Date.now() - startedAt;
+    if (stored?.ignored) {
+      logger.log("debug", "sheets_table_poll_completed", { table: tableName, range, source, result: "ignored_stale", durationMs });
+      return { table: tableName, success: true, ignored: true, result: "ignored_stale", durationMs, errorCode: null, errorSequence: 0, outageDurationMs: 0 };
+    }
+    const errorCode = stored?.lastError?.code || "SHEETS_POLL_FAILED";
+    const previous = failureLogs.get(tableName);
+    const sameError = previous?.errorCode === errorCode;
+    const failureLog = sameError ? previous : { errorCode, occurrences: 0, suppressedFailures: 0 };
+    failureLog.occurrences++;
+    if (!sameError || stored.consecutiveErrors === 1) {
+      logger.log("warn", "sheets_table_poll_failed", {
+        table: tableName,
+        range,
+        source,
+        result: "failed",
+        durationMs,
+        errorCode,
+        errorSequence: stored.consecutiveErrors,
+        outageDurationMs: stored.outageDurationMs,
+        suppressedFailures: previous?.suppressedFailures || 0,
+      });
+      failureLog.suppressedFailures = 0;
+    } else {
+      failureLog.suppressedFailures++;
+      if (failureLog.occurrences % FAILURE_SUMMARY_EVERY === 0) {
+        logger.log("warn", "sheets_table_poll_failure_summary", {
+          table: tableName,
+          range,
+          source,
+          result: "failed",
+          durationMs,
+          errorCode,
+          errorSequence: stored.consecutiveErrors,
+          outageDurationMs: stored.outageDurationMs,
+          suppressedFailures: failureLog.suppressedFailures,
+        });
+        failureLog.suppressedFailures = 0;
+      }
+    }
+    failureLogs.set(tableName, failureLog);
+    return {
+      table: tableName,
+      success: false,
+      ignored: false,
+      result: "failed",
+      durationMs,
+      errorCode,
+      errorSequence: stored?.consecutiveErrors || 1,
+      outageDurationMs: stored?.outageDurationMs || 0,
+      error: error.message,
+    };
   }
 }
 
@@ -77,12 +159,13 @@ async function runTick() {
       results = await pollCategory(sheets, "fast");
     }
     if (results.length) {
-      const failed = results.filter((result) => !result.success).length;
+      const failed = results.filter((result) => result.result === "failed").length;
       logger.log("debug", "sheets_poll_tick_completed", {
         tick: tickCount,
         attempted: results.length,
-        applied: results.filter((result) => result.success && !result.ignored).length,
-        ignored: results.filter((result) => result.ignored).length,
+        applied: results.filter((result) => result.result === "applied").length,
+        ignoredStale: results.filter((result) => result.result === "ignored_stale").length,
+        recovered: results.filter((result) => result.result === "recovered").length,
         failed,
       });
     }
@@ -100,15 +183,33 @@ async function runTick() {
 
 async function initialLoad() {
   logger.log("info", "sheets_initial_load_started", { tableCount: Object.keys(TABLE_CONFIG).length });
+  const startedAt = Date.now();
   let sheets;
   try {
     sheets = await getSheetsClient();
   } catch (error) {
     const results = Object.keys(TABLE_CONFIG).map((table) => {
-      dataStore.markError(table, error);
-      return { table, success: false, error: error.message };
+      const stored = dataStore.markError(table, error);
+      return {
+        table,
+        success: false,
+        ignored: false,
+        result: "failed",
+        durationMs: Date.now() - startedAt,
+        errorCode: stored.lastError.code,
+        errorSequence: stored.consecutiveErrors,
+        outageDurationMs: stored.outageDurationMs,
+        error: error.message,
+      };
     });
-    logger.log("error", "sheets_client_initialization_failed", { tableCount: results.length, error });
+    logger.log("error", "sheets_client_initialization_failed", {
+      tableCount: results.length,
+      result: "failed",
+      durationMs: Date.now() - startedAt,
+      errorCode: results[0]?.errorCode || "SHEETS_CLIENT_INITIALIZATION_FAILED",
+      errorSequence: Math.max(...results.map((result) => result.errorSequence)),
+      outageDurationMs: Math.max(...results.map((result) => result.outageDurationMs)),
+    });
     return { success: false, results };
   }
   const results = await Promise.all(Object.entries(TABLE_CONFIG).map(
@@ -153,6 +254,7 @@ function getStatus() {
 function setSheetsClientFactoryForTests(factory) {
   sheetsClientFactory = factory;
   sheetsClient = null;
+  failureLogs.clear();
 }
 
 module.exports = { getStatus, initialLoad, refresh, runTick, setSheetsClientFactoryForTests, start, stop };

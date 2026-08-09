@@ -31,7 +31,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
 
 ================================================================================
-  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN)
+  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 1 ADMINISTRATION)
 ================================================================================
 
   Pfad                              | Seite
@@ -47,6 +47,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/seiten/entryList.txt     | Bewerbsanmeldung
   software/seiten/rangliste.txt     | Ranglisten-Pyramide
   software/seiten/roundRobin.txt    | RoundRobin-Gruppenphase
+  software/seiten/adminLogging.txt  | Frontend-Logging-Administration
 
 Jede Seitendatei beschreibt Funktion, Dateien, Datenquellen, Layout, Bedienung,
 Subscriptions und Besonderheiten. `Frontend/court-score-test.html` ist eine

@@ -4,6 +4,7 @@ const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const dataStore = require("../dataStore.js");
+const { READINESS_SLOW_MAX_AGE_MS } = require("../config.js");
 const { AuthService } = require("../authService.js");
 const { StateRepository } = require("../stateRepository.js");
 
@@ -54,6 +55,24 @@ test("Login migriert Legacy-Hash und erzeugt serverseitige Session", async () =>
   repository.close();
 });
 
+test("ungueltige E-Mail einer anderen Person blockiert weder Login noch Personenprojektion", async () => {
+  const people = peopleFixture();
+  people[2][3] = "peter@example";
+  dataStore.set("players", people, { source: "test-invalid-email" });
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: { async setPasswordHash() {} } });
+
+  const result = await auth.login({ email: "ada@example.test", passwordHash: "a".repeat(64), ip: "127.0.0.1" });
+  assert.equal(result.user.id, "p1");
+  assert.equal(auth.memberProfile("p2").email, "");
+  await assert.rejects(
+    auth.login({ email: "peter@example.test", passwordHash: "b".repeat(64), ip: "127.0.0.2" }),
+    { code: "LOGIN_FAILED" },
+  );
+  repository.close();
+});
+
 test("Login-Limiter blockiert wiederholte Fehler", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -76,6 +95,62 @@ test("fehlende oder veraltete Personendaten widerrufen keine gueltige Session", 
   const auth = new AuthService({ repository, sheetService: {} });
 
   assert.throws(() => auth.getUserForToken(session.token), { code: "PERSON_DATA_UNAVAILABLE" });
+  assert.equal(repository.getSession(session.token).userId, "p1");
+  repository.close();
+});
+
+test("Diagnoseidentitaet verwendet nur eine gueltige Session mit aktiver Person", () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const session = repository.createSession({ userId: "p1", email: "ada@example.test", ttlMs: 60000 });
+  const auth = new AuthService({ repository, sheetService: {} });
+  assert.deepEqual(auth.getDiagnosticIdentity(session.token), { id: "p1", name: "Ada Admin", role: "admin" });
+
+  const inactive = structuredClone(peopleFixture());
+  inactive[1][8] = "0";
+  dataStore.set("players", inactive, { source: "test-inactive" });
+  assert.equal(auth.getDiagnosticIdentity(session.token), null);
+  assert.equal(repository.getSession(session.token), null);
+  repository.close();
+});
+
+test("gueltige Adminsession kann opt-in die Last-known-good-Rolle aus stale Personen verwenden", () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const adminSession = repository.createSession({ userId: "p1", email: "ada@example.test", ttlMs: 60000 });
+  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  const auth = new AuthService({ repository, sheetService: {} });
+  const lastUpdate = dataStore.getMeta("players").lastUpdate;
+  const originalNow = Date.now;
+  Date.now = () => lastUpdate + READINESS_SLOW_MAX_AGE_MS + 1;
+  try {
+    assert.throws(() => auth.requireRole(adminSession.token, ["admin"]), { code: "PERSON_DATA_UNAVAILABLE" });
+    const admin = auth.requireRole(adminSession.token, ["admin"], { allowLastKnownGoodRole: true });
+    assert.equal(admin.principal.role, "admin");
+    assert.equal(admin.principal.roleSource, "last_known_good");
+    assert.deepEqual(auth.getDiagnosticIdentity(adminSession.token), { id: "p1", name: "Ada Admin", role: "admin" });
+    assert.throws(
+      () => auth.requireRole(playerSession.token, ["admin"], { allowLastKnownGoodRole: true }),
+      { code: "FORBIDDEN" },
+    );
+    assert.equal(repository.getSession(adminSession.token).userId, "p1");
+  } finally {
+    Date.now = originalNow;
+    repository.close();
+  }
+});
+
+test("LKG-Rollenpruefung verlangt einen zuvor erfolgreich geladenen Personen-Cache", () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const session = repository.createSession({ userId: "p1", email: "ada@example.test", ttlMs: 60000 });
+  dataStore.resetForTests();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  assert.throws(
+    () => auth.requireRole(session.token, ["admin"], { allowLastKnownGoodRole: true }),
+    { code: "PERSON_DATA_UNAVAILABLE" },
+  );
   assert.equal(repository.getSession(session.token).userId, "p1");
   repository.close();
 });

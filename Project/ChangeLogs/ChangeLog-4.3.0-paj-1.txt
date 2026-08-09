@@ -1,3 +1,59 @@
+[4.3.0-paj-1-6] - 2026-08-09
+Commit: 4.3.0-paj-1-6 | Frontenddiagnose und Pollerresilienz erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-6` gesetzt.
+  - [Frontend] Alle fachlichen Browserdiagnosen verwenden einen zentralen Adapter mit benannten Events, Levelsteuerung, rekursiver Redaction, Feldgrenzen und kontrollierter Fehlerprojektion; direkte `console.*`-Aufrufe ausserhalb des Adapters werden statisch abgewiesen.
+  - [Frontend] Der Diagnoseadapter uebernimmt serverseitige Policies, sampelt Info-/Debugereignisse, buendelt bis zu 20 technische Projektionen und uebertraegt sie same-origin; globale Fehler-, Ressourcen-, Seitenlade-, WebSocket- und RPC-Lifecycle-Events sind angebunden. Temporaer ausgewaehlte Benutzer sehen einen neutralen Hinweis mit Ablaufzeit.
+  - [Software] HTTP erzeugt fuer jeden Request eine serverseitige UUID, liefert sie als `X-Request-ID`, verwendet sie bei Fehlern als `supportId` und protokolliert jeden Abschluss mit Route, Status, Dauer, Ergebnis und Fehlercode.
+  - [Software] WebSocket trennt Client-Request-ID und serverseitige Support-UUID; pro Socket ersetzen atomare abgeschlossene Datensaetze und eine auf 20 Eintraege begrenzte Historie den gemeinsam mutierten Diagnose-Slot.
+  - [Software] Sheet- und Court-Poller unterscheiden Fehler, gezaeunte Ergebnisse und Recovery, fuehren Fehlerfolge/Ausfalldauer und fassen identische Folgefehler periodisch zusammen. Court-Stale richtet sich nach dem Alter des letzten Erfolgs.
+  - [Software] Admin-`/status` bleibt innerhalb einer gueltigen bestehenden Session bei stale Personen ueber den letzten erfolgreich geladenen aktiven Admin-Snapshot erreichbar und kennzeichnet die Rollenquelle; spaetere HTTP-Serverfehler besitzen einen dauerhaften strukturierten Handler.
+  - [Software] Frontend-Logging-Einstellungen und temporaere Zielpersonen werden revisioniert in SQLite-State gespeichert; der Collector erzwingt Event-/Feld-Allowlist und Rate-Limit und reichert angenommene Events ausschliesslich serverseitig mit Benutzer-ID, Klartextname, Rolle und Quell-IP an.
+  - [Dokumentation] Endpoint-, Datenbank-, Architektur- und Seitenvertrag sowie Vorab-, Umgesetzt- und Offen-Dokumente fuer Logging und Grafana-Vorbereitung abgeglichen.
+
+  Added
+  - [Frontend] `Frontend/JS/diagnostics.js` als einziger Browser-Console-Adapter und `Frontend/JS/profileModalState.js` fuer testbare vollstaendige Profilbereinigung angelegt.
+  - [Frontend] Responsive Adminseite `Frontend/adminLogging.html` fuer globale Level-, Sampling-, Batch-, Flush- und Retentionvorgaben sowie temporaere Zielpersonen mit Restzeit, Ablauf und Ersteller angelegt.
+  - [Software] `Backend/frontendLoggingService.js`, `GET /api/frontend-logging-policy`, `POST /api/frontend-events` und die Adminrouten `/api/admin/frontend-logging[/targets]` angelegt. Angenommene Browserereignisse werden als `frontend_client_event` fuer journald und den spaeteren Alloy-/Loki-/Grafana-Pfad ausgegeben.
+
+  Fixed
+  - [Frontend] Profilname, Kontaktdaten, Aktionen und Handler verbleiben nach Schliessen, Logout oder Identitaetswechsel nicht mehr im DOM.
+  - [Software] 405-Antworten erzeugen keine abweichende zweite Support-ID mehr; parallele WebSocket-Requests koennen Diagnosefelder und Support-IDs nicht mehr gegenseitig ueberschreiben.
+  - [Software] Einzelne syntaktisch ungueltige Personen-E-Mails blockieren den Personenload und damit die Logins anderer Benutzer nicht mehr. Betroffene Werte gelten fuer Login und Projektionen als leer; Personen-ID, Sheetzeile und Fehlergrund werden ohne den E-Mail-Rohwert beim Auftreten, periodisch und bei Recovery strukturiert geloggt. Kanonisch doppelte gueltige E-Mails bleiben fatal.
+
+  Sicherheit und Betrieb
+  - Browserlogs und -transporte enthalten keine vollstaendigen Error-Objekte, freien Meldungen, Request-/Response-Payloads, DOM-/Profildaten, personenbezogenen Sperrzeiten, Passwortwerte, Tokens oder Cookies.
+  - Benutzer-ID, Klartextname, Rolle und IP werden nur serverseitig ermittelt. Sie sind personenbezogene Betriebsdaten, duerfen nur autorisierte Betreiber erreichen und bleiben in Loki spaeter JSON-Felder statt hoch-kardinaler Labels.
+  - Normale und gezielte Retentionvorgaben werden als 14 beziehungsweise 7 Tage vorbereitet, aber erst durch eine spaetere Loki-Konfiguration tatsaechlich erzwungen.
+  - Erfolgreiche HTTP- und korrelierbare WebSocket-Auftraege erzeugen je ein Abschlussereignis und erhoehen das Journalvolumen; die vorhandenen journald-Grenzen bleiben fuer die praktische Abnahme zu pruefen.
+  - Prometheus, Grafana, Loki/Alloy, Caddy-Access-Logs und die praktische PAJ-/PK-/Live-Abnahme bleiben Folgearbeit; der Frontend-Collector ist dafuer vorbereitet.
+
+  Tests
+  - Frontend-Redaction/Fehlerprojektion/Profilbereinigung/Transportprojektion, persistente Logging-Policies und Zielablauf, anonyme Freigabe, serverseitige ID-/Name-/IP-Anreicherung, Adminrouten, HTTP-Header-/Body-Korrelation, parallele WebSocket-Historien, Poller-Fencing/Suppression/Recovery, tolerierte und identifizierbar geloggte ungueltige Personen-E-Mails, Court-Stale-Alter, Last-known-good-Statuszugriff und HTTP-Serverfehler automatisiert abgedeckt.
+  - `npm run build`: statische Pruefung und alle 132 Tests erfolgreich.
+  - `git diff --check`: erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/ARCHITEKTUR.txt
+  - Sichere Frontenddiagnose, HTTP-/WebSocket-Korrelation, Pollerfehlerfolgen und Recovery, Court-Stale nach letztem Erfolg, Last-known-good-Adminstatus sowie tolerierte ungueltige Personen-E-Mails dokumentieren.
+
+  Project/software/DATENBANK.txt
+  - Frontend-Logging-State, Zielpersonenvertrag und die Behandlung ungueltiger beziehungsweise kanonisch doppelter Personen-E-Mails dokumentieren.
+
+  Project/software/ENDPOINTS.txt
+  - Frontend-Logging-Policy, Collector- und Adminendpoints, HTTP-Support-ID sowie WebSocket-Abschluss- und Statusfelder dokumentieren.
+
+  Project/software/SOFTWARE-DOKU.txt
+  - Die neue Logging-Administrationsseite in Seitenindex und Softwarestruktur aufnehmen.
+
+  Project/software/seiten/adminLogging.txt
+  - Zugriff, Einstellungen, temporaere Zielpersonen, Ablauf und Datenschutz der neuen Administrationsseite dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Praktische PAJ-/PK-/Live-Pruefungen fuer Frontend-Logging, personenbezogene Diagnoseanreicherung und Policyablauf aufnehmen.
+
 [4.3.0-paj-1-5] - 2026-08-07
 Commit: 4.3.0-paj-1-5 | Login-Audit um Name E-Mail und IP erweitert
 

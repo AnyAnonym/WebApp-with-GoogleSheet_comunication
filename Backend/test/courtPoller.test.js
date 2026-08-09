@@ -8,6 +8,7 @@ process.env.COURT_POLL_INTERVAL_MS = "500";
 process.env.COURT_MAX_BACKOFF_MS = "2000";
 
 const courtPoller = require("../courtPoller.js");
+const logger = require("../logger.js");
 
 function scoreLogRecorder({ shouldFail = () => false } = {}) {
   const events = [];
@@ -308,4 +309,73 @@ test("deaktivierte Plaetze frieren ein und ein Reset ueberholt laufende Fetches"
       satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
     },
   );
+});
+
+test("Court-Fehler werden zusammengefasst, Recovery geloggt und erst nach Erfolgsalter stale", async (t) => {
+  let calls = 0;
+  let failAfterRecovery = false;
+  const events = [];
+  const originalLog = logger.log;
+  logger.log = (level, event, fields) => {
+    events.push({ level, event, fields });
+    return true;
+  };
+  const fetchStub = async () => {
+    calls++;
+    if (calls <= 2 || failAfterRecovery) {
+      throw Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+    }
+    return new Response(JSON.stringify({
+      courts: [{
+        platz: "1",
+        satz1home: "1",
+        satz1gast: "0",
+        satz2home: "0",
+        satz2gast: "0",
+        satz3home: "0",
+        satz3gast: "0",
+        punktehome: "0",
+        punktegast: "0",
+      }],
+    }), { status: 200 });
+  };
+
+  courtPoller.setCourtActive({ "1": false, "2": false });
+  courtPoller.setDependenciesForTests({
+    fetch: fetchStub,
+    scoreLog: scoreLogRecorder(),
+    courtContext: () => ({ matchId: "m1", aktiv: 1, revision: 1 }),
+    summaryEvery: 2,
+  });
+  t.after(async () => {
+    logger.log = originalLog;
+    courtPoller.setDependenciesForTests({ summaryEvery: 10 });
+    courtPoller.setCourtActive({ "1": false, "2": false });
+    await courtPoller.stop();
+  });
+  courtPoller.setCourtActive({ "1": true, "2": false });
+
+  await waitFor(
+    () => events.some(({ event }) => event === "court_poll_recovered"),
+    5000,
+    "Court-Recovery wurde nicht protokolliert",
+  );
+  assert.equal(events.filter(({ event }) => event === "court_poll_failed").length, 1);
+  assert.equal(events.filter(({ event }) => event === "court_poll_failure_summary").length, 1);
+  assert.equal(events.filter(({ event }) => event === "court_poll_recovered").length, 1);
+
+  failAfterRecovery = true;
+  await waitFor(() => courtPoller.getStatus().lastError?.code === "ECONNRESET", 1200, "Court-Folgefehler blieb aus");
+  const freshFailure = courtPoller.getLastData().source;
+  assert.equal(freshFailure.stale, false);
+  assert.equal(freshFailure.consecutiveFailures, 1);
+  assert.equal(freshFailure.lastError.code, "ECONNRESET");
+
+  const originalNow = Date.now;
+  Date.now = () => freshFailure.lastSuccessAt + freshFailure.staleAfterMs + 1;
+  try {
+    assert.equal(courtPoller.getLastData().source.stale, true);
+  } finally {
+    Date.now = originalNow;
+  }
 });

@@ -48,6 +48,7 @@ const upgradeLimiter = new TokenBucketLimiter({ rate: 2, burst: 10 });
 const writeLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 6, idleMs: 900000 });
 const unsubscribeCallbacks = [];
 const activeHandlers = new Set();
+const REQUEST_HISTORY_LIMIT = 20;
 const PUBLIC_TOPICS = new Set(["scores", "scoreboard-state", "matches", "players", "bewerbe", "bewerbsart", "matchtyp", "entryList", "ranking"]);
 const PUBLIC_COLUMNS = {
   bewerbe: ["id", "bezeichnung", "bewerbsartid", "geschlecht", "entrystart", "entrydeadline", "bewerbsbeginn", "bewerbsende", "sortorder"],
@@ -610,6 +611,41 @@ function send(info, message) {
   }
 }
 
+function completeRequest(info, {
+  supportId,
+  clientRequestId,
+  endpoint,
+  startedAt,
+  error = null,
+}) {
+  const code = error?.code || (error ? "INTERNAL_ERROR" : null);
+  const rawClientRequestId = String(clientRequestId || "").slice(0, 128);
+  const safeClientRequestId = /^[A-Za-z0-9_.:-]{1,128}$/.test(rawClientRequestId) ? rawClientRequestId : "invalid";
+  const result = !error ? "success" : (error.status || 500) < 500 ? "rejected" : "failed";
+  const record = Object.freeze({
+    endpoint: String(endpoint || "").slice(0, 64),
+    at: startedAt,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    success: !error,
+    ...(code ? { code } : {}),
+    supportId,
+    clientRequestId: safeClientRequestId,
+  });
+  info.requestHistory.push(record);
+  if (info.requestHistory.length > REQUEST_HISTORY_LIMIT) info.requestHistory.shift();
+  info.lastRequest = record;
+  logger.log(error && (!(error instanceof AppError) || (error.status || 500) >= 500) ? "warn" : "info", "ws_request_completed", {
+    supportId,
+    connectionId: info.id,
+    requestId: record.clientRequestId,
+    endpoint: record.endpoint,
+    durationMs: record.durationMs,
+    result,
+    errorCode: code,
+  });
+  return record;
+}
+
 function publish(topic, data) {
   for (const info of clients.values()) {
     if (!info.handshake || !info.subscriptions.has(topic)) continue;
@@ -643,14 +679,6 @@ function sendSubscriptionSnapshot(info, topic) {
 }
 
 async function handleRequest(info, message, supportId) {
-  const startedAt = Date.now();
-  info.lastRequest = {
-    endpoint: String(message.endpoint || "").slice(0, 64),
-    at: startedAt,
-    durationMs: 0,
-    success: false,
-    supportId,
-  };
   if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
   const endpoint = endpoints[message.endpoint];
   if (!endpoint || !Object.hasOwn(endpoints, message.endpoint)) throw new AppError("ENDPOINT_NOT_FOUND", "Unbekannter Endpoint", 404);
@@ -680,7 +708,6 @@ async function handleRequest(info, message, supportId) {
     if (endpoint.write) {
       writeAudit({ eventId: supportId, principal: authContext.principal, endpoint: message.endpoint, params, result: data, internal, outcome: "success" });
     }
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: true, supportId };
     return data;
   } catch (error) {
     let responseError = error;
@@ -702,7 +729,6 @@ async function handleRequest(info, message, supportId) {
         responseError = new AppError("WRITE_OUTCOME_UNKNOWN", "Aenderung ausgefuehrt, Auditabschluss ist unklar", 503);
       }
     }
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: false, code: responseError.code || "INTERNAL_ERROR", supportId };
     throw responseError;
   } finally {
     info.inflight--;
@@ -802,46 +828,59 @@ async function handleMessage(info, raw) {
   }
   if (message.type !== "request" || typeof message.id !== "string" || typeof message.endpoint !== "string") {
     if (message.type === "request" && typeof message.id === "string") {
+      const startedAt = Date.now();
       const id = String(message.id).slice(0, 128);
       const endpoint = typeof message.endpoint === "string" ? String(message.endpoint).slice(0, 64) : "";
+      const supportId = crypto.randomUUID();
+      const error = new AppError("INVALID_MESSAGE", "Request ist ungueltig");
       send(info, {
         type: "response",
         id,
         endpoint,
-        data: errorData(new AppError("INVALID_MESSAGE", "Request ist ungueltig")),
-        supportId: `${info.id}:${id}`,
+        data: errorData(error),
+        supportId,
       });
+      completeRequest(info, { supportId, clientRequestId: id, endpoint, startedAt, error });
     } else {
       send(info, { type: "error", error: { code: "INVALID_MESSAGE", message: "Request ist ungueltig" } });
     }
     return;
   }
-  const supportId = `${info.id}:${String(message.id).slice(0, 128)}`;
+  const startedAt = Date.now();
+  const clientRequestId = String(message.id).slice(0, 128);
+  const supportId = crypto.randomUUID();
   try {
-    message.id = stringValue(message.id, "requestId", { max: 128 });
+    message.id = stringValue(message.id, "requestId", { max: 128, pattern: /^[A-Za-z0-9_.:-]+$/ });
     message.endpoint = stringValue(message.endpoint, "endpoint", { max: 64, pattern: /^[A-Za-z][A-Za-z0-9]*$/ });
     message.params = message.params === undefined ? {} : requireObject(message.params);
   } catch (error) {
     send(info, { type: "response", id: String(message.id).slice(0, 128), endpoint: String(message.endpoint).slice(0, 64), data: errorData(error), supportId });
+    completeRequest(info, {
+      supportId,
+      clientRequestId,
+      endpoint: String(message.endpoint).slice(0, 64),
+      startedAt,
+      error,
+    });
     return;
   }
   try {
     const data = await handleRequest(info, message, supportId);
-    if (info.lastRequest) info.lastRequest.supportId = supportId;
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data, supportId });
+    completeRequest(info, { supportId, clientRequestId: message.id, endpoint: message.endpoint, startedAt });
   } catch (error) {
-    if (info.lastRequest) info.lastRequest.supportId = supportId;
     if (!(error instanceof AppError) || (error.status || 500) >= 500) {
       logger.log(error instanceof AppError ? "warn" : "error", "ws_request_failed", {
         supportId,
         connectionId: info.id,
         requestId: message.id,
         endpoint: message.endpoint,
-        durationMs: info.lastRequest?.durationMs,
+        durationMs: Date.now() - startedAt,
         error,
       });
     }
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data: errorData(error), supportId });
+    completeRequest(info, { supportId, clientRequestId: message.id, endpoint: message.endpoint, startedAt, error });
   }
 }
 
@@ -888,6 +927,7 @@ function init(server, options) {
       lastMessageAt: Date.now(),
       lastPong: Date.now(),
       lastRequest: null,
+      requestHistory: [],
       ip,
       origin: request.headers.origin,
       handshake: false,
@@ -982,6 +1022,7 @@ function getStatus() {
       lastMessageAt: info.lastMessageAt,
       lastPong: info.lastPong,
       lastRequest: info.lastRequest,
+      requestHistory: [...info.requestHistory],
       pageType: info.pageType || null,
       appVersion: info.appVersion || null,
       clientId: info.clientId || null,

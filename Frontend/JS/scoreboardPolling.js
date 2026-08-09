@@ -1,5 +1,6 @@
 import { createEndpoint, onConnectionState, onResync, subscribe } from "./dataClient.js";
 import { signalMonitorFailed, signalMonitorReady } from "./monitorReady.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readScoreboardSnapshot = createEndpoint("scoreboardSnapshot");
 const SNAPSHOT_DEBOUNCE_MS = 75;
@@ -724,7 +725,7 @@ function failInitialization(error) {
     loaderText.textContent = `Scoreboard konnte nicht geladen werden.${reference}`;
   }
   updateStatus();
-  console.error("Scoreboard-Initialisierung fehlgeschlagen:", error);
+  diagnostic.error("scoreboard_initialization_failed", error);
   signalMonitorFailed("SCOREBOARD_INIT_FAILED");
 }
 
@@ -785,7 +786,7 @@ async function drainSnapshots() {
         updateStatus();
         if (!hasRenderedSnapshot && error?.terminal) failInitialization(error);
         else {
-          console.error("Scoreboard-Resynchronisierung fehlgeschlagen:", error);
+          diagnostic.error("scoreboard_resynchronization_failed", error);
           scheduleSnapshotRetry();
         }
         break;

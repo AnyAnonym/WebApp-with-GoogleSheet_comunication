@@ -1,6 +1,7 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { ready, getUser, subscribeAuth } from "./authClient.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readMemberDirectory = createEndpoint("memberDirectory");
 let directoryRenderGeneration = 0;
@@ -178,7 +179,7 @@ subscribeAuth((user) => {
   queueMicrotask(() => {
     if (String(getUser()?.id || "") !== nextUserId) return;
     renderDirectory(getUser()).catch((error) => {
-      console.error("Spielerverzeichnis konnte nicht aktualisiert werden:", error);
+      diagnostic.error("player_directory_refresh_failed", error);
       renderError(error);
     });
   });
@@ -193,7 +194,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     subscribeInvalidations(["players"], () => renderDirectory(getUser()));
     signalMonitorReady();
   } catch (error) {
-    console.error("Spielerverzeichnis konnte nicht initialisiert werden:", error);
+    diagnostic.error("player_directory_initialization_failed", error);
     renderError(error);
     signalMonitorFailed(error.code || "PLAYER_DIRECTORY_LOAD_FAILED");
   }

@@ -8,6 +8,7 @@ import {
   subscribeInvalidations,
 } from "./dataClient.js";
 import { getUser, hasRole, ready, subscribeAuth } from "./authClient.js";
+import { diagnostic } from "./diagnostics.js";
 
 const readNavigator = createEndpoint("navigator");
 const readPreMatches = createEndpoint("preMatches");
@@ -167,7 +168,7 @@ function notifySelectionListeners() {
     try {
       listener(context);
     } catch (error) {
-      console.error("Monitor-Auswahl Listener:", error);
+      diagnostic.error("monitor_selection_listener_failed", error);
     }
   }
 }
@@ -177,7 +178,7 @@ function notifyStatusListeners(status) {
     try {
       listener(status);
     } catch (error) {
-      console.error("Monitor-Status Listener:", error);
+      diagnostic.error("monitor_status_listener_failed", error);
     }
   }
 }

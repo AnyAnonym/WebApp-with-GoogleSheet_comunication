@@ -18,6 +18,22 @@ body {
   overflow-x: hidden;
 }
 
+.diagnostic-mode-notice {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 950;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 10px 14px;
+  border: 1px solid #b88624;
+  border-radius: 9px;
+  color: #4f3b14;
+  background: #fff4d6;
+  box-shadow: 0 8px 24px rgba(55, 42, 15, 0.16);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
 /* -------------------------------------------------- */
 /*  LOGIN MODAL                                        */
 /* -------------------------------------------------- */

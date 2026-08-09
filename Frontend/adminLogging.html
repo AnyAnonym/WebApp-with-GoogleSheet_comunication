@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASKÖ Piberbach - Frontend-Logging</title>
+  <link rel="stylesheet" href="./CSS/styles.css" />
+  <link rel="stylesheet" href="./CSS/adminLogging.css" />
+</head>
+<body>
+  <div id="header-container"></div>
+  <div id="mobile-nav-container"></div>
+
+  <main class="logging-main">
+    <section id="logging-access" class="logging-access" aria-live="polite">
+      <div class="logging-access-card">
+        <p class="logging-eyebrow">Geschützter Bereich</p>
+        <h1>Frontend-Logging</h1>
+        <p id="logging-access-message">Sitzung wird geprüft...</p>
+        <a href="index.html" class="logging-primary-link">Zur Anmeldung</a>
+      </div>
+    </section>
+
+    <div id="logging-app" class="logging-app" hidden>
+      <header class="logging-heading">
+        <div>
+          <p class="logging-eyebrow">Administration</p>
+          <h1>Frontend-Logging</h1>
+          <p>Globale Erfassung steuern und zeitlich begrenzte Diagnoseziele verwalten.</p>
+        </div>
+        <button id="logging-reload" class="logging-secondary-button" type="button">Neu laden</button>
+      </header>
+
+      <div id="logging-status" class="logging-status" role="status" aria-live="polite"></div>
+
+      <form id="logging-settings-form" class="logging-panel">
+        <div class="logging-panel-heading">
+          <div>
+            <p class="logging-eyebrow">Grundkonfiguration</p>
+            <h2>Globale Einstellungen</h2>
+          </div>
+          <label class="logging-switch" for="logging-enabled">
+            <input id="logging-enabled" name="enabled" type="checkbox" />
+            <span>Frontend-Logging aktiv</span>
+          </label>
+        </div>
+
+        <div class="logging-fields">
+          <label>
+            <span>Basis-Level</span>
+            <select id="logging-level" name="level" required>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </label>
+
+          <label class="logging-checkbox">
+            <input id="logging-anonymous" name="includeAnonymous" type="checkbox" />
+            <span>Anonyme Events einbeziehen</span>
+          </label>
+
+          <label>
+            <span>Info-/Debug-Sampling</span>
+            <span class="logging-input-unit">
+              <input id="logging-sample-rate" name="sampleRatePercent" type="number" min="0" max="100" step="1" required />
+              <span>%</span>
+            </span>
+          </label>
+
+          <label>
+            <span>Batchgröße</span>
+            <input id="logging-batch-size" name="batchSize" type="number" min="1" max="20" step="1" required />
+          </label>
+
+          <label>
+            <span>Flushintervall</span>
+            <span class="logging-input-unit">
+              <input id="logging-flush-interval" name="flushIntervalMs" type="number" min="1000" max="30000" step="1000" required />
+              <span>ms</span>
+            </span>
+          </label>
+
+          <label>
+            <span>Normale Retentionvorgabe</span>
+            <span class="logging-input-unit">
+              <input id="logging-normal-retention" name="normalRetentionDays" type="number" min="1" max="90" step="1" required />
+              <span>Tage</span>
+            </span>
+          </label>
+
+          <label>
+            <span>Gezielte Retentionvorgabe</span>
+            <span class="logging-input-unit">
+              <input id="logging-targeted-retention" name="targetedRetentionDays" type="number" min="1" max="30" step="1" required />
+              <span>Tage</span>
+            </span>
+          </label>
+
+          <label>
+            <span>Standard-Ziel-Level</span>
+            <select id="logging-default-target-level" name="defaultTargetLevel" required>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Standard-Zieldauer</span>
+            <span class="logging-input-unit">
+              <input id="logging-default-target-duration" name="defaultTargetDurationMinutes" type="number" min="15" step="1" required />
+              <span>Min.</span>
+            </span>
+          </label>
+        </div>
+
+        <p class="logging-retention-note"><strong>Hinweis:</strong> Retentionwerte sind Vorgaben. Sie werden erst wirksam, wenn Loki entsprechend konfiguriert ist.</p>
+        <div class="logging-form-actions">
+          <button id="logging-save" class="logging-primary-button" type="submit">Einstellungen speichern</button>
+        </div>
+      </form>
+
+      <section class="logging-panel">
+        <div class="logging-panel-heading">
+          <div>
+            <p class="logging-eyebrow">Temporäre Diagnose</p>
+            <h2>Neues Ziel</h2>
+          </div>
+          <p id="logging-duration-limit" class="logging-limit"></p>
+        </div>
+
+        <form id="logging-target-form" class="logging-target-form">
+          <label>
+            <span>Spieler</span>
+            <select id="logging-target-person" name="personId" required>
+              <option value="">Spieler werden geladen...</option>
+            </select>
+          </label>
+          <label>
+            <span>Level</span>
+            <select id="logging-target-level" name="level" required>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </label>
+          <label>
+            <span>Dauer</span>
+            <span class="logging-input-unit">
+              <input id="logging-target-duration" name="durationMinutes" type="number" min="15" step="1" required />
+              <span>Min.</span>
+            </span>
+          </label>
+          <button id="logging-add-target" class="logging-primary-button" type="submit">Ziel aktivieren</button>
+        </form>
+        <p class="logging-target-note">Die Policy greift serverseitig sofort und im bereits geöffneten Browser spätestens beim nächsten Sessionrefresh. Die betroffene Person sieht währenddessen einen neutralen Diagnosehinweis mit Ablaufzeit.</p>
+      </section>
+
+      <section class="logging-panel logging-targets-panel">
+        <div class="logging-panel-heading">
+          <div>
+            <p class="logging-eyebrow">Laufende Erfassung</p>
+            <h2>Aktive Ziele</h2>
+          </div>
+          <span id="logging-target-count" class="logging-count">0 aktiv</span>
+        </div>
+
+        <p id="logging-target-empty" class="logging-empty">Keine aktiven Ziele.</p>
+        <div id="logging-target-table-wrap" class="logging-table-wrap" hidden>
+          <table class="logging-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>ID</th>
+                <th>Rolle</th>
+                <th>Level</th>
+                <th>Restzeit</th>
+                <th>Ablauf</th>
+                <th>Ersteller</th>
+                <th><span class="visually-hidden">Aktion</span></th>
+              </tr>
+            </thead>
+            <tbody id="logging-target-list"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="footer-container"></div>
+
+  <script type="module" src="JS/navbar.js"></script>
+  <script type="module" src="JS/modals.js"></script>
+  <script type="module" src="JS/adminLogging.js"></script>
+  <script src="JS/global.js"></script>
+  <script src="JS/footer.js"></script>
+</body>
+</html>

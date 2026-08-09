@@ -2,6 +2,11 @@
 
 Stand: 08.08.2026
 
+Diese Datei bleibt die kompakte Restumfangsliste. Die detaillierte, in Pakete,
+Aufgaben, Artefakte, Abhaengigkeiten und Abnahmekriterien zerlegte
+Abarbeitungsgrundlage ist
+`Project/2do/LOGGING-OBSERVABILITY-RESTUMSETZUNGSPLAN.md`.
+
 ## Paket 4: Metriken und zentrale Auswertung
 
 Noch nicht umgesetzt und weiterhin gesondert zu planen:

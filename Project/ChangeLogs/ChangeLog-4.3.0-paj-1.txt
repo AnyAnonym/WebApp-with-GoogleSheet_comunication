@@ -1,3 +1,21 @@
+[4.3.0-paj-1-8] - 2026-08-09
+Commit: 4.3.0-paj-1-8 | Observability-Restumsetzung detailliert geplant
+
+  Added
+  - [Dokumentation] `Project/2do/LOGGING-OBSERVABILITY-RESTUMSETZUNGSPLAN.md` konsolidiert den verbleibenden Logging- und Observability-Umfang als detaillierte Folge aus Governance, Topologie, Alloy/Loki, Caddy-Korrelation, Grafana-Logsuche, Backendmetriken, Prometheus/Node Exporter, Dashboards, Alerting sowie PAJ-/PK-/Live-Abnahme mit Aufgaben, Artefakten, Abhaengigkeiten und Abnahmekriterien.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-8` gesetzt.
+  - [Dokumentation] Die kompakte offene Restpaketliste verweist fuer die weitere Abarbeitung auf den detaillierten Logging- und Observability-Restumsetzungsplan.
+
+  Sicherheit und Betrieb
+  - Der Plan schreibt vor der Infrastrukturinstallation verbindliche Betreiber-, Rollen-, Topologie-, Retention-, Speicher- und Eskalationsentscheidungen vor; personenbezogene Felder und hoch-kardinale Korrelationswerte bleiben in Loki JSON-Felder und werden keine Labels.
+  - PAJ bleibt das erste praktische Gate; PK und Live folgen erst mit demselben freigegebenen Release- und Vorlagenstand nach bestandener Datenschutz-, Last-, Ausfall-, Retention- und Rollbackabnahme.
+
+  Tests
+  - Dokumentabgleich gegen die offene Restpaketliste, den umgesetzten Umfang, die aktualisierte Logginganalyse, den SQLite-Loggingplan und die Rolloutcheckliste durchgefuehrt.
+  - `git diff --check`: erfolgreich.
+
 [4.3.0-paj-1-7] - 2026-08-09
 Commit: 4.3.0-paj-1-7 | Scoreboard-Namensgroessen responsiv abgesichert
 

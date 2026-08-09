@@ -15,6 +15,39 @@ function loadFrontendModule(relativePath, exportNames, globals = {}) {
   return context.__exports;
 }
 
+test("Scoreboard-Namensgroesse ignoriert unvermeidbare feste Ueberhoehe", () => {
+  const { largestPlayerNameSize } = loadFrontendModule("scoreboardSizing.js", ["largestPlayerNameSize"]);
+  const measured = [];
+  const fontSize = largestPlayerNameSize({
+    minimum: 8,
+    maximum: 88,
+    measure(candidate) {
+      measured.push(candidate);
+      return {
+        widthFits: candidate <= 64,
+        overflow: 120 + Math.max(0, candidate - 48),
+      };
+    },
+  });
+
+  assert.equal(fontSize > 47, true);
+  assert.equal(fontSize <= 49, true);
+  assert.equal(measured.includes(8), true);
+  assert.equal(measured.includes(88), true);
+});
+
+test("Scoreboard-Namensgroesse bleibt durch die reale Textbreite begrenzt", () => {
+  const { largestPlayerNameSize } = loadFrontendModule("scoreboardSizing.js", ["largestPlayerNameSize"]);
+  const fontSize = largestPlayerNameSize({
+    minimum: 8,
+    maximum: 88,
+    measure: (candidate) => ({ widthFits: candidate <= 36, overflow: 0 }),
+  });
+
+  assert.equal(fontSize > 35, true);
+  assert.equal(fontSize <= 37, true);
+});
+
 test("Frontenddiagnose filtert Level und verlangt benannte Events", () => {
   const { createDiagnosticAdapter } = loadFrontendModule("diagnostics.js", ["createDiagnosticAdapter"]);
   const entries = [];

@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Letzte Aenderung: 06.08.2026
+Letzte Aenderung: 09.08.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -127,6 +127,27 @@ Build fuehrt den statischen Check und die Tests aus. `package.json`,
 `package-lock.json` und die spaetere `/version`-Antwort muessen exakt
 `<FREIGEGEBENE_VERSION>` melden und zum freigegebenen Commit gehoeren. Ein
 Branchsuffix oder eine geaenderte Lockdatei stoppt den Rollout.
+
+Optionale PAJ-Browserlayouttests:
+
+  pacman -S --needed chromium
+  cd /srv/http/ePiber/paj/Backend
+  npm ci
+  npm run test:browser
+
+Chromium ist ausschliesslich ein systemweites Testwerkzeug und wird durch root
+ueber pacman installiert und aktualisiert. `playwright-core` ist exakt versioniert
+als Dev-Abhaengigkeit im Backend-Lockfile enthalten und laedt keinen eigenen
+Browser herunter. Der Test verwendet standardmaessig `/usr/bin/chromium` und die
+PAJ-Origin; abweichende sichere Testpfade beziehungsweise Origins koennen mit
+`CHROMIUM_PATH` und `SCOREBOARD_TEST_URL` gesetzt werden.
+
+Der Browserlauf erfolgt unprivilegiert als Benutzer `paj`, nie als root, nicht im
+systemd-Backenddienst und ohne `--no-sandbox`. Er prueft definierte Desktop- und
+Breakpointgroessen der live geladenen Scoreboardseite; bei einem Fehler legt er
+einen Screenshot nur temporaer unter `/tmp/opencode/` ab. PK und Live benoetigen
+Chromium nicht. `npm ci --omit=dev`, der normale Backendprozess und
+`npm run build` bleiben von der optionalen Browserinstallation unabhaengig.
 
 
 ================================================================================

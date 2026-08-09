@@ -1,3 +1,31 @@
+[4.3.0-paj-1-7] - 2026-08-09
+Commit: 4.3.0-paj-1-7 | Scoreboard-Namensgroessen responsiv abgesichert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-7` gesetzt.
+  - [Repository] `playwright-core` 1.62.1 ist als exakt versionierte Dev-Abhaengigkeit und `npm run test:browser` als separater Testlauf fuer das systemweite Chromium aufgenommen; normale Backend-Builds bleiben von einer Browserinstallation unabhaengig.
+  - [Dokumentation] Chromium-Installation, unprivilegierte PAJ-Ausfuehrung, Playwright-Core-Abhaengigkeit, Umgebungsvariablen und Abgrenzung von PK, Live und systemd sind als optionale Browserlayout-Testwerkzeuge dokumentiert.
+
+  Added
+  - [Frontend] `Frontend/JS/scoreboardSizing.js` kapselt die testbare Suche nach der groesstmoeglichen gemeinsamen Namensschrift.
+  - [Repository] `Backend/test/scoreboardLayout.browser.js` prueft die live geladene Scoreboardseite mit dem systemweiten Chromium ueber eine definierte Viewportmatrix.
+
+  Fixed
+  - [Frontend] Scoreboard-Spielernamen werden oberhalb des 1000-px-Breakpoints nicht mehr wegen unveraenderlich hoher Desktop-Scores und Metadaten bis auf 8 px verkleinert; die Desktoptypografie beruecksichtigt zusaetzlich die Viewporthoehe.
+
+  Tests
+  - Die Groessensuche ist fuer unvermeidbare feste Ueberhoehe und weiterhin wirksame Textbreitenbegrenzung automatisiert abgedeckt.
+  - `npm run build`: statische Pruefung und alle 134 Tests erfolgreich.
+  - `npm run test:browser`: Chromium 150 prueft die live geladene PAJ-Seite bei 1000x768, 1001x768, 1280x720, 1366x768 und 1920x1080 erfolgreich auf lesbare Namensgroesse, horizontale Passung, Court-Ueberlauf und den Breakpointwechsel.
+  - `npm audit`: keine bekannten Schwachstellen.
+  - `git diff --check`: erfolgreich.
+  - `scoreboard.css` und das neue `scoreboardSizing.js` werden auf PAJ mit HTTP 200 ausgeliefert.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/server-configs/SERVER-SETUP.txt
+  - Chromium und `playwright-core` als optionale, unprivilegiert unter `paj` ausgefuehrte PAJ-Browserlayout-Testwerkzeuge mit Installations-, Aufruf-, Sandbox-, Temporaerdatei- und Systemabgrenzung dokumentieren.
+
 [4.3.0-paj-1-6] - 2026-08-09
 Commit: 4.3.0-paj-1-6 | Frontenddiagnose und Pollerresilienz erweitert
 

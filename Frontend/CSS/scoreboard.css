@@ -216,6 +216,22 @@
   background: #00838f;
 }
 @media (min-width: 1001px) {
+  .platz-header {
+    font-size: clamp(2.5rem, 8vh, 6rem);
+    font-size: clamp(2.5rem, 8dvh, 6rem);
+  }
+  .platz-sub {
+    font-size: clamp(1.35rem, 4vh, 3rem);
+    font-size: clamp(1.35rem, 4dvh, 3rem);
+  }
+  .platz-cell.label {
+    font-size: clamp(2.6rem, 7.5vh, 5.5rem);
+    font-size: clamp(2.6rem, 7.5dvh, 5.5rem);
+  }
+  .platz-scores .platz-cell {
+    font-size: clamp(2.6rem, 7vh, 5rem);
+    font-size: clamp(2.6rem, 7dvh, 5rem);
+  }
   .platz-scores .platz-cell.wide-third-set {
     width: 100px;
   }

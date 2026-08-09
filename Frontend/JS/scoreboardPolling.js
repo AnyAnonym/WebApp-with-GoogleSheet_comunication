@@ -1,6 +1,7 @@
 import { createEndpoint, onConnectionState, onResync, subscribe } from "./dataClient.js";
 import { signalMonitorFailed, signalMonitorReady } from "./monitorReady.js";
 import { diagnostic } from "./diagnostics.js";
+import { largestPlayerNameSize } from "./scoreboardSizing.js";
 
 const readScoreboardSnapshot = createEndpoint("scoreboardSnapshot");
 const SNAPSHOT_DEBOUNCE_MS = 75;
@@ -398,20 +399,18 @@ function sizeCourtPlayerNames(courtKey) {
     element.style.minHeight = "";
   });
   const maximum = Math.min(...elements.map((element) => parseFloat(getComputedStyle(element).fontSize)));
-  let lower = Math.min(8, maximum);
-  let upper = maximum;
-  const fits = () => playerNamesFit(elements) && court.scrollHeight <= court.clientHeight + 1;
-
-  applyCourtPlayerNameSize(elements, upper);
-  if (!fits()) {
-    for (let iteration = 0; iteration < 10; iteration++) {
-      const candidate = (lower + upper) / 2;
+  const fontSize = largestPlayerNameSize({
+    minimum: Math.min(8, maximum),
+    maximum,
+    measure(candidate) {
       applyCourtPlayerNameSize(elements, candidate);
-      if (fits()) lower = candidate;
-      else upper = candidate;
-    }
-    applyCourtPlayerNameSize(elements, lower);
-  }
+      return {
+        widthFits: playerNamesFit(elements),
+        overflow: Math.max(0, court.scrollHeight - court.clientHeight),
+      };
+    },
+  });
+  applyCourtPlayerNameSize(elements, fontSize);
 }
 
 function schedulePlayerNameSizing() {

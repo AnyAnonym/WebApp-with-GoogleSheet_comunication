@@ -45,13 +45,17 @@ const { StateRepository } = require("./stateRepository.js");
 const { ScoreLogRepository } = require("./scoreLogRepository.js");
 const { AuditLogRepository } = require("./auditLogRepository.js");
 const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 const { booleanValue, canonicalizeMonitorPath, emailValue, idValue, passwordHashValue, stringValue } = require("./validators.js");
 
 const RESPONSE_REQUEST_ID = Symbol("responseRequestId");
 const RESPONSE_ERROR_CODE = Symbol("responseErrorCode");
+const RESPONSE_BYTES = Symbol("responseBytes");
+const PROCESS_STARTED_AT = Date.now();
 
 function sendJson(response, status, body, headers = {}) {
   const text = JSON.stringify(body);
+  response[RESPONSE_BYTES] = Buffer.byteLength(text);
   response[RESPONSE_ERROR_CODE] = body?.error?.code || response[RESPONSE_ERROR_CODE] || null;
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -62,6 +66,19 @@ function sendJson(response, status, body, headers = {}) {
     ...(response[RESPONSE_REQUEST_ID] ? { "X-Request-ID": response[RESPONSE_REQUEST_ID] } : {}),
   });
   response.end(text);
+}
+
+function sendText(response, status, text, contentType) {
+  const body = String(text);
+  response[RESPONSE_BYTES] = Buffer.byteLength(body);
+  response.writeHead(status, {
+    "Content-Type": contentType,
+    "Content-Length": response[RESPONSE_BYTES],
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    ...(response[RESPONSE_REQUEST_ID] ? { "X-Request-ID": response[RESPONSE_REQUEST_ID] } : {}),
+  });
+  response.end(body);
 }
 
 function methodNotAllowed(response, allowed, supportId) {
@@ -84,18 +101,33 @@ function readiness({ repository, scoreLogRepository = null, auditLogRepository =
   const activeCourt = court.courtActive["1"] || court.courtActive["2"];
   const courtReady = !activeCourt || !courtSource.stale;
   const displayRulesReady = unresolvedActiveRules.length === 0;
+  const state = repository.status();
   const scoreLog = scoreLogRepository?.status?.() || null;
   const auditLog = auditLogRepository?.status?.() || null;
   const persistenceReady = (!scoreLog || (scoreLog.open && scoreLog.ready)) && (!auditLog || (auditLog.open && auditLog.ready));
-  const ready = initialized && !shuttingDown && repository.status().open && persistenceReady && data.ready
-    && poller.running && courtReady && displayRulesReady;
+  const components = {
+    initialized: Boolean(initialized),
+    accepting_requests: !shuttingDown,
+    state_sqlite: Boolean(state.open && state.ready),
+    scorelog_sqlite: !scoreLog || Boolean(scoreLog.open && scoreLog.ready),
+    auditlog_sqlite: !auditLog || Boolean(auditLog.open && auditLog.ready),
+    sheet_data: Boolean(data.ready),
+    sheet_poller: Boolean(poller.running),
+    court_source: Boolean(courtReady),
+    court_display_rules: Boolean(displayRulesReady),
+  };
+  const reasons = Object.entries(components).filter(([, value]) => !value).map(([component]) => component.toUpperCase());
+  const ready = Object.values(components).every(Boolean);
   return {
     ready,
     initialized,
     shuttingDown,
+    components,
+    reasons,
+    state,
     data,
     poller: { running: poller.running, tickCount: poller.tickCount },
-    court: { ...court, ready: courtReady, displayRulesReady, unresolvedActiveRules },
+    court: { ...court, source: courtSource, ready: courtReady, displayRulesReady, unresolvedActiveRules },
     sheets: sheetService?.status?.() || null,
     scoreLog,
     auditLog,
@@ -233,6 +265,22 @@ function createApplication(overrides = {}) {
         if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
         const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
         return sendJson(response, status.ready ? 200 : 503, { status: status.ready ? "ready" : "not-ready", version: APP_VERSION });
+      }
+
+      if (pathname === "/metrics") {
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
+        const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
+        return sendText(response, 200, metrics.render({
+          appVersion: APP_VERSION,
+          processStartedAt: PROCESS_STARTED_AT,
+          activeHttpRequests: activeRequests,
+          readiness: status,
+          ws: dataProvider.getMetricsStatus(),
+          sheetPoller: dataPoller.getStatus(),
+          court: courtPoller.getStatus(),
+          state: status.state,
+          sheets: status.sheets,
+        }), "text/plain; version=0.0.4; charset=utf-8");
       }
 
       if (shuttingDown) {
@@ -518,6 +566,9 @@ function createApplication(overrides = {}) {
 
       sendJson(response, 404, { ...errorData(new AppError("NOT_FOUND", "Route wurde nicht gefunden", 404)), supportId });
     } catch (error) {
+      if (route === "/api/frontend-events" && ["FRONTEND_EVENT_NOT_ALLOWED", "VALIDATION_ERROR"].includes(error.code)) {
+        metrics.recordFrontendBatchRejection("validation_error");
+      }
       let responseError = error;
       if (httpAudit && !httpAudit.finished) {
         try {
@@ -561,7 +612,9 @@ function createApplication(overrides = {}) {
         durationMs: Date.now() - startedAt,
         result: status < 400 ? "success" : status < 500 ? "rejected" : "failed",
         errorCode,
+        responseBytes: response[RESPONSE_BYTES] || 0,
       });
+      metrics.recordHttpRequest({ method: request.method, route, status, durationMs: Date.now() - startedAt, result: status < 400 ? "success" : status < 500 ? "rejected" : "failed", responseBytes: response[RESPONSE_BYTES] || 0 });
       activeRequests = Math.max(0, activeRequests - 1);
     }
   }

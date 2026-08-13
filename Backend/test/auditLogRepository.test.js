@@ -186,3 +186,20 @@ test("Auditlog markiert einen Preflight-Lesefehler als nicht bereit", () => {
   assert.deepEqual(repository.status().lastError, { at: 1000, code: "SQLITE_IOERR" });
   repository.close();
 });
+
+test("Auditlog erholt sich nach einem transienten Statusprobefehler", () => {
+  const repository = new AuditLogRepository(":memory:", { instanceId: "test", journal: false, now: () => 1000 });
+  repository.init();
+  const prepare = repository.db.prepare.bind(repository.db);
+  let fail = true;
+  repository.db.prepare = (sql) => {
+    if (fail && sql.startsWith("SELECT COUNT")) {
+      fail = false;
+      throw Object.assign(new Error("probe failed"), { code: "SQLITE_IOERR" });
+    }
+    return prepare(sql);
+  };
+  assert.equal(repository.status().ready, false);
+  assert.equal(repository.status().ready, true);
+  repository.close();
+});

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { AppError } = require("./errors.js");
 const { TokenBucketLimiter } = require("./security.js");
 const { booleanValue, idValue, integerValue, requireObject, stringValue } = require("./validators.js");
+const metrics = require("./metrics.js");
 
 const SETTINGS_KEY = "frontend-logging:settings";
 const TARGETS_KEY = "frontend-logging:targets";
@@ -119,8 +120,8 @@ function normalizeStoredSettings(value) {
     defaultTargetLevel: Object.hasOwn(LEVELS, raw.defaultTargetLevel) ? raw.defaultTargetLevel : DEFAULT_SETTINGS.defaultTargetLevel,
     defaultTargetDurationMinutes: storedInteger(raw.defaultTargetDurationMinutes, Math.min(DEFAULT_SETTINGS.defaultTargetDurationMinutes, maxTargetDurationMinutes), 15, maxTargetDurationMinutes),
     maxTargetDurationMinutes,
-    normalRetentionDays: storedInteger(raw.normalRetentionDays, DEFAULT_SETTINGS.normalRetentionDays, 1, 90),
-    targetedRetentionDays: storedInteger(raw.targetedRetentionDays, DEFAULT_SETTINGS.targetedRetentionDays, 1, 30),
+    normalRetentionDays: DEFAULT_SETTINGS.normalRetentionDays,
+    targetedRetentionDays: DEFAULT_SETTINGS.targetedRetentionDays,
   };
 }
 
@@ -138,8 +139,8 @@ function validateSettings(value, currentSettings = DEFAULT_SETTINGS) {
     defaultTargetLevel: levelValue(body.defaultTargetLevel, "defaultTargetLevel"),
     defaultTargetDurationMinutes: integerValue(body.defaultTargetDurationMinutes, "defaultTargetDurationMinutes", { min: 15, max: maxTargetDurationMinutes }),
     maxTargetDurationMinutes,
-    normalRetentionDays: integerValue(body.normalRetentionDays, "normalRetentionDays", { min: 1, max: 90 }),
-    targetedRetentionDays: integerValue(body.targetedRetentionDays, "targetedRetentionDays", { min: 1, max: 30 }),
+    normalRetentionDays: integerValue(body.normalRetentionDays, "normalRetentionDays", { min: 14, max: 14 }),
+    targetedRetentionDays: integerValue(body.targetedRetentionDays, "targetedRetentionDays", { min: 7, max: 7 }),
   };
   return {
     expectedRevision: integerValue(body.expectedRevision, "expectedRevision", { min: 0 }),
@@ -338,9 +339,13 @@ class FrontendLoggingService {
       throw new AppError("VALIDATION_ERROR", "events muss 1 bis 20 Eintraege enthalten");
     }
     const policy = this.getPolicy(identity?.id || null);
-    if (!policy.enabled) return { success: true, accepted: 0, dropped: envelope.events.length };
+    if (!policy.enabled) {
+      metrics.recordFrontendEvents("dropped_policy", envelope.events.length);
+      return { success: true, accepted: 0, dropped: envelope.events.length };
+    }
     const limiterKey = identity?.id ? `user:${identity.id}` : `ip:${sourceIp}`;
     if (!this.eventLimiter.take(limiterKey, envelope.events.length)) {
+      metrics.recordFrontendEvents("dropped_rate_limit", envelope.events.length);
       throw new AppError("FRONTEND_EVENT_RATE_LIMIT", "Zu viele Frontend-Ereignisse", 429);
     }
     const settings = this.settingsSnapshot();
@@ -349,10 +354,12 @@ class FrontendLoggingService {
     for (const rawEvent of envelope.events) {
       const event = validateClientEvent(rawEvent);
       if (LEVELS[event.level] < LEVELS[policy.level]) {
+        metrics.recordFrontendEvents("dropped_level");
         dropped++;
         continue;
       }
       if (LEVELS[event.level] < LEVELS.warn && !sampledIn(policy.sampleRatePercent)) {
+        metrics.recordFrontendEvents("dropped_sampling");
         dropped++;
         continue;
       }
@@ -391,6 +398,7 @@ class FrontendLoggingService {
         retentionDays: policy.targeted ? settings.targetedRetentionDays : settings.normalRetentionDays,
       });
       accepted++;
+      metrics.recordFrontendEvents("accepted");
     }
     return { success: true, accepted, dropped };
   }

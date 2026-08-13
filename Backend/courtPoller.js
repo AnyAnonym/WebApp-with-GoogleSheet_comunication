@@ -8,6 +8,7 @@ const {
   SCORE_LOG_JOURNAL,
 } = require("./config.js");
 const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 
 let fetchImplementation = globalThis.fetch;
 let scoreLogRepository = null;
@@ -250,6 +251,7 @@ async function poll(myGeneration = generation) {
     lastSuccessAt = Date.now();
     lastPollDurationMs = lastSuccessAt - startedAt;
     lastError = null;
+    metrics.recordCourtPoll({ result: recovered ? "recovered" : "success", durationMs: lastPollDurationMs });
     if (recovered) {
       logger.log("info", "court_poll_recovered", {
         result: "recovered",
@@ -270,13 +272,17 @@ async function poll(myGeneration = generation) {
     if (changed || recovered || Date.now() - lastNotificationAt >= 10000) notify(changed);
     schedule(myGeneration, COURT_POLL_INTERVAL);
   } catch (error) {
-    if (myGeneration !== generation || !running) return;
+    if (myGeneration !== generation || !running) {
+      metrics.recordCourtPoll({ result: "cancelled", durationMs: Date.now() - startedAt });
+      return;
+    }
     const failedAt = Date.now();
     lastPollDurationMs = failedAt - startedAt;
     if (failureCount === 0) failureStartedAt = failedAt;
     failureCount++;
     const errorCode = errorCodeOf(error);
     lastError = { at: failedAt, code: errorCode, message: String(error.message || error).slice(0, 300) };
+    metrics.recordCourtPoll({ result: "failed", durationMs: lastPollDurationMs });
     const backoff = Math.min(COURT_MAX_BACKOFF_MS, COURT_POLL_INTERVAL * (2 ** Math.min(failureCount, 5)));
     if (failureCount === 1 || loggedFailureCode !== errorCode) {
       logger.log("warn", "court_poll_failed", {

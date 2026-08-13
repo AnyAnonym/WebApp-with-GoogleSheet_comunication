@@ -9,6 +9,7 @@ const {
 } = require("./config.js");
 const dataStore = require("./dataStore.js");
 const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 const { validateTableValues } = require("./tableSchemas.js");
 
 let sheetsClient = null;
@@ -63,6 +64,7 @@ async function pollTable(sheets, tableName, range, source = "poll") {
       if (result === "applied") failureLogs.delete(tableName);
       logger.log("debug", "sheets_table_poll_completed", { table: tableName, range, source, result, durationMs });
     }
+    metrics.recordSheetPoll({ table: tableName, result, durationMs });
     return {
       table: tableName,
       success: true,
@@ -78,6 +80,7 @@ async function pollTable(sheets, tableName, range, source = "poll") {
     const durationMs = Date.now() - startedAt;
     if (stored?.ignored) {
       logger.log("debug", "sheets_table_poll_completed", { table: tableName, range, source, result: "ignored_stale", durationMs });
+      metrics.recordSheetPoll({ table: tableName, result: "ignored_stale", durationMs });
       return { table: tableName, success: true, ignored: true, result: "ignored_stale", durationMs, errorCode: null, errorSequence: 0, outageDurationMs: 0 };
     }
     const errorCode = stored?.lastError?.code || "SHEETS_POLL_FAILED";
@@ -116,6 +119,7 @@ async function pollTable(sheets, tableName, range, source = "poll") {
       }
     }
     failureLogs.set(tableName, failureLog);
+    metrics.recordSheetPoll({ table: tableName, result: "failed", durationMs });
     return {
       table: tableName,
       success: false,
@@ -147,6 +151,7 @@ async function pollCategory(sheets, category) {
 async function runTick() {
   if (activePoll || stopping) return null;
   tickCount++;
+  let tickResult = "completed";
   activePoll = (async () => {
     const sheets = await getSheetsClient();
     const fast = tickCount === 1 || tickCount % POLL_FAST_MULTIPLIER === 0;
@@ -174,9 +179,11 @@ async function runTick() {
   try {
     return await activePoll;
   } catch (error) {
+    tickResult = "failed";
     logger.log("error", "sheets_poll_tick_failed", { tick: tickCount, error });
     return null;
   } finally {
+    metrics.recordSheetTick(tickResult);
     activePoll = null;
   }
 }
@@ -202,6 +209,7 @@ async function initialLoad() {
         error: error.message,
       };
     });
+    for (const result of results) metrics.recordSheetPoll(result);
     logger.log("error", "sheets_client_initialization_failed", {
       tableCount: results.length,
       result: "failed",

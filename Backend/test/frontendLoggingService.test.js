@@ -5,6 +5,7 @@ const { setTestEnvironment } = require("./helpers.js");
 setTestEnvironment();
 const { FrontendLoggingService } = require("../frontendLoggingService.js");
 const { StateRepository } = require("../stateRepository.js");
+const metrics = require("../metrics.js");
 
 function fixture(now = Date.now()) {
   const repository = new StateRepository(":memory:", { now: () => now.value });
@@ -46,6 +47,7 @@ function settings(expectedRevision, overrides = {}) {
 }
 
 test("Frontend-Logging-Einstellungen und temporaere Ziele sind revisioniert und laufen ab", () => {
+  metrics.resetForTests();
   const now = { value: 1000000 };
   const { service } = fixture(now);
   assert.equal(service.getPolicy("p2").enabled, false);
@@ -79,6 +81,16 @@ test("Frontend-Logging-Einstellungen und temporaere Ziele sind revisioniert und 
   now.value += 3600001;
   assert.equal(service.getPolicy("p2").targeted, false);
   assert.deepEqual(service.adminView().targets, []);
+});
+
+test("Frontend-Retentionklassen sind fest auf 14 und 7 Tage begrenzt", () => {
+  const now = { value: 1500000 };
+  const { service } = fixture(now);
+  assert.throws(() => service.updateSettings(settings(0, { normalRetentionDays: 15 })), { code: "VALIDATION_ERROR" });
+  assert.throws(() => service.updateSettings(settings(0, { targetedRetentionDays: 8 })), { code: "VALIDATION_ERROR" });
+  const stored = service.updateSettings(settings(0));
+  assert.equal(stored.value.normalRetentionDays, 14);
+  assert.equal(stored.value.targetedRetentionDays, 7);
 });
 
 test("Collector reichert erlaubte Events serverseitig an und nimmt keine freien Felder an", () => {

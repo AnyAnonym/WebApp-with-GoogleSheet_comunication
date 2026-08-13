@@ -61,3 +61,31 @@ test("Logger behandelt Zyklen und BigInt ohne die Anwendung zu werfen", () => {
   assert.equal(event.count, "5");
   assert.equal(event.self, "[CIRCULAR]");
 });
+
+test("Logger redigiert Schluesselvarianten, Zuweisungen und geheime URL-Parameter", () => {
+  const lines = [];
+  const logger = createLogger({ level: "debug", write: (_level, line) => lines.push(line) });
+  logger.log("error", "extended_redaction_test", {
+    accessToken: "secret-access",
+    nestedApiKey: "secret-key",
+    message: "password=hunter2 token:abc cookie=sessionid client_secret=client-value refresh_token=refresh-value session_id=session-value",
+    url: "https://example.test/path?token=raw-secret&reset_token=reset-value&safe=1",
+    error: new Error("api_key=secret-value Bearer abc+/def=="),
+  });
+  const serialized = lines[0];
+  assert.equal(serialized.includes("secret-access"), false);
+  assert.equal(serialized.includes("secret-key"), false);
+  assert.equal(serialized.includes("hunter2"), false);
+  assert.equal(serialized.includes("raw-secret"), false);
+  assert.equal(serialized.includes("secret-value"), false);
+  assert.equal(serialized.includes("client-value"), false);
+  assert.equal(serialized.includes("refresh-value"), false);
+  assert.equal(serialized.includes("session-value"), false);
+  assert.equal(serialized.includes("reset-value"), false);
+  assert.equal(serialized.includes("abc+/def=="), false);
+});
+
+test("Logger macht synchrone Schreibfehler als Rueckgabewert sichtbar", () => {
+  const logger = createLogger({ write: () => { throw new Error("stream failed"); } });
+  assert.equal(logger.log("info", "write_failure_test"), false);
+});

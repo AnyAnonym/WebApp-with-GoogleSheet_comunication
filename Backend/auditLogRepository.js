@@ -41,6 +41,7 @@ class AuditLogRepository {
     this.writeCount = 0;
     this.failureCount = 0;
     this.lastError = null;
+    this.probeError = null;
   }
 
   init() {
@@ -225,8 +226,15 @@ class AuditLogRepository {
 
   status() {
     if (!this.db) return { open: false, ready: false };
-    const count = Number(this.db.prepare("SELECT COUNT(*) AS count FROM audit_log").get().count);
-    return { open: true, ready: this.lastError === null, count, writeCount: this.writeCount, failureCount: this.failureCount, lastError: this.lastError };
+    try {
+      const count = Number(this.db.prepare("SELECT COUNT(*) AS count FROM audit_log").get().count);
+      this.probeError = null;
+      return { open: true, ready: this.lastError === null, count, writeCount: this.writeCount, failureCount: this.failureCount, lastError: this.lastError };
+    } catch (error) {
+      this.failureCount++;
+      this.probeError = { at: this.now(), code: error.code || "AUDIT_LOG_PROBE_FAILED" };
+      return { open: true, ready: false, count: 0, writeCount: this.writeCount, failureCount: this.failureCount, lastError: this.probeError };
+    }
   }
 
   close() {

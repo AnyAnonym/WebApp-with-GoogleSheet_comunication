@@ -1,3 +1,49 @@
+[4.3.0-paj-1-10] - 2026-08-13
+Commit: 4.3.0-paj-1-10 | Observability fuer PAJ integriert
+
+  Added
+  - [Software] `Backend/metrics.js` stellt einen dependency-freien Prometheus-Exporter mit fest begrenzten Dimensionen, Typinformationen und kumulativen HTTP-/WebSocket-/Poller-Histogrammen bereit.
+  - [Infrastruktur] Versionierte PAJ-Vorlagen fuer Alloy, Loki, Prometheus, Node Exporter, Grafana-Datenquellen, vier nicht personenbezogene Dashboards, Grafana-Alerting, Runbooks und eine wiederholbare Root-Installation angelegt.
+  - [Dokumentation] `Project/server-configs/observability/ROOT-FERTIGSTELLUNG.md` beschreibt Release-Gates, Sicherungen, Installation, lokale Geheimnisse, Caddy-Aktivierung, Datenschutz-, Korrelations-, Rollen-, Alert-, Recovery- und Abschlusspruefungen fuer die Root-Session.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-10` gesetzt.
+  - [Software] Das Backend stellt auf dem bestehenden Loopback-Listener ein internes Prometheus-`GET /metrics` mit begrenzten HTTP-, WebSocket-, Poller-, Readiness-, SQLite-, Frontendcollector- und Loggerdimensionen bereit; der oeffentliche Caddy-Matcher veroeffentlicht den Endpoint nicht.
+  - [Software] Readiness prueft State-, ScoreLog- und Audit-SQLite explizit und erholt sich nach transienten Statusprobefehlern; Frontend-Retention ist technisch auf 14 Tage normal beziehungsweise 7 Tage gezielt fixiert.
+  - [Sicherheit] Logger-Redaction deckt zusaetzliche Credential-Zuweisungen, geheime Queryparameter und vollstaendigere Bearer-Tokenformen ab. Personen-, Request-, Sitzungs-, Geraete- und IP-Werte werden keine Prometheus- oder Loki-Labels.
+  - [Infrastruktur] PAJ erhaelt versionierte Loopback-Vorlagen fuer Alloy, Loki, Prometheus, Node Exporter und Grafana sowie datensparsames Caddy-Access-Logging mit Backend-Request-ID-Korrelation. PK und Live bleiben ausschliesslich als deaktivierte Prometheus-Zieldateien vorbereitet.
+  - [Infrastruktur] Grafana provisioniert vier nicht personenbezogene PAJ-Dashboards und Grafana-Alerting mit lokalem, nicht versioniertem Kontaktpunkt. Loki wird fuer eine getrennte Betreiberorganisation vorbereitet und nicht in der Standardorganisation bereitgestellt.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 145 Tests erfolgreich.
+  - Caddy-Adaptierung sowie Alloy-, Loki- und Prometheus-Konfigurationspruefungen mit den vorgesehenen Paketbinaries erfolgreich.
+  - Dashboard- und Prometheus-Zieldefinitionen syntaktisch als JSON geprueft; `git diff --check` erfolgreich.
+  - Grafana 13.1.3 startete mit der Vorlage und einer temporaeren SQLite-Datenbank bis zur erwarteten Grenze der nicht vollstaendig extrahierten Test-Webassets; Konfiguration und Migration wurden angenommen.
+
+  Rollout
+  - Installation, systemd-Aktivierung, Caddy-Reload, Grafana-Rollen-/Kontaktpunkttest und praktische PAJ-End-to-End-Abnahme bleiben bis zu einem autorisierten Root-Lauf und lokalen Geheimnissen offen.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/ENDPOINTS.txt
+  - Internes `GET /metrics`, Prometheus-Textformat, Loopback-Vertrauensgrenze und Ausschluss aus dem oeffentlichen Caddy-Matcher dokumentieren.
+  - Frontend-Retentionwerte auf die technisch fest erzwungenen Werte 14 Tage normal und 7 Tage gezielt aktualisieren.
+
+  Project/software/ARCHITEKTUR.txt
+  - Dependency-freien Metrikexporter, feste Kardinalitaetsgrenzen, instrumentierte HTTP-/WebSocket-/Poller-/SQLite-/Collector-/Loggerpfade und Readiness-Komponenten dokumentieren.
+
+  Project/software/seiten/adminLogging.txt
+  - Retentionfelder als nicht editierbare feste 14-/7-Tage-Vorgaben dokumentieren.
+
+  Project/server-configs/SERVER-DOKU.txt
+  - `observability/` mit PAJ-Topologie, Loopback-Ports, aktivem PAJ-Ziel sowie nur vorbereiteten PK-/Live-Zielen in den Verzeichnisindex aufnehmen.
+
+  Project/server-configs/SERVER-SETUP.txt
+  - PAJ-Installation und Betrieb von Alloy, Loki, Prometheus, Node Exporter und Grafana, lokale Geheimnisdatei, Caddy-Access-Log-Rechte, SSH-Tunnel, Operatororganisation, Retention, Alerting und Rollback dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - PAJ-Gates fuer internes `/metrics`, Loopback-Listener, Prometheus-Targets, Alloy-/Loki-Pipeline, Request-ID-Korrelation, Datenschutzlabels, Grafana-Rollen, Dashboards, Alerts, Retention, Ausfall/Recovery, Kapazitaet und Observability-Rollback aufnehmen.
+
 [4.3.0-paj-1-9] - 2026-08-13
 Commit: 4.3.0-paj-1-9 | Ranglistenabschluesse mit WO und RET korrigiert
 

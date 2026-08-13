@@ -1,0 +1,10 @@
+[
+  {
+    "targets": ["127.0.0.1:8080"],
+    "labels": {
+      "deployment": "live",
+      "instance": "live",
+      "prepared_target": "true"
+    }
+  }
+]

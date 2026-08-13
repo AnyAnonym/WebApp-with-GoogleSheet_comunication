@@ -1,0 +1,354 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: epiber-paj
+    folder: ePiber
+    interval: 1m
+    rules:
+      - uid: paj-backend-down
+        title: PAJ Backend Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'up{job="epiber",instance="paj"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: PAJ-Backend ist nicht erreichbar
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-backend-down
+        labels: { deployment: paj, severity: critical }
+
+      - uid: paj-not-ready
+        title: PAJ Not Ready
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_ready{instance="paj"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: PAJ ist laenger als zwei Minuten nicht bereit
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-not-ready
+        labels: { deployment: paj, severity: critical }
+
+      - uid: paj-sheet-stale
+        title: PAJ Sheet Data Stale
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(epiber_sheet_table_current{instance="paj",table!="matchtyp"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: Mindestens eine PAJ-Sheet-Tabelle ist veraltet
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-sheet-data-stale
+        labels: { deployment: paj, severity: warning }
+
+      - uid: paj-court-stale
+        title: PAJ Court Source Stale
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_court_source_stale{instance="paj"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: PAJ-Courtquelle ist veraltet
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-court-source-stale
+        labels: { deployment: paj, severity: warning }
+
+      - uid: paj-sqlite-unhealthy
+        title: PAJ SQLite Unhealthy
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(epiber_sqlite_ready{instance="paj"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: Mindestens eine PAJ-SQLite-Datenbank ist ungesund
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-sqlite-unhealthy
+        labels: { deployment: paj, severity: critical }
+
+      - uid: paj-pending-metadata
+        title: PAJ Pending Metadata Intent
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_sheet_metadata_intents_pending{instance="paj"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: PAJ besitzt einen ungeklaerten Metadata-Intent
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-pending-metadata-intent
+        labels: { deployment: paj, severity: critical }
+
+      - uid: paj-http-failures
+        title: PAJ HTTP Server Errors
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'sum(rate(epiber_http_requests_total{instance="paj",result="failed"}[5m]))'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0.05], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: PAJ erzeugt anhaltend HTTP-Serverfehler
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-http-server-errors
+        labels: { deployment: paj, severity: warning }
+
+      - uid: paj-stack-target-down
+        title: PAJ Observability Target Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(up{job=~"prometheus|node|loki|alloy|grafana"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: Mindestens ein PAJ-Observability-Ziel ist nicht erreichbar
+          runbook: Project/server-configs/observability/RUNBOOKS.md#paj-observability-target-down
+        labels: { deployment: paj, severity: critical }
+
+      - uid: paj-host-disk-low
+        title: PAJ Host Disk Nearly Full
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 900, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0.1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 15m
+        annotations:
+          summary: Host-Dateisystem hat weniger als zehn Prozent frei
+          runbook: Project/server-configs/observability/RUNBOOKS.md#host-disk-nearly-full
+        labels: { deployment: paj, severity: warning }

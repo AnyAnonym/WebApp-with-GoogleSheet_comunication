@@ -1,0 +1,92 @@
+logging {
+  level = "info"
+}
+
+loki.relabel "paj_journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+}
+
+loki.source.journal "paj" {
+  forward_to    = [loki.process.paj.receiver]
+  relabel_rules = loki.relabel.paj_journal.rules
+  matches       = "_SYSTEMD_UNIT=epiber-paj.service"
+  max_age       = "24h"
+  labels = {
+    deployment = "paj",
+    service    = "epiber-backend",
+  }
+}
+
+local.file_match "paj_caddy" {
+  path_targets = [{
+    __path__   = "/var/log/caddy/epiber-paj-access.json",
+    deployment = "paj",
+    service    = "caddy-access",
+  }]
+}
+
+loki.source.file "paj_caddy" {
+  targets    = local.file_match.paj_caddy.targets
+  forward_to = [loki.process.paj_caddy.receiver]
+}
+
+loki.process "paj" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.json {
+    expressions = {
+      event           = "event",
+      app_level       = "level",
+      page_type       = "pageType",
+      app_version     = "version",
+      version_match   = "clientVersionMatch",
+      diagnostic      = "diagnosticProfile",
+      retention_class = "retentionClass",
+      frontend_event  = "frontendEvent",
+      frontend_level  = "frontendLevel",
+    }
+  }
+
+  stage.labels {
+    values = {
+      event           = "",
+      app_level       = "",
+      page_type       = "",
+      app_version     = "",
+      version_match   = "",
+      diagnostic      = "",
+      retention_class = "",
+      frontend_event  = "",
+      frontend_level  = "",
+    }
+  }
+}
+
+loki.process "paj_caddy" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.json {
+    expressions = {
+      request_route = "route",
+      status        = "status",
+    }
+  }
+
+  stage.labels {
+    values = {
+      request_route = "",
+      status        = "",
+    }
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:3100/loki/api/v1/push"
+  }
+}

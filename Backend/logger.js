@@ -1,6 +1,7 @@
 const { version } = require("./package.json");
 const { INSTANCE_ID, LOG_LEVEL } = require("./config.js");
 const { once } = require("node:events");
+const metrics = require("./metrics.js");
 
 const LEVELS = Object.freeze({ debug: 10, info: 20, warn: 30, error: 40 });
 const REDACTED = "[REDACTED]";
@@ -15,10 +16,17 @@ function normalizedKey(key) {
   return String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function sensitiveKey(key) {
+  const normalized = normalizedKey(key);
+  return SENSITIVE_KEYS.has(normalized) || /(?:authorization|cookie|credential|password|passwd|privatekey|secret|session|token|apikey)$/.test(normalized);
+}
+
 function scrubText(value, maxLength) {
   return String(value)
     .replace(/-----BEGIN [^-]+PRIVATE KEY-----[\s\S]*?-----END [^-]+PRIVATE KEY-----/gi, REDACTED)
-    .replace(/\bBearer\s+[A-Za-z0-9._~-]+/gi, `Bearer ${REDACTED}`)
+    .replace(/\bBearer\s+[A-Za-z0-9!#$%&'*+.^_`|~\/-]+={0,2}/gi, `Bearer ${REDACTED}`)
+    .replace(/([?&](?:access_token|api_key|authorization|client_secret|cookie|password|refresh_token|reset_token|secret|session(?:_id|_token)?|token)=)[^&#\s]*/gi, `$1${REDACTED}`)
+    .replace(/\b(password|passwd|access[_-]?token|client[_-]?secret|refresh[_-]?token|reset[_-]?token|session(?:[_-]?(?:id|token))?|token|secret|cookie|api[_-]?key)\s*[:=]\s*([^\s,;]+)/gi, `$1=${REDACTED}`)
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, REDACTED)
     .slice(0, maxLength);
 }
@@ -44,7 +52,7 @@ function safeValue(value, options, depth = 0, seen = new WeakSet()) {
   }
   const result = {};
   for (const [key, entry] of Object.entries(value).slice(0, options.maxEntries)) {
-    result[key] = SENSITIVE_KEYS.has(normalizedKey(key)) ? REDACTED : safeValue(entry, options, depth + 1, seen);
+    result[key] = sensitiveKey(key) ? REDACTED : safeValue(entry, options, depth + 1, seen);
   }
   return result;
 }
@@ -85,16 +93,22 @@ function createLogger({
         event,
       })}\n`;
     } catch {
+      metrics.recordLog("error", "serialization_failed");
       line = `${JSON.stringify({
         timestamp: now().toISOString(), level: "error", service, instance, version: appVersion, event: "logger_serialization_failed",
       })}\n`;
     }
     try {
       const result = write(logLevel, line);
-      if (result && typeof result.then === "function") pending = pending.then(() => result).catch(() => {});
+      if (result && typeof result.then === "function") {
+        metrics.recordLog(logLevel, "backpressure");
+        pending = pending.then(() => result).catch(() => metrics.recordLog(logLevel, "write_failed"));
+      }
     } catch {
+      metrics.recordLog(logLevel, "write_failed");
       return false;
     }
+    metrics.recordLog(logLevel, "written");
     return true;
   }
 

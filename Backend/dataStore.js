@@ -162,7 +162,7 @@ function getReadiness(now = Date.now()) {
     const maxAge = config.category === "fast" ? READINESS_FAST_MAX_AGE_MS : READINESS_SLOW_MAX_AGE_MS;
     const ageMs = meta.lastUpdate ? now - meta.lastUpdate : null;
     const current = meta.lastUpdate > 0 && ageMs <= maxAge;
-    tables[name] = { current, ageMs, maxAge, lastError: meta.lastError, revision: meta.revision };
+    tables[name] = { current, ageMs, maxAge, lastError: meta.lastError, revision: meta.revision, consecutiveErrors: meta.consecutiveErrors };
     if (!current) ready = false;
   }
   return { ready, tables };

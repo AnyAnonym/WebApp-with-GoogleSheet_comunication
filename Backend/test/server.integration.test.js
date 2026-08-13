@@ -10,6 +10,7 @@ const { createApplication } = require("../server.js");
 const { StateRepository } = require("../stateRepository.js");
 const { version: appVersion } = require("../package.json");
 const logger = require("../logger.js");
+const metrics = require("../metrics.js");
 
 function createSocketClient(url, headers) {
   const socket = new WebSocket(url, { headers });
@@ -110,6 +111,7 @@ function rejectedUpgrade(url, origin) {
 }
 
 test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
+  metrics.resetForTests();
   const logEntries = [];
   t.mock.method(logger, "log", (level, event, fields = {}) => logEntries.push({ level, event, fields }));
   dataStore.resetForTests();
@@ -178,6 +180,16 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const readinessResponse = await fetch(`${httpBase}/ready`);
   assert.equal(readinessResponse.status, 503);
   assert.deepEqual(await readinessResponse.json(), { status: "not-ready", version: appVersion });
+  const metricsResponse = await fetch(`${httpBase}/metrics`);
+  assert.equal(metricsResponse.status, 200);
+  assert.equal(metricsResponse.headers.get("content-type"), "text/plain; version=0.0.4; charset=utf-8");
+  assert.match(metricsResponse.headers.get("x-request-id"), /^[0-9a-f-]{36}$/i);
+  const metricsBody = await metricsResponse.text();
+  assert.match(metricsBody, /epiber_ready 0/);
+  assert.match(metricsBody, /epiber_sqlite_open\{database="state"\} 1/);
+  assert.equal(metricsBody.includes("p1"), false);
+  const metricsMethodResponse = await fetch(`${httpBase}/metrics`, { method: "POST" });
+  assert.equal(metricsMethodResponse.status, 405);
   const unauthenticatedStatus = await fetch(`${httpBase}/status`);
   assert.equal(unauthenticatedStatus.status, 401);
   const unauthenticatedStatusId = unauthenticatedStatus.headers.get("x-request-id");

@@ -1,0 +1,14 @@
+# Install manually under /etc/grafana/provisioning/datasources only after the
+# separate operator organization exists and its orgId has been verified.
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    uid: loki
+    orgId: 2
+    type: loki
+    access: proxy
+    url: http://127.0.0.1:3100
+    editable: false
+    jsonData:
+      maxLines: 1000

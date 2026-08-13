@@ -14,6 +14,7 @@ class ScoreLogRepository {
     this.lastAttemptAt = 0;
     this.lastSuccessAt = 0;
     this.lastError = null;
+    this.probeError = null;
   }
 
   init() {
@@ -124,18 +125,25 @@ class ScoreLogRepository {
 
   status() {
     if (!this.db) return { open: false, ready: false };
-    const sequences = Object.fromEntries(this.db.prepare("SELECT court, last_sequence FROM score_log_sequence WHERE instance = ?").all(this.instanceId)
-      .map((row) => [row.court, Number(row.last_sequence)]));
-    return {
-      open: true,
-      ready: this.lastError === null,
-      writeCount: this.writeCount,
-      failureCount: this.failureCount,
-      lastAttemptAt: this.lastAttemptAt,
-      lastSuccessAt: this.lastSuccessAt,
-      lastError: this.lastError,
-      lastSequenceByCourt: { "1": sequences["1"] || 0, "2": sequences["2"] || 0 },
-    };
+    try {
+      const sequences = Object.fromEntries(this.db.prepare("SELECT court, last_sequence FROM score_log_sequence WHERE instance = ?").all(this.instanceId)
+        .map((row) => [row.court, Number(row.last_sequence)]));
+      this.probeError = null;
+      return {
+        open: true,
+        ready: this.lastError === null && this.probeError === null,
+        writeCount: this.writeCount,
+        failureCount: this.failureCount,
+        lastAttemptAt: this.lastAttemptAt,
+        lastSuccessAt: this.lastSuccessAt,
+        lastError: this.lastError,
+        lastSequenceByCourt: { "1": sequences["1"] || 0, "2": sequences["2"] || 0 },
+      };
+    } catch (error) {
+      this.failureCount++;
+      this.probeError = { at: this.now(), code: error.code || "SCORE_LOG_PROBE_FAILED" };
+      return { open: true, ready: false, writeCount: this.writeCount, failureCount: this.failureCount, lastAttemptAt: this.lastAttemptAt, lastSuccessAt: this.lastSuccessAt, lastError: this.probeError, lastSequenceByCourt: { "1": 0, "2": 0 } };
+    }
   }
 
   close() {

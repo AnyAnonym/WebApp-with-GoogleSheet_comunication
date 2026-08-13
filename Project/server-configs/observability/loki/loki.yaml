@@ -1,0 +1,54 @@
+auth_enabled: false
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: 3100
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /var/lib/loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /var/lib/loki/chunks
+      rules_directory: /var/lib/loki/rules
+
+schema_config:
+  configs:
+    - from: "2026-08-13"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: /var/lib/loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 336h
+  retention_stream:
+    - selector: '{retention_class="frontend_targeted"}'
+      priority: 200
+      period: 168h
+    - selector: '{retention_class="frontend_normal"}'
+      priority: 100
+      period: 336h
+  ingestion_rate_mb: 2
+  ingestion_burst_size_mb: 4
+  max_global_streams_per_user: 5000
+  max_query_lookback: 336h
+
+analytics:
+  reporting_enabled: false

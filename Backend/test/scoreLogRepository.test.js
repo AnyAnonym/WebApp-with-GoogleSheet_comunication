@@ -50,3 +50,20 @@ test("ScoreLog lehnt inaktive Courts und ungueltige Events ab", () => {
   assert.throws(() => repository.append({ eventId: "00000000-0000-4000-8000-000000000004", court: "1", score: "0", courtActive: false }), { code: "SCORE_LOG_CONTEXT_INVALID" });
   repository.close();
 });
+
+test("ScoreLog erholt sich nach einem transienten Statusprobefehler", () => {
+  const repository = new ScoreLogRepository(":memory:", { instanceId: "test", now: () => 1000 });
+  repository.init();
+  const prepare = repository.db.prepare.bind(repository.db);
+  let fail = true;
+  repository.db.prepare = (sql) => {
+    if (fail && sql.startsWith("SELECT court")) {
+      fail = false;
+      throw Object.assign(new Error("probe failed"), { code: "SQLITE_IOERR" });
+    }
+    return prepare(sql);
+  };
+  assert.equal(repository.status().ready, false);
+  assert.equal(repository.status().ready, true);
+  repository.close();
+});

@@ -85,7 +85,7 @@
           <label>
             <span>Normale Retentionvorgabe</span>
             <span class="logging-input-unit">
-              <input id="logging-normal-retention" name="normalRetentionDays" type="number" min="1" max="90" step="1" required />
+              <input id="logging-normal-retention" name="normalRetentionDays" type="number" min="14" max="14" step="1" readonly required />
               <span>Tage</span>
             </span>
           </label>
@@ -93,7 +93,7 @@
           <label>
             <span>Gezielte Retentionvorgabe</span>
             <span class="logging-input-unit">
-              <input id="logging-targeted-retention" name="targetedRetentionDays" type="number" min="1" max="30" step="1" required />
+              <input id="logging-targeted-retention" name="targetedRetentionDays" type="number" min="7" max="7" step="1" readonly required />
               <span>Tage</span>
             </span>
           </label>
@@ -117,7 +117,7 @@
           </label>
         </div>
 
-        <p class="logging-retention-note"><strong>Hinweis:</strong> Retentionwerte sind Vorgaben. Sie werden erst wirksam, wenn Loki entsprechend konfiguriert ist.</p>
+        <p class="logging-retention-note"><strong>Hinweis:</strong> Die festen Retentionklassen werden in Loki mit 14 Tagen fuer normale und 7 Tagen fuer gezielte Diagnose erzwungen.</p>
         <div class="logging-form-actions">
           <button id="logging-save" class="logging-primary-button" type="submit">Einstellungen speichern</button>
         </div>

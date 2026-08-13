@@ -28,6 +28,7 @@ const { analyzeMatchRules } = require("./matchRules.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 const {
   booleanValue,
   idValue,
@@ -646,6 +647,7 @@ function completeRequest(info, {
     result,
     errorCode: code,
   });
+  metrics.recordWsRequest({ endpoint: record.endpoint, knownEndpoint: Object.hasOwn(endpoints, record.endpoint), result, durationMs: record.durationMs });
   return record;
 }
 
@@ -1040,6 +1042,17 @@ function getStatus() {
   };
 }
 
+function getMetricsStatus() {
+  const connections = { pending: 0, anonymous: 0, user: 0, device: 0 };
+  let activeRequests = 0;
+  for (const info of clients.values()) {
+    activeRequests += Math.max(0, Number(info.inflight) || 0);
+    const state = !info.handshake ? "pending" : info.principal.type === "user" ? "user" : info.principal.type === "device" ? "device" : "anonymous";
+    connections[state]++;
+  }
+  return { connections, activeRequests };
+}
+
 async function shutdown(server) {
   shuttingDown = true;
   if (pingTimer) clearInterval(pingTimer);
@@ -1063,4 +1076,4 @@ async function shutdown(server) {
   wss = null;
 }
 
-module.exports = { getStatus, init, publish, shutdown };
+module.exports = { getMetricsStatus, getStatus, init, publish, shutdown };

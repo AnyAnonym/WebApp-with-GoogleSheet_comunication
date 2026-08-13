@@ -60,8 +60,8 @@ Matches1 enthaelt offene und gespielte Matches.
   BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
   MatchtypID      | Optionale Matchtyp-Ueberschreibung. Ist sie gesetzt,
                   | ueberstimmt sie `Bewerb.MatchtypID Standard`.
-  Spieler1ID      | Erste Heim-/Gegner-ID; Suffixe wie [wo] oder [ret] sind
-                  | in Altdaten moeglich.
+  Spieler1ID      | Erste Heim-/Gegner-ID; als Abschlussmarker sind nur die
+                  | exakt kleingeschriebenen Suffixe [wo] oder [ret] zulaessig.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
   Spieler3ID      | Erste Gast-/Forderer-ID.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
@@ -70,7 +70,9 @@ Matches1 enthaelt offene und gespielte Matches.
   Bemerkung       | Freitext.
 
 `Spieler2ID` und `Spieler4ID` bleiben optional. Der Gewinner wird aus Ergebnis
-und Walkover-Kennzeichnung berechnet, nicht in einer eigenen Spalte gespeichert.
+oder dem exakten Abschlussmarker [wo]/[ret] berechnet, nicht in einer eigenen
+Spalte gespeichert. Varianten wie [w.o.], [WO] oder [RET] sind keine gueltigen
+Marker und werden nicht normalisiert.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
 

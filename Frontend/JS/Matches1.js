@@ -35,9 +35,9 @@ function dateToTs(raw) {
 
 function parsePlayerId(raw) {
   const s = String(raw || "").trim();
-  const wo = /\[w\.?o\.?\]/i.test(s);
-  const ret = /\[ret\]/i.test(s);
-  const cleanId = s.replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").trim();
+  const wo = s.endsWith("[wo]");
+  const ret = s.endsWith("[ret]");
+  const cleanId = wo ? s.slice(0, -4).trim() : ret ? s.slice(0, -5).trim() : s;
   const special = wo ? "wo" : ret ? "ret" : null;
   return {cleanId, special};
 }
@@ -47,7 +47,7 @@ function determineWinner(ergebnis) {
   const sets = String(ergebnis).split("/").filter(Boolean);
   let w1 = 0, w2 = 0;
   sets.forEach((s) => {
-    const clean = s.replace(/\(\d+\)/g, "").replace(/\[ret\]/gi, "").trim();
+    const clean = s.replace(/\(\d+\)/g, "").replace(/\[ret\]/g, "").trim();
     const parts = clean.split("-").map(Number);
     if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
       if (parts[0] > parts[1]) w1++;
@@ -60,9 +60,9 @@ function determineWinner(ergebnis) {
 }
 
 // Gewinner inkl. [wo]/[ret]-Logik: wer wo/ret gibt, verliert
-function determineWinnerWithWo(ergebnis, p1special, p3special) {
-  if (p1special === "wo" || p1special === "ret") return 2;
-  if (p3special === "wo" || p3special === "ret") return 1;
+function determineWinnerWithWo(ergebnis, firstTeamSpecials, secondTeamSpecials) {
+  if (firstTeamSpecials.some(Boolean)) return 2;
+  if (secondTeamSpecials.some(Boolean)) return 1;
   return determineWinner(ergebnis);
 }
 
@@ -85,12 +85,12 @@ function createBadge(type) {
   const badge = document.createElement("span");
   if (type === "wo") {
     badge.className = "badge-wo";
-    badge.textContent = "w.o.";
+    badge.textContent = "wo";
     return badge;
   }
   if (type === "ret") {
     badge.className = "badge-ret";
-    badge.textContent = "ret.";
+    badge.textContent = "ret";
     return badge;
   }
   return null;
@@ -199,9 +199,9 @@ async function loadData() {
           p4: {name: pid4.cleanId ? (playerMap.get(pid4.cleanId) || pid4.cleanId) : "", id: pid4.cleanId, special: pid4.special},
           ergebnis,
           ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
-          winner: determineWinnerWithWo(ergebnis, pid1.special, pid3.special),
+          winner: determineWinnerWithWo(ergebnis, [pid1.special, pid2.special], [pid3.special, pid4.special]),
           hasWo: !!(pid1.special === "wo" || pid2.special === "wo" || pid3.special === "wo" || pid4.special === "wo"),
-          isPlayed: !!ergebnis || pid1.special === "wo" || pid3.special === "wo" || pid1.special === "ret" || pid3.special === "ret",
+          isPlayed: !!ergebnis || !!pid1.special || !!pid2.special || !!pid3.special || !!pid4.special,
           isBye: /^BYE$/i.test(pid1.cleanId) || /^BYE$/i.test(pid3.cleanId || ""),
         });
       });
@@ -375,7 +375,7 @@ function renderMatches() {
     const player1 = document.createElement("span");
     player1.className = "m1-player";
     player1.textContent = team1Name;
-    const badge1 = createBadge(m.p1.special);
+    const badge1 = createBadge(m.p1.special || m.p2.special);
     if (badge1) player1.append(" ", badge1);
     team1.appendChild(player1);
 
@@ -389,7 +389,7 @@ function renderMatches() {
     const player2 = document.createElement("span");
     player2.className = "m1-player";
     player2.textContent = team2Name;
-    const badge2 = createBadge(m.p3.special);
+    const badge2 = createBadge(m.p3.special || m.p4.special);
     if (badge2) player2.append(" ", badge2);
     team2.appendChild(player2);
 

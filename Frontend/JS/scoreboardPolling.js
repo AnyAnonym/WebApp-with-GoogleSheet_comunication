@@ -101,9 +101,9 @@ function dateToTs(raw) {
 
 function parsePlayerId(raw) {
   const s = String(raw || "").trim();
-  const wo = /\[w\.?o\.?\]/i.test(s);
-  const ret = /\[ret\]/i.test(s);
-  const cleanId = s.replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").trim();
+  const wo = s.endsWith("[wo]");
+  const ret = s.endsWith("[ret]");
+  const cleanId = wo ? s.slice(0, -4).trim() : ret ? s.slice(0, -5).trim() : s;
   const special = wo ? "wo" : ret ? "ret" : null;
   return { cleanId, special };
 }
@@ -117,7 +117,7 @@ function createElement(tagName, className, text) {
 
 function createBadge(type) {
   if (type !== "wo" && type !== "ret") return null;
-  return createElement("span", "badge badge-wo", type === "wo" ? "w.o." : "ret.");
+  return createElement("span", "badge badge-wo", type);
 }
 
 function parseRunde(raw) {
@@ -228,8 +228,8 @@ function createMatchEntry(row, indexes, maps, upcoming) {
 
   let winner = upcoming ? 0 : determineWinner(row[ergebnisIdx]);
   if (!upcoming && !winner) {
-    if (pid1.special === "wo") winner = 2;
-    else if (pid3.special === "wo") winner = 1;
+    if (pid1.special || pid2.special) winner = 2;
+    else if (pid3.special || pid4.special) winner = 1;
   }
 
   const entry = createElement("div", upcoming ? "pre-entry" : "archived-entry");
@@ -255,19 +255,17 @@ function createMatchEntry(row, indexes, maps, upcoming) {
 
 function buildRecentMatches(values, maps) {
   const indexes = matchIndexes(values);
-  const { i1, i3, ergebnisIdx, d } = indexes;
+  const { i1, i2, i3, i4, ergebnisIdx, d } = indexes;
 
   const all = values.slice(1)
     .filter((row) => {
       if (!Array.isArray(row) || !row[i1]) return false;
       if (/^BYE$/i.test(String(row[i1]))) return false;
       if (row[i3] && /^BYE$/i.test(String(row[i3]))) return false;
-      // Nur gespielte Matches (mit Ergebnis oder [wo])
+      // Nur gespielte Matches (mit Ergebnis oder [wo]/[ret])
       const erg = ergebnisIdx >= 0 ? String(row[ergebnisIdx] || "").trim() : "";
-      const p1raw = String(row[i1] || "").trim();
-      const p3raw = String(row[i3] || "").trim();
-      const hasWo = /\[w\.?o\.?\]/i.test(p1raw) || /\[w\.?o\.?\]/i.test(p3raw);
-      if (!erg && !hasWo) return false;
+      const participants = [i1, i2, i3, i4].filter((index) => index >= 0).map((index) => parsePlayerId(row[index]));
+      if (!erg && !participants.some((participant) => participant.special)) return false;
       return true;
     })
     .sort((a, b) => dateToTs(b[d]) - dateToTs(a[d]))
@@ -286,7 +284,7 @@ function buildRecentMatches(values, maps) {
 
 function buildUpcomingMatches(values, maps) {
   const indexes = matchIndexes(values);
-  const { i1, i3, ergebnisIdx, d } = indexes;
+  const { i1, i2, i3, i4, ergebnisIdx, d } = indexes;
 
   const all = values.slice(1)
     .filter((row) => {
@@ -296,10 +294,8 @@ function buildUpcomingMatches(values, maps) {
       // Nur offene Matches (ohne Ergebnis und ohne [wo]/[ret])
       const erg = ergebnisIdx >= 0 ? String(row[ergebnisIdx] || "").trim() : "";
       if (erg) return false;
-      const p1raw = String(row[i1] || "");
-      const p3raw = String(row[i3] || "");
-      if (/\[w\.?o\.?\]/i.test(p1raw) || /\[w\.?o\.?\]/i.test(p3raw)) return false;
-      if (/\[ret\]/i.test(p1raw) || /\[ret\]/i.test(p3raw)) return false;
+      const participants = [i1, i2, i3, i4].filter((index) => index >= 0).map((index) => parsePlayerId(row[index]));
+      if (participants.some((participant) => participant.special)) return false;
       return true;
     })
     .map((row) => ({ row, ts: dateToTs(row[d]) }))

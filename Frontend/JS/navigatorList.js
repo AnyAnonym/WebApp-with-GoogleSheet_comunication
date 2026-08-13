@@ -764,7 +764,10 @@ async function loadCompetitions() {
 }
 
 function cleanPlayerId(value) {
-  return String(value || "").replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").trim();
+  const normalized = String(value || "").trim();
+  if (normalized.endsWith("[wo]")) return normalized.slice(0, -4).trim();
+  if (normalized.endsWith("[ret]")) return normalized.slice(0, -5).trim();
+  return normalized;
 }
 
 function dateToTimestamp(raw) {
@@ -798,10 +801,12 @@ async function loadNextMatches() {
   nextMatches = values.slice(1)
     .filter((row) => {
       if (!Array.isArray(row) || !row[indexes.id] || !row[indexes.player1] || !row[indexes.player3]) return false;
-      const player1 = String(row[indexes.player1]);
-      const player3 = String(row[indexes.player3]);
+      const participantIndexes = [indexes.player1, indexes.player2, indexes.player3, indexes.player4].filter((index) => index >= 0);
+      const participants = participantIndexes.map((index) => String(row[index] || "").trim());
+      const player1 = participants[0];
+      const player3 = String(row[indexes.player3] || "").trim();
       if (/^BYE$/i.test(player1) || /^BYE$/i.test(player3)) return false;
-      if (/\[w\.?o\.?\]|\[ret\]/i.test(player1) || /\[w\.?o\.?\]|\[ret\]/i.test(player3)) return false;
+      if (participants.some((participant) => participant.endsWith("[wo]") || participant.endsWith("[ret]"))) return false;
       return indexes.result < 0 || !String(row[indexes.result] || "").trim();
     })
     .map((row) => ({

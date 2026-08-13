@@ -2,6 +2,7 @@ import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { ready, getUser, isAuthenticated, subscribeAuth } from "./authClient.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 import { diagnostic } from "./diagnostics.js";
+import { isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } from "./rankingMatchState.js";
 
 const readRlPlatzierung     = createEndpoint("rlPlatzierung");
 const readPlayersList       = createEndpoint("players");
@@ -111,12 +112,16 @@ async function fetchBusyIds() {
       const rowBewerb = String(row[bewerbIdx] || "").trim();
       if (rowBewerb !== BEWERB_ID) return;
     }
-    // Offen = kein Ergebnis
-    const ergebnis = ergebnisIdx !== -1 ? String(row[ergebnisIdx] || "").trim() : "";
-    if (!ergebnis) {
+    if (isOpenRankingMatch(row, {
+      result: ergebnisIdx,
+      p1: p1Idx,
+      p2: p2Idx,
+      p3: p3Idx,
+      p4: p4Idx,
+    })) {
       [row[p1Idx], row[p2Idx], row[p3Idx], row[p4Idx]]
         .filter(Boolean)
-        .forEach((id) => busyIds.add(String(id).trim().replace(/\[.*?\]/g, "").trim()));
+        .forEach((id) => busyIds.add(parseRankingParticipant(id).id));
     }
   });
   return { busyIds, preMatches: values };
@@ -277,11 +282,15 @@ async function applyAllRules(container, pyramid, rankedList) {
     const pmBewerbIdx = pmHeader.indexOf("bewerbid");
     busyData.preMatches.slice(1).forEach((row) => {
       if (pmBewerbIdx !== -1 && String(row[pmBewerbIdx] || "").trim() !== BEWERB_ID) return;
-      // Offen = kein Ergebnis
-      const ergebnis = pmErgebnisIdx !== -1 ? String(row[pmErgebnisIdx] || "").trim() : "";
-      if (ergebnis) return; // Gespielt → nicht relevant für Gegner-Analyse
+      if (!isOpenRankingMatch(row, {
+        result: pmErgebnisIdx,
+        p1: pmP1Idx,
+        p2: pmP2Idx,
+        p3: pmP3Idx,
+        p4: pmP4Idx,
+      })) return;
       const players = [pmP1Idx, pmP2Idx, pmP3Idx, pmP4Idx]
-        .map((idx) => (idx !== -1 ? String(row[idx] || "").trim() : ""))
+        .map((idx) => (idx !== -1 ? parseRankingParticipant(row[idx]).id : ""))
         .filter(Boolean);
       if (players.includes(myPlayerId)) {
         players.forEach((p) => { if (p !== myPlayerId) myChallengeOpponents.add(p); });
@@ -298,19 +307,15 @@ async function applyAllRules(container, pyramid, rankedList) {
     b.querySelector(".box-timer")?.remove();
   });
 
-  // Mein Kästchen → immer blau
-  if (myRow !== -1 && myCol !== -1) {
-    pyramid[myRow][myCol].box.classList.add("selected");
-  }
-
   pyramid.flat().forEach(({ playerId, box, rank }) => {
     const id = String(playerId).trim();
+    const playerState = rankingPlayerState(id, myPlayerId, busyData.busyIds, schutzzeitMap, sperrzeitMap);
 
-    // Eigenes Kästchen nie überschreiben
-    if (myPlayerId && id === myPlayerId) return;
+    // Der blaue Rahmen bleibt erhalten; Schutz-/Sperrstatus und Timer bleiben sichtbar.
+    if (playerState.selected) box.classList.add("selected");
 
     // ── 1. Offene Forderung (gilt für alle, nicht nur forderbare)
-    if (busyData.busyIds.has(id)) {
+    if (playerState.status === "busy") {
       box.classList.add("challenged");
       if (myChallengeOpponents.has(id)) {
         // Forderung MIT mir → gelber Hintergrund + blauer Rahmen
@@ -323,7 +328,7 @@ async function applyAllRules(container, pyramid, rankedList) {
     }
 
     // ── 2. Schutzzeit nach Sieg → rosa (gilt für alle, nicht nur forderbare)
-    if (schutzzeitMap.has(id)) {
+    if (playerState.status === "protection") {
       box.classList.add("schutz");
       box.style.cursor = "default";
       box.title = `Schutzzeit nach Sieg – läuft ab am ${schutzzeitMap.get(id).toLocaleString("de-AT")}`;
@@ -332,11 +337,13 @@ async function applyAllRules(container, pyramid, rankedList) {
     }
 
     // ── 3. Sperrzeit nach Niederlage → sichtbar für alle
-    if (sperrzeitMap.has(id)) {
+    if (playerState.status === "blocked") {
       box.classList.add("sperrzeit");
       box.title = `Sperrzeit nach Niederlage – läuft ab am ${sperrzeitMap.get(id).toLocaleString("de-AT")}`;
       startProtectionTimer(box, sperrzeitMap.get(id));
     }
+
+    if (playerState.selected) return;
 
     // ── 4. Nur forderbare Positionen werden hier weiter behandelt
     if (challengeableIds.has(id)) {

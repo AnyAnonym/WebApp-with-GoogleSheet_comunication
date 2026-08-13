@@ -153,7 +153,10 @@ function playerNameMap() {
 }
 
 function parsePlayerId(raw) {
-  return String(raw || "").trim().replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").replace(/\[gesetzt\]/gi, "").trim();
+  const value = String(raw || "").trim();
+  const markerLength = value.endsWith("[wo]") ? 4 : value.endsWith("[ret]") ? 5 : 0;
+  const withoutMarker = markerLength ? value.slice(0, -markerLength).trim() : value;
+  return withoutMarker.replace(/\[gesetzt\]/gi, "").trim();
 }
 
 function readMatchRestrictions(params) {

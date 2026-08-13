@@ -48,6 +48,29 @@ test("Scoreboard-Namensgroesse bleibt durch die reale Textbreite begrenzt", () =
   assert.equal(fontSize <= 37, true);
 });
 
+test("Ranglistenmatches erkennen nur exakte [wo]- und [ret]-Abschluesse", () => {
+  const { isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } = loadFrontendModule(
+    "rankingMatchState.js",
+    ["isOpenRankingMatch", "parseRankingParticipant", "rankingPlayerState"],
+  );
+  const indexes = { result: 0, p1: 1, p2: -1, p3: 2, p4: -1 };
+
+  assert.equal(isOpenRankingMatch(["", "p1", "p2"], indexes), true);
+  assert.equal(isOpenRankingMatch(["6-4/6-4", "p1", "p2"], indexes), false);
+  assert.equal(isOpenRankingMatch(["", "p1 [wo]", "p2"], indexes), false);
+  assert.equal(isOpenRankingMatch(["", "p1", "p2 [ret]"], indexes), false);
+  assert.equal(isOpenRankingMatch(["", "p1 [w.o.]", "p2"], indexes), true);
+  assert.equal(isOpenRankingMatch(["", "p1 [WO]", "p2"], indexes), true);
+  assert.equal(isOpenRankingMatch(["", "p1 [wo] text", "p2"], indexes), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(parseRankingParticipant("p1 [wo]"))), { id: "p1", special: "wo" });
+  assert.deepEqual(JSON.parse(JSON.stringify(parseRankingParticipant("p2 [RET]"))), { id: "p2 [RET]", special: null });
+
+  const ownProtection = rankingPlayerState("p1", "p1", new Set(), new Map([["p1", new Date()]]), new Map());
+  const ownBlock = rankingPlayerState("p1", "p1", new Set(), new Map(), new Map([["p1", new Date()]]));
+  assert.deepEqual(JSON.parse(JSON.stringify(ownProtection)), { selected: true, status: "protection" });
+  assert.deepEqual(JSON.parse(JSON.stringify(ownBlock)), { selected: true, status: "blocked" });
+});
+
 test("Frontenddiagnose filtert Level und verlangt benannte Events", () => {
   const { createDiagnosticAdapter } = loadFrontendModule("diagnostics.js", ["createDiagnosticAdapter"]);
   const entries = [];

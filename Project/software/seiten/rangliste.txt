@@ -29,7 +29,12 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schutzzeit;
   lila: Sperrzeit. Forderbar sind links in derselben Reihe und ab eigener Spalte in
   der Reihe darueber; Rang 3 darf Rang 1 fordern. Eigene/offene/geschuetzte oder
-  gesperrte Konstellationen begrenzen Aktionen.
+  gesperrte Konstellationen begrenzen Aktionen. Ein Match mit dem exakt
+  kleingeschriebenen Marker `[wo]` oder `[ret]` gilt auch ohne Ergebnis als
+  abgeschlossen und wird nicht mehr gelb als offene Forderung angezeigt. Gewinner
+  und Verlierer erhalten die serverseitig berechnete Schutz- beziehungsweise
+  Sperrzeit samt Timer; beim eigenen Spieler bleibt der blaue Rahmen zusaetzlich
+  zur Fristdarstellung sichtbar. Andere Markerschreibweisen werden nicht erkannt.
 
 -- Verdeckte Funktion und Sicherheit --
   Der sichtbare `Raushaengen`-Button ist entfernt. Modal, Clientfunktion und

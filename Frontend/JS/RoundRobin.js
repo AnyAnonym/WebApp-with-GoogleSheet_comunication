@@ -26,7 +26,15 @@ function parseGroup(val) {
 }
 
 function parsePlayerId(raw) {
-  return String(raw || "").trim().replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").trim();
+  const value = String(raw || "").trim();
+  if (value.endsWith("[wo]")) return value.slice(0, -4).trim();
+  if (value.endsWith("[ret]")) return value.slice(0, -5).trim();
+  return value;
+}
+
+function playerMarker(raw) {
+  const value = String(raw || "").trim();
+  return value.endsWith("[wo]") ? "wo" : value.endsWith("[ret]") ? "ret" : null;
 }
 
 // ── Aufstiegs-/Abstiegslogik (austauschbar) ──
@@ -101,7 +109,7 @@ function parseResult(val) {
   if (parts.length === 0) return null;
   const sets = [];
   for (const p of parts) {
-    if (/\[ret\]/i.test(p)) continue;
+    if (p.includes("[ret]")) continue;
     const sc = p.replace(/\(\d+\)/g, "").split("-");
     if (sc.length !== 2) continue;
     const a = parseInt(sc[0], 10);
@@ -240,10 +248,13 @@ function buildStats(matchData, matchHeader, bewerbId) {
     const id4 = p4Idx >= 0 ? parsePlayerId(row[p4Idx]) : "";
     const rawResult = ergebnisIdx !== -1 ? String(row[ergebnisIdx] || "").trim() : "";
     const sets = parseResult(rawResult);
+    const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+    const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+    const isPlayed = Boolean(rawResult || firstTeamRetired || secondTeamRetired);
 
     // Gewinner aus Ergebnis berechnen
-    let winner = "";
-    if (sets) {
+    let winner = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
+    if (!winner && sets) {
       let setsLeft = 0, setsRight = 0;
       sets.forEach((s) => { if (s.left > s.right) setsLeft++; else if (s.right > s.left) setsRight++; });
       if (setsLeft > setsRight) winner = id1;
@@ -258,7 +269,7 @@ function buildStats(matchData, matchHeader, bewerbId) {
 
     teams.forEach(({ key, oppKey, oppPartner, side }) => {
       if (!key) return;
-      if (!rawResult) return; // Nur gespielte Matches zählen
+      if (!isPlayed) return;
       if (!stats[key]) stats[key] = { siege: 0, saetzeW: 0, saetzeL: 0, gamesW: 0, gamesL: 0 };
       if (winner === key) stats[key].siege++;
       if (sets) {
@@ -273,7 +284,7 @@ function buildStats(matchData, matchHeader, bewerbId) {
       }
       if (oppKey) {
         if (!playerMatches[key]) playerMatches[key] = [];
-        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || "—" });
+        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || (firstTeamRetired || secondTeamRetired ? "wo/ret" : "—") });
       }
     });
   });
@@ -310,9 +321,12 @@ function collectPairings(data, header, bewerbId, playerMap) {
     const datum = dIdx >= 0 ? String(row[dIdx] || "").trim() : "";
     const matchId = idIdx >= 0 ? String(row[idIdx] || "").trim() : "";
 
-    // Gewinner aus Ergebnis berechnen
-    let winnerId = "";
-    if (ergebnis) {
+    const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+    const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+
+    // Gewinner aus Ergebnis oder Abschlussmarker berechnen
+    let winnerId = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
+    if (!winnerId && ergebnis) {
       const resultSets = parseResult(ergebnis);
       if (resultSets) {
         let sL = 0, sR = 0;
@@ -325,7 +339,7 @@ function collectPairings(data, header, bewerbId, playerMap) {
     const team1Html = formatTeamHtml(id1, id2, playerMap);
     const team2Html = formatTeamHtml(id3, id4, playerMap);
 
-    const isPlayed = !!ergebnis;
+    const isPlayed = Boolean(ergebnis || firstTeamRetired || secondTeamRetired);
 
     // winner: 1 = Team1 gewinnt, 2 = Team2 gewinnt, 0 = kein Gewinner
     let winner = 0;

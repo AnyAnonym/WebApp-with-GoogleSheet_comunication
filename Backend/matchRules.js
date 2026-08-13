@@ -3,19 +3,22 @@ const { headerIndex, headerOf } = require("./tableUtils.js");
 
 function parseParticipant(raw) {
   const value = String(raw || "").trim();
+  const markerLength = value.endsWith("[wo]") ? 4 : value.endsWith("[ret]") ? 5 : 0;
+  const retired = markerLength > 0;
+  const withoutMarker = retired ? value.slice(0, -markerLength).trim() : value;
   return {
-    id: value.replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").replace(/\[gesetzt\]/gi, "").trim(),
-    retired: /\[(?:w\.?o\.?|ret)\]/i.test(value),
+    id: withoutMarker.replace(/\[gesetzt\]/gi, "").trim(),
+    retired,
   };
 }
 
-function winningSide(result, first, third) {
-  if (first.retired) return 2;
-  if (third.retired) return 1;
+function winningSide(result, firstTeam, secondTeam) {
+  if (firstTeam.some((participant) => participant.retired)) return 2;
+  if (secondTeam.some((participant) => participant.retired)) return 1;
   let firstWins = 0;
   let secondWins = 0;
   for (const set of String(result || "").trim().split("/").filter(Boolean)) {
-    const scores = set.replace(/\(\d+\)/g, "").replace(/\[ret\]/gi, "").trim().split("-").map(Number);
+    const scores = set.replace(/\(\d+\)/g, "").replace(/\[ret\]/g, "").trim().split("-").map(Number);
     if (scores.length !== 2 || scores.some(Number.isNaN)) continue;
     if (scores[0] > scores[1]) firstWins++;
     if (scores[1] > scores[0]) secondWins++;
@@ -63,8 +66,10 @@ function analyzeMatchRules(values, competitionId, now = new Date()) {
       .filter((participant) => participant.id);
     const first = parseParticipant(row[indexes.p1]);
     const third = parseParticipant(row[indexes.p3]);
+    const firstTeam = [first, indexes.p2 < 0 ? null : parseParticipant(row[indexes.p2])].filter((participant) => participant?.id);
+    const secondTeam = [third, indexes.p4 < 0 ? null : parseParticipant(row[indexes.p4])].filter((participant) => participant?.id);
     const result = String(row[indexes.result] || "").trim();
-    const winner = winningSide(result, first, third);
+    const winner = winningSide(result, firstTeam, secondTeam);
     if (!result && !winner) {
       for (const participant of participants) busyIds.add(participant.id);
       continue;
@@ -72,10 +77,10 @@ function analyzeMatchRules(values, competitionId, now = new Date()) {
     if (!winner) throw new AppError("MATCH_DATA_INVALID", "Ein Match besitzt ein ungueltiges Ergebnis", 503);
     const matchDate = parseMatchDate(row[indexes.date]);
     if (!matchDate) throw new AppError("MATCH_DATA_INVALID", "Ein gespieltes Match besitzt ein ungueltiges Datum", 503);
-    const firstTeam = [first.id, indexes.p2 < 0 ? "" : parseParticipant(row[indexes.p2]).id].filter(Boolean);
-    const secondTeam = [third.id, indexes.p4 < 0 ? "" : parseParticipant(row[indexes.p4]).id].filter(Boolean);
-    const winningTeam = winner === 1 ? firstTeam : secondTeam;
-    const losingTeam = winner === 1 ? secondTeam : firstTeam;
+    const firstTeamIds = firstTeam.map((participant) => participant.id);
+    const secondTeamIds = secondTeam.map((participant) => participant.id);
+    const winningTeam = winner === 1 ? firstTeamIds : secondTeamIds;
+    const losingTeam = winner === 1 ? secondTeamIds : firstTeamIds;
     for (const id of winningTeam) {
       if (!latest.has(id) || latest.get(id).matchDate < matchDate) latest.set(id, { kind: "protection", matchDate });
     }
@@ -95,4 +100,4 @@ function analyzeMatchRules(values, competitionId, now = new Date()) {
   return { blocked, busyIds, protection };
 }
 
-module.exports = { analyzeMatchRules, parseMatchDate };
+module.exports = { analyzeMatchRules, parseMatchDate, parseParticipant };

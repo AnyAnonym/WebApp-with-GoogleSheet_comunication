@@ -1,3 +1,45 @@
+[4.3.0-paj-1-9] - 2026-08-13
+Commit: 4.3.0-paj-1-9 | Ranglistenabschluesse mit WO und RET korrigiert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-9` gesetzt.
+  - [Software] Matchteilnehmer verwenden projektweit nur noch die exakt kleingeschriebenen Abschlussmarker `[wo]` und `[ret]`; tolerierte Varianten wie `[w.o.]`, `[WO]` oder `[RET]` werden weder entfernt noch als Abschluss erkannt, und sichtbare Badges verwenden `wo` beziehungsweise `ret`.
+  - [Dokumentation] Datenbank-, Ranglisten-, Matchlisten-, Raster- und Rolloutvertrag auf die exakten `[wo]`-/`[ret]`-Marker sowie die Ranglisten-Fristdarstellung abgeglichen.
+
+  Added
+  - [Frontend] `Frontend/JS/rankingMatchState.js` kapselt die testbare Erkennung offener Ranglistenmatches und die kombinierte Darstellung von eigener Position und Schutz-/Sperrstatus.
+
+  Fixed
+  - [Frontend] Ranglistenmatches mit `[wo]` oder `[ret]` und leerem Ergebnis erscheinen nicht mehr fuer beide Teilnehmer als offene Forderung; stattdessen werden Gewinner-Schutzzeit und Verlierer-Sperrzeit aus dem serverseitigen Regelresultat angezeigt.
+  - [Frontend] Der eigene blaue Ranglistenplatz blendet eine aktive Schutz- oder Sperrzeit samt Timer nicht mehr aus.
+  - [Software] Abschlussmarker an einem Doppelpartner beenden das Match konsistent fuer beide Teams und bleiben als Team-Badge sichtbar; Matchliste, Raster, Gruppenphase, Scoreboard und Navigator behandeln `[wo]` und `[ret]` auch ohne Ergebnis als gespielt.
+
+  Tests
+  - Matchregeln und Ranglisten-Offenstatus sind fuer regulaere Ergebnisse, offene Matches, exakte `[wo]`-/`[ret]`-Marker und abgewiesene Schreibvarianten automatisiert abgedeckt.
+  - Ein Abschlussmarker an einem Doppelpartner ist fuer Gewinner-/Verliererteam und Fristen automatisiert abgedeckt.
+  - Die kombinierte eigene blaue Position mit Gewinner-Schutzzeit beziehungsweise Verlierer-Sperrzeit ist automatisiert abgedeckt.
+  - `npm run check`: erfolgreich.
+  - Ein erster vollstaendiger Build deckte eine falsche feste Suffixlaenge bei `[ret]` auf; die Entfernung verwendet nun die jeweilige Markerlaenge und wird erneut vollstaendig geprueft.
+  - `npm run build`: statische Pruefung und alle 138 Tests nach der Korrektur erfolgreich.
+  - `git diff --check`: erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/DATENBANK.txt
+  - Nur exakt kleingeschriebene `[wo]`- und `[ret]`-Suffixe als Abschlussmarker dokumentieren; Varianten werden nicht normalisiert.
+
+  Project/software/seiten/rangliste.txt
+  - `[wo]`/`[ret]` als abgeschlossene Forderung und die Fristdarstellung inklusive eigener blauer Position dokumentieren.
+
+  Project/software/seiten/matches1.txt
+  - Sichtbare Badges als `wo` und `ret` dokumentieren.
+
+  Project/software/seiten/bewerbsRaster.txt
+  - Exakte Kleinschreibung der `[wo]`-/`[ret]`-Marker dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Rasterabnahme auf exakte Marker und negative Variantenpruefung umstellen.
+
 [4.3.0-paj-1-8] - 2026-08-09
 Commit: 4.3.0-paj-1-8 | Observability-Restumsetzung detailliert geplant
 

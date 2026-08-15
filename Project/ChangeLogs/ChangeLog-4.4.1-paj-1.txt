@@ -1,3 +1,24 @@
+[4.4.1-paj-1-2] - 2026-08-15
+Commit: 4.4.1-paj-1-2 | Grafana-Metrikproxy an Loopback gebunden
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.1-paj-1-2` gesetzt.
+  - [Dokumentation] Observability-README, Server-Setup und Rollout-Checkliste verlangen den expliziten Caddy-Loopback-Bind und seine Laufzeitkontrolle mit `ss`.
+
+  Fixed
+  - [Sicherheit] Caddys Grafana-Metrikproxy bindet mit `bind 127.0.0.1` tatsaechlich nur an Loopback statt trotz Hostteil der Site-Adresse als Wildcard-Listener auf Port 3001.
+
+  Tests
+  - Caddy-Vorlage erfolgreich validiert und temporaer praktisch auf einen ausschliesslichen `127.0.0.1:3001`-Listener geprueft.
+  - `git diff --check` erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/server-configs/observability/README.md
+  Project/server-configs/SERVER-SETUP.txt
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Expliziten Caddy-Loopback-Bind fuer Port 3001 und die zwingende Laufzeitkontrolle dokumentieren.
+
 [4.4.1-paj-1-1] - 2026-08-15
 Commit: 4.4.1-paj-1-1 | Branch-Stand nummeriert initialisiert
 

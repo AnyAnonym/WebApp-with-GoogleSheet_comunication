@@ -1,0 +1,10 @@
+[
+  {
+    "targets": ["127.0.0.1:8083"],
+    "labels": {
+      "deployment": "paj",
+      "instance": "paj",
+      "prepared_target": "false"
+    }
+  }
+]

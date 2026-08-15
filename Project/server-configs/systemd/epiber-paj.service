@@ -14,7 +14,12 @@ User=paj
 WorkingDirectory=/srv/http/ePiber/paj/Backend
 EnvironmentFile=/srv/http/ePiber/paj/Backend/.env
 LoadCredential=google-service-account:/srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json
-ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=paj LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at:8081 SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-paj/state.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
+ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=paj LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at:8081 SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-paj/state.sqlite SCORELOG_FILE=/var/lib/epiber-paj/scorelog.sqlite AUDITLOG_FILE=/var/lib/epiber-paj/audit.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epiber-paj
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
 Restart=always
 RestartSec=5
 TimeoutStopSec=95

@@ -1,0 +1,23 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    { "type": "stat", "title": "Alloy erreichbar", "id": 1, "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 }, "targets": [{ "expr": "up{job=\"alloy\"}", "refId": "A" }] },
+    { "type": "stat", "title": "Loki erreichbar", "id": 2, "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 }, "targets": [{ "expr": "up{job=\"loki\"}", "refId": "A" }] },
+    { "type": "stat", "title": "Prometheus erreichbar", "id": 3, "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 }, "targets": [{ "expr": "up{job=\"prometheus\"}", "refId": "A" }] },
+    { "type": "stat", "title": "Grafana erreichbar", "id": 4, "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 }, "targets": [{ "expr": "up{job=\"grafana\"}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Alloy an Loki gesendete Bytes", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 }, "targets": [{ "expr": "sum(rate(loki_write_sent_bytes_total[5m]))", "refId": "A" }] },
+    { "type": "timeseries", "title": "Alloy verworfene Logzeilen", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 }, "targets": [{ "expr": "sum by (reason) (rate(loki_process_dropped_lines_total[5m]))", "legendFormat": "{{reason}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Frontenddiagnose angenommen/verworfen", "id": 7, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 }, "targets": [{ "expr": "sum by (outcome) (rate(epiber_frontend_events_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "{{outcome}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Loggerfehler und Backpressure", "id": 8, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 }, "targets": [{ "expr": "sum(rate(epiber_log_write_failed_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "write failed", "refId": "A" }, { "expr": "sum(rate(epiber_log_backpressure_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "backpressure", "refId": "B" }] }
+  ],
+  "schemaVersion": 41,
+  "tags": ["epiber", "logging"],
+  "templating": { "list": [{ "name": "deployment", "label": "System", "type": "custom", "query": "live,paj,pk", "current": { "text": "Live", "value": "live" }, "options": [{ "text": "Live", "value": "live", "selected": true }, { "text": "PAJ", "value": "paj", "selected": false }, { "text": "PK", "value": "pk", "selected": false }] }] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "ePiber Loggingpipeline",
+  "uid": "epiber-pipeline",
+  "version": 1
+}

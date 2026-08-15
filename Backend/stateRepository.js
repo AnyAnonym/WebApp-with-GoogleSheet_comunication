@@ -9,6 +9,9 @@ class StateRepository {
     this.filename = filename;
     this.now = now;
     this.db = null;
+    this.failureCount = 0;
+    this.lastError = null;
+    this.lastProbeAt = 0;
   }
 
   init() {
@@ -506,7 +509,17 @@ class StateRepository {
   }
 
   status() {
-    return { open: !!this.db, file: this.filename };
+    if (!this.db) return { open: false, ready: false, file: this.filename, failureCount: this.failureCount, lastError: this.lastError, lastProbeAt: this.lastProbeAt };
+    this.lastProbeAt = this.now();
+    try {
+      this.db.prepare("SELECT 1 AS ok").get();
+      this.lastError = null;
+      return { open: true, ready: true, file: this.filename, failureCount: this.failureCount, lastError: null, lastProbeAt: this.lastProbeAt };
+    } catch (error) {
+      this.failureCount++;
+      this.lastError = { at: this.lastProbeAt, code: error.code || "STATE_PROBE_FAILED" };
+      return { open: true, ready: false, file: this.filename, failureCount: this.failureCount, lastError: this.lastError, lastProbeAt: this.lastProbeAt };
+    }
   }
 
   countPendingMetadataIntents() {

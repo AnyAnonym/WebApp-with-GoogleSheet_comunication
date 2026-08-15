@@ -3,11 +3,14 @@
   Projekt: ePiber / ASKOE Piberbach Tennis
 ================================================================================
 
-Alle dynamischen Pfade werden vom Node.js-Backend bedient; Caddy terminiert in
-Produktion HTTPS/WSS und proxyt nur freigegebene Pfade. Nicht bekannte HTTP-
-Nicht-OPTIONS-Routen liefern 404, falsche Methoden 405 mit `Allow`, und neue
-Operationen waehrend des Shutdowns 503. Erlaubte OPTIONS-Preflights werden global
-vor dem Routing mit 204 beantwortet. `/set-active` existiert nicht mehr.
+Alle hier beschriebenen dynamischen ePiber-Anwendungspfade werden vom Node.js-
+Backend bedient; Caddy terminiert in Produktion HTTPS/WSS und proxyt nur
+freigegebene Pfade. Die externe Betriebsoberflaeche `/grafana/*` ist davon
+getrennt: Caddy prueft sie ueber den Auth-Broker und proxyt sie direkt zum
+Grafana-Unix-Socket. Nicht bekannte HTTP-Nicht-OPTIONS-Routen liefern 404,
+falsche Methoden 405 mit `Allow`, und neue Operationen waehrend des Shutdowns
+503. Erlaubte OPTIONS-Preflights werden global vor dem Routing mit 204
+beantwortet. `/set-active` existiert nicht mehr.
 
 
 ================================================================================
@@ -31,8 +34,9 @@ Schutz:
   - OPTIONS antwortet 204 mit GET, POST, DELETE, OPTIONS, Credentials und
     `Content-Type`; es ist kein pauschal offener CORS-Handler.
 
-Erfolgsantworten besitzen ein routenspezifisches Objekt, meist `success: true`.
-Fehler verwenden:
+Jede HTTP-Antwort traegt eine serverseitig erzeugte UUID im Header
+`X-Request-ID`. Erfolgsantworten besitzen ein routenspezifisches Objekt, meist
+`success: true`. Fehler verwenden dieselbe UUID zusaetzlich als `supportId`:
 
   {
     "success": false,
@@ -44,8 +48,11 @@ Fehler verwenden:
     "supportId": "UUID"
   }
 
-`details` ist optional. Ratenlimits koennen `Retry-After` liefern. Ein Fehler
-nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
+`details` ist optional. Dies gilt einheitlich fuer Routing-, Methoden-, Parse-,
+Validierungs-, Auth- und Rate-Limit-Fehler. Ratenlimits koennen `Retry-After`
+liefern. Ein Fehler nach vorsorglichem Sessionwiderruf kann das Sessioncookie
+explizit loeschen. Jeder HTTP-Abschluss wird mit Request-ID, Methode, Route,
+Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert.
 
 
 ================================================================================
@@ -64,17 +71,33 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
   200 `{ status: "ready", version }` oder 503 `{ status: "not-ready", version }`.
   Readiness verlangt abgeschlossene Initialisierung, offene SQLite-Datenbank,
   aktuelle Sheetdaten mit Ausnahme von `matchtyp`, laufenden Poller, keinen
-  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Der Matchtyp-
+  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Court-Frische
+  richtet sich nach dem Alter des letzten Erfolgs; ein einzelner Folgefehler
+  innerhalb des Frischefensters setzt die Quelle nicht sofort stale. Der Matchtyp-
   Tabellenstatus bleibt diagnostizierbar und neue Court-Zuweisungen verlangen
   weiterhin aktuelle Matchtyp-Daten. Ein aktiver Legacy-Court, dessen
   fehlender `displayRules`-Snapshot nicht aufgeloest werden konnte, liefert bis
   zur Tabellen-Recovery, erfolgreichen Neuzuweisung oder Deaktivierung ebenfalls
-  503. Ein unresolved inaktiver Court blockiert Readiness nicht.
+   503. Ein unresolved inaktiver Court blockiert Readiness nicht.
+
+----- GET /metrics (nur interner Loopbackzugriff) -----
+  Liefert HTTP 200 mit `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+  im Prometheus-Textformat. Enthalten sind begrenzte Gauges, Counter und
+  Histogramme fuer Prozess/Readiness, HTTP, WebSocket, Sheet-/Court-Poller,
+  SQLite, Frontendcollector und Logger. Personen-, Session-, Request-, IP- und
+  Geraetewerte sind keine Labels. Nur GET ist erlaubt. Caddy nimmt `/metrics`
+  bewusst nicht in den oeffentlichen Backendmatcher auf; Prometheus scrapt direkt
+  `127.0.0.1:8080`, `:8083` und `:8084`.
 
 ----- GET /status (admin) -----
    Verlangt ein gueltiges Admin-Sessioncookie und liefert
    `Cache-Control: no-store`. Das Top-Level-Objekt enthaelt `status`, `monitor`,
-   `provider`, `sheets` und `state`. `status` enthaelt detaillierte Readiness einschliesslich
+   `provider`, `sheets`, `state`, `scoreLog`, `auditLog` und `authorization`.
+   `authorization` ist `{ role: "admin", roleSource: "current|last_known_good" }`.
+   Ist die Personenquelle stale, darf eine weiterhin gueltige bestehende Session
+   den letzten erfolgreich geladenen aktiven Admin-Snapshot verwenden; ohne
+   solchen Snapshot bleibt der Zugriff 503. Alle anderen geschuetzten Zugriffe
+   verlangen weiterhin aktuelle Personendaten. `status` enthaelt detaillierte Readiness einschliesslich
    `court.displayRulesReady` und `court.unresolvedActiveRules`; `state` enthaelt
    unter anderem `displayRulesMigration` und die Court-Zustaende.
 
@@ -102,9 +125,10 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
          "ip": "<ip>",
          "connectedAt": 0,
          "lastMessageAt": 0,
-         "lastPong": 0,
-         "lastRequest": null,
-         "pageType": null,
+          "lastPong": 0,
+          "lastRequest": null,
+          "requestHistory": [],
+          "pageType": null,
          "appVersion": null,
          "clientId": null,
          "deviceId": null,
@@ -128,26 +152,107 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
    leeren Teilen. `subscriptions` enthaelt die aktuell registrierten Topics,
    `bufferedAmount` die noch gepufferten Ausgangsbytes.
 
-   Nach einem bis zur Handlerausfuehrung zugelassenen RPC ist `lastRequest`:
-   `{ endpoint, at, durationMs, success, code?, supportId? }`. `code` erscheint
-   bei einem fehlgeschlagenen Request, `supportId` nach erfolgter Korrelation.
-   Fehler vor der Handlerausfuehrung, etwa unbekannter Endpoint, fehlende
-   Berechtigung, ungueltiger Vertrag oder Rate-Limit, erzeugen keinen neuen
-   `lastRequest`-Datensatz. Bekannte Diagnoseeinschraenkung: Existiert bereits ein
-   Datensatz, kann dessen `supportId` dennoch auf die Support-ID der neuen
-   Fehlerantwort wechseln, waehrend Endpoint, Zeit, Dauer und Erfolg zum
-   vorherigen Handlerrequest gehoeren. Die Support-ID darf in diesem Fall nicht
-   isoliert dem angezeigten Endpoint zugeordnet werden.
+   Jeder korrelierbare abgeschlossene RPC erzeugt atomar einen Datensatz
+   `{ endpoint, at, durationMs, success, code?, supportId, clientRequestId }`.
+   `lastRequest` ist der zuletzt abgeschlossene Datensatz; `requestHistory`
+   enthaelt hoechstens die letzten 20 Datensaetze in Abschlussreihenfolge. Auch
+   unbekannte Endpoints, fehlende Berechtigung, ungueltige Vertraege und
+   Rate-Limits werden erfasst. Ein paralleler Request kann keinen bestehenden
+   Datensatz nachtraeglich veraendern oder dessen Support-ID ueberschreiben.
    Die Listen entstehen bei jedem Aufruf aus den aktuell verbundenen Sockets und
    verlieren einen Eintrag beim Close; sie sind nicht persistiert. IP,
    Benutzer-ID, Klarname sowie stabile Client-/Geraetekennungen sind fluechtige
    privilegierte Diagnosedaten und duerfen nicht ungefiltert in oeffentliche Logs
-   oder Tickets uebernommen werden. Die Antwort enthaelt keine Cookies, Tokens,
-   Passwortwerte, privaten Schluessel oder ScoreLog-Pendingwerte.
+   oder Tickets uebernommen werden. `scoreLog` zeigt Oeffnungs-/Fehlerstatus,
+   Schreibzaehler und letzte Folgenummern je Court; `auditLog` zeigt nur Status
+   und Zaehler. Die Antwort enthaelt keine Fachereigniszeilen, Cookies, Tokens,
+   Passwortwerte oder privaten Schluessel.
+
+----- GET /api/admin/grafana-auth (interner Forward-Auth-Vertrag) -----
+  Verlangt eine gueltige aktuelle Session einer aktiven Person mit Rolle `admin`.
+  Anders als `/status` ist bei stale Personendaten kein Last-known-good-Zugriff
+  erlaubt. Erfolg liefert 200 `{ success: true }`, `Cache-Control: no-store` und
+  ausschliesslich serverseitig erzeugte Header
+  `X-WEBAUTH-USER: epiber-<Instanz>:<Personen-ID>` sowie
+  `X-WEBAUTH-ROLE: Admin`. Anonym/abgelaufen/widerrufen liefert 401, eine andere
+  Rolle 403 und nicht aktuelle Personendaten 503; Fehlerantworten enthalten keine
+  Identitaetsheader. Nur GET ist erlaubt.
+
+  Der gemeinsame Loopback-Auth-Broker prueft die drei instanzspezifischen Cookies
+  getrennt gegen ihren jeweiligen Endpunkt und akzeptiert genau eine erfolgreiche
+  aktuelle Adminpruefung. Browserheader sind keine Identitaetsautoritaet. Caddy
+  verwendet diesen Broker vor jedem Request an das zentrale
+  `https://epiber.at/grafana/`. Der Authvertrag selbst ist ueber keine der drei
+  Browser-Origins erreichbar; Caddy antwortet dort mit 404.
+
+----- GET /api/frontend-logging-policy (public) -----
+  Liefert `{ success, frontendLogging }`. Die Policy enthaelt nur technische
+  Steuerwerte: `enabled`, `level`, `targeted`, `expiresAt`,
+  `sampleRatePercent`, `batchSize` und `flushIntervalMs`. Bei gueltiger
+  Benutzersession wird eine aktive temporaere Zielrichtlinie anhand der
+  serverseitigen Personen-ID aufgeloest. Die Antwort enthaelt weder Name noch IP.
+
+----- POST /api/frontend-events (public, erlaubte Origin) -----
+  Nimmt ein gebuendeltes Objekt mit maximal 20 Ereignissen an:
+
+  {
+    "appVersion": "<client-version>",
+    "clientSessionId": "<ephemere Seiten-UUID>",
+    "pageType": "scoreboard",
+    "events": [{
+      "event": "rpc_request_failed",
+      "level": "warn",
+      "timestamp": "<UTC-ISO>",
+      "code": "REQUEST_TIMEOUT",
+      "category": "timeout",
+      "supportId": "<optionale Support-ID>",
+      "endpoint": "players",
+      "durationMs": 45000
+    }]
+  }
+
+  Ereignisnamen, ihr kanonisches Level und alle Felder besitzen eine feste
+  serverseitige Allowlist. Request-/Response-Payloads, URLs, DOM-Inhalte, freie
+  Meldungen, Stacks, Tokens, Cookies, Passwortwerte, E-Mail und Telefonnummern
+  werden nicht angenommen. Die Rate gilt pro serverseitig bestimmter Person oder
+  anonymer Quell-IP. Ohne wirksame Policy werden Ereignisse mit `accepted: 0`
+  verworfen.
+
+  Bei gueltiger Session ergaenzt ausschliesslich das Backend `actorId`,
+  `actorName`, `role` und `sourceIp`; anonyme Ereignisse erhalten nur die
+  serverseitig bestimmte IP und muessen global explizit freigegeben sein.
+  `X-Forwarded-For` gilt nur innerhalb der dokumentierten Loopback-
+  Vertrauensgrenze. Jedes angenommene Ereignis wird als strukturiertes
+   `frontend_client_event` nach stdout/stderr geschrieben. Alloy uebernimmt die
+   Journalzeile, Loki speichert sie und Grafana stellt sie autorisierten Admins
+   bereit. `retentionClass` erzwingt in Loki 14 Tage fuer normale und 7 Tage fuer
+   gezielte Diagnose; `retentionDays` dokumentiert denselben Sollwert im Event.
+
+----- /api/admin/frontend-logging (admin) -----
+  GET liefert globale Einstellungen, deren Revision, die Revision der aktiven
+  Ziele, aktive Zielpersonen mit Name/ID/Rolle/Level/Ersteller/Ablauf/Restzeit
+  sowie die aktive Personenliste.
+
+  POST speichert revisionsgeschuetzt `{ expectedRevision, enabled, level,
+  includeAnonymous, sampleRatePercent, batchSize, flushIntervalMs,
+  defaultTargetLevel, defaultTargetDurationMinutes, normalRetentionDays,
+  targetedRetentionDays }`. Level sind `error|warn|info|debug`; Batchgroesse 1
+  bis 20, Flush 1000 bis 30000 ms und Sampling 0 bis 100 Prozent. Die
+  Retentionwerte sind fest 14 beziehungsweise 7 und andere Werte werden
+  abgewiesen; die technische Loeschung erzwingt Loki.
+
+----- /api/admin/frontend-logging/targets (admin) -----
+  POST mit `{ expectedRevision, personId, level, durationMinutes }` aktiviert oder
+  ersetzt eine temporaere Zielrichtlinie fuer eine aktive Person. Die Dauer liegt
+  zwischen 15 Minuten und dem serverseitigen Maximum, standardmaessig 1440
+  Minuten. DELETE mit `{ expectedRevision, personId }` entfernt sie. Abgelaufene
+  Ziele werden automatisch herausgefiltert. Aenderungen an globalen Einstellungen
+  und Zielpersonen werden mit serverseitigem Adminprincipal auditiert.
 
 ----- /api/session -----
   GET (public):
-    `{ success, authenticated, user|null, expiresAt|null, serverTime }`.
+    `{ success, authenticated, user|null, expiresAt|null, serverTime,
+    frontendLogging }`.
     `user` ist die private Eigenprojektion ohne Passwortdaten.
 
   POST (public, erlaubte Origin):
@@ -155,18 +260,28 @@ nach vorsorglichem Sessionwiderruf kann das Sessioncookie explizit loeschen.
     (clientseitiger SHA-256-Credential). Prueft Loginlimits, aktive Person und
     Rolle, migriert einen Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte
     Sessions und setzt ein neues Sessioncookie. 200 liefert
-    `{ success, user, expiresAt, serverTime }`.
+    `{ success, user, expiresAt, serverTime, frontendLogging }`. Jeder nach der Bodyannahme
+    verarbeitete Versuch wird auditiert. SQLite speichert die normalisierte
+    syntaktisch gueltige E-Mail mit maximal 64 UTF-8-Bytes vor `@`, maximal 254
+    UTF-8-Bytes nach der Kanonisierung und einer auf IDNA-ASCII/Punycode
+    kanonisierten Domain sowie die serverseitig bestimmte Quell-IP; bei
+    Erfolg zusaetzlich Benutzer-ID, damaligen Namen und Rolle. Ungueltiger
+    E-Mail-Rohtext wird nicht persistiert. Der Journalspiegel maskiert E-Mail und
+    IP. `X-Forwarded-For` wird nur innerhalb der lokalen Proxy-Vertrauensgrenze
+    bei einer Verbindung von `127.0.0.1` oder `::1` akzeptiert; die Proxyidentitaet
+    wird nicht kryptografisch nachgewiesen.
 
   DELETE (public, erlaubte Origin):
     Widerruft die aktuelle Session, loescht das Cookie und liefert
-    `{ success: true }`.
+    `{ success: true, frontendLogging }` mit der danach anonym wirksamen Policy.
 
 ----- POST /api/password (authenticated) -----
   Body `{ currentPasswordHash, newPasswordHash }`, beide 64 Hexzeichen. Aendert
   nur das eigene Passwort. Der Benutzerwrite ist serialisiert; alle eigenen
   Sessions werden vor dem Sheet-Write widerrufen. Bei Erfolg wird eine neue
   Session samt Cookie erstellt. Bei fehlgeschlagenem/unklarem Write bleibt die
-  alte Session ungueltig und der Fehler markiert `sessionInvalidated`.
+  alte Session ungueltig und der Fehler markiert `sessionInvalidated`. Die
+  Erfolgsantwort enthaelt die Policy der neuen Session in `frontendLogging`.
 
 ----- POST /api/password-setup (public, erlaubte Origin) -----
   Body `{ email, newPasswordHash }`; `newPasswordHash` ist exakt 64 Hexzeichen.
@@ -293,12 +408,15 @@ Request:
 
 Response:
   `{ "v":2, "type":"response", "id":"...", "endpoint":"name",
-     "data":{ "success":true, ... }, "supportId":"connectionId:requestId" }`
+     "data":{ "success":true, ... }, "supportId":"serverseitige UUID" }`
 
-`id` (maximal 128) und `endpoint` (maximal 64, alphanumerischer Name) werden in
-jeder korrelierten Response gespiegelt. Fehler stehen in `data` im gemeinsamen
-Fehlerformat. Ein Client muss eine Response mit anderem Endpoint als
-Protokollfehler ablehnen. Unkorrelierbare Protokollfehler verwenden
+`id` (maximal 128, `[A-Za-z0-9_.:-]+`) ist die clientseitige Request-ID;
+`endpoint` ist ein maximal 64 Zeichen langer alphanumerischer Name. Beide werden
+in jeder korrelierten Response gespiegelt. `supportId` ist davon unabhaengig und
+wird fuer jeden korrelierbaren Request serverseitig neu erzeugt. Das strukturierte
+Abschlussereignis enthaelt beide IDs, Endpoint, Dauer, Ergebnis und Fehlercode.
+Fehler stehen in `data` im gemeinsamen Fehlerformat. Ein Client muss eine Response
+mit anderem Endpoint als Protokollfehler ablehnen. Unkorrelierbare Protokollfehler verwenden
 `{ type:"error", error:{ code, message } }`.
 
 Parameterobjekte sind geschlossen: unbekannte Felder sind ein
@@ -379,7 +497,8 @@ AUTHENTICATED (player, operator oder admin):
       Entfernt nur den eigenen stabil aufgeloesten Eintrag.
 
   `withdrawFromRanking { operationId, bewerbId, rank, reason }`
-      rank 1..10000, reason 3..500 Zeichen. Dreispaltiger Legacy-Logging-Append.
+      rank 1..10000, reason 3..500 Zeichen. Der serverseitig validierte Rueckzug
+      wird idempotent im SQLite-Auditlog erfasst; es gibt keinen Logging-Sheetwrite.
 
 OPERATOR ODER ADMIN:
   `navigator { profil? }`
@@ -495,17 +614,28 @@ Der Browser wiederholt nur sichere Read-RPCs bis zu zweimal bei Request-Timeout
 oder Shutdown. Writes werden bei Transportverlust nicht automatisch wiederholt;
 ihre operationId bleibt fuer kontrollierte Wiederaufnahme erhalten.
 
-Legacy-Ausnahmen:
-  - Logging besitzt drei Spalten und keine EventID/Readback. Erfolgreich
-    abgeschlossene Operationen werden per operationId dedupliziert; ein
-    mehrdeutiger Append ist nicht sicher wiederholbar.
+SQLite-Fachhistorien:
+  - Jeder gueltige WS-Schreibversuch wird mit seiner Support-/Request-ID im
+    Auditlog als `started` angelegt und danach auf `success`, `failed` oder
+    `unknown` aktualisiert. Aktion, serverseitiger Akteur, Rolle, Ziel,
+    operationId und allowlist-basierter Vorher-/Nachher-Kontext werden ohne
+    Geheimnisse gespeichert. Dies umfasst auch Court- und Monitorsteuerung.
+    Kann der Auditabschluss nach Rueckkehr der Mutation nicht sicher persistiert
+    werden, erhaelt der Client `WRITE_OUTCOME_UNKNOWN` statt eines falschen
+    Fehlschlag- oder Erfolgsnachweises.
+    Namen, Login-E-Mail und Quell-IP sind personenbezogene Auditfelder in SQLite;
+    sie erscheinen weder in `/status` noch vollstaendig im Journalspiegel.
+    Eine Event-ID darf nur dieselbe Aktion/Request-/Operation-Korrelation von
+    `started` auf einen terminalen Zustand aktualisieren; Wiederverwendung ergibt
+    `AUDIT_LOG_EVENT_CONFLICT`.
   - ScoreLog ist kein RPC-Fachwrite. Reset und erste externe Baseline schreiben
     nichts; das gilt auch fuer den sofort angezeigten ersten externen Stand eines
-    beim Prozessstart bereits aktiven Courts. Erst eine spaetere semantische
-    Aenderung wird dreispaltig Fire-and-forget angehaengt, ohne operationId/EventID,
-    Retry, Readback, Pendingstatus, SQLite-Queue oder Shutdown-Drain. ScoreLog
-    wird nie gelesen und nicht zur Rekonstruktion der volatilen Live-Scores
-    verwendet.
+    beim Prozessstart bereits aktiven Courts. Eine spaetere semantische Aenderung
+    wird mit Event-ID und transaktionaler Court-Folgenummer synchron in
+    `scorelog.sqlite` persistiert, bevor Anzeige und Push aktualisiert werden.
+    Bei Insertfehler bleibt der bisherige sichtbare Stand bestehen und ein
+    Folgepoll versucht die Quellaenderung erneut. ScoreLog wird nicht zur
+    Rekonstruktion der volatilen Live-Scores gelesen.
 
 
 ================================================================================

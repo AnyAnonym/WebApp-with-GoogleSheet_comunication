@@ -1,0 +1,10 @@
+[
+  {
+    "targets": ["127.0.0.1:8084"],
+    "labels": {
+      "deployment": "pk",
+      "instance": "pk",
+      "prepared_target": "false"
+    }
+  }
+]

@@ -1,3 +1,5 @@
+import { diagnostic } from "./diagnostics.js";
+
 const PROTOCOL_VERSION = 2;
 const REQUEST_TIMEOUT_MS = 45000;
 const CONNECT_TIMEOUT_MS = 10000;
@@ -203,10 +205,19 @@ function setState(next, details = {}) {
   if (state !== next && !ALLOWED_TRANSITIONS[state]?.has(next)) {
     throw new Error(`Ungueltiger WebSocket-Zustandswechsel: ${state} -> ${next}`);
   }
+  const previousState = state;
   state = next;
+  if (previousState !== next) {
+    diagnostic.debug("websocket_state_changed", {
+      previousState,
+      nextState: next,
+      reconnectAttempt: connectAttempt,
+      online: navigator.onLine,
+    });
+  }
   const snapshot = getConnectionStatus(details);
   for (const listener of stateListeners) {
-    try { listener(snapshot); } catch (error) { console.error("dataClient state listener:", error); }
+    try { listener(snapshot); } catch (error) { diagnostic.error("data_client_state_listener_failed", error); }
   }
 }
 
@@ -313,7 +324,7 @@ function dispatchEvent(topic, data) {
   const listeners = eventListeners.get(topic);
   if (!listeners) return;
   for (const listener of listeners) {
-    try { listener(data); } catch (error) { console.error(`dataClient event ${topic}:`, error); }
+    try { listener(data); } catch (error) { diagnostic.error("data_client_event_listener_failed", error); }
   }
 }
 
@@ -357,8 +368,11 @@ function handleMessage(event, generation, currentSocket) {
     sendSubscriptions();
     const wasReconnect = connectedOnce;
     connectedOnce = true;
+    if (wasReconnect) {
+      diagnostic.info("websocket_connection_recovered", { reconnectAttempt: connectAttempt, online: navigator.onLine });
+    }
     for (const listener of resyncListeners) {
-      try { listener({ reconnect: wasReconnect, welcome }); } catch (error) { console.error("dataClient resync listener:", error); }
+      try { listener({ reconnect: wasReconnect, welcome }); } catch (error) { diagnostic.error("data_client_resync_listener_failed", error); }
     }
     return;
   }
@@ -394,7 +408,7 @@ function handleMessage(event, generation, currentSocket) {
     return;
   }
   if (message.type === "error") {
-    console.error("dataClient protocol error:", message.error);
+    diagnostic.error("data_client_protocol_error", message.error);
   }
 }
 
@@ -520,14 +534,31 @@ async function requestOnce(endpoint, params) {
 
 export async function request(endpoint, params = {}) {
   const retryable = READ_ENDPOINTS.has(endpoint);
+  const startedAt = Date.now();
   for (let attempt = 1; ; attempt++) {
     try {
-      return await requestOnce(endpoint, params);
+      const result = await requestOnce(endpoint, params);
+      diagnostic.debug("rpc_request_completed", {
+        endpoint,
+        durationMs: Date.now() - startedAt,
+        attemptCount: attempt,
+        outcome: "success",
+      });
+      return result;
     } catch (error) {
       const canRetry = retryable
         && attempt < 3
         && ["REQUEST_TIMEOUT", "SHUTTING_DOWN"].includes(error.code);
-      if (!canRetry) throw error;
+      if (!canRetry) {
+        diagnostic.warn("rpc_request_failed", {
+          endpoint,
+          durationMs: Date.now() - startedAt,
+          attemptCount: attempt,
+          outcome: "failed",
+          error,
+        });
+        throw error;
+      }
       await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
     }
   }
@@ -566,7 +597,7 @@ export function subscribeInvalidations(topics, callback, { delayMs = 100 } = {})
     try {
       await callback();
     } catch (error) {
-      console.error("Live-Aktualisierung fehlgeschlagen:", error);
+      diagnostic.error("data_client_live_refresh_failed", error);
     } finally {
       running = false;
       if (pending && !timer) timer = setTimeout(drain, delayMs);

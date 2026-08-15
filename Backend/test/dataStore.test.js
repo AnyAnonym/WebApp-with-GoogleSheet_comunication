@@ -50,6 +50,37 @@ test("ein vor einem Write gestarteter Pollfehler darf den Cachezustand nicht ueb
 
   const result = dataStore.markError("entryList", new Error("stale failure"), staleRead);
   assert.equal(result.ignored, true);
+  assert.equal(result.result, "ignored_stale");
   assert.equal(dataStore.getMeta("entryList").lastError, null);
   assert.equal(dataStore.getMeta("entryList").staleResultCount, 1);
+});
+
+test("Fehlerfolge und Ausfalldauer enden mit einem eindeutigen Recovery-Ergebnis", () => {
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  try {
+    assert.equal(dataStore.set("entryList", [["ID"], ["e1"]]).result, "applied");
+    now = 2000;
+    const first = dataStore.markError("entryList", Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }));
+    assert.equal(first.result, "failed");
+    assert.equal(first.lastError.code, "ETIMEDOUT");
+    assert.equal(first.consecutiveErrors, 1);
+    assert.equal(first.outageDurationMs, 0);
+
+    now = 2500;
+    const second = dataStore.markError("entryList", Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }));
+    assert.equal(second.consecutiveErrors, 2);
+    assert.equal(second.outageDurationMs, 500);
+
+    now = 4000;
+    const recovered = dataStore.set("entryList", [["ID"], ["e1"]]);
+    assert.equal(recovered.result, "recovered");
+    assert.equal(recovered.recoveredErrorCode, "ETIMEDOUT");
+    assert.equal(recovered.recoveredErrorSequence, 2);
+    assert.equal(recovered.outageDurationMs, 2000);
+    assert.equal(dataStore.getMeta("entryList").consecutiveErrors, 0);
+  } finally {
+    Date.now = originalNow;
+  }
 });

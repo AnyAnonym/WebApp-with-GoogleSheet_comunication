@@ -9,6 +9,8 @@ const dataStore = require("../dataStore.js");
 const { createApplication } = require("../server.js");
 const { StateRepository } = require("../stateRepository.js");
 const { version: appVersion } = require("../package.json");
+const logger = require("../logger.js");
+const metrics = require("../metrics.js");
 
 function createSocketClient(url, headers) {
   const socket = new WebSocket(url, { headers });
@@ -109,6 +111,9 @@ function rejectedUpgrade(url, origin) {
 }
 
 test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
+  metrics.resetForTests();
+  const logEntries = [];
+  t.mock.method(logger, "log", (level, event, fields = {}) => logEntries.push({ level, event, fields }));
   dataStore.resetForTests();
   const people = peopleFixture();
   people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator"]);
@@ -152,16 +157,64 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const anonymousSession = await fetch(`${httpBase}/api/session`);
   assert.equal(anonymousSession.status, 200);
+  assert.match(anonymousSession.headers.get("x-request-id"), /^[0-9a-f-]{36}$/i);
   const anonymousSessionData = await anonymousSession.json();
   assert.equal(Number.isFinite(anonymousSessionData.serverTime), true);
   delete anonymousSessionData.serverTime;
-  assert.deepEqual(anonymousSessionData, { success: true, authenticated: false, user: null, expiresAt: null });
+  assert.deepEqual(anonymousSessionData, {
+    success: true,
+    authenticated: false,
+    user: null,
+    expiresAt: null,
+    frontendLogging: {
+      enabled: false,
+      level: "warn",
+      targeted: false,
+      expiresAt: null,
+      sampleRatePercent: 10,
+      batchSize: 10,
+      flushIntervalMs: 5000,
+    },
+  });
 
   const readinessResponse = await fetch(`${httpBase}/ready`);
   assert.equal(readinessResponse.status, 503);
   assert.deepEqual(await readinessResponse.json(), { status: "not-ready", version: appVersion });
-  assert.equal((await fetch(`${httpBase}/status`)).status, 401);
-  assert.equal((await fetch(`${httpBase}/version`, { method: "POST" })).status, 405);
+  const metricsResponse = await fetch(`${httpBase}/metrics`);
+  assert.equal(metricsResponse.status, 200);
+  assert.equal(metricsResponse.headers.get("content-type"), "text/plain; version=0.0.4; charset=utf-8");
+  assert.match(metricsResponse.headers.get("x-request-id"), /^[0-9a-f-]{36}$/i);
+  const metricsBody = await metricsResponse.text();
+  assert.match(metricsBody, /epiber_ready 0/);
+  assert.match(metricsBody, /epiber_sqlite_open\{database="state"\} 1/);
+  assert.equal(metricsBody.includes("p1"), false);
+  const metricsMethodResponse = await fetch(`${httpBase}/metrics`, { method: "POST" });
+  assert.equal(metricsMethodResponse.status, 405);
+  const unauthenticatedStatus = await fetch(`${httpBase}/status`);
+  assert.equal(unauthenticatedStatus.status, 401);
+  const unauthenticatedStatusId = unauthenticatedStatus.headers.get("x-request-id");
+  assert.equal((await unauthenticatedStatus.json()).supportId, unauthenticatedStatusId);
+  const unauthenticatedGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { "X-WEBAUTH-USER": "attacker", "X-WEBAUTH-ROLE": "Admin" },
+  });
+  assert.equal(unauthenticatedGrafanaAuth.status, 401);
+  assert.equal(unauthenticatedGrafanaAuth.headers.get("x-webauth-user"), null);
+  assert.equal(unauthenticatedGrafanaAuth.headers.get("x-webauth-role"), null);
+  assert.equal((await unauthenticatedGrafanaAuth.json()).error.code, "AUTH_REQUIRED");
+  const grafanaAuthMethod = await fetch(`${httpBase}/api/admin/grafana-auth`, { method: "POST" });
+  assert.equal(grafanaAuthMethod.status, 405);
+  assert.equal(grafanaAuthMethod.headers.get("allow"), "GET");
+  const methodResponse = await fetch(`${httpBase}/version`, { method: "POST" });
+  assert.equal(methodResponse.status, 405);
+  const methodRequestId = methodResponse.headers.get("x-request-id");
+  assert.match(methodRequestId, /^[0-9a-f-]{36}$/i);
+  assert.equal((await methodResponse.json()).supportId, methodRequestId);
+  assert.equal(logEntries.some(({ event, fields }) => (
+    event === "http_request_completed"
+    && fields.supportId === methodRequestId
+    && fields.errorCode === "METHOD_NOT_ALLOWED"
+    && fields.status === 405
+  )), true);
   assert.equal((await fetch(`${httpBase}/missing`)).status, 404);
   assert.equal((await fetch(`${httpBase}/api/session`, { method: "PUT" })).status, 405);
   assert.equal((await fetch(`${httpBase}/api/monitor/session`, { method: "PUT" })).status, 405);
@@ -180,9 +233,23 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(oversizedLogin.status, 413);
 
+  const invalidEmailLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "192.0.2.10" },
+    body: JSON.stringify({ email: "<script>@example.test", passwordHash: "b".repeat(64) }),
+  });
+  assert.equal(invalidEmailLogin.status, 400);
+
+  const failedLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "203.0.113.42" },
+    body: JSON.stringify({ email: " ADA@Example.Test ", passwordHash: "b".repeat(64) }),
+  });
+  assert.equal(failedLogin.status, 401);
+
   const loginResponse = await fetch(`${httpBase}/api/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "198.51.100.20" },
     body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
   });
   assert.equal(loginResponse.status, 200);
@@ -190,8 +257,54 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(loginResponse.headers.get("access-control-allow-credentials"), "true");
   const loginPayload = await loginResponse.json();
   assert.equal(loginPayload.user.role, "admin");
+  assert.equal(loginPayload.frontendLogging.enabled, false);
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
   assert.match(cookie, /^epiber_test_session=/);
+
+  const grafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: cookie, "X-WEBAUTH-USER": "attacker", "X-WEBAUTH-ROLE": "Viewer" },
+  });
+  assert.equal(grafanaAuth.status, 200);
+  assert.equal(grafanaAuth.headers.get("cache-control"), "no-store");
+  assert.equal(grafanaAuth.headers.get("x-webauth-user"), "epiber-test:p1");
+  assert.equal(grafanaAuth.headers.get("x-webauth-role"), "Admin");
+  assert.deepEqual(await grafanaAuth.json(), { success: true });
+
+  const loggingAdminView = await fetch(`${httpBase}/api/admin/frontend-logging`, { headers: { Cookie: cookie } });
+  assert.equal(loggingAdminView.status, 200);
+  const initialLogging = await loggingAdminView.json();
+  assert.equal(initialLogging.settings.enabled, false);
+  assert.equal(initialLogging.settings.revision, 0);
+  assert.equal(initialLogging.targetsRevision, 0);
+  assert.equal(initialLogging.players.some((person) => person.id === "p2" && person.name === "Peter Player"), true);
+
+  const loggingSettingsResponse = await fetch(`${httpBase}/api/admin/frontend-logging`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({
+      expectedRevision: 0,
+      enabled: true,
+      level: "warn",
+      includeAnonymous: false,
+      sampleRatePercent: 10,
+      batchSize: 10,
+      flushIntervalMs: 5000,
+      defaultTargetLevel: "debug",
+      defaultTargetDurationMinutes: 120,
+      normalRetentionDays: 14,
+      targetedRetentionDays: 7,
+    }),
+  });
+  assert.equal(loggingSettingsResponse.status, 200);
+  assert.equal((await loggingSettingsResponse.json()).settings.revision, 1);
+
+  const loggingTargetResponse = await fetch(`${httpBase}/api/admin/frontend-logging/targets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({ expectedRevision: 0, personId: "p2", level: "debug", durationMinutes: 60 }),
+  });
+  assert.equal(loggingTargetResponse.status, 200);
+  assert.equal((await loggingTargetResponse.json()).revision, 1);
 
   const authenticatedSession = await fetch(`${httpBase}/api/session`, { headers: { Cookie: cookie } });
   assert.equal((await authenticatedSession.json()).user.email, "ada@example.test");
@@ -253,7 +366,8 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(conflictingReset.status, 409);
 
   const publicClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
-  assert.equal((await publicClient.handshake()).principal.role, "anonymous");
+  const publicWelcome = await publicClient.handshake();
+  assert.equal(publicWelcome.principal.role, "anonymous");
   const staleVersionClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
   await staleVersionClient.open();
   staleVersionClient.socket.send(JSON.stringify({
@@ -271,6 +385,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "public-read", endpoint: "players", params: {} }));
   const publicPlayers = await publicClient.next((message) => message.id === "public-read");
   assert.equal(publicPlayers.type, "response");
+  assert.match(publicPlayers.supportId, /^[0-9a-f-]{36}$/i);
+  assert.equal(publicPlayers.supportId.includes(publicWelcome.connectionId), false);
+  assert.equal(logEntries.some(({ event, fields }) => (
+    event === "ws_request_completed"
+    && fields.supportId === publicPlayers.supportId
+    && fields.requestId === "public-read"
+    && fields.endpoint === "players"
+  )), true);
   assert.deepEqual(publicPlayers.data.values[0], ["ID", "Vorname", "Nachname", "Aktiv"]);
   assert.equal(JSON.stringify(publicPlayers.data).includes("ada@example.test"), false);
 
@@ -320,6 +442,16 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(invalidContract.type, "response");
   assert.equal(invalidContract.data.error.code, "INVALID_MESSAGE");
 
+  publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "parallel-success", endpoint: "players", params: {} }));
+  publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "parallel-failure", endpoint: "unknownEndpoint", params: {} }));
+  const [parallelSuccess, parallelFailure] = await Promise.all([
+    publicClient.next((message) => message.id === "parallel-success"),
+    publicClient.next((message) => message.id === "parallel-failure"),
+  ]);
+  assert.equal(parallelSuccess.data.success, true);
+  assert.equal(parallelFailure.data.error.code, "ENDPOINT_NOT_FOUND");
+  assert.notEqual(parallelSuccess.supportId, parallelFailure.supportId);
+
   const adminClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: cookie });
   assert.equal((await adminClient.handshake()).principal.role, "admin");
   let statusPayload;
@@ -342,6 +474,21 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const anonymousStatusClient = statusPayload.provider.clients.find((client) => client.principalType === "anonymous");
   assert.equal(anonymousStatusClient.userId, null);
   assert.equal(anonymousStatusClient.userName, null);
+  assert.equal(anonymousStatusClient.requestHistory.length <= 20, true);
+  const parallelRecords = anonymousStatusClient.requestHistory.filter(({ clientRequestId }) => (
+    clientRequestId === "parallel-success" || clientRequestId === "parallel-failure"
+  ));
+  assert.deepEqual(new Set(parallelRecords.map(({ clientRequestId }) => clientRequestId)), new Set(["parallel-success", "parallel-failure"]));
+  const successRecord = parallelRecords.find(({ clientRequestId }) => clientRequestId === "parallel-success");
+  const failureRecord = parallelRecords.find(({ clientRequestId }) => clientRequestId === "parallel-failure");
+  assert.deepEqual({ endpoint: successRecord.endpoint, success: successRecord.success, supportId: successRecord.supportId }, {
+    endpoint: "players", success: true, supportId: parallelSuccess.supportId,
+  });
+  assert.deepEqual({ endpoint: failureRecord.endpoint, success: failureRecord.success, code: failureRecord.code, supportId: failureRecord.supportId }, {
+    endpoint: "unknownEndpoint", success: false, code: "ENDPOINT_NOT_FOUND", supportId: parallelFailure.supportId,
+  });
+  assert.equal(statusPayload.scoreLog.open, true);
+  assert.equal(statusPayload.auditLog.open, true);
   adminClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "directory", endpoint: "memberDirectory", params: {} }));
   const directory = await adminClient.next((message) => message.id === "directory");
   assert.equal(directory.type, "response");
@@ -353,6 +500,51 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(directory.data.values[0].includes("PasswdHash"), false);
 
   const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  const playerLoggingPolicy = await fetch(`${httpBase}/api/frontend-logging-policy`, {
+    headers: { Cookie: `epiber_test_session=${playerSession.token}` },
+  });
+  assert.equal(playerLoggingPolicy.status, 200);
+  const playerLoggingPolicyData = await playerLoggingPolicy.json();
+  assert.equal(playerLoggingPolicyData.frontendLogging.targeted, true);
+  assert.equal(playerLoggingPolicyData.frontendLogging.level, "debug");
+  assert.equal(playerLoggingPolicyData.frontendLogging.sampleRatePercent, 100);
+
+  const frontendEventResponse = await fetch(`${httpBase}/api/frontend-events`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://test.local",
+      Cookie: `epiber_test_session=${playerSession.token}`,
+      "X-Forwarded-For": "198.51.100.77",
+    },
+    body: JSON.stringify({
+      appVersion,
+      clientSessionId: "00000000-0000-4000-8000-000000000401",
+      pageType: "scoreboard",
+      events: [{
+        event: "rpc_request_failed",
+        level: "warn",
+        timestamp: "2026-08-08T10:00:00.000Z",
+        code: "REQUEST_TIMEOUT",
+        category: "timeout",
+        supportId: "support-frontend-1",
+        endpoint: "players",
+        durationMs: 45000,
+        attemptCount: 3,
+        outcome: "failed",
+      }],
+    }),
+  });
+  assert.equal(frontendEventResponse.status, 200);
+  assert.deepEqual(await frontendEventResponse.json(), { success: true, accepted: 1, dropped: 0 });
+  const frontendLog = logEntries.find(({ event, fields }) => (
+    event === "frontend_client_event" && fields.supportId === "support-frontend-1"
+  ));
+  assert.equal(frontendLog.fields.actorId, "p2");
+  assert.equal(frontendLog.fields.actorName, "Peter Player");
+  assert.equal(frontendLog.fields.sourceIp, "198.51.100.77");
+  assert.equal(frontendLog.fields.diagnosticProfile, "targeted");
+  assert.equal(frontendLog.fields.retentionDays, 7);
   const playerClient = createSocketClient(`${wsBase}/ws`, {
     Origin: "http://test.local",
     Cookie: `epiber_test_session=${playerSession.token}`,
@@ -365,6 +557,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(memberProfile.data.profile.birthDate, "19900102");
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+  assert.equal((await fetch(`${httpBase}/api/admin/frontend-logging`, {
+    headers: { Cookie: `epiber_test_session=${playerSession.token}` },
+  })).status, 403);
+  const playerGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: `epiber_test_session=${playerSession.token}` },
+  });
+  assert.equal(playerGrafanaAuth.status, 403);
+  assert.equal(playerGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const forbiddenAdminPassword = await fetch(`${httpBase}/api/admin/password`, {
     method: "POST",
@@ -386,6 +586,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal((await operatorClient.request("navigator", { profil: "1" })).data.success, true);
   assert.equal((await operatorClient.request("monitorList")).data.success, true);
   assert.equal((await operatorClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+  const operatorGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: `epiber_test_session=${operatorSession.token}` },
+  });
+  assert.equal(operatorGrafanaAuth.status, 403);
+  assert.equal(operatorGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const authenticatedEndpoints = [
     "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
@@ -524,6 +729,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.ok(revoked.data.monitor.revokedAt);
   assert.equal((await adminClient.request("monitorList")).data.monitors[0].revokedAt > 0, true);
 
+  const loggingTargetRemove = await fetch(`${httpBase}/api/admin/frontend-logging/targets`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local", Cookie: cookie },
+    body: JSON.stringify({ expectedRevision: 1, personId: "p2" }),
+  });
+  assert.equal(loggingTargetRemove.status, 200);
+  assert.equal((await loggingTargetRemove.json()).removed, true);
+
   assert.equal(await rejectedUpgrade(`${wsBase}/ws`, "http://evil.test"), 403);
   assert.equal(await rejectedUpgrade(`${wsBase}/not-ws`, "http://test.local"), 404);
 
@@ -547,6 +760,60 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(staleMatchtypReplay.data.error, undefined);
   assert.deepEqual(staleMatchtypReplay.data.court.displayRules, assignment.data.court.displayRules);
+
+  const realDateNow = Date.now;
+  const staleNow = realDateNow() + 120000;
+  Date.now = () => staleNow;
+  try {
+    const stalePeopleStatus = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
+    assert.equal(stalePeopleStatus.status, 200);
+    assert.deepEqual((await stalePeopleStatus.json()).authorization, { role: "admin", roleSource: "last_known_good" });
+    const staleGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, { headers: { Cookie: cookie } });
+    assert.equal(staleGrafanaAuth.status, 503);
+    assert.equal(staleGrafanaAuth.headers.get("x-webauth-user"), null);
+    assert.equal((await staleGrafanaAuth.json()).error.code, "PERSON_DATA_UNAVAILABLE");
+  } finally {
+    Date.now = realDateNow;
+  }
+
+  application.server.emit("error", Object.assign(new Error("simulated runtime error"), { code: "SIMULATED" }));
+  assert.equal(logEntries.some(({ event, fields }) => (
+    event === "http_server_error" && fields.listening === true && fields.error.code === "SIMULATED"
+  )), true);
+
+  const auditRows = application.auditLogRepository.list();
+  const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
+  for (const action of [
+    "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
+    "passwordReset", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
+  ]) {
+    assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);
+  }
+  const serializedAudit = JSON.stringify(auditRows);
+  assert.equal(serializedAudit.includes("ada@example.test"), true);
+  assert.equal(serializedAudit.includes("<script>@example.test"), false);
+  assert.equal(serializedAudit.includes("a".repeat(64)), false);
+  assert.equal(serializedAudit.includes(provisioned.data.monitor.token), false);
+  const failedLoginAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "LOGIN_FAILED");
+  assert.equal(failedLoginAudit.errorCode, "LOGIN_FAILED");
+  assert.equal(failedLoginAudit.actorType, "anonymous");
+  assert.equal(failedLoginAudit.actorName, "");
+  assert.equal(failedLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(failedLoginAudit.sourceIp, "203.0.113.42");
+  const invalidEmailAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "VALIDATION_ERROR");
+  assert.equal(invalidEmailAudit.attemptedEmail, "");
+  assert.equal(invalidEmailAudit.sourceIp, "192.0.2.10");
+  assert.deepEqual(invalidEmailAudit.before, { identifierValid: false });
+  const successfulLoginAudit = auditRows.find((row) => row.action === "login" && row.result === "success");
+  assert.equal(successfulLoginAudit.actorId, "p1");
+  assert.equal(successfulLoginAudit.actorName, "Ada Admin");
+  assert.equal(successfulLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(successfulLoginAudit.sourceIp, "198.51.100.20");
+  const courtAudit = auditRows.find((row) => row.action === "courtAssign" && row.result === "success");
+  assert.equal(courtAudit.actorId, "p3");
+  assert.equal(courtAudit.actorName, "Olivia Operator");
+  assert.equal(courtAudit.role, "operator");
 
   await publicClient.close();
   await adminClient.close();

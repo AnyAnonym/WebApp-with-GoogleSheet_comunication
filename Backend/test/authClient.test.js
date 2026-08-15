@@ -38,8 +38,8 @@ function loadAuthClient(fetchImplementation, { locks } = {}) {
   context.globalThis = context;
   const filename = path.resolve(__dirname, "../../Frontend/JS/authClient.js");
   const exported = [];
-  let source = fs.readFileSync(filename, "utf8")
-    .replace(/^import .*$/m, "const restartConnection = async () => {};" )
+  let source = `const restartConnection = async () => {};\nconst diagnostic = { error() {} };\nconst applyDiagnosticPolicy = () => {};\n${fs.readFileSync(filename, "utf8")}`
+    .replace(/^import .*$/gm, "")
     .replace(/\bexport\s+(async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g, (_match, asyncKeyword = "", name) => {
       exported.push(name);
       return `${asyncKeyword}function ${name}(`;

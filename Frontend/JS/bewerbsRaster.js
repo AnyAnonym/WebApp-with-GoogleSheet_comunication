@@ -24,10 +24,10 @@ const ROUND_DISPLAY = {
 
 function parsePlayerId(raw) {
   const s = String(raw || "").trim();
-  const wo = /\[w\.?o\.?\]/i.test(s);
-  const ret = /\[ret\]/i.test(s);
+  const wo = s.endsWith("[wo]");
+  const ret = s.endsWith("[ret]");
   const gesetzt = /\[gesetzt\]/i.test(s);
-  let cleanId = s.replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").replace(/\[gesetzt\]/gi, "").trim();
+  let cleanId = (wo ? s.slice(0, -4) : ret ? s.slice(0, -5) : s).replace(/\[gesetzt\]/gi, "").trim();
   const pre = /^PRE$/i.test(cleanId);
   return { cleanId, special: wo ? "wo" : ret ? "ret" : null, pre, gesetzt };
 }
@@ -36,12 +36,12 @@ function createBadge(type) {
   const badge = document.createElement("span");
   if (type === "wo") {
     badge.className = "badge badge-wo";
-    badge.textContent = "w.o.";
+    badge.textContent = "wo";
     return badge;
   }
   if (type === "ret") {
     badge.className = "badge badge-wo";
-    badge.textContent = "ret.";
+    badge.textContent = "ret";
     return badge;
   }
   if (type === "gesetzt") {
@@ -129,8 +129,8 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
     const hasResult = !!rawResult;
 
     const entry = {
-      top: { id: pid1.cleanId, partnerId: pid2.cleanId, name: null, partnerName: null, special: pid1.special, pre: pid1.pre, gesetzt: pid1.gesetzt },
-      bottom: { id: pid3.cleanId, partnerId: pid4.cleanId, name: null, partnerName: null, special: pid3.special, pre: pid3.pre, gesetzt: pid3.gesetzt },
+      top: { id: pid1.cleanId, partnerId: pid2.cleanId, name: null, partnerName: null, special: pid1.special || pid2.special, pre: pid1.pre, gesetzt: pid1.gesetzt },
+      bottom: { id: pid3.cleanId, partnerId: pid4.cleanId, name: null, partnerName: null, special: pid3.special || pid4.special, pre: pid3.pre, gesetzt: pid3.gesetzt },
       result: null,
       winner: null,
       matchDate: formatMatchDate(matchDateIdx >= 0 ? row[matchDateIdx] : ""),
@@ -152,8 +152,8 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
     }
     // [wo]/[ret]-Logik: wer wo/ret gibt, verliert (auch ohne Ergebnis)
     if (!entry.winner) {
-      if (pid1.special === "wo" || pid1.special === "ret") entry.winner = pid3.cleanId;
-      else if (pid3.special === "wo" || pid3.special === "ret") entry.winner = pid1.cleanId;
+      if (pid1.special || pid2.special) entry.winner = pid3.cleanId;
+      else if (pid3.special || pid4.special) entry.winner = pid1.cleanId;
     }
     // BYE-Logik: Spieler gegen BYE gewinnt automatisch
     if (!entry.winner) {
@@ -168,7 +168,7 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
       if (!pid3.gesetzt && existing.bottom.gesetzt) entry.bottom.gesetzt = true;
     }
 
-    const hasSpecial = !!(pid1.special || pid3.special || /^BYE$/i.test(pid1.cleanId) || /^BYE$/i.test(pid3.cleanId));
+    const hasSpecial = !!(pid1.special || pid2.special || pid3.special || pid4.special || /^BYE$/i.test(pid1.cleanId) || /^BYE$/i.test(pid3.cleanId));
     if (!existing || hasResult || hasSpecial) {
       slotMap[key] = entry;
     }

@@ -1,3 +1,5 @@
+import { diagnostic } from "./diagnostics.js";
+
 // ── Konfiguration (hier anpassen) ──
 const RETRY_MAX_ATTEMPTS = 2;
 const RETRY_BASE_DELAY_MS = 750;
@@ -29,7 +31,12 @@ export async function callWithRetry(fn, args = {}, opts = {}) {
     } catch (err) {
       if (attempt < maxAttempts && retryable(err)) {
         const wait = Math.floor(baseDelay * (2 ** (attempt - 1)) * (0.8 + Math.random() * 0.4));
-        console.warn(`callWithRetry: transienter Fehler bei Versuch ${attempt}/${maxAttempts}, retry in ${wait}ms...`);
+        diagnostic.warn("frontend_retry_scheduled", {
+          attempt,
+          maxAttempts,
+          retryInMs: wait,
+          error: err,
+        });
         await delay(wait);
       } else {
         throw err;

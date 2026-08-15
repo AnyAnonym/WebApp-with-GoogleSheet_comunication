@@ -3,12 +3,15 @@
   Projekt: ePiber / ASKOE Piberbach Tennis
 ================================================================================
 
-Dieses Dokument beschreibt die beiden produktiven Datenhaltungen. Google Sheets
-ist die autoritative Quelle fuer Fach- und Stammdaten. SQLite enthaelt lokalen
-Sicherheits-, Steuerungs-, Idempotenz- und Recovery-State und ist keine zweite
-autoritative Fachdatenbank. Spaltennamen werden im Backend getrimmt und fuer den
-Vergleich kleingeschrieben. Zusaetzliche Sheet-Spalten duerfen vorhanden sein;
-oeffentliche Antworten enthalten nur explizit freigegebene Projektionen.
+Dieses Dokument beschreibt Google Sheets und die drei getrennten ePiber-SQLite-
+Datenbanken. Google Sheets ist die autoritative Quelle fuer operative Fach- und
+Stammdaten. `state.sqlite` enthaelt lokalen Sicherheits-, Steuerungs-,
+Idempotenz- und Recovery-State und ist keine zweite autoritative Quelle fuer
+diese Daten. `scorelog.sqlite` und `audit.sqlite` sind dagegen die jeweiligen
+Systeme-of-Record fuer ihre dauerhaften Fachhistorien. Spaltennamen werden im
+Backend getrimmt und fuer den Vergleich kleingeschrieben. Zusaetzliche Sheet-
+Spalten duerfen vorhanden sein; oeffentliche Antworten enthalten nur explizit
+freigegebene Projektionen.
 
 
 ================================================================================
@@ -35,9 +38,11 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
                   |                 |           | Entrydate
 
 Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
-Format `[A-Za-z0-9_.:-]{1,64}`. Personen-E-Mail-Adressen muessen, soweit gesetzt,
-ohne Beachtung der Gross-/Kleinschreibung eindeutig sein. Personen darf nicht
-leer sein.
+Format `[A-Za-z0-9_.:-]{1,64}`. Gueltige Personen-E-Mail-Adressen muessen, soweit
+gesetzt, nach der Kanonisierung eindeutig sein. Eine ungueltige E-Mail-Adresse
+blockiert den Tabellenload nicht, sondern wird fuer Authentifizierung und
+Projektionen wie eine leere E-Mail behandelt und mit Personen-ID, Sheetzeile und
+Fehlergrund strukturiert geloggt. Personen darf nicht leer sein.
 
 
 ================================================================================
@@ -58,8 +63,8 @@ Matches1 enthaelt offene und gespielte Matches.
   BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
   MatchtypID      | Optionale Matchtyp-Ueberschreibung. Ist sie gesetzt,
                   | ueberstimmt sie `Bewerb.MatchtypID Standard`.
-  Spieler1ID      | Erste Heim-/Gegner-ID; Suffixe wie [wo] oder [ret] sind
-                  | in Altdaten moeglich.
+  Spieler1ID      | Erste Heim-/Gegner-ID; als Abschlussmarker sind nur die
+                  | exakt kleingeschriebenen Suffixe [wo] oder [ret] zulaessig.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
   Spieler3ID      | Erste Gast-/Forderer-ID.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
@@ -68,7 +73,9 @@ Matches1 enthaelt offene und gespielte Matches.
   Bemerkung       | Freitext.
 
 `Spieler2ID` und `Spieler4ID` bleiben optional. Der Gewinner wird aus Ergebnis
-und Walkover-Kennzeichnung berechnet, nicht in einer eigenen Spalte gespeichert.
+oder dem exakten Abschlussmarker [wo]/[ret] berechnet, nicht in einer eigenen
+Spalte gespeichert. Varianten wie [w.o.], [WO] oder [RET] sind keine gueltigen
+Marker und werden nicht normalisiert.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
 
@@ -82,7 +89,10 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   ID                 | Eindeutige Personen-ID und serverseitige Principal-ID.
   Vorname            | Vorname.
   Nachname           | Nachname.
-  E-Mail             | Loginname; normalisiert kleingeschrieben und eindeutig.
+  E-Mail             | Loginname; lokaler Teil kleingeschrieben, Domain als
+                     | IDNA-ASCII/Punycode kanonisiert und danach eindeutig.
+                     | Ungueltige Werte gelten technisch als leer und werden
+                     | mit Personen-ID und Sheetzeile geloggt.
   PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
                      | 64-stellige SHA-256-Werte lesbar.
   KennwortVergessen  | `x` ist die Adminfreigabe fuer die einmalige erstmalige
@@ -251,49 +261,99 @@ Anforderungen:
   - Eigene Append-IDs erlauben Bestaetigungsreads. Unklarer Ausgang wird als
     `unknown` gespeichert; Wiederholung fuehrt nur Recovery/Bestaetigung aus.
 
-Diese Semantik gilt nicht fuer das unten beschriebene Legacy-ScoreLog.
+Diese Semantik betrifft die weiterhin in Google Sheets ausgefuehrten Fachwrites.
 
 
 ================================================================================
-  7. LEGACY-TABELLEN LOGGING UND SCORELOG
+  7. SQLITE-FACHHISTORIEN SCORELOG UND AUDITLOG
 ================================================================================
 
-Beide Tabs sind dreispaltige Append-Ziele ohne EventID-Spalte. Writes verwenden
-`USER_ENTERED`. Keine EventID-, Readback-, Retry-, SQLite-Pending- oder
-Write-ahead-Queue-Migration durchfuehren. Das Backend liest keine Kopfzeile und
-schreibt die Werte ausschliesslich anhand ihrer Position.
+Die Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend weder gelesen
+noch beschrieben. Es gibt keinen automatischen Import ihrer historischen Zeilen;
+vor einer Entfernung muessen die bisherigen Inhalte gesichert archiviert und die
+neuen SQLite-Systeme erfolgreich in Betrieb genommen sein.
+Fachhistorien liegen getrennt vom Anwendungsstate in zwei systemspezifischen
+SQLite-Dateien. Beide verwenden Modus 0600, WAL und `synchronous=FULL`; es gibt
+keine automatische fachliche Bereinigung.
 
-Logging:
-  Spalte 1 Timestamp | Spalte 2 Type | Spalte 3 Message
+`SCORELOG_FILE`, standardmaessig
+`Backend/.state/<INSTANCE_ID>-scorelog.sqlite`, produktiv
+`/var/lib/epiber-<system>/scorelog.sqlite`:
 
-Der derzeitige Ranglistenrueckzug schreibt Type `withdrawFromRanking`. Ein
-erfolgreicher Vorgang wird ueber seine operationId in SQLite dedupliziert. Ist
-der Legacy-Append mehrdeutig, gibt es mangels EventID und Tabellen-Readback
-keinen belastbaren Nachweis und keine sichere blinde Wiederholung.
+Tabelle `score_log_sequence`:
+  instance + court PRIMARY KEY, last_sequence. Folgenummern werden gemeinsam mit
+  dem Ereignis in einer `BEGIN IMMEDIATE`-Transaktion vergeben.
 
-ScoreLog:
-  Spalte 1 Timestamp | Spalte 2 PlatzNr | Spalte 3 Score
+Tabelle `score_log`:
+  event_id PRIMARY KEY, instance, court, sequence, occurred_at, score, match_id,
+  court_active, court_revision, created_at. Zusaetzlich ist
+  `(instance, court, sequence)` eindeutig. Eine wiederholte Event-ID ist nur mit
+  identischem Inhalt idempotent; anderer Inhalt ergibt
+  `SCORE_LOG_EVENT_CONFLICT`.
 
-Timestamp hat das Wiener Format `YYMMDD-HHMM-SS`. Score hat das Format
+Score hat das Format
 `S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`. Inaktive
 Courts frieren ihren letzten sichtbaren Stand ein; sind beide Courts inaktiv,
 laeuft kein externes Polling. Nach Aktivierung oder Reset ist die erste zulaessige
 externe Antwort dieses Courts nur die Baseline und veraendert weder Anzeige noch
 ScoreLog. Erst eine folgende Abweichung von dieser Baseline aktualisiert Anzeige
-und ScoreLog. Beim Prozessstart wird der erste externe Stand eines in SQLite
+und ScoreLog. Der SQLite-Insert erfolgt vor Anzeige und Push. Bei einem
+Insertfehler bleibt der sichtbare Stand unveraendert und derselbe Quellstand wird
+bei einem Folgepoll erneut versucht. Beim Prozessstart wird der erste externe Stand eines in SQLite
 bereits aktiven Courts dagegen sofort angezeigt, aber nicht ins ScoreLog
 geschrieben. Ein Reset setzt alle acht Scorewerte auf `"0"`, publiziert diesen
 Stand, erzeugt aber selbst keinen ScoreLog-Eintrag. Pro-Court-Epochen verwerfen
 Antworten eines vor Aktivitaetswechsel oder Reset begonnenen Fetches. Der Write
-ist bewusst Fire-and-forget: Fehler werden nur geloggt, nicht erneut versucht
-oder beim Shutdown drainiert. Es existieren insbesondere kein EventID, kein
-Readback, kein Retry, keine SQLite-Persistenz und kein Pending-/Statuswert fuer
-ScoreLog.
+ist synchron, geordnet und vor Prozessende abgeschlossen. Der Adminstatus zeigt
+Oeffnungs-/Fehlerstatus, Schreibzaehler und letzte Folgenummer je Court.
 
 Die acht aktuellen Scorewerte sind volatil und liegen nur im Prozessspeicher.
 Nach einem Backendneustart wird ein in SQLite aktiver Court aus der externen
 Quelle neu aufgebaut. ScoreLog wird nicht gelesen und dient nicht zur
 Rekonstruktion eines Live-Stands.
+
+`AUDITLOG_FILE`, standardmaessig
+`Backend/.state/<INSTANCE_ID>-audit.sqlite`, produktiv
+`/var/lib/epiber-<system>/audit.sqlite`:
+
+Tabelle `audit_log`:
+  event_id PRIMARY KEY, occurred_at, actor_type, actor_id, actor_name, role,
+  action, target_type, target_id, request_id, operation_id, result, before_json,
+  after_json, error_code, source_ip, attempted_email, instance, created_at,
+  updated_at. `result` ist
+  `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
+  derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
+  Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
+  Loeschpfad verfuegbarer Tombstone darf einen noch leeren Vorher-Zustand
+  ergaenzen. Schlaegt der Auditabschluss nach ausgefuehrter Mutation fehl, wird
+  der Clientausgang als `WRITE_OUTCOME_UNKNOWN` behandelt.
+  Nur der Uebergang einer identischen Aktion mit identischer Request- und
+  Operation-ID von `started` auf einen terminalen Zustand ist erlaubt. Eine
+  wiederverwendete, aktionsfremde oder bereits abgeschlossene Event-ID ergibt
+  `AUDIT_LOG_EVENT_CONFLICT` und vermischt keine Auditzeilen.
+
+Auditpflichtig sind Fachwrites, Courtsteuerung, Monitor-Navigation/-Scroll und
+Monitorverwaltung sowie Login/Logout, Passwortaenderungen/-freigaben/-reset und
+Monitor-Enrollment. Akteur und Rolle stammen serverseitig aus Session oder
+Geraetekontext. `actor_name` ist der Anzeigename zum Ereigniszeitpunkt und ersetzt
+die stabile `actor_id` nicht. Loginversuche speichern die vollstaendige
+normalisierte syntaktisch gueltige Eingabe mit hoechstens 64 UTF-8-Bytes im
+lokalen Teil, hoechstens 254 UTF-8-Bytes insgesamt und kanonischer
+IDNA-ASCII/Punycode-Domain in `attempted_email` sowie die
+serverseitig bestimmte, kanonisierte Quelladresse in `source_ip`; ungueltige E-Mail-Rohtexte
+werden nicht gespeichert. Bei erfolgreichem Login werden ID, damaliger Name und
+Rolle ergaenzt, bei einem Fehlschlag bleibt der Akteur anonym. Ein bestehendes
+Schema wird additiv migriert; alte Zeilen erhalten fuer die drei neuen Felder
+leere Werte.
+
+Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
+E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
+`/status` ausgegeben und werden fachlich ohne automatische Bereinigung
+aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder
+Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und muss SQLite-
+Backups einbeziehen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
+maskierte E-Mail- und IP-Werte. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken;
+Standard `*` aktiviert alle implementierten Aktionen.
 
 
 ================================================================================
@@ -308,8 +368,10 @@ Foreign Keys, WAL und `synchronous=FULL`.
 Tabelle `app_state`:
   key TEXT PRIMARY KEY, value_json TEXT, revision INTEGER, updated_at INTEGER.
   Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
-  Monitorziele `monitor-target:<id>` und Metadaten-Intents. Compare-and-set
-  meldet bei falscher Revision `REVISION_CONFLICT`.
+  Monitorziele `monitor-target:<id>`, Metadaten-Intents sowie die
+  Frontend-Logging-Schluessel `frontend-logging:settings` und
+  `frontend-logging:targets`. Compare-and-set meldet bei falscher Revision
+  `REVISION_CONFLICT`.
   Court-Zustaende enthalten unter anderem Match-/Bewerbszuordnung, Spieler,
   Aktivstatus, die bei der Zuweisung aufgeloeste `matchtypId` und `displayRules`
   nach dem oben beschriebenen Vertrag. Individualzuweisungen und neue
@@ -317,6 +379,21 @@ Tabelle `app_state`:
   Sehr alte Zustaende ohne Feld `matchtypId` bleiben mit leerer ID lesbar. Sie
   koennen keinem Matchtyp sicher zugeordnet werden, erhalten deshalb keinen
   Regelsnapshot und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
+
+Frontend-Logging-State:
+  - `frontend-logging:settings` enthaelt Aktivierung, Basislevel, Freigabe
+    anonymer Events, Sampling, Batchgroesse, Flushintervall, Standardlevel/-dauer
+    fuer Zielpersonen und normale/gezielte Retentionvorgaben.
+  - `frontend-logging:targets` ordnet Personen-IDs `{ personId, level, createdAt,
+    expiresAt, createdBy }` zu. Abgelaufene Eintraege sind nicht mehr wirksam und
+    werden beim Lesen revisioniert entfernt.
+  - Die Einstellungen und Ziele sind Konfigurationsstate, keine Loghistorie.
+    Browserereignisse, IP-Adressen und Namenssnapshots werden nicht in
+    `STATE_FILE` gespeichert, sondern nur als strukturierte Betriebslogs
+    ausgegeben.
+  - Globale und zielbezogene Adminaenderungen werden getrennt im Auditlog als
+    `frontendLoggingSettings`, `frontendLoggingTargetSet` beziehungsweise
+    `frontendLoggingTargetRemove` festgehalten.
 
 Legacy-Migration fuer Court-Zustaende mit nichtleerer `matchtypId`, aber ohne
 Feld `displayRules`:
@@ -373,9 +450,9 @@ Tabelle `login_failures`:
   E-Mail beziehungsweise IP werden nur gehasht gespeichert. Alte Eintraege
   werden bereinigt und die Tabelle ist gegen unbeschraenktes Wachstum begrenzt.
 
-SQLite enthaelt keine Logging- oder ScoreLog-Queue und keinen ScoreLog-Pending-
-Zaehler. Der Adminstatus darf Tabellenalter und `pendingMetadataIntents`, aber
-keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
+Der Adminstatus zeigt neben Tabellenalter und `pendingMetadataIntents` nur
+aggregierte ScoreLog-/Auditlog-Zustaende, aber keine Ereigniszeilen, Cookies,
+Tokens, Passwortwerte oder privaten Schluessel.
 
 
 ================================================================================
@@ -384,8 +461,9 @@ keine Cookies, Tokens, Passwortwerte oder privaten Schluessel zeigen.
 
 Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
 Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
-fuer Personen, Matches1, EntryList, Logging und ScoreLog sowie eindeutige
-IDs/Metadaten zu pruefen. Keine EventID-Spalten fuer Logging/ScoreLog anlegen.
+fuer Personen, Matches1 und EntryList sowie eindeutige IDs/Metadaten zu pruefen.
+ScoreLog- und Auditlog-Dateien muessen getrennt vom State angelegt, gesichert und
+mit ihren WAL-/SHM-Dateien konsistent behandelt werden.
 Die vollstaendige verbindliche Liste steht in
 `Project/server-configs/ROLLOUT-CHECKLIST.md`.
 

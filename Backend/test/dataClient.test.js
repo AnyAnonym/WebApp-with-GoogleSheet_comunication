@@ -120,7 +120,7 @@ function loadDataClient({ cryptoImplementation, online = true, sessionStorage, s
   });
   const filename = path.resolve(__dirname, "../../Frontend/JS/dataClient.js");
   const exported = [];
-  let source = fs.readFileSync(filename, "utf8").replace(
+  let source = `const diagnostic = { debug() {}, error() {}, info() {}, warn() {} };\n${fs.readFileSync(filename, "utf8")}`.replace(/^import .*$/gm, "").replace(
     /\bexport\s+(async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g,
     (_match, asyncKeyword = "", name) => {
       exported.push(name);

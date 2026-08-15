@@ -6,8 +6,14 @@ const { AppError } = require("./errors.js");
 const { analyzeMatchRules } = require("./matchRules.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const { validateTableValues } = require("./tableSchemas.js");
+const logger = require("./logger.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
+
+function withAudit(result, audit) {
+  Object.defineProperty(result, "_audit", { value: audit, enumerable: false });
+  return result;
+}
 
 function viennaTimestamp(includeSeconds = false) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -275,7 +281,7 @@ class SheetService {
           },
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
-        console.warn(`sheetService: Doppelte Metadaten fuer ${cacheKey} konnten nicht bereinigt werden:`, error.message);
+        logger.log("warn", "sheet_metadata_duplicate_cleanup_failed", { table: tableName, recordId, duplicateCount: duplicates.length, error });
       }
       matches = [keep];
     }
@@ -311,7 +317,7 @@ class SheetService {
       try {
         metadata = await this.findRecordMetadata(sheets, tableName, recordId);
       } catch (confirmationError) {
-        console.error("sheetService: Metadaten-Bestaetigungsread fehlgeschlagen:", confirmationError.message);
+        logger.log("error", "sheet_metadata_confirmation_read_failed", { table: tableName, recordId, error: confirmationError });
       }
       if (!metadata) {
         const status = Number(error?.response?.status || error?.status || 0);
@@ -380,7 +386,7 @@ class SheetService {
       dataStore.set(tableName, fresh, { source: "write" });
       return fresh;
     } catch (error) {
-      console.error(`sheetService: Cache-Refresh fuer ${tableName} fehlgeschlagen:`, error.message);
+      logger.log("error", "sheet_cache_refresh_failed", { table: tableName, error });
       const merged = fallback(structuredClone(dataStore.get(tableName)));
       dataStore.set(tableName, merged, { source: "write" });
       return merged;
@@ -469,7 +475,7 @@ class SheetService {
             return { success: true, recovered: true };
           }
         } catch (confirmationError) {
-          console.error("sheetService: Passwort-Bestaetigungsread fehlgeschlagen:", confirmationError.message);
+          logger.log("error", "sheet_password_confirmation_read_failed", { error: confirmationError });
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Passwortaenderung ist unklar", 503, { personId });
       }
@@ -576,7 +582,7 @@ class SheetService {
             return { success: true, newMatchId: newId, recovered: true };
           }
         } catch (confirmationError) {
-          console.error("sheetService: Match-Bestaetigungsread fehlgeschlagen:", confirmationError.message);
+          logger.log("error", "sheet_match_confirmation_read_failed", { recordId: newId, error: confirmationError });
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
@@ -631,7 +637,7 @@ class SheetService {
             return { success: true, entryId: newId, recovered: true };
           }
         } catch (confirmationError) {
-          console.error("sheetService: EntryList-Bestaetigungsread fehlgeschlagen:", confirmationError.message);
+          logger.log("error", "sheet_entry_confirmation_read_failed", { recordId: newId, error: confirmationError });
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Anmeldung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
@@ -657,12 +663,13 @@ class SheetService {
         const recordId = String(recoveryDetails?.recordId || "").trim();
         if (recordId && !values.slice(1).some((row) => String(row[idIndex] || "").trim() === recordId)) {
           dataStore.set("entryList", values, { source: "write" });
-          return { success: true, removed: true, recovered: true };
+          return withAudit({ success: true, removed: true, recovered: true }, { before: recoveryDetails.tombstone || null, after: null });
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Abmeldung ist weiterhin unklar", 503, {
           operationId: params.operationId,
           recordId,
           phase: "delete",
+          tombstone: recoveryDetails?.tombstone || null,
         });
       }
       const targetRow = values.slice(1).find((row) =>
@@ -670,9 +677,16 @@ class SheetService {
         String(row[personIndex] || "").trim() === principal.id);
       if (!targetRow) {
         dataStore.set("entryList", values, { source: "write" });
-        return { success: true, removed: false };
+        return withAudit({ success: true, removed: false }, { before: null, after: null });
       }
       const recordId = String(targetRow[idIndex] || "").trim();
+      const entryDateIndex = headerIndex(header, "entrydate");
+      const tombstone = {
+        recordId,
+        bewerbId: String(targetRow[competitionIndex] || "").trim(),
+        personId: String(targetRow[personIndex] || "").trim(),
+        entryDate: entryDateIndex < 0 ? "" : String(targetRow[entryDateIndex] || "").trim(),
+      };
       const { metadata, row, sheets } = await this.resolveStableRow("entryList", recordId, values);
       if (
         String(row[competitionIndex] || "").trim() !== params.bewerbId
@@ -690,7 +704,7 @@ class SheetService {
           await this.deleteRecordMetadata(sheets, "entryList", recordId, metadata.metadataId);
         } catch (metadataError) {
           this.recordMetadata.delete(`entryList:${recordId}`);
-          console.warn("sheetService: Verwaiste EntryList-Metadaten konnten nicht entfernt werden:", metadataError.message);
+          logger.log("warn", "sheet_entry_metadata_cleanup_failed", { recordId, error: metadataError });
         }
       } catch (error) {
         try {
@@ -707,16 +721,17 @@ class SheetService {
             const stillPresent = confirmation.slice(1).some((entry) => String(entry[confirmationIdIndex] || "").trim() === recordId);
             if (!stillPresent) {
               dataStore.set("entryList", confirmation, { source: "write" });
-              return { success: true, removed: true, recovered: true };
+              return withAudit({ success: true, removed: true, recovered: true }, { before: tombstone, after: null });
             }
           }
         } catch (confirmationError) {
-          console.error("sheetService: EntryList-Delete-Bestaetigungsread fehlgeschlagen:", confirmationError.message);
+          logger.log("error", "sheet_entry_delete_confirmation_read_failed", { recordId, error: confirmationError });
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Abmeldung ist unklar", 503, {
           operationId: params.operationId,
           recordId,
           phase: "delete",
+          tombstone,
         });
       }
       await this.refreshCache("entryList", (cached) => {
@@ -724,37 +739,21 @@ class SheetService {
         const cachedIdIndex = headerIndex(cachedHeader, "id");
         return [cached[0], ...cached.slice(1).filter((entry) => String(entry[cachedIdIndex] || "").trim() !== recordId)];
       });
-      return { success: true, removed: true };
+      return withAudit({ success: true, removed: true }, { before: tombstone, after: null });
     }));
   }
 
   async withdrawFromRanking(principal, params) {
     const payload = { reason: params.reason, rank: params.rank, bewerbId: params.bewerbId };
-    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("logging", async () => {
-      if (recoveryOnly) {
-        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Logging-Write ist weiterhin unklar", 503, {
-          operationId: params.operationId,
-        });
-      }
-      const sheets = await this.getClient();
+    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, () => this.enqueue("ranking-withdrawal", async () => {
       this.assertRankingMembership(principal, params.bewerbId, params.rank);
-      try {
-        await sheets.spreadsheets.values.append({
-          spreadsheetId: SHEET_ID,
-          range: "Logging",
-          valueInputOption: "USER_ENTERED",
-          requestBody: { values: [[
-            viennaTimestamp(true),
-            "withdrawFromRanking",
-            `Rückzug: ${principal.name} (Rang ${params.rank}, Bewerb ${params.bewerbId}) — ${params.reason}`,
-          ]] },
-        });
-      } catch (error) {
-        throw new AppError("WRITE_OUTCOME_UNKNOWN", `Ausgang des Logging-Writes ist unklar: ${error.message}`, 503, {
-          operationId: params.operationId,
-        });
-      }
-      return { success: true };
+      return withAudit(
+        { success: true },
+        {
+          before: { bewerbId: params.bewerbId, rank: params.rank, membership: true },
+          after: { withdrawalRequested: true, reason: params.reason },
+        },
+      );
     }));
   }
 

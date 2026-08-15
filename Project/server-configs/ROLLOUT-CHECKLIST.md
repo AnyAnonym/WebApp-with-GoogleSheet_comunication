@@ -1,6 +1,6 @@
 # ePiber Rollout-Checkliste
 
-Stand: 01.08.2026
+Stand: 15.08.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> Live**. Jede Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
@@ -31,12 +31,11 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
 - [ ] `EntryList` verwendet die Spalten `ID`, `BewerbID`, `PersonenID`, `Entrydate`; neue Werte haben das Format `YYMMDD-HHMM` (Wiener Zeit).
-- [ ] `Logging` bleibt exakt dreispaltig: `Timestamp`, `Type`, `Message`.
-- [ ] `ScoreLog` bleibt exakt dreispaltig: `Timestamp`, `PlatzNr`, `Score`.
-- [ ] Keine `EventID`-Spalte und keine Event-ID-, Retry-, Readback- oder Pending-Migration fuer `Logging` oder `ScoreLog` angelegt.
-- [ ] Insbesondere keine SQLite-`ScoreLog`-Queue, kein `scoreLogPending` und keine ScoreLog-Pending-Abnahme erwartet. ScoreLog bleibt Fire-and-forget.
+- [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend nicht mehr gelesen oder beschrieben. Ihre bisherigen Inhalte sind vor einer optionalen Entfernung separat gesichert archiviert; ein automatischer Import in SQLite findet nicht statt.
+- [ ] `scorelog.sqlite` und `audit.sqlite` sind als getrennte Fachhistorien angelegt und nicht mit `state.sqlite` zusammengelegt.
+- [ ] ScoreLog-Event-IDs, Court-Folgenummern sowie Audit-Request-/Operation-IDs sind eindeutig und nach Neustart fortsetzbar.
 - [ ] Eindeutige, nichtleere IDs und eindeutige Personen-E-Mail-Adressen stichprobenartig beziehungsweise automatisiert geprueft.
-- [ ] Schreibrechte auf `Personen`, `Matches1`, `EntryList`, `Logging` und `ScoreLog` praktisch mit dem vorgesehenen Service-Account bestaetigt.
+- [ ] Schreibrechte auf `Personen`, `Matches1` und `EntryList` praktisch mit dem vorgesehenen Service-Account bestaetigt; fuer `Logging` und `ScoreLog` sind keine Sheet-Schreibrechte mehr erforderlich.
 
 ## 2. Developer Metadata
 
@@ -73,8 +72,8 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `npm run build` ist erfolgreich; statischer Check und vollstaendige Testsuite sind gruen.
 - [ ] `npm audit --omit=dev` meldet keine nicht akzeptierte Produktionsluecke.
 - [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der Vorlage aus dem eingetragenen Release-Commit erfolgreich.
-- [ ] Alle drei installierten Units bestehen `systemd-analyze verify`.
-- [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Loopbackports.
+- [ ] Alle vier ePiber-Units einschliesslich `epiber-grafana-auth.service` bestehen `systemd-analyze verify`.
+- [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Backends; `/metrics` und `/api/admin/grafana-auth` bleiben extern gesperrt. Nur die zentrale Live-Origin proxyt das separat geschuetzte `/grafana/*` ueber den Grafana-Unix-Socket.
 - [ ] Caddy-Roots zeigen exakt auf die jeweiligen `Frontend/`-Verzeichnisse; Backend, `.env`, Credentials und SQLite sind nicht statisch erreichbar.
 - [ ] CSP und Security-Header sind vorhanden; alle drei Origins und WebSockets verwenden HTTPS/WSS ohne Mixed Content.
 - [ ] Es existiert keine systemspezifische `SDK.js`; der Browser verbindet same-origin auf `/ws`.
@@ -86,9 +85,12 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `LISTEN_HOST=127.0.0.1`; Node lauscht Live auf 8080, PAJ auf 8083 und PK auf 8084 nur an Loopback.
 - [ ] `PUBLIC_ORIGIN` ist Live `https://epiber.at`, PAJ `https://epiber.at:8081`, PK `https://epiber.at:8082`.
 - [ ] `STATE_FILE` ist `/var/lib/epiber-<system>/state.sqlite`.
+- [ ] `SCORELOG_FILE` ist `/var/lib/epiber-<system>/scorelog.sqlite`; `AUDITLOG_FILE` ist `/var/lib/epiber-<system>/audit.sqlite`.
 - [ ] `StateDirectory=epiber-<system>`, Verzeichnismodus 0700, SQLite-Modus 0600 und `UMask=0077` bestaetigt.
-- [ ] SQLite verwendet Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat ausreichend freien Platz.
-- [ ] Konsistentes SQLite-Backup erstellt. Bei gestopptem Dienst wurden DB, WAL und SHM gemeinsam behandelt; alternativ wurde ein SQLite-Onlinebackup verwendet.
+- [ ] Alle drei SQLite-Dateien verwenden Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat fuer die unbegrenzte Fachhistorie ausreichend freien Platz.
+- [ ] Konsistente Backups aller drei SQLite-Dateien erstellt. Bei gestopptem Dienst wurden jeweilige DB, WAL und SHM gemeinsam behandelt; alternativ wurden SQLite-Onlinebackups verwendet.
+- [ ] journald-Drop-in ist installiert: persistente Speicherung, maximal 1 GiB und 14 Tage; die Werte passen zur Hostkapazitaet.
+- [ ] Jede ePiber-Unit besitzt eindeutigen `SyslogIdentifier`, explizite Journal-Ausgabe und Rate-Limit 1000/30s.
 - [ ] Sandbox und leere Capability-Sets entsprechen der Vorlage; es wurden keine pauschalen Schreib- oder Home-Ausnahmen hinzugefuegt.
 - [ ] `KillSignal=SIGTERM`, `SHUTDOWN_GRACE_MS=90000` und `TimeoutStopSec=95` stimmen zusammen.
 - [ ] Installation und Dienststeuerung erfolgen nur durch root oder autorisierte Betreiber; die `nologin`-Service-User `piber`, `paj` und `pk` koennen weder Deployments noch Caddy-/systemd-Dienste steuern und fuehren nur den Node-Prozess aus.
@@ -100,21 +102,56 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `/live` liefert HTTP 200 mit `status: ok`.
 - [ ] `/ready` und `/health` liefern nach Initialisierung HTTP 200 mit `status: ready`.
 - [ ] Anonymes `/status` wird mit 401 abgewiesen.
-- [ ] Admin-`/status` zeigt plausible Tabellenalter, Poller, Courtquelle, Provider, Monitor-, SQLite- und Sheets-Zustaende.
+- [ ] Admin-`/status` zeigt plausible Tabellenalter, Poller, Courtquelle, Provider, Monitor-, State-, ScoreLog-, Auditlog- und Sheets-Zustaende.
 - [ ] Admin-`/status` enthaelt keine Cookies, Tokens, Passwortwerte, privaten Schluessel oder `.env`-Secrets.
 - [ ] `/status` bleibt `no-store`; Zugriff und Auswertung sind auf Admins und autorisierte Betreiber fuer den Betriebszweck begrenzt. IP-Adressen, Benutzer-IDs/-namen sowie Client-/Geraetekennungen werden als geschuetzte personenbezogene Diagnosedaten weder oeffentlich angezeigt noch ungefiltert in Journale, Tickets, Screenshots oder Freigabeprotokolle uebernommen.
-- [ ] `pendingMetadataIntents` ist 0; es gibt und braucht keinen `scoreLogPending`-Wert.
+- [ ] `pendingMetadataIntents` ist 0; ScoreLog und Auditlog sind `open` und `ready`, ihre Zaehler/Folgenummern sind plausibel.
 - [ ] Browser-DevTools zeigen HTTPS, WSS-101-Upgrade auf same-origin `/ws`, Hello/Welcome-Protokoll v2 und keine CSP-, Zertifikats-, Origin- oder Mixed-Content-Fehler.
 - [ ] Externe Firewall erlaubt 80, 443, 8081 und 8082; Backendports 8080, 8083 und 8084 sind extern nicht erreichbar.
 - [ ] Das Zertifikat wird an Live, PAJ und PK fuer den Hostnamen `epiber.at` ohne Warnung validiert; die Portnummer ist kein Zertifikatsname.
 - [ ] Negative Klartextprobe fuer `http://epiber.at:8081` und `http://epiber.at:8082`: Weder Anwendung noch API-Daten werden ueber Plain HTTP ausgeliefert. Ablehnung, Verbindungsabbruch oder TLS-Fehler sind zulaessig; ein Redirect auf HTTPS wird auf diesen Ports nicht vorausgesetzt.
 
-## 7. Rollen und Fachfunktionen auf PAJ
+## 7. Gemeinsame Observability nach der Live-Promotion
+
+Dieser Abschnitt wird erst ausgefuehrt, nachdem derselbe Anwendungstand zuerst
+auf PAJ, dann PK und zuletzt Live erfolgreich abgenommen wurde. Er blockiert die
+vorherigen Anwendungsstufen nicht; danach blockiert jeder offene Punkt die
+Gesamtfreigabe.
+
+- [ ] Live, PAJ und PK liefern denselben freigegebenen Stand und intern jeweils `GET /metrics` im Prometheus-Textformat 0.0.4.
+- [ ] Externe Aufrufe von `/metrics` an allen drei Origins liefern keine Metriken; Loki, Prometheus, Alloy, Node Exporter und Auth-Broker lauschen nur auf Loopback, Grafana ausschliesslich auf dem gruppengeschuetzten Unix-Socket.
+- [ ] Prometheus zeigt `live`, `paj` und `pk` im Job `epiber` dauerhaft `up`; PK wurde erst nach gesundem Backend aktiviert.
+- [ ] Node Exporter erfasst `epiber-piber.service`, `epiber-paj.service`, `epiber-pk.service`, `epiber-grafana-auth.service` und `grafana.service` genau einmal auf dem gemeinsamen Host.
+- [ ] Alloy liest alle drei Backendjournale, das Auth-Brokerjournal und `/var/log/caddy/epiber-{live,paj,pk}-access.json`; Loki zeigt Ereignisse mit korrektem `deployment`.
+- [ ] Caddy-Access-Logs gehoeren `caddy:grafana-alloy`, haben Modus 0640, das Verzeichnis Modus 2750, rotieren maximal 14 Tage und enthalten keine Querystrings, Header, Cookies, Tokens oder Quelladressen. Alloy ist kein Mitglied der Caddy-Gruppe; nach einer kontrolliert erzwungenen Rotation kann Alloy die neue Datei lesen.
+- [ ] Grafana lauscht nur auf `/run/epiber-observability/grafana.sock` mit `grafana:caddy` und Modus 0660. Caddy stellt nur Grafanas `/metrics` auf `127.0.0.1:3001` bereit; andere Pfade und externe Zugriffe werden abgewiesen.
+- [ ] Personen-, Session-, IP-, Request-/Support-, Client- und Geraetewerte sind keine Prometheus- oder Loki-Labels; personenbezogene JSON-Felder werden nur fuer den Betriebszweck verwendet.
+- [ ] Loki loescht normale Frontenddiagnose nach 14 und gezielte Diagnose nach 7 Tagen; Prometheus-Retention und 5-GiB-Grenze passen zur gemessenen Serienzahl aller drei Backends.
+- [ ] `https://epiber.at/grafana/` funktioniert als einzige Grafana-Origin; PAJ und PK leiten `/grafana/` samt Unterpfad permanent dorthin weiter.
+- [ ] Je eine aktuelle aktive Adminsession aus Live, PAJ und PK erhaelt ohne zweite Passwortabfrage Zugriff. Benutzernamen sind korrekt als `epiber-<Instanz>:<Personen-ID>` getrennt.
+- [ ] Jeder zugelassene ePiber-Admin besitzt Grafana-Organisationsrolle `Admin`, aber keine Serveradminrolle, und kann Metriken und Logs aller drei Deployments abfragen.
+- [ ] Anonyme, Player-, Operator-, stale, abgelaufene, widerrufene, deaktivierte und nach Rollenentzug nicht mehr administrative Sessions erhalten keinen Grafana-Zugriff.
+- [ ] Vom Client gesetzte `X-WEBAUTH-USER`-/`X-WEBAUTH-ROLE`-Header werden nicht vertraut. Der Broker reicht pro Backend nur dessen eigenes Cookie weiter.
+- [ ] Bei mehreren gueltigen Admincookies verwendet der Broker deterministisch Live, PK, PAJ; ein ausgefallenes Realm blockiert eine andere gueltige Adminsession nicht.
+- [ ] Logout, Sessionablauf, Rollenentzug und Deaktivierung sperren den naechsten HTTP-Request und WebSocket-Neuaufbau. Eine bestehende Grafana-Live-Verbindung ist keine Autoritaet fuer privilegierte Entscheidungen.
+- [ ] Grafana-Assets, API und Live-WebSocket funktionieren ohne CSP-, Redirect-, Mixed-Content-, Cookie- oder Subpathfehler.
+- [ ] Vier gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj|pk` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht dreifach gezaehlt.
+- [ ] Anwendungsalerts erzeugen getrennte Alarm- und Recoveryzustaende je Deployment; Host-/Stackalarme existieren nur einmal.
+- [ ] SMTP, Benachrichtigungsversuche, oeffentliche Dashboards, lokale und externe Snapshots, Pluginverwaltung, automatische Pluginvorinstallation und automatische Pluginupdates sind deaktiviert.
+- [ ] `/var/lib/grafana/plugins` gehoert `grafana:grafana` und hat Modus 0750; ein wiederholter Installerlauf erhaelt beziehungsweise repariert diesen Zustand.
+- [ ] Ein vor dem Installerlauf vorhandenes Caddy-Access-Log wird wiederholbar auf `caddy:grafana-alloy` und Modus 0640 repariert.
+- [ ] Die Grafana-Datenbankbereitschaft wird sowohl mit kompaktem als auch mit formatiertem Health-JSON erkannt.
+- [ ] Grafana-SQLite wurde konsistent gesichert; das lokale Break-glass-Passwort wurde nicht fuer den Normalzugang verwendet oder in Browser, Journal und Protokoll ausgegeben.
+- [ ] Ausfall von Grafana, Prometheus oder Loki beeintraechtigt ePiber nicht; Auth-Broker-, Loki- und Pipeline-Recovery sowie ein Observability-Rollback wurden kontrolliert geprueft.
+
+## 8. Rollen und Fachfunktionen auf PAJ
 
 - [ ] Anonymous sieht nur oeffentliche Daten/Profile und kann keine geschuetzten Writes ausfuehren.
 - [ ] `player` kann sich anmelden/abmelden, eigenes Profil und Mitgliederprofil sehen, eigenes Passwort aendern, Forderung und EntryList fachregelkonform bedienen.
 - [ ] `operator` kann zusaetzlich Navigator und Courtsteuerung bedienen, aber keine Admin-Monitorverwaltung oder fremde Passwortsetzung.
 - [ ] `admin` kann Resetnachweis erzeugen, Passwort direkt setzen sowie Monitore provisionieren, rotieren und widerrufen.
+- [ ] Nur `admin` sieht `adminLogging.html`, kann globale Frontend-Level/Sampling/Batch/Flushwerte und temporaere Zielpersonen setzen oder entfernen und sieht die festen Retentionwerte 14/7 Tage; alle drei Mutationstypen erscheinen im Auditlog.
+- [ ] Eine temporaere Zielperson erscheint mit ID, Klarname, Rolle, Level, Ersteller, Ablauf und plausibler Restzeit. Die Policy greift im Collector sofort, erreicht offene Standardseiten spaetestens beim Sessionrefresh, zeigt der Person einen neutralen Ablaufhinweis und faellt nach Ablauf auf die globale Policy zurueck.
 - [ ] Nur `admin` kann ueber `POST /api/admin/password-setup` die Erstvergabe freigeben oder aufheben; Profilanzeige und Sheetwert `KennwortVergessen` wechseln dabei konsistent zwischen `x` und leer.
 - [ ] `POST /api/password-setup` akzeptiert nur E-Mail plus neues Passwort einer aktiven, mit `KennwortVergessen = x` freigegebenen Person; unbekannte, inaktive, nicht freigegebene und nachtraeglich deaktivierte Personen werden ohne Passwortwrite abgewiesen.
 - [ ] Erfolgreiche Erstvergabe verbraucht die Freigabe atomar: `KennwortVergessen` ist danach leer und ein zweiter Setupversuch wird abgewiesen.
@@ -124,17 +161,23 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Passwortaenderung/-reset widerruft die vorgesehenen Sitzungen; Cross-Tab Login/Logout bleibt konsistent.
 - [ ] Personenprofile zeigen anonym nur ID/Name und angemeldet die vorgesehenen Kontakt-/Geburtsdaten; Adminaktionen sind nur fuer Admin sichtbar und wirksam.
 - [ ] Login, eigene Passwortaenderung und Erstvergabe funktionieren mit mindestens einem freigegebenen Browser-Passwortmanager; `username`, `current-password`, `new-password` und `one-time-code` werden passend erkannt, ohne Passwortwerte in URL, Logs oder Storage zu schreiben.
+- [ ] Erfolgreicher und fehlgeschlagener Login erzeugen je einen Auditdatensatz mit Quell-IP und normalisierter gueltiger Login-E-Mail; nur der erfolgreiche Datensatz enthaelt serverseitige Benutzer-ID, Namenssnapshot und Rolle. Ein syntaktisch ungueltiger E-Mail-Rohtext wird nicht gespeichert.
+- [ ] Der Journalspiegel zeigt fuer Login-Audits den Namen, aber nur maskierte E-Mail und IP; vollstaendige Werte sind ausschliesslich in der geschuetzten `audit.sqlite` vorhanden und werden weder ueber `/status` noch in oeffentliche Tickets oder Screenshots uebernommen.
+- [ ] Direkte externe Requests koennen `X-Forwarded-For` nicht zur Auditfaelschung verwenden. Forwarded-Header werden nur von `127.0.0.1`/`::1` akzeptiert; lokale Prozesse gehoeren zur Host-Vertrauensgrenze und duerfen den Loopback-Backendport nicht unkontrolliert verwenden.
+- [ ] Frontend-Events akzeptieren nur erlaubte Ereignisse und technische Felder; ID, Klarname, Rolle und IP stammen nachweislich serverseitig aus Session/Verbindung. Inaktive Personen werden nicht weiter als authentifizierte Diagnoseidentitaet behandelt, anonyme Events nur nach expliziter Freigabe.
+- [ ] journald zeigt `frontend_client_event` mit korrekter Support-ID, Diagnoseprofil und Retentionklasse, aber ohne Payloads, DOM-/Profildaten, freie Fehlermeldungen, Stacks, E-Mail, Telefon, Cookies, Tokens oder Passwortwerte. Personenbezogene Felder werden nur autorisierten Betreibern zugaenglich gemacht.
+- [ ] Wiederverwendete oder aktionsfremde Audit-Event-IDs werden mit `AUDIT_LOG_EVENT_CONFLICT` abgewiesen und koennen terminale Zeilen nicht zurueckstufen.
 - [ ] Login-, Passwortaenderungs-, Reset-, Erstvergabe- und Admin-Passwortmodale schliessen nicht durch Backdropklick oder Escape, sondern nur explizit ueber Abbrechen/Schliessen; waehrend eines Requests sind Schliessen und Doppel-Submit gesperrt, danach werden Formulare und sichtbare Passwoerter zurueckgesetzt.
-- [ ] Matches/Forderungen, EntryList Add/Remove, Ranglistenrestriktionen und Loggingwrite wurden mit realistischen Daten geprueft.
+- [ ] Matches/Forderungen, EntryList Add/Remove und Ranglistenrestriktionen wurden mit realistischen Daten geprueft; jede Mutation erzeugt den vorgesehenen SQLite-Auditeintrag.
 - [ ] Unklare fachliche Writes werden als `unknown` behandelt und nicht automatisch erneut ausgefuehrt.
 
-## 8. Browser, Kiosk, Monitor und Scoreboards auf PAJ
+## 9. Browser, Kiosk, Monitor und Scoreboards auf PAJ
 
 - [ ] Aktuelle freigegebene Browser auf Desktop und Mobilgeraeten getestet.
 - [ ] Mobile Navigation oeffnet ueber den Hamburger, zeigt je Sessionzustand korrekt Anmelden oder Profil/Abmelden sowie `Spieler` nur angemeldet und schliesst bei Navigation beziehungsweise Authaktion ohne verdecktes Folgemodal.
 - [ ] Mobile Navigation wurde mit Touch, Tastatur, schmalem Hochformat und kleinem Querformat getestet; Links, Schliessen, Fokus und Scrollen bleiben erreichbar und es entstehen keine doppelten Authaktionen.
 - [ ] `players.html` zeigt anonym die Anmeldeaufforderung und angemeldet die erlaubte Spielerliste; Authwechsel, Invalidierung, Leerzustand und Fehlerzustand rendern ohne alte oder fremde Profildaten.
-- [ ] `bewerbsRaster.html?id=...` rendert Einzel und Doppel, BYE, `[w.o.]`, `[ret]`, `[gesetzt]`, Ergebnisse und Gewinner korrekt; fehlende/ungueltige Bewerb-ID, leere Daten, Reload, Authwechsel und Topic-Invalidierung wurden geprueft.
+- [ ] `bewerbsRaster.html?id=...` rendert Einzel und Doppel, BYE, die exakt kleingeschriebenen Marker `[wo]` und `[ret]`, `[gesetzt]`, Ergebnisse und Gewinner korrekt; Varianten wie `[w.o.]`, `[WO]` und `[RET]` werden nicht als Abschlussmarker akzeptiert; fehlende/ungueltige Bewerb-ID, leere Daten, Reload, Authwechsel und Topic-Invalidierung wurden geprueft.
 - [ ] Raster-/Gruppenumschaltung bei RoundRobin-Bewerben funktioniert wiederholt ohne doppelte Inhalte oder Handler; breite Raster bleiben horizontal bedienbar und die eingebettete Gruppenansicht entspricht der Einzelansicht.
 - [ ] `RoundRobin.html?id=...&paarungslayout=0-5` rendert Einzel/Doppel, Gruppenrang, Aufstiegsmarkierung, offene und gespielte Paarungen sowie Datum/Uhrzeit je Layout korrekt; manipulierte Namen/Ergebnisse werden nicht als HTML ausgefuehrt.
 - [ ] Kiosk-Hardware mit der echten Bildschirmaufloesung, Vollbildmodus und Autostart getestet.
@@ -160,14 +203,14 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Expliziter Nullreset setzt ausschliesslich den gewaehlten Platz sofort auf `0-0/0-0/0-0/0-0`, erhoeht Revision/Push genau einmal und bleibt fuer Abonnenten nach Resync sichtbar.
 - [ ] Nach Aktivierung oder Nullreset wird der erste externe Stand nur als Baseline erfasst; ein unveraenderter Vorreset-Stand hebt den Nullreset nicht auf, erst eine spaetere semantische externe Aenderung wird uebernommen.
 - [ ] Court-Epoch-Fencing wurde mit einer vor Deaktivierung, Reaktivierung oder Reset gestarteten und erst danach eintreffenden Pollantwort getestet; die alte Antwort wird verworfen.
-- [ ] Eine akzeptierte externe Scoreaenderung erzeugt genau einen dreispaltigen `ScoreLog`-Append (`Timestamp`, `PlatzNr`, `Score`); Freeze, Nullreset, Baseline und unveraenderte Polls erzeugen keinen Eintrag.
-- [ ] ScoreLog-Fehler veraendern den sichtbaren Score nicht und loesen weder Retry noch SQLite-/Pendingstatus aus; erfolgreicher Wiederanlauf schreibt erst die naechste semantische Aenderung.
+- [ ] Eine akzeptierte externe Scoreaenderung erzeugt genau einen SQLite-ScoreLog-Eintrag mit Event-ID, Court-Folgenummer, Rohscore, Match-/Court-Kontext und UTC-Zeit; Freeze, Nullreset, Baseline und unveraenderte Polls erzeugen keinen Eintrag.
+- [ ] Ein ScoreLog-Insertfehler veraendert den sichtbaren Score nicht, macht ScoreLog/Readiness erkennbar ungesund und wird mit unveraendertem Quellstand bei einem Folgepoll erneut versucht; nach Recovery wird genau ein Ereignis persistiert und angezeigt.
 - [ ] Monitor-Enrollment mit Secure-Cookie funktioniert; Token erscheint danach weder in URL noch Storage/Logs.
 - [ ] Navigator kann mehrere Monitore getrennt auswaehlen, navigieren und scrollen; Status durchlaeuft die erwarteten ACK-/Load-Zustaende.
 - [ ] Monitorrotation und Revoke wirken sofort; Offline-, Timeout- und Terminalfehler sind sichtbar und korrekt korreliert.
 - [ ] Sandboxed Candidate-/Active-iframes laden nur erlaubte same-origin Ziele.
 
-## 9. Reconnect, Standby, BFCache und WLAN
+## 10. Reconnect, Standby, BFCache und WLAN
 
 - [ ] Kurzzeitiger WebSocket-Abbruch fuehrt zu Backoff mit Jitter, Reconnect, Welcome, Subscription-Wiederherstellung und Resync.
 - [ ] Pending Requests werden bei Verbindungsverlust abgewiesen; Writes werden nicht blind automatisch wiederholt.
@@ -183,7 +226,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Ein erfolgreiches Welcome entfernt `epiber-app-version-reload`. Tritt der App-Versions-4406 bei gesetztem Marker erneut auf, stoppt der Client terminal ohne weiteren Reload und ohne Reconnectschleife; bei nicht nutzbarem Session Storage wird ebenfalls nicht automatisch neu geladen.
 - [ ] Ein generischer 4406, etwa wegen inkompatibler Protokollversion, ist terminal und erzeugt weder App-Update-Marker noch automatischen Reload oder Reconnectschleife; er wird nicht als App-Versionskonflikt gewertet.
 
-## 10. Last, Dauerbetrieb und SIGTERM
+## 11. Last, Dauerbetrieb und SIGTERM
 
 - [ ] Erwartete Spitzenlast mit realistischer Mischung aus Browsern, Scoreboards, Monitoren, Reads, Subscriptions und erlaubten Writes getestet.
 - [ ] Doppelte erwartete Spitzenlast getestet; Limits greifen kontrolliert, Prozess bleibt live und erholt sich ohne Neustart.
@@ -191,11 +234,11 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Courtquelle, Google-Sheets-Fehler/Timeout und Wiederherstellung getestet; Readiness und sichtbare Stale-/Fehlerzustaende sind korrekt.
 - [ ] Ein kompletter Veranstaltungstag Dauerbetrieb auf PAJ ohne wachsende Ressourcen, Reconnectsturm, ungeklaerte Writes oder Datenabweichung absolviert.
 - [ ] Kontrolliertes `systemctl stop epiber-paj` sendet SIGTERM, setzt `/live` auf stopping/503, lehnt neue Arbeit ab und schliesst WebSockets mit 1012.
-- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, SQLite schliesst sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
-- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen gemaess Vertrag und konsistente Court-/Navigatorwerte.
+- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, alle drei SQLite-Datenbanken schliessen sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
+- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen, ScoreLog-Folgenummern und Audit-Historie gemaess Vertrag.
 - [ ] Erzwungener Shutdown-Timeout wurde als Fehlerfall erkannt und nicht als erfolgreiche Abnahme gewertet.
 
-## 11. `pendingMetadataIntents` manuell klaeren
+## 12. `pendingMetadataIntents` manuell klaeren
 
 - [ ] Bei `pendingMetadataIntents > 0` ist die Promotion sofort gestoppt; betroffene fachliche Aktion wird nicht wiederholt.
 - [ ] Dienst und schreibende Benutzer werden fuer die Untersuchung angehalten; Spreadsheet und konsistenter SQLite-State werden erneut gesichert.
@@ -207,9 +250,9 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Wenn Existenz oder fachlicher Write-Ausgang nicht eindeutig beweisbar ist, bleibt der Intent pending, das System wird nicht promotet und die Klaerung wird eskaliert.
 - [ ] Eine direkte SQLite-Korrektur erfolgt nur bei gestopptem Dienst, nach Backup, mit dokumentiertem Key/Metadata-ID und gepruefter Einzelanweisung. Es gibt keinen allgemeinen Massenreset und kein Loeschen aller Intents.
 - [ ] Nach Neustart sind `/ready` gruen, `pendingMetadataIntents: 0`, Metadata und Zielzeile weiterhin eindeutig und der fachliche Zustand korrekt.
-- [ ] Niemals einen unbekannten Append oder die urspruengliche Benutzeraktion blind wiederholen. Besonders `Logging` und `ScoreLog` besitzen keine Event-ID-/Readbackgarantie; fuer ScoreLog existiert kein Pending-Mechanismus.
+- [ ] Niemals einen unbekannten Google-Sheet-Write oder die urspruengliche Benutzeraktion blind wiederholen. Score-/Audithistorien werden ueber ihre SQLite-Event-/Request-IDs korreliert; sie ersetzen nicht die bestehende Fachwrite-Unknown-Klaerung.
 
-## 12. Rollbackprobe
+## 13. Rollbackprobe
 
 - [ ] Praktischer PAJ-Rollback auf den dokumentierten vorherigen Commit wurde durchgefuehrt, nicht nur theoretisch beschrieben.
 - [ ] Vorherige Caddy-/systemd-Vorlagen, `.env`-Zuordnung und Credential-Zuordnung sind verfuegbar.
@@ -219,11 +262,11 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Nach Rollback sind Version, `/live`, `/ready`, `/health`, Rollen, WSS, Monitor und Kerndaten geprueft.
 - [ ] Rollbackdauer, Datenverlustfenster, Schritte und verantwortliche Person sind dokumentiert.
 
-## 13. Promotion PAJ -> PK -> Live
+## 14. Promotion PAJ -> PK -> Live
 
 ### PAJ
 
-- [ ] Alle Punkte 1 bis 12 ohne offene Blocker abgeschlossen.
+- [ ] Alle fuer die Anwendungsstufe geltenden Punkte 1 bis 6 und 8 bis 13 ohne offene Blocker abgeschlossen; die gemeinsame Observability aus Abschnitt 7 folgt erst nach Live.
 - [ ] PAJ-Origin `https://epiber.at:8081` und WSS funktionieren ohne Zertifikatswarnung.
 - [ ] PAJ-Journal und Adminstatus nach Abnahme unauffaellig; `pendingMetadataIntents: 0`.
 - [ ] PAJ-Abnahme von verantwortlicher und zweiter pruefender Person signiert.
@@ -244,6 +287,7 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] Live-Origin `https://epiber.at`, WSS, Version, live/ready/health und Adminstatus erfolgreich.
 - [ ] Kerndaten, Rollen/Login, Scoreboard, Court und mindestens ein Monitor ohne riskanten Testwrite geprueft.
 - [ ] Logs, Status, Ressourcen, Reconnects und Sheets-Fehler waehrend des vereinbarten Nachbeobachtungsfensters aktiv ueberwacht.
+- [ ] Nach erfolgreicher Live-Anwendungsabnahme wurde Abschnitt 7 vollstaendig ausgefuehrt und die gemeinsame Observability gesondert freigegeben.
 
 ## Erfolgskriterien
 
@@ -252,8 +296,9 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 - [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets, keine pending Metadata und keine aktiven unresolved Court-Regeln.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.
 - [ ] Keine falsche, doppelte oder verlorene fachliche Aenderung wurde in Sheets festgestellt.
-- [ ] `Logging` und `ScoreLog` sind unveraendert dreispaltig; keine Event-ID-/Pending-Migration wurde eingefuehrt.
+- [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden nicht mehr beschrieben; getrennte SQLite-Fachhistorien sind konsistent, gesichert und ohne Geheimnisse.
 - [ ] Browser-, Kiosk-, Mobil-, Scoreboard-, Monitor-, Reconnect-, Standby-, BFCache- und WLAN-Matrix ist bestanden.
 - [ ] Erwartete und doppelte Spitzenlast, Veranstaltungstag-Dauerbetrieb und kontrollierter SIGTERM sind bestanden.
 - [ ] Praktischer Rollback ist innerhalb des dokumentierten Zeitfensters moeglich und getestet.
+- [ ] Grafana ist zentral fuer aktuelle Admins aller drei Systeme erreichbar; Prometheus und Loki enthalten getrennt filterbare Daten aus Live, PAJ und PK ohne verbotene Labels.
 - [ ] Nachbeobachtungsfenster abgeschlossen, keine offenen kritischen/hohen Fehler, Freigabe protokolliert.

@@ -1,5 +1,6 @@
 const { AppError } = require("./errors.js");
 const { inspectMatchtypDisplayRules } = require("./scoreboardDisplay.js");
+const logger = require("./logger.js");
 
 const listeners = new Set();
 let repository = null;
@@ -55,7 +56,7 @@ function migrateLegacyCourtDisplayRules(matchtypen) {
     migratedCourts: [...new Set([...(displayRulesMigration?.migratedCourts || []), ...result.migratedCourts])],
   };
   if (result.unresolved.length) {
-    console.warn("stateStore: Legacy-Court-Anzeigeregeln konnten nicht aufgeloest werden:", result.unresolved);
+    logger.log("warn", "court_display_rules_unresolved", { count: result.unresolved.length, courts: result.unresolved });
   }
   return structuredClone(result);
 }
@@ -65,7 +66,7 @@ function emit(event) {
     try {
       listener(event);
     } catch (error) {
-      console.error("stateStore: Listener-Fehler:", error.message);
+      logger.log("error", "state_listener_failed", { eventType: event.type, error });
     }
   }
 }

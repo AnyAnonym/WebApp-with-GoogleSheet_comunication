@@ -1,0 +1,477 @@
+:root {
+  --logging-ink: #16231c;
+  --logging-muted: #607067;
+  --logging-line: #d9e2dc;
+  --logging-panel: #ffffff;
+  --logging-soft: #f3f7f4;
+  --logging-accent: #176b42;
+  --logging-accent-dark: #0e5030;
+  --logging-danger: #a32828;
+}
+
+.logging-access[hidden],
+.logging-app[hidden],
+.logging-table-wrap[hidden],
+.logging-empty[hidden] {
+  display: none !important;
+}
+
+.logging-main {
+  display: block;
+  width: min(100% - 32px, 1180px);
+  min-height: calc(100vh - 180px);
+  margin: 0 auto;
+  padding: 42px 0 64px;
+  color: var(--logging-ink);
+}
+
+.logging-access {
+  min-height: 55vh;
+  display: grid;
+  place-items: center;
+}
+
+.logging-access-card {
+  width: min(100%, 520px);
+  padding: 40px;
+  border: 1px solid var(--logging-line);
+  border-top: 5px solid var(--logging-accent);
+  border-radius: 18px;
+  background: var(--logging-panel);
+  box-shadow: 0 18px 50px rgba(25, 50, 35, 0.09);
+  text-align: center;
+}
+
+.logging-access-card h1,
+.logging-heading h1,
+.logging-panel h2 {
+  margin: 0;
+  line-height: 1.15;
+}
+
+.logging-access-card h1,
+.logging-heading h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.04em;
+}
+
+.logging-access-card > p:not(.logging-eyebrow) {
+  color: var(--logging-muted);
+}
+
+.logging-primary-link,
+.logging-primary-button,
+.logging-secondary-button,
+.logging-remove-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.logging-primary-link,
+.logging-primary-button {
+  border: 1px solid var(--logging-accent);
+  color: #fff;
+  background: var(--logging-accent);
+}
+
+.logging-primary-link:hover,
+.logging-primary-button:hover {
+  background: var(--logging-accent-dark);
+}
+
+.logging-secondary-button {
+  border: 1px solid var(--logging-line);
+  color: var(--logging-ink);
+  background: #fff;
+}
+
+.logging-app {
+  display: grid;
+  gap: 22px;
+}
+
+.logging-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 4px 10px;
+}
+
+.logging-heading p:not(.logging-eyebrow) {
+  max-width: 680px;
+  margin: 10px 0 0;
+  color: var(--logging-muted);
+}
+
+.logging-eyebrow {
+  margin: 0 0 7px;
+  color: var(--logging-accent);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.logging-status {
+  min-height: 0;
+  border-radius: 10px;
+}
+
+.logging-status:not(:empty) {
+  min-height: 46px;
+  padding: 12px 15px;
+  border: 1px solid #cbd7cf;
+  background: var(--logging-soft);
+}
+
+.logging-status[data-state="error"] {
+  border-color: #efbaba;
+  color: #792020;
+  background: #fff2f2;
+}
+
+.logging-status[data-state="success"] {
+  border-color: #add3bd;
+  color: #145b37;
+  background: #edf9f1;
+}
+
+.logging-panel {
+  margin: 0;
+  padding: 26px;
+  border: 1px solid var(--logging-line);
+  border-radius: 16px;
+  background: var(--logging-panel);
+  box-shadow: 0 8px 28px rgba(30, 55, 40, 0.05);
+}
+
+.logging-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+
+.logging-panel h2 {
+  font-size: 1.35rem;
+}
+
+.logging-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+
+.logging-fields label,
+.logging-target-form label {
+  display: grid;
+  align-content: end;
+  gap: 7px;
+  min-width: 0;
+  color: #34433a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.logging-fields input[type="number"],
+.logging-fields select,
+.logging-target-form input,
+.logging-target-form select {
+  width: 100%;
+  min-width: 0;
+  height: 43px;
+  border: 1px solid #bdc9c1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--logging-ink);
+  background: #fff;
+  font: inherit;
+}
+
+.logging-fields input:focus,
+.logging-fields select:focus,
+.logging-target-form input:focus,
+.logging-target-form select:focus {
+  outline: 3px solid rgba(23, 107, 66, 0.18);
+  border-color: var(--logging-accent);
+}
+
+.logging-input-unit {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #bdc9c1;
+  border-radius: 8px;
+  background: var(--logging-soft);
+}
+
+.logging-input-unit input {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.logging-input-unit > span {
+  flex: 0 0 auto;
+  padding: 0 11px;
+  color: var(--logging-muted);
+  font-size: 0.82rem;
+}
+
+.logging-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  align-content: center !important;
+  gap: 10px !important;
+  min-height: 43px;
+  margin-top: 23px;
+}
+
+.logging-checkbox input,
+.logging-switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--logging-accent);
+}
+
+.logging-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  color: var(--logging-accent-dark);
+  background: #eaf5ee;
+  font-weight: 800;
+}
+
+.logging-retention-note {
+  margin: 22px 0 0;
+  padding: 13px 15px;
+  border-left: 4px solid #be8b22;
+  color: #5d4a24;
+  background: #fff8e7;
+  font-size: 0.92rem;
+}
+
+.logging-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.logging-target-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(130px, 1fr) minmax(150px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.logging-target-note {
+  margin: 16px 0 0;
+  color: var(--logging-muted);
+  font-size: 0.88rem;
+}
+
+.logging-limit,
+.logging-count {
+  margin: 0;
+  color: var(--logging-muted);
+  font-size: 0.9rem;
+}
+
+.logging-count {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--logging-soft);
+  font-weight: 700;
+}
+
+.logging-table-wrap {
+  overflow-x: auto;
+}
+
+.logging-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.logging-table th,
+.logging-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--logging-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.logging-table th {
+  color: var(--logging-muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.logging-table td:first-child {
+  font-weight: 750;
+}
+
+.logging-level-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #19462f;
+  background: #e4f1e9;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.logging-remove-button {
+  min-height: 34px;
+  border: 1px solid #e3b4b4;
+  padding: 6px 10px;
+  color: var(--logging-danger);
+  background: #fff7f7;
+  font-size: 0.82rem;
+}
+
+.logging-remove-button:hover {
+  border-color: var(--logging-danger);
+  background: #ffeded;
+}
+
+.logging-primary-button:disabled,
+.logging-secondary-button:disabled,
+.logging-remove-button:disabled,
+.logging-fields :disabled,
+.logging-target-form :disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.logging-empty {
+  margin: 8px 0;
+  padding: 22px;
+  border: 1px dashed #c8d3cc;
+  border-radius: 10px;
+  color: var(--logging-muted);
+  background: var(--logging-soft);
+  text-align: center;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 900px) {
+  .logging-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logging-target-form {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+
+  .logging-target-form button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .logging-main {
+    width: min(100% - 20px, 1180px);
+    padding-top: 24px;
+  }
+
+  .logging-access-card,
+  .logging-panel {
+    padding: 20px;
+    border-radius: 12px;
+  }
+
+  .logging-heading,
+  .logging-panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .logging-heading .logging-secondary-button {
+    align-self: flex-start;
+  }
+
+  .logging-fields,
+  .logging-target-form {
+    grid-template-columns: 1fr;
+  }
+
+  .logging-checkbox {
+    margin-top: 0;
+  }
+
+  .logging-form-actions .logging-primary-button,
+  .logging-target-form button {
+    width: 100%;
+  }
+
+  .logging-table,
+  .logging-table tbody,
+  .logging-table tr,
+  .logging-table td {
+    display: block;
+  }
+
+  .logging-table thead {
+    display: none;
+  }
+
+  .logging-table tr {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--logging-line);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .logging-table td {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr);
+    gap: 10px;
+    padding: 8px 0;
+    overflow-wrap: anywhere;
+  }
+
+  .logging-table td::before {
+    content: attr(data-label);
+    color: var(--logging-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .logging-table td:last-child {
+    display: block;
+    border-bottom: 0;
+  }
+
+  .logging-remove-button {
+    width: 100%;
+  }
+}

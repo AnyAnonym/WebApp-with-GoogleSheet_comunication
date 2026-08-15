@@ -14,6 +14,8 @@ import {
   setupPassword,
   subscribeAuth,
 } from "./authClient.js";
+import { diagnostic } from "./diagnostics.js";
+import { clearProfileModalContent } from "./profileModalState.js";
 
 const readPublicProfile = createEndpoint("publicProfile");
 const readMyProfile = createEndpoint("myProfile");
@@ -22,6 +24,7 @@ const withdrawFromRanking = createEndpoint("withdrawFromRanking");
 let withdrawContext = null;
 let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
+let profileActionController = null;
 let modalAuthIdentity = null;
 
 function errorMessage(value, fallback) {
@@ -88,7 +91,11 @@ function closeModal(modal) {
     });
   }
   if (modal?.id === "withdrawModal") withdrawContext = null;
-  if (modal?.id === "profileModal") profileRequestGeneration += 1;
+  if (modal?.id === "profileModal") {
+    profileRequestGeneration += 1;
+    clearProfileModalContent(modal, profileActionController);
+    profileActionController = null;
+  }
   if (modal?.id === "resetPasswordModal") document.getElementById("resetPasswordForm")?.reset();
   if (modal?.id === "passwordSetupModal") document.getElementById("passwordSetupForm")?.reset();
   if (modal?.id === "adminPasswordModal") {
@@ -267,7 +274,7 @@ async function copyProfileValue(value, label) {
   }
 }
 
-function appendProfileField(container, label, value, copyValue = "") {
+function appendProfileField(container, label, value, copyValue = "", signal) {
   const row = document.createElement("p");
   row.className = "profile-field";
   const strong = document.createElement("strong");
@@ -288,20 +295,20 @@ function appendProfileField(container, label, value, copyValue = "") {
     icon.className = "profile-copy-icon";
     icon.setAttribute("aria-hidden", "true");
     copyButton.appendChild(icon);
-    copyButton.addEventListener("click", () => copyProfileValue(copyValue, label));
+    copyButton.addEventListener("click", () => copyProfileValue(copyValue, label), { signal });
     row.appendChild(copyButton);
   }
 
   container.appendChild(row);
 }
 
-function appendContactFields(container, profile) {
+function appendContactFields(container, profile, signal) {
   const email = String(profile.email || "").trim();
   const phone = String(profile.phone || "").trim();
   const displayedPhone = formatPhone(phone);
-  appendProfileField(container, "E-Mail", email, email);
-  appendProfileField(container, "Telefon", displayedPhone, phone ? displayedPhone : "");
-  appendProfileField(container, "Geburtsdatum", formatBirthDate(profile.birthDate));
+  appendProfileField(container, "E-Mail", email, email, signal);
+  appendProfileField(container, "Telefon", displayedPhone, phone ? displayedPhone : "", signal);
+  appendProfileField(container, "Geburtsdatum", formatBirthDate(profile.birthDate), "", signal);
 }
 
 function openPasswordModal() {
@@ -342,6 +349,9 @@ window.openProfileModal = async (options = {}) => {
   const nameElement = document.getElementById("profileName");
   const textElement = document.getElementById("profileText");
   const actionsElement = document.getElementById("profileActions");
+  profileActionController?.abort();
+  profileActionController = new AbortController();
+  const actionSignal = profileActionController.signal;
   profileModal.dataset.profileScope = ownProfile ? "private" : "public";
   nameElement.textContent = "Lade Profil...";
   textElement.textContent = "";
@@ -364,19 +374,19 @@ window.openProfileModal = async (options = {}) => {
     nameElement.textContent = profileName(profile);
 
     if (ownProfile) {
-      appendContactFields(textElement, profile);
+      appendContactFields(textElement, profile, actionSignal);
 
       const passwordButton = document.createElement("button");
       passwordButton.type = "button";
       passwordButton.className = "btn-login";
       passwordButton.textContent = "Passwort ändern";
-      passwordButton.addEventListener("click", openPasswordModal, { once: true });
+      passwordButton.addEventListener("click", openPasswordModal, { once: true, signal: actionSignal });
       actionsElement.appendChild(passwordButton);
       actionsElement.style.setProperty("display", "flex", "important");
       return;
     }
 
-    if (sessionUser) appendContactFields(textElement, profile);
+    if (sessionUser) appendContactFields(textElement, profile, actionSignal);
     else textElement.textContent = "Öffentliches Spielerprofil";
     const canChallenge = options.canChallenge === true
       || options.boxElement?.classList.contains("challengeable");
@@ -405,7 +415,7 @@ window.openProfileModal = async (options = {}) => {
         } finally {
           setupButton.disabled = false;
         }
-      });
+      }, { signal: actionSignal });
       actionsElement.appendChild(setupButton);
 
       const resetButton = document.createElement("button");
@@ -428,7 +438,7 @@ window.openProfileModal = async (options = {}) => {
           window.showToast(errorMessage(error, "Reset-Code konnte nicht erstellt werden."), "error");
           resetButton.disabled = false;
         }
-      });
+      }, { signal: actionSignal });
       actionsElement.appendChild(resetButton);
 
       const setPasswordButton = document.createElement("button");
@@ -442,7 +452,7 @@ window.openProfileModal = async (options = {}) => {
         closeModal(profileModal);
         openModal(adminPasswordModal);
         document.getElementById("adminNewPassword")?.focus();
-      });
+      }, { signal: actionSignal });
       actionsElement.appendChild(setPasswordButton);
       actionsElement.style.setProperty("display", "flex", "important");
     }
@@ -485,15 +495,15 @@ window.openProfileModal = async (options = {}) => {
         setTimeout(() => window.location.reload(), 1000);
       } catch (error) {
         releaseOperationId(operationKey, error);
-        console.error("Fehler beim Fordern:", error);
+        diagnostic.error("profile_challenge_failed", error);
         window.showToast(errorMessage(error, "Herausforderung fehlgeschlagen."), "error");
         challengeButton.disabled = false;
         challengeButton.textContent = "Fordern";
       }
-    });
+    }, { signal: actionSignal });
   } catch (error) {
     if (requestGeneration !== profileRequestGeneration) return;
-    console.error("Fehler beim Laden des Profils:", error);
+    diagnostic.error("profile_load_failed", error);
     nameElement.textContent = "Fehler beim Laden";
     textElement.textContent = errorMessage(error, "Profil konnte nicht geladen werden.");
   }
@@ -513,7 +523,7 @@ subscribeAuth((user) => {
   closeModal(adminPasswordModal);
   closeModal(resetProofModal);
   closeModal(withdrawModal);
-  if (profileModal.dataset.profileScope === "private") closeModal(profileModal);
+  closeModal(profileModal);
 });
 
 window.openWithdrawModal = ({ rank, bewerbId } = {}) => {
@@ -553,7 +563,7 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
     closeModal(loginModal);
     window.showToast("Erfolgreich angemeldet.", "success");
   } catch (error) {
-    console.error("Fehler beim Anmelden:", error);
+    diagnostic.error("login_failed", error);
     const message = error.code === "LOGIN_FAILED"
       ? "E-Mail oder Passwort ist ungültig."
       : errorMessage(error, "Anmeldung fehlgeschlagen.");
@@ -762,7 +772,7 @@ document.getElementById("withdrawForm").addEventListener("submit", async (event)
     setTimeout(() => window.location.reload(), 1000);
   } catch (error) {
     releaseOperationId(operationKey, error);
-    console.error("Fehler beim Raushängen:", error);
+    diagnostic.error("ranking_withdraw_failed", error);
     window.showToast(errorMessage(error, "Rückzug konnte nicht gespeichert werden."), "error");
   } finally {
     submitButton.disabled = false;
@@ -827,13 +837,13 @@ document.addEventListener("click", async (event) => {
   });
 
   try {
-    await endSession();
     closeModal(profileModal);
+    await endSession();
     closeModal(passwordModal);
     closeModal(adminPasswordModal);
     window.showToast("Erfolgreich abgemeldet.", "success");
   } catch (error) {
-    console.error("Fehler beim Abmelden:", error);
+    diagnostic.error("logout_failed", error);
     window.showToast(errorMessage(error, "Abmeldung fehlgeschlagen."), "error");
   } finally {
     logoutInProgress = false;

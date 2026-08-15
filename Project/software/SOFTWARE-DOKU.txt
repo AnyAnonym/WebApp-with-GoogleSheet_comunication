@@ -18,11 +18,12 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   Funktion.md                  | JSON-Datenfluss und Matchtyp-Auswertung.
   software/SOFTWARE-DOKU.txt   | Dieser Index.
   software/DATENBANK.txt       | Google-Sheets-Schema und -Projektionen,
-                               | SQLite-Schema/State, Idempotenz, Legacy-
-                               | Logging und ScoreLog.
+                               | SQLite-State, Idempotenz sowie getrennte
+                               | ScoreLog- und Auditlog-Fachhistorien.
   software/ARCHITEKTUR.txt     | Backend-/Frontendmodule, Cookie-/Rollenauth,
                                | Cache, SheetService, Court, Monitor,
-                               | WebSocket v2, Readiness und Shutdown.
+                               | WebSocket v2, Logging/Observability, Readiness
+                               | und Shutdown.
   software/ENDPOINTS.txt       | Aktuelle HTTP-Routen, WebSocket-v2-Vertrag,
                                | RPC-Berechtigungen/Parameter, Topics und
                                | Unknown-Write-Semantik.
@@ -31,7 +32,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
 
 ================================================================================
-  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN)
+  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 1 ADMINISTRATION)
 ================================================================================
 
   Pfad                              | Seite
@@ -47,6 +48,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/seiten/entryList.txt     | Bewerbsanmeldung
   software/seiten/rangliste.txt     | Ranglisten-Pyramide
   software/seiten/roundRobin.txt    | RoundRobin-Gruppenphase
+  software/seiten/adminLogging.txt  | Frontend-Logging-Administration
 
 Jede Seitendatei beschreibt Funktion, Dateien, Datenquellen, Layout, Bedienung,
 Subscriptions und Besonderheiten. `Frontend/court-score-test.html` ist eine
@@ -64,7 +66,14 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
       Infrastrukturindex fuer Caddy, systemd, HTTPS/WSS und Instanzen.
 
   `Project/server-configs/SERVER-SETUP.txt`
-      Installation und Betrieb des Backends.
+      Installation und Betrieb von Backend und gemeinsamer Observability.
+
+  `Project/server-configs/observability/README.md`
+      Gemeinsame Grafana-, Prometheus-, Loki-, Alloy- und Node-Exporter-
+      Topologie fuer Live, PAJ und PK.
+
+  `Project/server-configs/observability/RUNBOOKS.md`
+      Dauerhafte Betriebsablaeufe fuer Alerts, Fehler und Recovery.
 
   `Project/ChangeLogs/ChangeLog-main.txt`
       Zentrales Main-Aenderungsprotokoll.
@@ -78,9 +87,10 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
   `Project/2do/KOMMUNIKATION-ANALYSE.md`
       Kommunikationsanalyse und verbleibende manuelle Risiken.
 
-  `Project/2do/LOGGING-ANALYSE.md`
-      Logging-/Observability-Analyse; das dreispaltige Legacy-Logging- und
-      ScoreLog-Redesign ist weiterhin gesonderte spaetere Arbeit.
+  Grafana ist eine externe Betriebsoberflaeche und keine fachliche HTML-Seite.
+  Aktuelle Admins aller drei Systeme erreichen dieselbe Instanz unter
+  `https://epiber.at/grafana/`; PAJ und PK leiten ihren `/grafana/`-Einstieg
+  dorthin weiter.
 
 
 ================================================================================

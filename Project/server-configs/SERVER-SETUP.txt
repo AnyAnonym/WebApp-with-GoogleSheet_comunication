@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Letzte Aenderung: 01.08.2026
+Letzte Aenderung: 15.08.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -21,6 +21,9 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- contracts.js            Maschinenpruefbare RPC-Vertraege
 |   |-- security.js             Cookies, Originpruefung, Limits und Hashing
 |   |-- errors.js               Einheitliche Fehlercodes und Support-IDs
+|   |-- logger.js               Redigierte strukturierte JSON-Betriebslogs
+|   |-- metrics.js              Interner Prometheus-Metrikexporter
+|   |-- grafanaAuthBroker.js    Gemeinsame aktuelle Adminpruefung fuer Grafana
 |   |-- validators.js           Eingabevalidierung
 |   |-- dataProvider.js         WebSocket v2, RPCs, Topics und Zugriffsrollen
 |   |-- sheetService.js         Serialisierte/idempotente Google-Sheets-Writes
@@ -33,6 +36,8 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- monitorBroker.js        Adressierte Monitorcommands und ACK-Status
 |   |-- stateStore.js           Court- und Monitor-Anwendungsstate
 |   |-- stateRepository.js      Persistenter SQLite-State
+|   |-- scoreLogRepository.js   Separate dauerhafte Scorehistorie
+|   |-- auditLogRepository.js   Separate dauerhafte Audit-Historie
 |   |-- package.json            Kanonische Version, Node/npm-Anforderungen
 |   |-- package-lock.json       Versioniertes npm-Lockfile (Lockfile v3)
 |   |-- .env.example            Geheimnisfreie Vorlage
@@ -49,6 +54,8 @@ HTTP-Routen:
   GET /live                    Prozess lebt; beim Shutdown 503
   GET /ready, GET /health      initialisierte und aktuelle Abhaengigkeiten
   GET /status                  Detailstatus, nur mit Admin-Session
+  GET /metrics                 Internes Prometheus-Textformat, nicht via Caddy
+  GET /api/admin/grafana-auth  Interner aktueller Adminvertrag fuer Auth-Broker
   GET/POST/DELETE /api/session Sessionstatus, Login und Logout
   POST /api/password           Eigenes Passwort
   POST /api/password-reset     Reset mit einmaligem Nachweis
@@ -82,6 +89,18 @@ System | Verzeichnis              | Externe Origin              | Backend
 Live   | /srv/http/ePiber/piber   | https://epiber.at            | 127.0.0.1:8080
 PAJ    | /srv/http/ePiber/paj     | https://epiber.at:8081       | 127.0.0.1:8083
 PK     | /srv/http/ePiber/pk      | https://epiber.at:8082       | 127.0.0.1:8084
+
+Gemeinsame Observability-Listener:
+
+Dienst               | Loopback                  | Extern
+----------------------|---------------------------|--------------------------------
+Grafana               | Unix-Socket, nur Caddy    | https://epiber.at/grafana/
+Grafana-Metrikproxy   | 127.0.0.1:3001            | nicht erreichbar
+Loki                  | 127.0.0.1:3100            | nicht erreichbar
+Prometheus            | 127.0.0.1:9090            | nicht erreichbar
+Node Exporter         | 127.0.0.1:9100            | nicht erreichbar
+Alloy                 | 127.0.0.1:12345           | nicht erreichbar
+Grafana-Auth-Broker   | 127.0.0.1:8085            | nur ueber Caddy Forward Auth
 
 WebSockets verwenden entsprechend `wss://epiber.at/ws`,
 `wss://epiber.at:8081/ws` und `wss://epiber.at:8082/ws`. HTTP oder `ws://` ist
@@ -125,6 +144,27 @@ Build fuehrt den statischen Check und die Tests aus. `package.json`,
 `<FREIGEGEBENE_VERSION>` melden und zum freigegebenen Commit gehoeren. Ein
 Branchsuffix oder eine geaenderte Lockdatei stoppt den Rollout.
 
+Optionale PAJ-Browserlayouttests:
+
+  pacman -S --needed chromium
+  cd /srv/http/ePiber/paj/Backend
+  npm ci
+  npm run test:browser
+
+Chromium ist ausschliesslich ein systemweites Testwerkzeug und wird durch root
+ueber pacman installiert und aktualisiert. `playwright-core` ist exakt versioniert
+als Dev-Abhaengigkeit im Backend-Lockfile enthalten und laedt keinen eigenen
+Browser herunter. Der Test verwendet standardmaessig `/usr/bin/chromium` und die
+PAJ-Origin; abweichende sichere Testpfade beziehungsweise Origins koennen mit
+`CHROMIUM_PATH` und `SCOREBOARD_TEST_URL` gesetzt werden.
+
+Der Browserlauf erfolgt unprivilegiert als Benutzer `paj`, nie als root, nicht im
+systemd-Backenddienst und ohne `--no-sandbox`. Er prueft definierte Desktop- und
+Breakpointgroessen der live geladenen Scoreboardseite; bei einem Fehler legt er
+einen Screenshot nur temporaer unter `/tmp/opencode/` ab. PK und Live benoetigen
+Chromium nicht. `npm ci --omit=dev`, der normale Backendprozess und
+`npm run build` bleiben von der optionalen Browserinstallation unabhaengig.
+
 
 ================================================================================
 4. SYSTEMBENUTZER, VERZEICHNISSE UND RECHTE
@@ -159,13 +199,22 @@ Empfohlene lokale Rechte pro Instanz:
   Credential-Quelldatei:         root:root, 0600
   /var/lib/epiber-<system>/:      <service-user>:<service-user>, 0700
   state.sqlite:                  <service-user>:<service-user>, 0600
+  scorelog.sqlite:               <service-user>:<service-user>, 0600
+  audit.sqlite:                  <service-user>:<service-user>, 0600
 
 `StateDirectory=epiber-<system>` legt `/var/lib/epiber-<system>` mit dem in der
-Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite` mit WAL, Foreign Keys,
-`synchronous=FULL` und Modus 0600. SQLite enthaelt Sessions, gehashte Tokens,
+Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite`, `scorelog.sqlite` und
+`audit.sqlite` getrennt mit WAL, Foreign Keys, `synchronous=FULL` und Modus 0600.
+Der State enthaelt Sessions, gehashte Tokens,
 Resetnachweise, Monitorgeraete, idempotente Operationen, Loginlimits, Court-/
-Navigator-State und Metadata-Intents. SQLite-Datei, `-wal` und `-shm` nur bei
-gestopptem Dienst gemeinsam sichern oder mit einem SQLite-Onlinebackup sichern.
+Navigator-State und Metadata-Intents. ScoreLog und Auditlog enthalten die
+unbegrenzt aufbewahrte Fachhistorie. Jede SQLite-Datei mit ihrem `-wal` und
+`-shm` nur bei gestopptem Dienst gemeinsam sichern oder je Datenbank ein
+SQLite-Onlinebackup erstellen.
+
+Historische Zeilen der bisherigen Google-Sheets-Tabs `ScoreLog` und `Logging`
+werden nicht automatisch in diese Datenbanken importiert. Vor einer optionalen
+Entfernung der Tabs sind ihre Inhalte separat gesichert zu archivieren.
 
 
 ================================================================================
@@ -182,8 +231,11 @@ PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | 8083
 PK     | vor Deployment festlegen                            | 8084
 
 `COURT_URL` muss HTTPS verwenden. `GOOGLE_APPLICATION_CREDENTIALS`,
-`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID` und `STATE_FILE` nicht in `.env`
-duplizieren; diese Werte setzt die systemd-Unit verbindlich.
+`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID`, `STATE_FILE`, `SCORELOG_FILE` und
+`AUDITLOG_FILE` nicht in `.env` duplizieren; diese Werte setzt die systemd-Unit
+verbindlich. `LOG_LEVEL`, `SCORE_LOG_JOURNAL`, `AUDIT_LOG_JOURNAL` und
+`AUDIT_ACTIONS` koennen lokal anhand der geheimnisfreien Vorlage eingestellt
+werden.
 
 Credential-Quelldateien:
 
@@ -240,12 +292,16 @@ Die drei Vorlagen setzen je System:
   LISTEN_HOST                            127.0.0.1
   PUBLIC_ORIGIN                          jeweilige HTTPS-Origin
   STATE_FILE                             /var/lib/epiber-<system>/state.sqlite
+  SCORELOG_FILE                          /var/lib/epiber-<system>/scorelog.sqlite
+  AUDITLOG_FILE                          /var/lib/epiber-<system>/audit.sqlite
   GOOGLE_APPLICATION_CREDENTIALS         %d/google-service-account
   LoadCredential                         root-kontrollierte Quelldatei
   SHUTDOWN_GRACE_MS                      90000
   KillSignal/TimeoutStopSec              SIGTERM / 95 Sekunden
   StateDirectory/Mode                    epiber-<system> / 0700
   UMask                                  0077
+  SyslogIdentifier                       epiber-<system>
+  Journal-Rate-Limit                     1000 Events je 30 Sekunden
 
 Sandbox: NoNewPrivileges, PrivateTmp, PrivateDevices, ProtectSystem=strict,
 ProtectHome sowie Kernel-, ControlGroup- und Clock-Schutz; keine Capabilities,
@@ -262,10 +318,131 @@ Vorlagen aus dem freigegebenen Commit mit Paketversion
   systemctl daemon-reload
   systemctl enable epiber-piber epiber-paj epiber-pk
 
+Die journald-Vorlage als root installieren und journald neu starten:
+
+  install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+  install -o root -g root -m 0644 Project/server-configs/journald/epiber.conf /etc/systemd/journald.conf.d/epiber.conf
+  systemctl restart systemd-journald
+
+Die Vorlage speichert persistent, begrenzt alle Systemjournale gemeinsam auf 1 GiB
+und behaelt Eintraege maximal 14 Tage. Diese Werte sind vor Installation gegen
+Platzangebot und betriebliche Aufbewahrungsanforderungen zu pruefen. journald ist
+trotz Persistenz nur Diagnosekanal; Score-/Audit-Historie bleibt in SQLite.
+
+
+================================================================================
+8. GEMEINSAME OBSERVABILITY
+================================================================================
+
+Grafana, Prometheus, Loki, Alloy, Node Exporter und der Auth-Broker bilden einen
+gemeinsamen Hoststack fuer Live, PAJ und PK. Vor seiner Installation muessen alle
+drei Backends denselben freigegebenen Stand ausliefern und intern `GET /metrics`
+sowie `GET /api/admin/grafana-auth` bereitstellen. PK-Backendport 8084 darf erst
+als Prometheusziel aktiviert werden, wenn der PK-Dienst gesund laeuft.
+
+Datenfluss:
+
+  epiber-{piber,paj,pk}.service --journald--+
+  drei Caddy-Access-Logs -------------------+--> Alloy --> Loki
+  drei Backend-/metrics ------------------------> Prometheus --+
+  Node Exporter ----------------------------------------------+--> Grafana
+
+Alloy setzt `deployment=live|paj|pk`. Personen-ID, Klarname, E-Mail, IP,
+Support-/Request-ID, Session-, Client- und Geraetewerte bleiben JSON-Felder und
+werden keine Labels. Caddy entfernt Querystrings, Request-/Responseheader und
+Quelladressen aus den Access-Logs. Loki ist ein gemeinsamer Tenant: Jeder
+zugelassene Grafana-Admin darf bewusst Daten aller drei Systeme sehen.
+
+Grafana besitzt genau eine kanonische Origin `https://epiber.at/grafana/`. PAJ
+und PK antworten auf `/grafana/` mit einer permanenten Weiterleitung dorthin.
+Vor jedem Asset-, API- oder Grafana-Live-WebSocket-Request fragt Caddy den
+Loopback-Broker auf Port 8085. Dieser sendet jedes vorhandene Sessioncookie nur
+an sein eigenes Backend. Eine aktuelle aktive Adminsession aus Live, PK oder PAJ
+genuegt; Player, Operator, anonyme, stale, abgelaufene, widerrufene und inaktive
+Sessions werden abgewiesen. Bei mehreren gueltigen Sessions gilt Live, PK, PAJ.
+Grafana-Benutzernamen lauten `epiber-<Instanz>:<Personen-ID>`; alle erhalten die
+Organisationsrolle `Admin`, jedoch keine Grafana-Serveradminrechte.
+Grafana selbst lauscht ausschliesslich auf dem gruppengeschuetzten Unix-Socket.
+Caddy stellt nur dessen nicht vertraulichen `/metrics`-Pfad fuer Prometheus auf
+`127.0.0.1:3001` bereit; andere Pfade liefern dort 404.
+
+Installation nach vollstaendig bestandenem Release- und Backup-Gate:
+
+  install -d -o root -g root -m 0700 /etc/epiber-observability
+  install -o root -g root -m 0600 \
+    Project/server-configs/observability/grafana/grafana.env.example \
+    /etc/epiber-observability/grafana.env
+  # Vorlagenwerte lokal ersetzen; Secret-Key einer bestehenden DB nie beilaufig rotieren.
+  sh Project/server-configs/observability/install-observability.sh
+
+Das Skript verlangt die Pakete `grafana`, `grafana-alloy`, `loki`, `prometheus`
+und `prometheus-node-exporter`, validiert alle Vorlagen, installiert den
+Auth-Broker, aktiviert alle drei Scrapeziele und repariert die drei Caddy-
+Access-Logrechte auch bei bereits vorhandenen Dateien wiederholbar auf
+`caddy:grafana-alloy` und Modus 0640. Es legt
+`/var/lib/grafana/plugins` als `grafana:grafana` mit Modus 0750 an. Die
+Grafana-Bereitschaftspruefung entfernt JSON-Leerraum vor der Auswertung und
+erkennt dadurch kompakte wie formatierte Health-Antworten
+formatierungsunabhaengig. Vor dem Skriptlauf werden aktive Caddy-Konfiguration und
+Observability-Daten gesichert und die neue Caddy-Vorlage separat validiert. Der
+Skriptlauf stellt Grafana auf den Unix-Socket um; bis zum unmittelbar folgenden
+kontrollierten Caddy-Install/Reload ist nur Grafana voruebergehend nicht
+erreichbar, die drei ePiber-Anwendungen bleiben unbeeintraechtigt. Scheitert der
+Caddy-Reload, werden die gesicherte Caddydatei und die vorherigen
+Observability-Vorlagen wiederhergestellt, Grafana neu gestartet und Caddy erneut
+validiert und geladen. Der Wechsel findet deshalb ausschliesslich in einem
+dokumentierten Wartungsfenster statt.
+
+Lokale Daten und Aufbewahrung:
+
+  /var/lib/grafana/grafana.db          Benutzer/Dashboards/Alert-History
+  /var/lib/loki                        14 Tage, Frontend targeted 7 Tage
+  /var/lib/prometheus                  30 Tage und 5 GiB Maximalgroesse
+  /var/log/caddy/epiber-*-access.json  taegliche Rotation, maximal 14 Tage
+
+Grafana-SQLite ist vor Konfigurationsaenderungen konsistent mit SQLite-Backup zu
+sichern. Prometheus und Loki sind Betriebsdaten, keine Fachhistorie. ScoreLog und
+Audit bleiben ausschliesslich in ihren ePiber-SQLite-Dateien. SMTP, oeffentliche
+Dashboards, lokale und externe Snapshots, Pluginverwaltung, automatische
+Pluginvorinstallation und automatische Pluginupdates bleiben deaktiviert.
+Alerts werten weiter aus, werden aber ohne aktive Benachrichtigung von benannten
+Administratoren manuell kontrolliert; die State-History bleibt 30 Tage erhalten.
+
+Break-glass ist kein Normalzugang. Bei ausgefallener ePiber-Authentifizierung
+wird Grafana in einem dokumentierten Wartungsfenster gestoppt, einmalig im
+Vordergrund mit deaktiviertem Auth Proxy und unsicherem Cookie nur auf Loopback
+gestartet und ausschliesslich ueber einen SSH-Tunnel verwendet. Das lokale
+Passwort liegt root-only in `/etc/epiber-observability/grafana.env`; der normale
+Browserpfad verwendet es nie. Nach Abschluss wird der Vordergrundprozess beendet,
+der normale Dienst gestartet und der gemeinsame Adminzugang erneut geprueft.
+
+Kontrollierter Break-glass-Ablauf auf dem Server:
+
+  systemctl stop grafana.service
+  set -a
+  . /etc/epiber-observability/grafana.env
+  set +a
+  runuser -u grafana -- env \
+    GF_SERVER_PROTOCOL=http \
+    GF_SERVER_HTTP_ADDR=127.0.0.1 \
+    GF_SERVER_HTTP_PORT=3000 \
+    GF_SERVER_ROOT_URL=http://127.0.0.1:33000/grafana/ \
+    GF_SECURITY_COOKIE_SECURE=false \
+    GF_AUTH_PROXY_ENABLED=false \
+    /usr/bin/grafana server --config /etc/grafana.ini --homepath /usr/share/grafana
+
+Parallel wird auf dem Administratorrechner ausschliesslich fuer dieses
+Wartungsfenster `ssh -N -L 33000:127.0.0.1:3000 <SSH-BENUTZER>@epiber.at`
+gestartet und `http://127.0.0.1:33000/grafana/` mit dem lokalen Benutzer `admin`
+verwendet. Danach Vordergrundprozess und Tunnel beenden, das Terminal mit den
+exportierten Geheimnissen schliessen, `systemctl start grafana.service`
+ausfuehren und den normalen ePiber-Adminzugang erneut testen.
+
 Nicht alle Systeme bei einer Versionspromotion gleichzeitig starten. Die
 Reihenfolge PAJ, PK, Live einhalten. Beim Stop sendet systemd SIGTERM. Der Server
 nimmt keine neue Arbeit an, setzt Liveness auf stopping, stoppt Poller, schliesst
-WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst SQLite. Nach 95
+WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst alle drei
+SQLite-Datenbanken. Nach 95
 Sekunden greift systemd ein; ein Timeout oder Exitcode ungleich null ist ein
 fehlgeschlagener Rollout und kein erfolgreicher Stop.
 Die Bewertung aller dabei beobachteten Codes, insbesondere 1012, erfolgt nach
@@ -273,7 +450,7 @@ Die Bewertung aller dabei beobachteten Codes, insbesondere 1012, erfolgt nach
 
 
 ================================================================================
-8. START, HEALTH UND STATUS
+9. START, HEALTH UND STATUS
 ================================================================================
 
 Jeweils nach Migration, Installation und Build starten, zunaechst nur PAJ:
@@ -315,9 +492,10 @@ Admin-Session oder mit einem kontrolliert bereitgestellten Sessioncookie zu
 pruefen; ein anonymer Curl muss 401 liefern. Der Detailstatus muss Readiness,
 Poller, Tabellenalter/-fehler, Courtquelle, WebSocketprovider, Monitore,
 Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
-zeigen und darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
-akteursbezogen ueber den RPC `operationStatus` abgefragt. Es gibt im bestaetigten
-dreispaltigen ScoreLog-Vertrag keinen `scoreLogPending`-Status.
+zeigen. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
+Schreibzaehler liefern; Ereigniszeilen werden ueber `/status` nicht ausgegeben.
+Die Antwort darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
+akteursbezogen ueber den RPC `operationStatus` abgefragt.
 
 Die `/status`-Antwort ist trotz fehlender Secrets eine geschuetzte Sammlung
 personenbezogener Betriebsdiagnosen. Sie kann insbesondere IP-Adressen,
@@ -328,14 +506,24 @@ Screenshots und Auszuege duerfen nicht auf oeffentlichen Anzeigen erscheinen und
 nicht ungefiltert in Journale, Tickets oder Freigabeprotokolle kopiert werden;
 die HTTP-Antwort bleibt `no-store`.
 
+`audit.sqlite` enthaelt zusaetzlich geschuetzte personenbezogene Historie:
+Namenssnapshots sowie bei Loginversuchen vollstaendige normalisierte gueltige
+E-Mail-Adressen und Quell-IPs. Diese Werte werden fachlich ohne automatische
+Bereinigung aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle
+Loeschung oder Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und
+muss vorhandene Backups einbeziehen. Der journald-Spiegel enthaelt E-Mail und IP
+nur maskiert.
+
 Bei der Courtsteuerung friert das Deaktivieren eines Platzes den zuletzt
 akzeptierten Score ein. Ein expliziter Reset setzt nur diesen Platz sofort auf
 Null. Aktivierung und Reset setzen eine neue Court-Epoch und warten auf eine
 gegenueber der ersten externen Baseline geaenderte Quelle; dadurch koennen weder
 die unveraenderte externe Vorreset-Anzeige noch ein vor dem Zustandswechsel
 gestarteter Poll den Nullstand ueberschreiben. Nur danach akzeptierte semantische
-Scoreaenderungen werden in das dreispaltige Fire-and-forget-`ScoreLog` geschrieben;
-Reset und Baseline selbst erzeugen keinen ScoreLog-Eintrag. Bei Prozessstart
+Scoreaenderungen werden vor Anzeige und Push synchron in `scorelog.sqlite`
+geschrieben; Reset und Baseline selbst erzeugen keinen ScoreLog-Eintrag. Bei
+Insertfehler bleibt der bisherige sichtbare Score erhalten und der Folgepoll
+versucht die Aenderung erneut. Bei Prozessstart
 uebernimmt ein in SQLite bereits aktiver Platz den ersten externen Stand sofort in
 die Anzeige, ohne diesen Wiederanlaufstand zu protokollieren.
 
@@ -351,13 +539,13 @@ und keine Mixed-Content-, CSP-, Zertifikats- oder Originfehler zeigen.
 
 
 ================================================================================
-9. ROLLOUT UND ROLLBACK
+10. ROLLOUT UND ROLLBACK
 ================================================================================
 
 Die vollstaendige fachliche und technische Abnahme steht in
 ROLLOUT-CHECKLIST.md. Kurzregel:
 
-  1. Sheets und SQLite sichern, Schema/Credentials pruefen.
+  1. Sheets sowie alle drei SQLite-Datenbanken sichern, Schema/Credentials pruefen.
   2. Exakten Release-Commit und Lockfile auf PAJ installieren und abnehmen.
   3. Exakt denselben Commit auf PK installieren und Smoke-/Integrationscheck.
   4. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.

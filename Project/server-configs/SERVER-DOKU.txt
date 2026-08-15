@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Letzte Aenderung: 01.08.2026
+Letzte Aenderung: 15.08.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -21,6 +21,13 @@ systemd/                    | Vorlagen fuer /etc/systemd/system/
   epiber-piber.service      | Live, User piber, Backend 127.0.0.1:8080
   epiber-paj.service        | PAJ, User paj, Backend 127.0.0.1:8083
   epiber-pk.service         | PK, User pk, Backend 127.0.0.1:8084
+journald/epiber.conf        | Persistente, groessen- und zeitbegrenzte Journalvorlage
+observability/              | Gemeinsame Grafana-/Prometheus-/Loki-/Alloy-
+                            | Vorlagen, Dashboards, Alerts und Runbooks
+systemd/epiber-grafana-     | Gemeinsamer Loopback-Auth-Broker fuer Adminsessions
+  auth.service              | aus Live, PAJ und PK
+tmpfiles/epiber-            | Geschuetztes Laufzeitverzeichnis fuer den
+  observability.conf        | Caddy-/Grafana-Unix-Socket
 
 
 ================================================================================
@@ -37,8 +44,17 @@ Alle drei Browser-Systeme verwenden ausschliesslich HTTPS/WSS. Der Frontend-
 Client leitet die WebSocket-Adresse same-origin aus window.location und dem Pfad
 `/ws` ab. Es gibt keine systemspezifische SDK.js und keine SDK-Konfiguration.
 
-Caddy liefert das jeweilige Frontend aus und proxyt nur diese Backendpfade:
+Caddy liefert das jeweilige Frontend aus und proxyt nur diese Anwendungspfade:
   /ws, /api/*, /live, /ready, /health, /version, /status
+
+Grafana ist zentral unter `https://epiber.at/grafana/` erreichbar. Die
+gleichnamigen Pfade auf PAJ und PK leiten auf diese Adresse weiter. Caddy prueft
+jeden zentralen Grafana-Request ueber den Auth-Broker auf Port 8085 gegen die
+aktuellen Adminsessions aller drei Systeme und proxyt danach ueber den
+gruppengeschuetzten Unix-Socket `/run/epiber-observability/grafana.sock`.
+Caddy stellt Grafanas nicht vertraulichen Metrikpfad fuer Prometheus getrennt auf
+`127.0.0.1:3001` bereit. `/metrics` bleibt von allen externen Matchern
+ausgeschlossen.
 
 Zu den HTTP-Routen gehoeren `POST /api/password-setup` fuer die
 freigegebene Erstvergabe und `POST /api/admin/password-setup` zum Setzen oder
@@ -66,6 +82,28 @@ LOKALE, NICHT VERSIONIERTE BETRIEBSDATEN
     Von StateDirectory angelegter, systemspezifischer SQLite-State mit Modus 0600
     und WAL/FULL. Verzeichnis und Inhalt duerfen nur dem jeweiligen Service-User
     zugaenglich sein.
+
+  /var/lib/epiber-<system>/scorelog.sqlite
+    Dauerhafte Court-Scorehistorie mit Event-IDs und Folgenummern; getrennt vom
+    Anwendungsstate, Modus 0600, WAL/FULL und ohne automatische Bereinigung.
+
+  /var/lib/epiber-<system>/audit.sqlite
+    Dauerhafte Audit-Historie fuer Fach-, Court-, Monitor- und Security-Writes;
+    getrennt vom Anwendungsstate, Modus 0600, WAL/FULL und ohne Geheimnisse.
+
+  /etc/epiber-observability/grafana.env
+    Root-only, Modus 0600; enthaelt das lokale Break-glass-Passwort, Grafanas
+    Secret-Key und die zwingend deaktivierte SMTP-Konfiguration. Keine Werte
+    daraus werden versioniert.
+
+  /var/lib/grafana/grafana.db
+    Grafana-eigene SQLite/WAL fuer Benutzer, Dashboards und 30 Tage
+    Alarmzustandshistorie; kein ePiber-System-of-Record.
+
+  /var/lib/{loki,prometheus}
+    Lokale Betriebslogs beziehungsweise Zeitreihen. Loki bewahrt normale Daten
+    hoechstens 14 und gezielte Frontenddiagnose 7 Tage auf; Prometheus verwendet
+    30 Tage mit zusaetzlicher Groessenbegrenzung.
 
 Bekannte nicht geheime Betriebskennungen:
 

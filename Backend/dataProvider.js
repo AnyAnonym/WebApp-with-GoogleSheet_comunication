@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { WebSocket, WebSocketServer } = require("ws");
 const {
   ALLOWED_ORIGINS,
+  AUDIT_ACTIONS,
   MONITOR_COOKIE,
   PROTOCOL_VERSION,
   SESSION_COOKIE,
@@ -26,6 +27,8 @@ const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = 
 const { analyzeMatchRules } = require("./matchRules.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
+const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 const {
   booleanValue,
   idValue,
@@ -46,6 +49,7 @@ const upgradeLimiter = new TokenBucketLimiter({ rate: 2, burst: 10 });
 const writeLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 6, idleMs: 900000 });
 const unsubscribeCallbacks = [];
 const activeHandlers = new Set();
+const REQUEST_HISTORY_LIMIT = 20;
 const PUBLIC_TOPICS = new Set(["scores", "scoreboard-state", "matches", "players", "bewerbe", "bewerbsart", "matchtyp", "entryList", "ranking"]);
 const PUBLIC_COLUMNS = {
   bewerbe: ["id", "bezeichnung", "bewerbsartid", "geschlecht", "entrystart", "entrydeadline", "bewerbsbeginn", "bewerbsende", "sortorder"],
@@ -54,6 +58,63 @@ const PUBLIC_COLUMNS = {
   rlPlatzierung: ["id", "bewerbid", "personid", "rang"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
+
+function shouldAudit(action) {
+  return AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action);
+}
+
+function auditProjection(endpoint, params, result = {}, internal = null) {
+  switch (endpoint) {
+    case "addMatch":
+      return { targetType: "match", targetId: result.newMatchId || "", after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId } };
+    case "addEntryList":
+      return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
+    case "removeEntryList":
+      return { targetType: "entry", targetId: internal?.before?.recordId || "", before: internal?.before || null, after: internal?.after || null };
+    case "withdrawFromRanking":
+      return { targetType: "ranking", targetId: params.bewerbId, before: internal?.before || { bewerbId: params.bewerbId, rank: params.rank }, after: internal?.after || null };
+    case "courtAssign":
+    case "courtSetActive":
+      return {
+        targetType: "court",
+        targetId: params.court,
+        before: { expectedRevision: params.expectedRevision },
+        after: result.court ? { matchId: result.court.matchId || "", aktiv: result.court.aktiv, revision: result.court.revision } : null,
+      };
+    case "monitorNavigate":
+      return { targetType: "monitor", targetId: params.monitorId, after: { commandId: result.commandId || "", path: params.path, delivery: result.delivery || "" } };
+    case "monitorScroll":
+      return { targetType: "monitor", targetId: params.monitorId, after: { commandId: result.commandId || "", direction: params.direction, sequence: result.seq || 0 } };
+    case "monitorProvision":
+      return { targetType: "monitor", targetId: result.monitor?.monitorId || "", after: { monitorId: result.monitor?.monitorId || "", label: result.monitor?.label || params.label } };
+    case "monitorRotate":
+    case "monitorRevoke":
+      return { targetType: "monitor", targetId: params.monitorId, after: { monitorId: params.monitorId } };
+    default:
+      return { targetType: "", targetId: "", before: null, after: null };
+  }
+}
+
+function writeAudit({ eventId, principal, endpoint, params, result = {}, internal = null, outcome, error = null }) {
+  if (!dependencies.auditLogRepository || !shouldAudit(endpoint)) return;
+  const projection = auditProjection(endpoint, params, result, internal);
+  dependencies.auditLogRepository.record({
+    eventId,
+    actorType: principal.type,
+    actorId: principal.id,
+    actorName: principal.name || "",
+    role: principal.role,
+    action: endpoint,
+    targetType: projection.targetType,
+    targetId: projection.targetId,
+    requestId: eventId,
+    operationId: params.operationId || "",
+    result: outcome,
+    before: projection.before,
+    after: outcome === "success" ? projection.after : null,
+    errorCode: error?.code || null,
+  });
+}
 
 function requireCurrentTables(...tableNames) {
   for (const tableName of tableNames) {
@@ -93,7 +154,10 @@ function playerNameMap() {
 }
 
 function parsePlayerId(raw) {
-  return String(raw || "").trim().replace(/\[w\.?o\.?\]/gi, "").replace(/\[ret\]/gi, "").replace(/\[gesetzt\]/gi, "").trim();
+  const value = String(raw || "").trim();
+  const markerLength = value.endsWith("[wo]") ? 4 : value.endsWith("[ret]") ? 5 : 0;
+  const withoutMarker = markerLength ? value.slice(0, -markerLength).trim() : value;
+  return withoutMarker.replace(/\[gesetzt\]/gi, "").trim();
 }
 
 function readMatchRestrictions(params) {
@@ -551,6 +615,42 @@ function send(info, message) {
   }
 }
 
+function completeRequest(info, {
+  supportId,
+  clientRequestId,
+  endpoint,
+  startedAt,
+  error = null,
+}) {
+  const code = error?.code || (error ? "INTERNAL_ERROR" : null);
+  const rawClientRequestId = String(clientRequestId || "").slice(0, 128);
+  const safeClientRequestId = /^[A-Za-z0-9_.:-]{1,128}$/.test(rawClientRequestId) ? rawClientRequestId : "invalid";
+  const result = !error ? "success" : (error.status || 500) < 500 ? "rejected" : "failed";
+  const record = Object.freeze({
+    endpoint: String(endpoint || "").slice(0, 64),
+    at: startedAt,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    success: !error,
+    ...(code ? { code } : {}),
+    supportId,
+    clientRequestId: safeClientRequestId,
+  });
+  info.requestHistory.push(record);
+  if (info.requestHistory.length > REQUEST_HISTORY_LIMIT) info.requestHistory.shift();
+  info.lastRequest = record;
+  logger.log(error && (!(error instanceof AppError) || (error.status || 500) >= 500) ? "warn" : "info", "ws_request_completed", {
+    supportId,
+    connectionId: info.id,
+    requestId: record.clientRequestId,
+    endpoint: record.endpoint,
+    durationMs: record.durationMs,
+    result,
+    errorCode: code,
+  });
+  metrics.recordWsRequest({ endpoint: record.endpoint, knownEndpoint: Object.hasOwn(endpoints, record.endpoint), result, durationMs: record.durationMs });
+  return record;
+}
+
 function publish(topic, data) {
   for (const info of clients.values()) {
     if (!info.handshake || !info.subscriptions.has(topic)) continue;
@@ -583,7 +683,7 @@ function sendSubscriptionSnapshot(info, topic) {
   }
 }
 
-async function handleRequest(info, message) {
+async function handleRequest(info, message, supportId) {
   if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
   const endpoint = endpoints[message.endpoint];
   if (!endpoint || !Object.hasOwn(endpoints, message.endpoint)) throw new AppError("ENDPOINT_NOT_FOUND", "Unbekannter Endpoint", 404);
@@ -598,18 +698,43 @@ async function handleRequest(info, message) {
       throw new AppError("WRITE_RATE_LIMIT", "Zu viele Schreiboperationen", 429);
     }
   }
+  if (endpoint.write) {
+    writeAudit({ eventId: supportId, principal: authContext.principal, endpoint: message.endpoint, params, outcome: "started" });
+  }
   info.inflight++;
-  const startedAt = Date.now();
+  let actionCompleted = false;
   try {
-    const data = validateEndpointResponse(
-      message.endpoint,
-      await endpoint.handler(params, { ...authContext, info }),
-    );
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: true };
+    const rawData = await endpoint.handler(params, { ...authContext, info });
+    actionCompleted = true;
+    const internal = rawData?._audit || null;
+    const publicData = rawData && typeof rawData === "object" ? { ...rawData } : rawData;
+    if (publicData && typeof publicData === "object") delete publicData._audit;
+    const data = validateEndpointResponse(message.endpoint, publicData);
+    if (endpoint.write) {
+      writeAudit({ eventId: supportId, principal: authContext.principal, endpoint: message.endpoint, params, result: data, internal, outcome: "success" });
+    }
     return data;
   } catch (error) {
-    info.lastRequest = { endpoint: message.endpoint, at: Date.now(), durationMs: Date.now() - startedAt, success: false, code: error.code || "INTERNAL_ERROR" };
-    throw error;
+    let responseError = error;
+    if (endpoint.write) {
+      try {
+        writeAudit({
+          eventId: supportId,
+          principal: authContext.principal,
+          endpoint: message.endpoint,
+          params,
+          internal: error.details?.tombstone ? { before: error.details.tombstone, after: null } : null,
+          outcome: actionCompleted || error.code === "WRITE_OUTCOME_UNKNOWN" ? "unknown" : "failed",
+          error,
+        });
+      } catch (auditError) {
+        logger.log("error", "audit_record_failed", { supportId, action: message.endpoint, error: auditError });
+      }
+      if (actionCompleted && error.code !== "WRITE_OUTCOME_UNKNOWN") {
+        responseError = new AppError("WRITE_OUTCOME_UNKNOWN", "Aenderung ausgefuehrt, Auditabschluss ist unklar", 503);
+      }
+    }
+    throw responseError;
   } finally {
     info.inflight--;
   }
@@ -708,38 +833,59 @@ async function handleMessage(info, raw) {
   }
   if (message.type !== "request" || typeof message.id !== "string" || typeof message.endpoint !== "string") {
     if (message.type === "request" && typeof message.id === "string") {
+      const startedAt = Date.now();
       const id = String(message.id).slice(0, 128);
       const endpoint = typeof message.endpoint === "string" ? String(message.endpoint).slice(0, 64) : "";
+      const supportId = crypto.randomUUID();
+      const error = new AppError("INVALID_MESSAGE", "Request ist ungueltig");
       send(info, {
         type: "response",
         id,
         endpoint,
-        data: errorData(new AppError("INVALID_MESSAGE", "Request ist ungueltig")),
-        supportId: `${info.id}:${id}`,
+        data: errorData(error),
+        supportId,
       });
+      completeRequest(info, { supportId, clientRequestId: id, endpoint, startedAt, error });
     } else {
       send(info, { type: "error", error: { code: "INVALID_MESSAGE", message: "Request ist ungueltig" } });
     }
     return;
   }
-  const supportId = `${info.id}:${String(message.id).slice(0, 128)}`;
+  const startedAt = Date.now();
+  const clientRequestId = String(message.id).slice(0, 128);
+  const supportId = crypto.randomUUID();
   try {
-    message.id = stringValue(message.id, "requestId", { max: 128 });
+    message.id = stringValue(message.id, "requestId", { max: 128, pattern: /^[A-Za-z0-9_.:-]+$/ });
     message.endpoint = stringValue(message.endpoint, "endpoint", { max: 64, pattern: /^[A-Za-z][A-Za-z0-9]*$/ });
     message.params = message.params === undefined ? {} : requireObject(message.params);
   } catch (error) {
     send(info, { type: "response", id: String(message.id).slice(0, 128), endpoint: String(message.endpoint).slice(0, 64), data: errorData(error), supportId });
+    completeRequest(info, {
+      supportId,
+      clientRequestId,
+      endpoint: String(message.endpoint).slice(0, 64),
+      startedAt,
+      error,
+    });
     return;
   }
   try {
-    const data = await handleRequest(info, message);
-    if (info.lastRequest) info.lastRequest.supportId = supportId;
+    const data = await handleRequest(info, message, supportId);
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data, supportId });
+    completeRequest(info, { supportId, clientRequestId: message.id, endpoint: message.endpoint, startedAt });
   } catch (error) {
-    if (info.lastRequest) info.lastRequest.supportId = supportId;
-    if (!(error instanceof AppError)) console.error(`dataProvider: ${supportId} fehlgeschlagen:`, error);
-    else if ((error.status || 500) >= 500) console.warn(`dataProvider: ${supportId} fehlgeschlagen: ${error.code}`);
+    if (!(error instanceof AppError) || (error.status || 500) >= 500) {
+      logger.log(error instanceof AppError ? "warn" : "error", "ws_request_failed", {
+        supportId,
+        connectionId: info.id,
+        requestId: message.id,
+        endpoint: message.endpoint,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+    }
     send(info, { type: "response", id: message.id, endpoint: message.endpoint, data: errorData(error), supportId });
+    completeRequest(info, { supportId, clientRequestId: message.id, endpoint: message.endpoint, startedAt, error });
   }
 }
 
@@ -786,6 +932,7 @@ function init(server, options) {
       lastMessageAt: Date.now(),
       lastPong: Date.now(),
       lastRequest: null,
+      requestHistory: [],
       ip,
       origin: request.headers.origin,
       handshake: false,
@@ -803,7 +950,7 @@ function init(server, options) {
     connectionsByIp.set(ip, (connectionsByIp.get(ip) || 0) + 1);
     ws.on("message", (raw) => {
       const operation = handleMessage(info, raw).catch((error) => {
-        if (!(error instanceof AppError)) console.error(`dataProvider: Client ${info.id} Message-Fehler:`, error);
+        if (!(error instanceof AppError)) logger.log("error", "ws_message_handler_failed", { connectionId: info.id, handshakeComplete: info.handshake, pageType: info.pageType || null, error });
         send(info, { type: "error", error: errorData(error).error });
         if (!info.handshake) ws.close(error.status === 503 ? 1013 : 4406, "Handshake fehlgeschlagen");
       });
@@ -816,9 +963,15 @@ function init(server, options) {
       clients.delete(ws);
       const count = Math.max(0, (connectionsByIp.get(ip) || 1) - 1);
       if (count) connectionsByIp.set(ip, count); else connectionsByIp.delete(ip);
-      console.log(`dataProvider: Client ${info.id} getrennt (${code} ${reason.toString()})`);
+      logger.log(code === 1000 ? "debug" : "info", "ws_connection_closed", {
+        connectionId: info.id,
+        pageType: info.pageType || null,
+        closeCode: code,
+        durationMs: Date.now() - info.connectedAt,
+        handshakeComplete: info.handshake,
+      });
     });
-    ws.on("error", (error) => console.error(`dataProvider: Client ${info.id}:`, error.message));
+    ws.on("error", (error) => logger.log("error", "ws_socket_error", { connectionId: info.id, pageType: info.pageType || null, error }));
   });
 
   pingTimer = setInterval(() => {
@@ -874,6 +1027,7 @@ function getStatus() {
       lastMessageAt: info.lastMessageAt,
       lastPong: info.lastPong,
       lastRequest: info.lastRequest,
+      requestHistory: [...info.requestHistory],
       pageType: info.pageType || null,
       appVersion: info.appVersion || null,
       clientId: info.clientId || null,
@@ -886,6 +1040,17 @@ function getStatus() {
       bufferedAmount: info.ws.bufferedAmount,
     })),
   };
+}
+
+function getMetricsStatus() {
+  const connections = { pending: 0, anonymous: 0, user: 0, device: 0 };
+  let activeRequests = 0;
+  for (const info of clients.values()) {
+    activeRequests += Math.max(0, Number(info.inflight) || 0);
+    const state = !info.handshake ? "pending" : info.principal.type === "user" ? "user" : info.principal.type === "device" ? "device" : "anonymous";
+    connections[state]++;
+  }
+  return { connections, activeRequests };
 }
 
 async function shutdown(server) {
@@ -911,4 +1076,4 @@ async function shutdown(server) {
   wss = null;
 }
 
-module.exports = { getStatus, init, publish, shutdown };
+module.exports = { getMetricsStatus, getStatus, init, publish, shutdown };

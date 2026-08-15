@@ -39,6 +39,9 @@ const forbiddenPatterns = [
 
 for (const filename of frontendFiles) {
   const source = fs.readFileSync(filename, "utf8");
+  if (filename.endsWith(".js") && path.basename(filename) !== "diagnostics.js" && /\bconsole\s*\./.test(source)) {
+    failures.push(`${path.relative(projectRoot, filename)}: direkter console-Aufruf ausserhalb des Diagnoseadapters`);
+  }
   for (const [pattern, label] of forbiddenPatterns) {
     if (pattern.test(source)) failures.push(`${path.relative(projectRoot, filename)}: ${label}`);
   }

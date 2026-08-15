@@ -1,0 +1,365 @@
+apiVersion: 1
+
+deleteRules:
+  - { orgId: 1, uid: paj-backend-down }
+  - { orgId: 1, uid: paj-not-ready }
+  - { orgId: 1, uid: paj-sheet-stale }
+  - { orgId: 1, uid: paj-court-stale }
+  - { orgId: 1, uid: paj-sqlite-unhealthy }
+  - { orgId: 1, uid: paj-pending-metadata }
+  - { orgId: 1, uid: paj-http-failures }
+  - { orgId: 1, uid: paj-stack-target-down }
+  - { orgId: 1, uid: paj-host-disk-low }
+
+groups:
+  - orgId: 1
+    name: epiber-applications
+    folder: ePiber
+    interval: 1m
+    rules:
+      - uid: epiber-backend-down
+        title: ePiber Backend Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'up{job="epiber",deployment=~"live|paj|pk"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: '{{ $labels.deployment }} Backend ist nicht erreichbar'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#backend-down
+        labels: { scope: application, severity: critical }
+
+      - uid: epiber-not-ready
+        title: ePiber Not Ready
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_ready{deployment=~"live|paj|pk"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: '{{ $labels.deployment }} ist laenger als zwei Minuten nicht bereit'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#not-ready
+        labels: { scope: application, severity: critical }
+
+      - uid: epiber-sheet-stale
+        title: ePiber Sheet Data Stale
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min by (deployment) (epiber_sheet_table_current{deployment=~"live|paj|pk",table!="matchtyp"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: 'Mindestens eine Sheet-Tabelle von {{ $labels.deployment }} ist veraltet'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#sheet-data-stale
+        labels: { scope: application, severity: warning }
+
+      - uid: epiber-court-stale
+        title: ePiber Court Source Stale
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_court_source_stale{deployment=~"live|paj|pk"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: 'Courtquelle von {{ $labels.deployment }} ist veraltet'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#court-source-stale
+        labels: { scope: application, severity: warning }
+
+      - uid: epiber-sqlite-unhealthy
+        title: ePiber SQLite Unhealthy
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min by (deployment) (epiber_sqlite_ready{deployment=~"live|paj|pk"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: 'Mindestens eine SQLite-Datenbank von {{ $labels.deployment }} ist ungesund'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#sqlite-unhealthy
+        labels: { scope: application, severity: critical }
+
+      - uid: epiber-pending-metadata
+        title: ePiber Pending Metadata Intent
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'epiber_sheet_metadata_intents_pending{deployment=~"live|paj|pk"}'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          summary: '{{ $labels.deployment }} besitzt einen ungeklaerten Metadata-Intent'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#pending-metadata-intent
+        labels: { scope: application, severity: critical }
+
+      - uid: epiber-http-failures
+        title: ePiber HTTP Server Errors
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'sum by (deployment) (rate(epiber_http_requests_total{deployment=~"live|paj|pk",result="failed"}[5m]))'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0.05], type: gt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: '{{ $labels.deployment }} erzeugt anhaltend HTTP-Serverfehler'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#http-server-errors
+        labels: { scope: application, severity: warning }
+
+  - orgId: 1
+    name: epiber-host
+    folder: ePiber
+    interval: 1m
+    rules:
+      - uid: epiber-stack-target-down
+        title: ePiber Observability Target Down
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 600, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(up{job=~"prometheus|node|loki|alloy|grafana|grafana-auth"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: Mindestens ein Observability-Ziel ist nicht erreichbar
+          runbook: Project/server-configs/observability/RUNBOOKS.md#observability-target-down
+        labels: { scope: host, severity: critical }
+
+      - uid: epiber-host-disk-low
+        title: ePiber Host Disk Nearly Full
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 900, to: 0 }
+            model:
+              datasource: { type: prometheus, uid: prometheus }
+              expr: 'min(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs"})'
+              instant: true
+              intervalMs: 15000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model: { datasource: { type: __expr__, uid: __expr__ }, expression: A, reducer: last, refId: B, type: reduce }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              datasource: { type: __expr__, uid: __expr__ }
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator: { params: [0.1], type: lt }
+                  operator: { type: and }
+                  query: { params: [C] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 15m
+        annotations:
+          summary: Host-Dateisystem hat weniger als zehn Prozent frei
+          runbook: Project/server-configs/observability/RUNBOOKS.md#host-disk-nearly-full
+        labels: { scope: host, severity: warning }

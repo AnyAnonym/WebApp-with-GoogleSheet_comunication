@@ -28,7 +28,7 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   mobil einklappbar.
 
 -- Darstellung und Sicherheit --
-  Einzel und Doppel, Runde, Ergebnis, Forderungs-/Matchdatum sowie w.o./ret.-Badges
+  Einzel und Doppel, Runde, Ergebnis, Forderungs-/Matchdatum sowie wo/ret-Badges
   werden dargestellt. Alle externen Namen, Bewerbe und Matchwerte werden mit
   createElement/textContent in sichere DOM-Knoten geschrieben; Badges entstehen
   nur aus einer begrenzten internen Typauswahl.

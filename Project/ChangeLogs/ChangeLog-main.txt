@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.3.0
+Stand: 4.4.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,145 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.0] - 2026-08-15
+Commit: 4.4.0 | Observability und Fachhistorien integriert
+Quelle: 4.3.0-paj-1
+
+  Added
+  - [Software] Einen zentralen redigierenden JSON-Logger, getrennte SQLite-
+    Repositories fuer ScoreLog und AuditLog sowie einen dependency-freien
+    Prometheus-Exporter mit begrenzten Dimensionen eingefuehrt.
+  - [Software] Sichere Browserdiagnose mit serverseitiger Policy, Sampling,
+    gebuendeltem Collector, revisionsgeschuetzten Adminendpoints und der neuen
+    Administration `adminLogging.html` fuer globale Einstellungen und temporaere
+    Zielpersonen eingefuehrt.
+  - [Software] Einen gemeinsamen Grafana-Auth-Broker angelegt, der aktuelle
+    Adminsessions aus Live, PK und PAJ cookieisoliert prueft und ausschliesslich
+    serverseitig erzeugte Auth-Proxy-Header uebernimmt.
+  - [Software] Testbare Hilfsmodule fuer responsive Scoreboard-Namensgroessen,
+    Ranglisten-Offenstatus sowie Schutz-/Sperrzeitdarstellung und sichere
+    Profilbereinigung ergaenzt.
+  - [Infrastruktur] Gemeinsame Vorlagen fuer Grafana, Prometheus, Loki, Alloy,
+    Node Exporter, Caddy-Access-Logs, Dashboards, Alerts, Runbooks, Auth-Broker,
+    tmpfiles und eine wiederholbare Installation fuer Live, PAJ und PK angelegt.
+  - [Repository] `playwright-core` 1.62.1 und einen separaten
+    `npm run test:browser`-Lauf fuer das systemweite Chromium aufgenommen.
+
+  Changed
+  - [Software] HTTP erzeugt pro Request eine Support-UUID und strukturierte
+    Abschlussdiagnose; WebSocket trennt Client-Request-ID und Support-ID und
+    fuehrt je Socket eine atomare Historie der letzten 20 Abschluesse.
+  - [Software] Sheet- und Court-Poller unterscheiden Fehler, gezaeunte Ergebnisse
+    und Recovery, fassen identische Folgefehler periodisch zusammen und bestimmen
+    Court-Stale nach dem letzten erfolgreichen Abruf.
+  - [Software] Frontenddiagnosen verwenden ausschliesslich den zentralen Adapter
+    mit Event-/Feld-Allowlist, rekursiver Redaction, Levelsteuerung und
+    kontrollierter Fehlerprojektion. Personen-ID, Klarname, Rolle und Quell-IP
+    werden nur serverseitig bestimmt.
+  - [Datenbank] Scoreereignisse werden vor Anzeige und Push synchron und mit
+    transaktionaler Court-Folgenummer in `scorelog.sqlite` persistiert. Fach-,
+    Court-, Monitor- und Security-Mutationen erhalten einen persistenten
+    Audit-Lifecycle `started|success|failed|unknown` in `audit.sqlite`.
+  - [Datenbank] Login-Audits speichern bei gueltigen Eingaben normalisierte
+    E-Mail und kanonische Quell-IP sowie bei Erfolg Benutzer-ID, Namenssnapshot
+    und Rolle. Bestehende Auditdateien werden additiv migriert.
+  - [Software] Nur die exakt kleingeschriebenen Suffixe `[wo]` und `[ret]`
+    markieren einen Matchabschluss. Matchliste, Raster, Gruppenphase,
+    Scoreboard, Navigator und Rangliste behandeln sie auch ohne Ergebnis
+    konsistent als gespielt.
+  - [Infrastruktur] Grafana verwendet `https://epiber.at/grafana/` als einzige
+    kanonische Origin; PAJ und PK leiten dorthin weiter. Jeder Request wird ueber
+    den gemeinsamen current-only Auth-Broker geprueft und danach ueber einen
+    gruppengeschuetzten Unix-Socket an Grafana geleitet.
+  - [Infrastruktur] Prometheus scrapt die drei Backendziele Live, PAJ und PK;
+    Alloy sammelt deren Journale, das Auth-Brokerjournal und drei datensparsame
+    Caddy-Access-Logs. Gemeinsame Dashboards und mehrdimensionale Alerts trennen
+    Anwendungsdaten eindeutig nach `live|paj|pk`.
+  - [Infrastruktur] Grafana verwendet eine eigene SQLite/WAL-Datenbank mit
+    30 Tagen Alert-State-History. SMTP und aktive Benachrichtigungen sind
+    deaktiviert; benannte Administratoren kontrollieren Alarmzustaende manuell.
+  - [Dokumentation] Architektur-, Endpoint-, Datenbank-, Seiten-, Server-,
+    Setup-, Rollout-, Observability- und Runbookdokumentation auf die getrennten
+    Fachhistorien, sichere Frontenddiagnose und gemeinsame Observability
+    fortgeschrieben.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.0` gesetzt.
+
+  Fixed
+  - [Software] ScoreLog-Aenderungen koennen nicht mehr durch asynchrone
+    Sheet-Appends verloren gehen oder vertauscht werden; ein lokaler Insertfehler
+    veraendert den sichtbaren Score nicht und wird beim Folgepoll erneut versucht.
+  - [Software] Profilinhalte und Handler verbleiben nach Schliessen, Logout oder
+    Identitaetswechsel nicht mehr im DOM; HTTP-405-Antworten und parallele
+    WebSocket-Requests vermischen keine Support-IDs mehr.
+  - [Software] Einzelne syntaktisch ungueltige Personen-E-Mails blockieren nicht
+    mehr den gesamten Personenload; kanonisch doppelte gueltige E-Mails bleiben
+    ein fataler Schemafehler.
+  - [Software] Ranglistenmatches mit `[wo]` oder `[ret]` bleiben nicht mehr als
+    offene Forderung sichtbar. Gewinner-Schutzzeit und Verlierer-Sperrzeit werden
+    auch an der eigenen blauen Position angezeigt.
+  - [Software] Scoreboard-Spielernamen bleiben oberhalb des 1000-px-Breakpoints
+    trotz hoher Scores und Metadaten lesbar; die gemeinsame Schriftgroesse
+    beruecksichtigt Breite und verfuegbare Hoehe.
+  - [Infrastruktur] Der Installer repariert vorhandene Caddy-Access-Logrechte,
+    erkennt formatiertes Grafana-Health-JSON und haertet Snapshots,
+    Public-Dashboards sowie Pluginverwaltung, -vorinstallation und -updates.
+
+  Removed
+  - [Software] Google-Sheets-Writer und Schemaanforderungen fuer die Tabs
+    `ScoreLog` und `Logging` entfernt; historische Sheetzeilen werden nicht
+    automatisch in SQLite importiert.
+  - [Infrastruktur] PAJ-spezifische Dashboards, inaktive PK-/Live-Zielablagen und
+    `install-paj.sh` durch gemeinsame Artefakte ersetzt.
+  - [Dokumentation] Abgeschlossene temporaere Logging-/Observability-Planungs- und
+    Fertigstellungsdokumente nach Uebernahme in die kanonische Dokumentation
+    entfernt.
+  - [Repository] Die historische PAJ-Versionsreload-Anweisung und die
+    nicht-kanonische Root-Notiz `abc.txt` entfernt.
+
+  Tests
+  - [Software] Auf dem Quellbranch war `npm run build` mit statischer Pruefung und
+    allen 151 automatisierten Tests erfolgreich; die neuen Tests decken
+    Fachhistorien, Auditkonflikte, Redaction, Frontendcollector, HTTP-/WebSocket-
+    Korrelation, Poller-Recovery, Ranglistenmarker, Metriken und Auth-Broker ab.
+  - [Software] Der separate Chromium-Lauf pruefte die live geladene
+    Scoreboardseite bei 1000x768, 1001x768, 1280x720, 1366x768 und 1920x1080
+    erfolgreich.
+  - [Infrastruktur] Caddy, Alloy, Loki, Prometheus, Node Exporter, systemd-Units,
+    tmpfiles, Installationsskript, Grafana-Provisioning, neun Alertregeln und vier
+    Dashboarddateien wurden erfolgreich validiert.
+  - [Repository] `npm audit` meldete keine bekannten Schwachstellen;
+    `git diff --check` war erfolgreich.
+
+  Security
+  - [Software] Logger und Browserdiagnose redigieren Credentials, Bearer-Tokens,
+    geheime Queryparameter, Payloads, DOM-/Profildaten, Passwortwerte, Cookies und
+    freie Fehlerobjekte. Personen- und Korrelationswerte werden keine Prometheus-
+    oder Loki-Labels.
+  - [Datenbank] Vollstaendige Login-E-Mail, Quell-IP und Namenssnapshot bleiben
+    auf die geschuetzte Audit-SQLite begrenzt; der Journalspiegel maskiert E-Mail
+    und IP. Es gibt keine automatische Auditbereinigung.
+  - [Infrastruktur] Grafana akzeptiert keine direkte TCP-Verbindung und verleiht
+    ePiber-Admins nur Organisationsrolle `Admin`, keine Serveradminrechte.
+    Anonyme, Player-, Operator-, stale, abgelaufene, widerrufene und inaktive
+    Sessions bleiben ausgeschlossen.
+  - [Infrastruktur] Der Broker reicht jedem Backend ausschliesslich dessen eigenes
+    Sessioncookie weiter und ignoriert browserseitig gelieferte Identitaetsheader.
+
+  Rollout
+  - Live, PAJ und PK muessen denselben freigegebenen Release- und Vorlagenstand
+    bereitstellen. Der gemeinsame Installer stoppt vor Aenderungen, solange einer
+    der drei internen `/metrics`-Endpunkte fehlt.
+  - Historische `Logging`- und `ScoreLog`-Sheetzeilen sind vor einer optionalen
+    Entfernung separat zu archivieren; ein automatischer Import ist nicht
+    vorgesehen.
+  - State-, ScoreLog-, Audit- und Grafana-SQLite sind konsistent zu sichern.
+    Frontenddiagnose wird in Loki 14 Tage normal beziehungsweise 7 Tage gezielt
+    aufbewahrt; Audit- und Scorehistorien besitzen keine automatische fachliche
+    Bereinigung.
+  - Die praktische Promotion bleibt in der Reihenfolge PAJ, PK, Live
+    durchzufuehren; die gemeinsame Observability wird erst nach erfolgreicher
+    Live-Anwendungsabnahme aktiviert.
 
 [4.3.0] - 2026-08-01
 Commit: 4.3.0 | Profilmodale und mobile Navigation erweitert

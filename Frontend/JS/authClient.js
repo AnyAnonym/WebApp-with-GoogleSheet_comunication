@@ -1,4 +1,5 @@
 import { restartConnection } from "./dataClient.js";
+import { applyDiagnosticPolicy, diagnostic } from "./diagnostics.js";
 
 let user = undefined;
 let expiresAt = 0;
@@ -22,7 +23,7 @@ function runAuthMutation(callback) {
 
 function notify() {
   for (const listener of listeners) {
-    try { listener(user, { status: authStatus, error: authError }); } catch (error) { console.error("authClient listener:", error); }
+    try { listener(user, { status: authStatus, error: authError }); } catch (error) { diagnostic.error("auth_listener_failed", error); }
   }
 }
 
@@ -79,6 +80,7 @@ async function jsonRequest(path, options = {}) {
     clearTimeout(timeout);
   }
   const body = await response.json().catch(() => ({ success: false, error: { code: "INVALID_RESPONSE", message: "Ungueltige Serverantwort" } }));
+  if (body?.frontendLogging) applyDiagnosticPolicy(body.frontendLogging);
   if (!response.ok) {
     const supportSuffix = body.supportId ? ` (Referenz: ${body.supportId})` : "";
     const error = new Error(`${body.error?.message || "Anfrage fehlgeschlagen"}${supportSuffix}`);
@@ -172,11 +174,11 @@ export async function refreshSession({ reconnect = false, forceReconnect = false
     retryMs = 30000;
     authStatus = "unavailable";
     authError = error;
-    console.error("Session konnte nicht geladen werden:", error);
+    diagnostic.error("auth_session_refresh_failed", error);
   }
   scheduleExpiry(retryMs);
   const changed = previousFingerprint === null || previousFingerprint !== authFingerprint(user);
-  if (reconnect && (changed || forceReconnect)) await restartConnection().catch((error) => console.error("WebSocket konnte nicht neu authentifiziert werden:", error));
+  if (reconnect && (changed || forceReconnect)) await restartConnection().catch((error) => diagnostic.error("auth_socket_reauthentication_failed", error));
   if (changed) notify();
   return user;
 }
@@ -198,7 +200,7 @@ export function login(email, password) {
   authStatus = "authenticated";
   authError = null;
   scheduleExpiry();
-  await restartConnection().catch((error) => console.error("WebSocket konnte nicht neu authentifiziert werden:", error));
+  await restartConnection().catch((error) => diagnostic.error("auth_socket_reauthentication_failed", error));
   notify();
   channel?.postMessage("changed");
   return user;
@@ -249,7 +251,7 @@ export function changePassword(currentPassword, newPassword) {
   authStatus = "authenticated";
   authError = null;
   scheduleExpiry();
-  await restartConnection().catch((error) => console.error("WebSocket konnte nicht neu authentifiziert werden:", error));
+  await restartConnection().catch((error) => diagnostic.error("auth_socket_reauthentication_failed", error));
   notify();
   channel?.postMessage("changed");
   return result;

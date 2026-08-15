@@ -6,6 +6,9 @@ function setTestEnvironment() {
   process.env.PUBLIC_ORIGIN = "http://test.local";
   process.env.ALLOW_INSECURE_TRANSPORT = "true";
   process.env.STATE_FILE = ":memory:";
+  process.env.SCORELOG_FILE = ":memory:";
+  process.env.AUDITLOG_FILE = ":memory:";
+  process.env.LOG_LEVEL = "error";
   process.env.SHEET_ID = "test-sheet";
   process.env.COURT_URL = "https://court.invalid/data.json";
 }

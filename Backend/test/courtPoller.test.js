@@ -8,6 +8,31 @@ process.env.COURT_POLL_INTERVAL_MS = "500";
 process.env.COURT_MAX_BACKOFF_MS = "2000";
 
 const courtPoller = require("../courtPoller.js");
+const logger = require("../logger.js");
+
+function scoreLogRecorder({ shouldFail = () => false } = {}) {
+  const events = [];
+  let attempts = 0;
+  return {
+    events,
+    get attempts() { return attempts; },
+    append(event) {
+      attempts++;
+      if (shouldFail()) throw new Error("ScoreLog write failed");
+      const stored = { ...event, sequence: events.length + 1, occurredAt: new Date().toISOString() };
+      events.push(stored);
+      return stored;
+    },
+  };
+}
+
+function configure(fetch, scoreLog) {
+  courtPoller.setDependenciesForTests({
+    fetch,
+    scoreLog,
+    courtContext: () => ({ matchId: "m1", aktiv: 1, revision: 1 }),
+  });
+}
 
 async function waitFor(predicate, timeoutMs, message) {
   const deadline = Date.now() + timeoutMs;
@@ -53,10 +78,7 @@ test("Court-Poller begrenzt haengende Calls, verkraftet ungueltiges JSON und pus
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
 
-  courtPoller.setDependenciesForTests({
-    fetch: fetchStub,
-    sheetsFactory: async () => ({ spreadsheets: { values: { append: async () => ({ data: {} }) } } }),
-  });
+  configure(fetchStub, scoreLogRecorder());
   courtPoller.setOnUpdate((snapshot, metadata) => notifications.push({ snapshot, metadata }));
   t.after(async () => {
     courtPoller.setCourtActive({ "1": false, "2": false });
@@ -128,10 +150,10 @@ test("Court-Poller begrenzt haengende Calls, verkraftet ungueltiges JSON und pus
   await waitFor(() => abortCount > abortMarker, 300, "Deaktivierung hat den laufenden Court-Fetch nicht abgebrochen");
 });
 
-test("ScoreLog verwendet den dreispaltigen Legacy-Write ohne Retry", async (t) => {
+test("ScoreLog persistiert vor der Anzeige und wiederholt nach einem Insertfehler", async (t) => {
   let score = "3";
   let appendFails = false;
-  const appendCalls = [];
+  const scoreLog = scoreLogRecorder({ shouldFail: () => appendFails });
   const fetchStub = async () => new Response(JSON.stringify({
     courts: [{
       platz: "1",
@@ -145,22 +167,7 @@ test("ScoreLog verwendet den dreispaltigen Legacy-Write ohne Retry", async (t) =
       punktegast: "0",
     }],
   }), { status: 200, headers: { "Content-Type": "application/json" } });
-  const sheets = {
-    spreadsheets: {
-      values: {
-        async get() {
-          throw new Error("Legacy-ScoreLog darf keinen Readback ausfuehren");
-        },
-        async append(params) {
-          appendCalls.push(structuredClone(params));
-          if (appendFails) throw new Error("ScoreLog permission denied");
-          return { data: {} };
-        },
-      },
-    },
-  };
-
-  courtPoller.setDependenciesForTests({ fetch: fetchStub, sheetsFactory: async () => sheets });
+  configure(fetchStub, scoreLog);
   t.after(async () => {
     courtPoller.setCourtActive({ "1": false, "2": false });
     await courtPoller.stop();
@@ -168,30 +175,28 @@ test("ScoreLog verwendet den dreispaltigen Legacy-Write ohne Retry", async (t) =
   courtPoller.setCourtActive({ "1": true, "2": false });
   const baselinePollCount = courtPoller.getStatus().pollCount;
   await waitFor(() => courtPoller.getStatus().pollCount > baselinePollCount, 1200, "Initialer Score wurde nicht als Baseline gelesen");
-  assert.equal(appendCalls.length, 0);
+  assert.equal(scoreLog.events.length, 0);
   score = "4";
-  await waitFor(() => appendCalls.length === 1, 1200, "Initialer Score wurde nicht geloggt");
-  assert.equal(appendCalls[0].range, "ScoreLog");
-  assert.equal(appendCalls[0].valueInputOption, "USER_ENTERED");
-  assert.equal(appendCalls[0].requestBody.values[0].length, 3);
-  assert.match(appendCalls[0].requestBody.values[0][0], /^\d{6}-\d{4}-\d{2}$/);
-  assert.deepEqual(appendCalls[0].requestBody.values[0].slice(1), ["1", "4-4/0-0/0-0/15-0"]);
+  await waitFor(() => scoreLog.events.length === 1, 1200, "Scoreaenderung wurde nicht persistiert");
+  assert.equal(scoreLog.events[0].court, "1");
+  assert.equal(scoreLog.events[0].score, "4-4/0-0/0-0/15-0");
+  assert.equal(scoreLog.events[0].matchId, "m1");
 
   appendFails = true;
   score = "5";
-  await waitFor(() => appendCalls.length === 2, 1200, "Geaenderter Score wurde nicht geschrieben");
-  const pollMarker = courtPoller.getStatus().pollCount;
-  await waitFor(() => courtPoller.getStatus().pollCount > pollMarker, 1200, "Folgepoll blieb aus");
-  assert.equal(appendCalls.length, 2);
+  await waitFor(() => scoreLog.attempts >= 2, 1200, "Fehlgeschlagener Insert wurde nicht versucht");
+  assert.equal(scoreLog.events.length, 1);
+  assert.equal(courtPoller.getLastData().courts[0].satz1home, "4");
 
   appendFails = false;
-  score = "6";
-  await waitFor(() => appendCalls.length === 3, 1200, "Naechste Scoreaenderung wurde nicht geschrieben");
+  await waitFor(() => scoreLog.events.length === 2, 1200, "Unveraenderter Quellstand wurde nach Recovery nicht erneut persistiert");
+  assert.equal(scoreLog.events[1].score, "5-4/0-0/0-0/15-0");
+  assert.equal(courtPoller.getLastData().courts[0].satz1home, "5");
 });
 
 test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand ohne ScoreLog", async (t) => {
   let score = "8";
-  const appendCalls = [];
+  const scoreLog = scoreLogRecorder();
   const fetchStub = async () => new Response(JSON.stringify({
     courts: [{
       platz: "1",
@@ -207,12 +212,7 @@ test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand oh
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 
   courtPoller.setCourtActive({ "1": false, "2": false });
-  courtPoller.setDependenciesForTests({
-    fetch: fetchStub,
-    sheetsFactory: async () => ({
-      spreadsheets: { values: { append: async (params) => { appendCalls.push(structuredClone(params)); } } },
-    }),
-  });
+  configure(fetchStub, scoreLog);
   t.after(async () => {
     courtPoller.setCourtActive({ "1": false, "2": false });
     await courtPoller.stop();
@@ -224,10 +224,10 @@ test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand oh
     1200,
     "Erster Court-Stand wurde nach Prozessstart nicht uebernommen",
   );
-  assert.equal(appendCalls.length, 0);
+  assert.equal(scoreLog.events.length, 0);
 
   score = "9";
-  await waitFor(() => appendCalls.length === 1, 1200, "Folgeaenderung wurde nicht geloggt");
+  await waitFor(() => scoreLog.events.length === 1, 1200, "Folgeaenderung wurde nicht geloggt");
 });
 
 test("deaktivierte Plaetze frieren ein und ein Reset ueberholt laufende Fetches", async (t) => {
@@ -255,10 +255,7 @@ test("deaktivierte Plaetze frieren ein und ein Reset ueberholt laufende Fetches"
     return new Response(JSON.stringify({ courts: [court("1"), court("2")] }), { status: 200 });
   };
 
-  courtPoller.setDependenciesForTests({
-    fetch: fetchStub,
-    sheetsFactory: async () => ({ spreadsheets: { values: { append: async () => ({ data: {} }) } } }),
-  });
+  configure(fetchStub, scoreLogRecorder());
   t.after(async () => {
     releaseFetch?.();
     courtPoller.setCourtActive({ "1": false, "2": false });
@@ -312,4 +309,73 @@ test("deaktivierte Plaetze frieren ein und ein Reset ueberholt laufende Fetches"
       satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
     },
   );
+});
+
+test("Court-Fehler werden zusammengefasst, Recovery geloggt und erst nach Erfolgsalter stale", async (t) => {
+  let calls = 0;
+  let failAfterRecovery = false;
+  const events = [];
+  const originalLog = logger.log;
+  logger.log = (level, event, fields) => {
+    events.push({ level, event, fields });
+    return true;
+  };
+  const fetchStub = async () => {
+    calls++;
+    if (calls <= 2 || failAfterRecovery) {
+      throw Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+    }
+    return new Response(JSON.stringify({
+      courts: [{
+        platz: "1",
+        satz1home: "1",
+        satz1gast: "0",
+        satz2home: "0",
+        satz2gast: "0",
+        satz3home: "0",
+        satz3gast: "0",
+        punktehome: "0",
+        punktegast: "0",
+      }],
+    }), { status: 200 });
+  };
+
+  courtPoller.setCourtActive({ "1": false, "2": false });
+  courtPoller.setDependenciesForTests({
+    fetch: fetchStub,
+    scoreLog: scoreLogRecorder(),
+    courtContext: () => ({ matchId: "m1", aktiv: 1, revision: 1 }),
+    summaryEvery: 2,
+  });
+  t.after(async () => {
+    logger.log = originalLog;
+    courtPoller.setDependenciesForTests({ summaryEvery: 10 });
+    courtPoller.setCourtActive({ "1": false, "2": false });
+    await courtPoller.stop();
+  });
+  courtPoller.setCourtActive({ "1": true, "2": false });
+
+  await waitFor(
+    () => events.some(({ event }) => event === "court_poll_recovered"),
+    5000,
+    "Court-Recovery wurde nicht protokolliert",
+  );
+  assert.equal(events.filter(({ event }) => event === "court_poll_failed").length, 1);
+  assert.equal(events.filter(({ event }) => event === "court_poll_failure_summary").length, 1);
+  assert.equal(events.filter(({ event }) => event === "court_poll_recovered").length, 1);
+
+  failAfterRecovery = true;
+  await waitFor(() => courtPoller.getStatus().lastError?.code === "ECONNRESET", 1200, "Court-Folgefehler blieb aus");
+  const freshFailure = courtPoller.getLastData().source;
+  assert.equal(freshFailure.stale, false);
+  assert.equal(freshFailure.consecutiveFailures, 1);
+  assert.equal(freshFailure.lastError.code, "ECONNRESET");
+
+  const originalNow = Date.now;
+  Date.now = () => freshFailure.lastSuccessAt + freshFailure.staleAfterMs + 1;
+  try {
+    assert.equal(courtPoller.getLastData().source.stale, true);
+  } finally {
+    Date.now = originalNow;
+  }
 });

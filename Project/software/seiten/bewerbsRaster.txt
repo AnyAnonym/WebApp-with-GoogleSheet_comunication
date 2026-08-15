@@ -29,8 +29,9 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   Reset-Code-Erstellung und direktes Passwortsetzen.
 
 -- Darstellung und Sicherheit --
-  Einzel/Doppel, BYE/PRE, [wo], [ret], [gesetzt], Ergebnisse und Gewinner werden
-  speziell dargestellt. Enthaelt ein Einzelspieler oder einer der beiden
+  Einzel/Doppel, BYE/PRE, die exakt kleingeschriebenen Marker [wo] und [ret],
+  [gesetzt], Ergebnisse und Gewinner werden speziell dargestellt. Enthaelt ein
+  Einzelspieler oder einer der beiden
   Doppelpartner die aktuelle Session-ID, werden Name und gegebenenfalls Ergebnis
   des gesamten Slots blau dargestellt. Namen, Resultate, Meldungen und Badges
   entstehen aus sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes

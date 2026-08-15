@@ -21,7 +21,7 @@ function renderHeader() {
         <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
         <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
         <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
-        <a href="/grafana/" data-role="admin" hidden>Grafana</a>
+        <a href="https://epiber.at/grafana/" data-role="admin" hidden>Grafana</a>
       </nav>
 
       <div class="header-center">
@@ -60,7 +60,7 @@ function renderMobileNav() {
           <a href="Bewerbe.html" class="${activeClass("Bewerbe.html")}">Bewerbe</a>
           <a href="scoreboard.html" class="${activeClass("scoreboard.html")}">Scoreboard</a>
           <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
-          <a href="/grafana/" data-role="admin" hidden>Grafana</a>
+          <a href="https://epiber.at/grafana/" data-role="admin" hidden>Grafana</a>
         </nav>
       </div>
     </div>

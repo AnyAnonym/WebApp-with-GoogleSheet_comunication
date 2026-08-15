@@ -1,35 +1,89 @@
-# PAJ Observability
+# ePiber Observability
 
-Diese Vorlagen installieren die zentrale Observability ausschliesslich fuer PAJ.
-PK und Live sind nur unter `prometheus/targets/available/` vorbereitet und werden
-weder gescrapt noch anderweitig veraendert.
+Diese Vorlagen betreiben eine gemeinsame Observability fuer Live, PAJ und PK auf
+demselben Host. Alle internen Netzwerklistener binden ausschliesslich an
+`127.0.0.1`; Grafana selbst verwendet nur einen geschuetzten Unix-Socket.
 
-Festgelegte Architektur:
+## Topologie
 
-- Grafana, Loki, Prometheus, Alloy und Node Exporter laufen auf demselben Host.
-- Alle Observability-Listener binden ausschliesslich an `127.0.0.1`.
-- Caddy veroeffentlicht Grafana ausschliesslich fuer PAJ unter
-  `https://epiber.at:8081/grafana/`. Jeder Request wird ueber
-  `GET /api/admin/grafana-auth` gegen eine aktuelle aktive PAJ-Adminsession
-  autorisiert; Browser-Identitaetsheader werden durch die Backendantwort ersetzt.
-- Grafana vertraut den Auth-Proxy-Headern nur von Loopback. Die stabile
-  instanznamensraeumige Personen-ID `epiber-paj:<Personen-ID>` ist der
-  Grafana-Benutzername, PAJ-Admins erhalten die
-  Grafana-Organisationsrolle `Admin`, aber keine Grafana-Serveradminrechte.
-  Alle lokalen Prozesse gehoeren zur geschuetzten Host-Vertrauensgrenze; der
-  Grafana-Loopbackport darf keinem unkontrollierten lokalen Prozess offenstehen.
-- Prometheus scrapt PAJ direkt unter `127.0.0.1:8083/metrics`.
-- Alloy sammelt nur `epiber-paj.service` und das PAJ-Caddy-Access-Log.
-- Loki speichert normale Frontenddiagnose 14 Tage und gezielte Diagnose 7 Tage.
-- Loki-Zugriff ist auf aktive PAJ-Admins begrenzt und wird gemeinsam mit
-  Prometheus in der einzigen PAJ-Adminorganisation provisioniert.
-- Score- und Auditfachhistorien bleiben ausschliesslich in ihren SQLite-Dateien
-  System of Record.
-- Alerting erfolgt vorerst passiv ueber Grafana. Aktive Zustaende und ihre
-  30-Tage-Historie werden als Annotationen in der persistenten Grafana-SQLite
-  gespeichert und von verantwortlichen Administratoren manuell kontrolliert.
-  SMTP ist technisch deaktiviert; es gibt weder E-Mail-Zustellung noch eine
-  garantierte zeitnahe Reaktion.
+```text
+epiber-{piber,paj,pk}.service --journald--+
+Caddy-Access-Logs ------------------------+--> Alloy --> Loki ----+
+Backend /metrics ----------------------------> Prometheus --------+--> Grafana
+Node Exporter ----------------------------------------------------+
+```
+
+- Grafana: `/run/epiber-observability/grafana.sock`, extern `https://epiber.at/grafana/`
+- Grafana-Metrikproxy: Caddy `127.0.0.1:3001`, ausschliesslich `/metrics`
+- Loki: `127.0.0.1:3100`
+- Prometheus: `127.0.0.1:9090`
+- Node Exporter: `127.0.0.1:9100`
+- Alloy: `127.0.0.1:12345`
+- Grafana-Auth-Broker: `127.0.0.1:8085`
+- Backendmetriken: Live `:8080/metrics`, PAJ `:8083/metrics`, PK `:8084/metrics`
+
+PAJ `https://epiber.at:8081/grafana/` und PK
+`https://epiber.at:8082/grafana/` leiten zur kanonischen Live-Adresse weiter.
+Grafana besitzt nur diese eine `root_url`; dadurch bleiben Redirects, Assets,
+Cookies, CSP und Grafana-Live-WebSockets eindeutig.
+
+## Zugriff
+
+Caddy prueft jeden Grafana-Request ueber den gemeinsamen Auth-Broker. Der Broker
+reicht jedes vorhandene Sessioncookie ausschliesslich an sein eigenes Backend
+`GET /api/admin/grafana-auth` weiter. Eine aktuelle aktive Adminsession aus Live,
+PK oder PAJ genuegt. Bei mehreren gueltigen Sessions gilt die feste Prioritaet
+Live, PK, PAJ. Browserseitige `X-WEBAUTH-USER`- und `X-WEBAUTH-ROLE`-Werte sind
+keine Autoritaet.
+
+Grafana verwendet `epiber-<Instanz>:<Personen-ID>` als Benutzernamen. Jeder
+zugelassene ePiber-Admin erhaelt in der einzigen Organisation die Grafana-Rolle
+`Admin`, aber keine Serveradminrechte, und darf Metriken und Logs aller drei
+Systeme sehen. Prometheus und Loki sind nicht editierbare Datenquellen. Loki
+verwendet bewusst einen gemeinsamen Tenant; `deployment=live|paj|pk` ist ein
+Abfragefilter und keine Berechtigungsgrenze.
+
+Anonyme Anmeldung, Registrierung, oeffentliche Dashboards, Snapshots,
+Pluginverwaltung, automatische Plugininstallation und Pluginupdates sind
+deaktiviert. Grafana akzeptiert keine TCP-Verbindung; der Socket gehoert der
+Caddy-Vertrauensgrenze und ist nur fuer Caddy und Grafana zugaenglich. Alloy liest
+Access-Logs ueber die separate Gruppe `grafana-alloy` und kann den Socket nicht
+oeffnen. Der Auth-Broker bleibt auf Loopback und akzeptiert keine Identitaet ohne
+positive current-only Backendpruefung.
+
+## Daten und Aufbewahrung
+
+Alloy sammelt ausschliesslich:
+
+- die Journale von `epiber-piber.service`, `epiber-paj.service` und
+  `epiber-pk.service`;
+- das Journal von `epiber-grafana-auth.service`;
+- `/var/log/caddy/epiber-{live,paj,pk}-access.json`.
+
+Caddy entfernt Querystrings, Header und Quelladressen. Personen-ID, Klarname,
+E-Mail, IP, Support-/Request-ID, Session-, Client- und Geraetewerte bleiben
+JSON-Felder und werden keine Loki- oder Prometheus-Labels. Normale Betriebsdaten
+und Frontenddiagnose bleiben maximal 14 Tage, gezielte Frontenddiagnose 7 Tage.
+Prometheus verwendet 30 Tage und maximal 5 GiB; die tatsaechliche Reichweite ist
+bei Erreichen der Groessenbegrenzung kuerzer.
+
+Score- und Auditfachhistorien bleiben ausschliesslich in ihren ePiber-SQLite-
+Dateien System of Record. Grafana speichert Benutzer, Dashboards und 30 Tage
+Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
+
+## Dashboards und Alerts
+
+Vier nicht personenbezogene Dashboards werden provisioniert: Uebersicht,
+Hostressourcen, Loggingpipeline sowie Fehler/Recovery. Anwendungsdashboards
+besitzen die feste Auswahl `live|paj|pk`; Hostmetriken werden nur einmal gezeigt.
+
+Anwendungsalerts erzeugen je Deployment getrennte Alarmzustaende. Host- und
+Observability-Alarme existieren einmal. SMTP ist zwingend deaktiviert. Es gibt
+keine E-Mail, keinen aktiven Benachrichtigungsweg und keine garantierte Reaktion;
+benannte Administratoren kontrollieren Alarmzustaende und ihre 30-Tage-Historie
+manuell.
+
+## Installation
 
 Arch-Pakete:
 
@@ -37,37 +91,32 @@ Arch-Pakete:
 grafana grafana-alloy loki prometheus prometheus-node-exporter
 ```
 
-Die benoetigten Pakete werden im freigegebenen Wartungsfenster mit einem
-vollstaendigen `pacman -Syu --needed` installiert. Das Installationsskript fuehrt
-selbst kein weiteres Host-Upgrade aus, protokolliert die konkret installierten
-Versionen und prueft die
-lokalen Health-/Metrics-Endpunkte der fuenf gestarteten Dienste; ein fehlgeschlagener
-Check beendet den Lauf mit Fehler.
+Vor dem Lauf muessen alle drei ePiber-Backends denselben freigegebenen Stand mit
+internem `/metrics` ausliefern. PK muss auf `127.0.0.1:8084` gesund sein. Die
+root-only Datei `/etc/epiber-observability/grafana.env` wird einmalig aus
+`grafana/grafana.env.example` angelegt und erhaelt Modus 0600. Adminpasswort und
+Secret-Key werden bei Wiederholung nicht geaendert; insbesondere darf der
+Secret-Key einer bestehenden `grafana.db` nicht beilaufig rotiert werden.
 
-Die Installation benoetigt root. Vorher ist
-`/etc/epiber-observability/grafana.env` aus `grafana/grafana.env.example` mit
-Modus 0600, lokal erzeugtem Notfall-Adminpasswort, Secret-Key und
-`GF_SMTP_ENABLED=false` anzulegen. Das Notfallpasswort ist kein normaler
-Benutzerzugang und wird nur fuer einen dokumentierten Break-glass-Fall verwahrt.
-Bei Wiederholung bleiben Adminpasswort und Secret-Key unveraendert; insbesondere
-darf der Secret-Key einer bestehenden `grafana.db` nicht beilaufig rotiert werden.
-`install-paj.sh`
-validiert Werkzeuge und Quellvorlagen, installiert die PAJ-Vorlagen und startet
-ausschliesslich die PAJ-bezogenen Observability-Dienste. PK-/Live-Anwendungsdienste
-und deren Konfigurationen werden nicht veraendert.
+```text
+sh Project/server-configs/observability/install-observability.sh
+```
 
-Das Skript installiert die Caddy-Vorlage bewusst nicht automatisch. Nach Backup
-der aktiven `/etc/caddy/Caddyfile` muss ein autorisierter Betreiber die versionierte
-Vorlage separat validieren, installieren und Caddy reloaden. Erst danach liefert
-das PAJ-Access-Log Daten an Alloy.
+Das Skript validiert und installiert die gemeinsame Konfiguration, startet die
+sechs Observability-Dienste und prueft ihre lokalen Health-/Metrics-Endpunkte. Es
+fuehrt kein Hostupgrade aus. Vorher werden aktive Caddy- und Observability-
+Konfiguration sowie Grafana-SQLite gesichert und die neue Caddy-Vorlage validiert.
+Das Skript installiert Caddy bewusst nicht: Direkt nach seinem erfolgreichen
+Lauf wird die bereits validierte Vorlage installiert und Caddy kontrolliert
+reloaded. In diesem kurzen Wartungsfenster ist Grafana nicht erreichbar; ePiber
+bleibt unabhaengig. Bei Fehler werden Caddy- und Observability-Vorlagen aus dem
+unmittelbaren Backup gemeinsam zurueckgerollt.
 
-Vor dem ersten produktiven Start sind freie Kapazitaet und konkrete Paketversionen
-zu protokollieren. Der aktuelle Vorlagenwert fuer Prometheus-Retention ist 30 Tage;
-Loki und Caddy halten PAJ-Betriebsdaten maximal 14 Tage, gezielte Frontenddiagnose
-maximal 7 Tage.
+Das lokale Grafana-Adminpasswort ist ausschliesslich Break-glass. Es wird nur in
+einem Wartungsfenster mit gestopptem Normaldienst, deaktiviertem Auth Proxy,
+separatem Loopback-Vordergrundprozess und SSH-Tunnel verwendet. Der Normalzugang
+verwendet immer eine aktuelle ePiber-Adminsession.
 
-Vier nicht personenbezogene Standarddashboards werden provisioniert: Uebersicht,
-Ressourcen, Loggingpipeline sowie Fehler/Recovery. Grafana Alerting provisioniert
-PAJ-, SQLite-, Sheet-, Metadata- und Speicherregeln. Vor der Freigabe muessen ein
-kontrollierter Alarm und seine Recovery in der Grafana-Historie sichtbar sein,
-ohne dass ein Benachrichtigungsversuch ausgeloest wird.
+Weitere Betriebsdetails stehen in `Project/server-configs/SERVER-SETUP.txt`, die
+verbindliche Abnahme in `Project/server-configs/ROLLOUT-CHECKLIST.md` und
+Fehlerablaeufe in `RUNBOOKS.md`.

@@ -8,7 +8,7 @@
   1. SYSTEMBILD
 ================================================================================
 
-  Browser/Kiosk
+  Browser/Kiosk und Grafana-Administratoren
     |-- HTTPS: statische HTML-, CSS- und ES-Modul-Dateien
     |-- HTTPS: Health-, Session-, Passwort- und Monitor-APIs
     `-- WSS /ws: Protokoll v2, RPCs, Subscriptions, Monitorcommands
@@ -23,10 +23,14 @@
     |-- getrennter SQLite-State sowie Score-/Audit-Fachhistorien
     |-- externes Court-Polling + persistentes SQLite-ScoreLog
     |-- strukturierte redigierte JSON-Betriebslogs fuer journald
-    `-- adressierter MonitorBroker
+    |-- adressierter MonitorBroker
+    `-- internes Prometheus-Textformat unter GET /metrics
              |                         |
              v                         v
        Google Sheets             externe Court-Quelle (HTTPS)
+
+  journald + Caddy-Access-Logs -> Alloy -> Loki ----+
+  Backend-/Hostmetriken ------> Prometheus --------+--> Grafana
 
 Produktive Backends binden ausschliesslich an Loopback. Service-Account-
 Credentials werden ueber systemd LoadCredential bereitgestellt. Der Browser
@@ -78,6 +82,21 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Person beziehungsweise IP und reichert angenommene Events ausschliesslich
   serverseitig mit Personen-ID, Klarname, Rolle und Quell-IP an. Fachpayloads und
   freie Fehlertexte werden nicht angenommen.
+
+`metrics.js`
+  Fuehrt dependency-frei feste Gauges, Counter und Histogramme fuer HTTP,
+  WebSocket, Readiness, Sheet-/Court-Poller, SQLite, Frontendcollector und Logger.
+  Alle Dimensionen besitzen geschlossene oder niedrig-kardinale Werte. Das
+  interne `GET /metrics` liefert Prometheus-Textformat 0.0.4 und wird von Caddy
+  nicht extern veroeffentlicht.
+
+`grafanaAuthBroker.js`
+  Ist ein eigener unprivilegierter Loopbackdienst auf Port 8085. Er extrahiert
+  die drei unterschiedlich benannten ePiber-Sessioncookies und reicht jedes
+  Cookie ausschliesslich an den zugehoerigen Live-, PAJ- oder PK-Endpunkt
+  `/api/admin/grafana-auth` weiter. Eine aktuelle aktive Adminsession eines
+  Systems reicht aus. Vom Browser gelieferte Identitaetsheader werden ignoriert;
+  bei mehreren gueltigen Sessions gilt die feste Prioritaet Live, PK, PAJ.
 
 `stateRepository.js`
   Kapselt SQLite mit WAL/FULL, Dateirechten, Transaktionen, revisioniertem
@@ -284,15 +303,38 @@ Fachhistorien und Betriebslogs:
     Sessionidentitaet und IP werden dort nicht vertraut. Das Backend schreibt je
     angenommenem Eintrag `frontend_client_event` mit `frontendEvent`,
     `frontendLevel`, `actorId`, `actorName`, `role`, `sourceIp`, Support-ID und
-    technischen Dimensionen. `retentionClass` und `retentionDays` bereiten die
-    spaetere Alloy-/Loki-Routing- und Retentionkonfiguration vor, erzwingen sie
-    aber noch nicht.
+    technischen Dimensionen. Alloy transportiert diese Journalzeilen zu Loki.
+    Loki erzwingt anhand von `retentionClass` 14 Tage fuer normale und 7 Tage fuer
+    gezielte Frontenddiagnose; `retentionDays` bleibt ein kontrolliertes
+    Informationsfeld.
   - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
     bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
     `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale
     Labels. Vom Browser gemeldete Version, Personen-ID, Klarname, IP, Support-ID
     und ephemere Seitensitzung bleiben JSON-Felder und duerfen nicht zu Labels
     oder ungefilterten Ticketinhalten werden.
+  - Alloy sammelt die Journale von `epiber-piber.service`, `epiber-paj.service`,
+    `epiber-pk.service` und dem Grafana-Auth-Broker sowie die drei datensparsamen
+    Caddy-Access-Logs. Das feste Label `deployment=live|paj|pk` trennt die
+    Systeme fuer Abfragen, ist aber keine Berechtigungsgrenze.
+  - Prometheus scrapt alle drei Backend-`/metrics`-Endpunkte alle 15 Sekunden und
+    speichert die Zeitreihen lokal. Node Exporter liefert einmalig die gemeinsam
+    genutzten Hostressourcen und Zustandsmetriken aller ePiber-Units.
+  - Eine Grafana-Instanz unter `https://epiber.at/grafana/` verwendet Prometheus
+    und Loki als nicht editierbare Datenquellen. `/grafana/` auf PAJ und PK leitet
+    zur zentralen Live-Origin weiter. Jeder aktuelle Admin aus Live, PAJ oder PK
+    wird als `epiber-<Instanz>:<Personen-ID>` in dieselbe Grafana-Organisation mit
+    Organisationsrolle `Admin` aufgenommen und darf Daten aller drei Systeme
+    sehen. Diese Rolle verleiht keine Grafana-Serveradminrechte.
+    Grafana lauscht nicht auf TCP, sondern auf einem nur fuer Caddy und Grafana
+    zugaenglichen Unix-Socket. Auth-Proxy-Header koennen deshalb nicht von einem
+    beliebigen lokalen Prozess direkt an Grafana gesendet werden.
+    Fuer Prometheus stellt Caddy ausschliesslich Grafanas nicht vertraulichen
+    Metrikpfad auf `127.0.0.1:3001` bereit; andere Pfade bleiben geschlossen.
+  - Grafana speichert Benutzer, Dashboardzustand und 30 Tage Alert-State-History
+    in `/var/lib/grafana/grafana.db` mit SQLite/WAL. Diese Datenbank ist kein
+    ePiber-System-of-Record. SMTP und aktive Benachrichtigungen sind deaktiviert;
+    Alarmzustaende werden manuell kontrolliert.
 
 
 ================================================================================

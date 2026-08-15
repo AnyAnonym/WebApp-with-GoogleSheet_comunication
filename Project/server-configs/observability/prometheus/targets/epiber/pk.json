@@ -4,7 +4,7 @@
     "labels": {
       "deployment": "pk",
       "instance": "pk",
-      "prepared_target": "true"
+      "prepared_target": "false"
     }
   }
 ]

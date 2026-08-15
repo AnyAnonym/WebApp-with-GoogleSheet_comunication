@@ -345,9 +345,10 @@ leere Werte.
 
 Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
 E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
-`/status` ausgegeben und unterliegen derzeit keiner automatischen Bereinigung.
-Eine spaetere kontrollierte Loeschung oder Anonymisierung muss auch SQLite-
-Backups beruecksichtigen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
+`/status` ausgegeben und werden fachlich ohne automatische Bereinigung
+aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder
+Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und muss SQLite-
+Backups einbeziehen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
 maskierte E-Mail- und IP-Werte. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken;
 Standard `*` aktiviert alle implementierten Aktionen.
 

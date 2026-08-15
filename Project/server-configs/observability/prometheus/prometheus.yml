@@ -3,7 +3,7 @@ global:
   scrape_timeout: 10s
   evaluation_interval: 15s
   external_labels:
-    deployment: paj
+    observability_cluster: epiber-host
 
 scrape_configs:
   - job_name: prometheus
@@ -23,12 +23,15 @@ scrape_configs:
       - targets: ["127.0.0.1:12345"]
 
   - job_name: grafana
-    metrics_path: /grafana/metrics
     static_configs:
-      - targets: ["127.0.0.1:3000"]
+      - targets: ["127.0.0.1:3001"]
+
+  - job_name: grafana-auth
+    static_configs:
+      - targets: ["127.0.0.1:8085"]
 
   - job_name: epiber
     metrics_path: /metrics
     file_sd_configs:
       - files:
-          - targets/enabled/*.json
+          - targets/epiber/*.json

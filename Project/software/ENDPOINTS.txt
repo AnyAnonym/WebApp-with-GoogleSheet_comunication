@@ -75,7 +75,16 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
   weiterhin aktuelle Matchtyp-Daten. Ein aktiver Legacy-Court, dessen
   fehlender `displayRules`-Snapshot nicht aufgeloest werden konnte, liefert bis
   zur Tabellen-Recovery, erfolgreichen Neuzuweisung oder Deaktivierung ebenfalls
-  503. Ein unresolved inaktiver Court blockiert Readiness nicht.
+   503. Ein unresolved inaktiver Court blockiert Readiness nicht.
+
+----- GET /metrics (nur interner Loopbackzugriff) -----
+  Liefert HTTP 200 mit `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+  im Prometheus-Textformat. Enthalten sind begrenzte Gauges, Counter und
+  Histogramme fuer Prozess/Readiness, HTTP, WebSocket, Sheet-/Court-Poller,
+  SQLite, Frontendcollector und Logger. Personen-, Session-, Request-, IP- und
+  Geraetewerte sind keine Labels. Nur GET ist erlaubt. Caddy nimmt `/metrics`
+  bewusst nicht in den oeffentlichen Backendmatcher auf; Prometheus scrapt direkt
+  `127.0.0.1:8080`, `:8083` und `:8084`.
 
 ----- GET /status (admin) -----
    Verlangt ein gueltiges Admin-Sessioncookie und liefert
@@ -156,6 +165,23 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
    und Zaehler. Die Antwort enthaelt keine Fachereigniszeilen, Cookies, Tokens,
    Passwortwerte oder privaten Schluessel.
 
+----- GET /api/admin/grafana-auth (interner Forward-Auth-Vertrag) -----
+  Verlangt eine gueltige aktuelle Session einer aktiven Person mit Rolle `admin`.
+  Anders als `/status` ist bei stale Personendaten kein Last-known-good-Zugriff
+  erlaubt. Erfolg liefert 200 `{ success: true }`, `Cache-Control: no-store` und
+  ausschliesslich serverseitig erzeugte Header
+  `X-WEBAUTH-USER: epiber-<Instanz>:<Personen-ID>` sowie
+  `X-WEBAUTH-ROLE: Admin`. Anonym/abgelaufen/widerrufen liefert 401, eine andere
+  Rolle 403 und nicht aktuelle Personendaten 503; Fehlerantworten enthalten keine
+  Identitaetsheader. Nur GET ist erlaubt.
+
+  Der gemeinsame Loopback-Auth-Broker prueft die drei instanzspezifischen Cookies
+  getrennt gegen ihren jeweiligen Endpunkt und akzeptiert genau eine erfolgreiche
+  aktuelle Adminpruefung. Browserheader sind keine Identitaetsautoritaet. Caddy
+  verwendet diesen Broker vor jedem Request an das zentrale
+  `https://epiber.at/grafana/`. Der Authvertrag selbst ist ueber keine der drei
+  Browser-Origins erreichbar; Caddy antwortet dort mit 404.
+
 ----- GET /api/frontend-logging-policy (public) -----
   Liefert `{ success, frontendLogging }`. Die Policy enthaelt nur technische
   Steuerwerte: `enabled`, `level`, `targeted`, `expiresAt`,
@@ -194,10 +220,10 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
   serverseitig bestimmte IP und muessen global explizit freigegeben sein.
   `X-Forwarded-For` gilt nur innerhalb der dokumentierten Loopback-
   Vertrauensgrenze. Jedes angenommene Ereignis wird als strukturiertes
-  `frontend_client_event` nach stdout/stderr geschrieben und ist damit fuer den
-  spaeteren Alloy-/Loki-/Grafana-Pfad vorbereitet. `retentionClass` und
-  `retentionDays` sind Routingvorgaben; die tatsaechliche Loeschung muss Loki
-  konfigurieren.
+   `frontend_client_event` nach stdout/stderr geschrieben. Alloy uebernimmt die
+   Journalzeile, Loki speichert sie und Grafana stellt sie autorisierten Admins
+   bereit. `retentionClass` erzwingt in Loki 14 Tage fuer normale und 7 Tage fuer
+   gezielte Diagnose; `retentionDays` dokumentiert denselben Sollwert im Event.
 
 ----- /api/admin/frontend-logging (admin) -----
   GET liefert globale Einstellungen, deren Revision, die Revision der aktiven
@@ -208,9 +234,9 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
   includeAnonymous, sampleRatePercent, batchSize, flushIntervalMs,
   defaultTargetLevel, defaultTargetDurationMinutes, normalRetentionDays,
   targetedRetentionDays }`. Level sind `error|warn|info|debug`; Batchgroesse 1
-  bis 20, Flush 1000 bis 30000 ms, Sampling 0 bis 100 Prozent, normale Retention
-  1 bis 90 und gezielte Retention 1 bis 30 Tage. Die Retentionwerte werden nur als
-  Logfelder ausgegeben und noch nicht durch die Anwendung geloescht.
+  bis 20, Flush 1000 bis 30000 ms und Sampling 0 bis 100 Prozent. Die
+  Retentionwerte sind fest 14 beziehungsweise 7 und andere Werte werden
+  abgewiesen; die technische Loeschung erzwingt Loki.
 
 ----- /api/admin/frontend-logging/targets (admin) -----
   POST mit `{ expectedRevision, personId, level, durationMinutes }` aktiviert oder

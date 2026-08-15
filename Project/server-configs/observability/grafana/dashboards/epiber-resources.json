@@ -8,14 +8,14 @@
     { "type": "timeseries", "title": "Freier Speicher", "id": 3, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }, "targets": [{ "expr": "node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
     { "type": "timeseries", "title": "Freie Inodes", "id": 4, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }, "targets": [{ "expr": "node_filesystem_files_free{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
     { "type": "timeseries", "title": "Netzwerkdurchsatz", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }, "targets": [{ "expr": "sum by (device) (rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "RX {{device}}", "refId": "A" }, { "expr": "sum by (device) (rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "TX {{device}}", "refId": "B" }] },
-    { "type": "timeseries", "title": "PAJ Dienstzustand", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }, "targets": [{ "expr": "node_systemd_unit_state{name=\"epiber-paj.service\",state=\"active\"}", "refId": "A" }] }
+    { "type": "timeseries", "title": "ePiber-Dienstzustand", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }, "targets": [{ "expr": "node_systemd_unit_state{name=~\"(epiber-(piber|paj|pk|grafana-auth)|grafana)\\\\.service\",state=\"active\"}", "legendFormat": "{{name}}", "refId": "A" }] }
   ],
   "schemaVersion": 41,
-  "tags": ["epiber", "paj", "resources"],
+  "tags": ["epiber", "resources"],
   "templating": { "list": [] },
   "time": { "from": "now-6h", "to": "now" },
   "timezone": "browser",
-  "title": "ePiber PAJ Ressourcen",
-  "uid": "epiber-paj-resources",
+  "title": "ePiber Hostressourcen",
+  "uid": "epiber-resources",
   "version": 1
 }

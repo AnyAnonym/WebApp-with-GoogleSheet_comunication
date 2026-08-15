@@ -1,3 +1,35 @@
+[4.3.0-paj-1-13] - 2026-08-15
+Commit: 4.3.0-paj-1-13 | Observability fuer alle Systeme zentralisiert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-13` gesetzt.
+  - [Infrastruktur] Grafana verwendet `https://epiber.at/grafana/` als einzige kanonische Origin; PAJ und PK leiten ihre `/grafana/`-Pfade dorthin weiter. Live prueft jeden Grafana-Request ueber den gemeinsamen Loopback-Auth-Broker und proxyt danach ueber einen gruppengeschuetzten Unix-Socket; ein direkter lokaler TCP-Auth-Proxy-Bypass ist ausgeschlossen.
+  - [Infrastruktur] Prometheus aktiviert die drei Backendziele Live, PAJ und PK mit neutralem Collectorlabel. Alloy sammelt alle drei Backendjournale, das Auth-Brokerjournal und drei datensparsame Caddy-Access-Logs; Node Exporter ueberwacht alle ePiber-Units.
+  - [Infrastruktur] Der gemeinsame Installer ersetzt den PAJ-spezifischen Ablauf, verlangt vor Aktivierung drei gesunde `/metrics`-Endpunkte, installiert den Auth-Broker und repariert alle Access-Logrechte. Loki bleibt ein gemeinsamer Tenant mit 14 Tagen Standard- und 7 Tagen gezielter Frontendretention.
+  - [Grafana] Vier gemeinsame Dashboards ersetzen PAJ-feste Ansichten und bieten eine eindeutige Deploymentauswahl `live|paj|pk`. Mehrdimensionale Anwendungsalerts erzeugen getrennte Zustaende je Deployment; Host- und Stackalerts existieren einmal.
+  - [Dokumentation] Architektur-, Endpoint-, Datenbank-, Seiten-, Softwareindex-, Server-, Setup-, Rollout-, Observability- und Runbookdokumentation auf den gemeinsamen Ist- und Sollstand angeglichen. Automatische Auditbereinigung, kryptografischer Historiennachweis und automatischer Import historischer Sheetzeilen werden nicht als offene Umsetzungspunkte weitergefuehrt.
+
+  Added
+  - [Software] `Backend/grafanaAuthBroker.js` prueft die instanzspezifischen Live-, PK- und PAJ-Cookies getrennt gegen den jeweiligen current-only Adminendpunkt, uebernimmt nur gueltige Backendheader und verwendet bei mehreren Erfolgen die feste Prioritaet Live, PK, PAJ.
+  - [Infrastruktur] Gehaertete DynamicUser-Unit `epiber-grafana-auth.service` fuer den Broker auf `127.0.0.1:8085` angelegt; `/live` und `/metrics` ermoeglichen lokale Betriebspruefung.
+
+  Removed
+  - [Dokumentation] Sieben abgeschlossene temporaere Logging-/Observability-Dateien aus `Project/2do/` nach vollstaendiger Uebernahme in die kanonische Dokumentation entfernt.
+  - [Dokumentation] Versionsgebundenes Root-Fertigstellungsrunbook entfernt; dauerhafte Installation, Break-glass, Abnahme und Recovery stehen nun in Server-Setup, Rollout-Checkliste, Observability-README und Runbooks.
+  - [Infrastruktur] PAJ-spezifische Dashboarddateien, vorbereitete inaktive PK-/Live-Zielablage und `install-paj.sh` durch gemeinsame Artefakte ersetzt.
+
+  Sicherheit und Betrieb
+  - Jeder aktuelle aktive Admin aus Live, PAJ oder PK erhaelt bewusst Grafana-Organisationsrolle `Admin` und Zugriff auf Metriken und Logs aller drei Systeme, aber keine Grafana-Serveradminrechte.
+  - Der Broker reicht jedem Backend nur dessen eigenes Cookie weiter. Browserseitige Identitaetsheader werden nicht vertraut; anonyme, Player-, Operator-, stale, abgelaufene, widerrufene und inaktive Sessions bleiben ausgeschlossen.
+  - Grafana lauscht ausschliesslich auf einem `grafana:caddy`-Unix-Socket. Alloy wird aus der Caddy-Gruppe entfernt und liest die setgid-vererbten Access-Logs ueber seine eigene Gruppe; Caddy stellt nur Grafanas nicht vertraulichen Metrikpfad auf Loopback bereit.
+  - PK und Live muessen vor der Hostaktivierung denselben freigegebenen Backendstand wie PAJ bereitstellen. Der Installer stoppt vor Aenderungen, solange einer der drei `/metrics`-Endpunkte fehlt.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 151 Tests erfolgreich; sechs neue Brokerfaelle decken fehlende Sessions, Cookieisolation, Headeruebernahme, Realmprioritaet, Teilausfall und fail-closed Fehler ab.
+  - Caddy-Vorlage, Alloy, Loki, Prometheus, vier systemd-Units, tmpfiles- und Installationsskript erfolgreich validiert; Node Exporter akzeptiert den erweiterten Unitfilter.
+  - Grafana 13.1.3 startete mit temporaerer SQLite auf einem Unix-Socket, provisionierte alle neun neuen Alertregeln und meldete alle Module gesund.
+  - Alle Dashboarddateien als JSON geprueft, gemeinsame Alert-PromQL gegen Prometheus geparst und `git diff --check` erfolgreich ausgefuehrt.
+
 [4.3.0-paj-1-12] - 2026-08-15
 Commit: 4.3.0-paj-1-12 | Grafana-Rollout gehaertet
 

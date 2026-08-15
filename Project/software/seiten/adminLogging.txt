@@ -18,10 +18,11 @@ Frontend-Logging - Administration und temporaere Diagnoseziele
 
 -- Globale Einstellungen --
   Administrierbar sind Aktivierung, Basislevel `error|warn|info|debug`, anonyme
-  Events, Info-/Debug-Sampling, Batchgroesse, Flushintervall, normale und
-  gezielte Retentionvorgabe sowie Standardlevel/-dauer eines neuen Ziels.
-  Retentionwerte werden als strukturierte Routingfelder ausgegeben; sie loeschen
-  ohne spaetere Loki-Konfiguration noch keine Daten.
+  Events, Info-/Debug-Sampling, Batchgroesse, Flushintervall sowie
+  Standardlevel/-dauer eines neuen Ziels. Die angezeigten Retentionwerte sind
+  verbindlich auf 14 Tage fuer normale und 7 Tage fuer gezielte Diagnose
+  festgelegt. Der Collector schreibt die Routingklasse; Loki erzwingt die
+  zugehoerige Loeschung.
 
 -- Temporaere Ziele --
   Ein Admin waehlt eine aktive Person, Level und Dauer. Die Liste zeigt Klarname,
@@ -32,10 +33,12 @@ Frontend-Logging - Administration und temporaere Diagnoseziele
   periodischen Sessionrefresh verteilt. Die betroffene Person sieht einen
   neutralen lokalen Hinweis mit Ablaufzeit.
 
--- Datenschutz und Grafana-Vorbereitung --
+-- Datenschutz und Grafana --
   Browserpayloads enthalten keine Personendaten. Der Collector ergaenzt ID,
   Klarname, Rolle und Quell-IP nur serverseitig aus Session und Verbindung.
   Diese Felder sind personenbezogene Betriebsdaten, nur fuer autorisierte
   Betreiber bestimmt und duerfen in Loki nicht als Labels verwendet werden.
-  Die Seite zeigt keine Ereignisinhalte; Suche und Darstellung erfolgen erst
-  nach spaeterer Alloy-/Loki-/Grafana-Anbindung.
+  Die Seite zeigt keine Ereignisinhalte. Alloy transportiert angenommene Events
+  aus dem Journal zu Loki; Suche und Darstellung erfolgen im zentralen Grafana
+  ausschliesslich fuer aktuelle Admins aus Live, PAJ oder PK. Jeder dieser Admins
+  darf die Daten aller drei Systeme sehen.

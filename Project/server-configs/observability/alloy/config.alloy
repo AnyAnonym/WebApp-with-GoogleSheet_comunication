@@ -2,7 +2,7 @@ logging {
   level = "info"
 }
 
-loki.relabel "paj_journal" {
+loki.relabel "epiber_journal" {
   forward_to = []
 
   rule {
@@ -12,8 +12,8 @@ loki.relabel "paj_journal" {
 }
 
 loki.source.journal "paj" {
-  forward_to    = [loki.process.paj.receiver]
-  relabel_rules = loki.relabel.paj_journal.rules
+  forward_to    = [loki.process.epiber.receiver]
+  relabel_rules = loki.relabel.epiber_journal.rules
   matches       = "_SYSTEMD_UNIT=epiber-paj.service"
   max_age       = "24h"
   labels = {
@@ -22,20 +22,65 @@ loki.source.journal "paj" {
   }
 }
 
-local.file_match "paj_caddy" {
-  path_targets = [{
-    __path__   = "/var/log/caddy/epiber-paj-access.json",
-    deployment = "paj",
-    service    = "caddy-access",
-  }]
+loki.source.journal "pk" {
+  forward_to    = [loki.process.epiber.receiver]
+  relabel_rules = loki.relabel.epiber_journal.rules
+  matches       = "_SYSTEMD_UNIT=epiber-pk.service"
+  max_age       = "24h"
+  labels = {
+    deployment = "pk",
+    service    = "epiber-backend",
+  }
 }
 
-loki.source.file "paj_caddy" {
-  targets    = local.file_match.paj_caddy.targets
-  forward_to = [loki.process.paj_caddy.receiver]
+loki.source.journal "live" {
+  forward_to    = [loki.process.epiber.receiver]
+  relabel_rules = loki.relabel.epiber_journal.rules
+  matches       = "_SYSTEMD_UNIT=epiber-piber.service"
+  max_age       = "24h"
+  labels = {
+    deployment = "live",
+    service    = "epiber-backend",
+  }
 }
 
-loki.process "paj" {
+loki.source.journal "grafana_auth" {
+  forward_to    = [loki.process.epiber.receiver]
+  relabel_rules = loki.relabel.epiber_journal.rules
+  matches       = "_SYSTEMD_UNIT=epiber-grafana-auth.service"
+  max_age       = "24h"
+  labels = {
+    deployment = "shared",
+    service    = "grafana-auth",
+  }
+}
+
+local.file_match "epiber_caddy" {
+  path_targets = [
+    {
+      __path__   = "/var/log/caddy/epiber-live-access.json",
+      deployment = "live",
+      service    = "caddy-access",
+    },
+    {
+      __path__   = "/var/log/caddy/epiber-paj-access.json",
+      deployment = "paj",
+      service    = "caddy-access",
+    },
+    {
+      __path__   = "/var/log/caddy/epiber-pk-access.json",
+      deployment = "pk",
+      service    = "caddy-access",
+    },
+  ]
+}
+
+loki.source.file "epiber_caddy" {
+  targets    = local.file_match.epiber_caddy.targets
+  forward_to = [loki.process.epiber_caddy.receiver]
+}
+
+loki.process "epiber" {
   forward_to = [loki.write.local.receiver]
 
   stage.json {
@@ -67,7 +112,7 @@ loki.process "paj" {
   }
 }
 
-loki.process "paj_caddy" {
+loki.process "epiber_caddy" {
   forward_to = [loki.write.local.receiver]
 
   stage.json {

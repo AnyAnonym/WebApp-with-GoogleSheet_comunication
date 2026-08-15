@@ -22,7 +22,8 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
                                | ScoreLog- und Auditlog-Fachhistorien.
   software/ARCHITEKTUR.txt     | Backend-/Frontendmodule, Cookie-/Rollenauth,
                                | Cache, SheetService, Court, Monitor,
-                               | WebSocket v2, Readiness und Shutdown.
+                               | WebSocket v2, Logging/Observability, Readiness
+                               | und Shutdown.
   software/ENDPOINTS.txt       | Aktuelle HTTP-Routen, WebSocket-v2-Vertrag,
                                | RPC-Berechtigungen/Parameter, Topics und
                                | Unknown-Write-Semantik.
@@ -65,7 +66,14 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
       Infrastrukturindex fuer Caddy, systemd, HTTPS/WSS und Instanzen.
 
   `Project/server-configs/SERVER-SETUP.txt`
-      Installation und Betrieb des Backends.
+      Installation und Betrieb von Backend und gemeinsamer Observability.
+
+  `Project/server-configs/observability/README.md`
+      Gemeinsame Grafana-, Prometheus-, Loki-, Alloy- und Node-Exporter-
+      Topologie fuer Live, PAJ und PK.
+
+  `Project/server-configs/observability/RUNBOOKS.md`
+      Dauerhafte Betriebsablaeufe fuer Alerts, Fehler und Recovery.
 
   `Project/ChangeLogs/ChangeLog-main.txt`
       Zentrales Main-Aenderungsprotokoll.
@@ -79,13 +87,10 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
   `Project/2do/KOMMUNIKATION-ANALYSE.md`
       Kommunikationsanalyse und verbleibende manuelle Risiken.
 
-  `Project/2do/LOGGING-ANALYSE.md`
-      Historische Logging-/Observability-Analyse mit aktuellem Status des
-      strukturierten Loggings und der SQLite-Score-/Audit-Persistenz.
-
-  `Project/2do/LOGGING-UMSETZUNGSPLAN.md`
-      Umgesetzter Plan fuer JSON-Betriebslogs, journald sowie getrennte
-      SQLite-Dateien fuer ScoreLog und Auditlog; Grafana/Loki bleibt Folgearbeit.
+  Grafana ist eine externe Betriebsoberflaeche und keine fachliche HTML-Seite.
+  Aktuelle Admins aller drei Systeme erreichen dieselbe Instanz unter
+  `https://epiber.at/grafana/`; PAJ und PK leiten ihren `/grafana/`-Einstieg
+  dorthin weiter.
 
 
 ================================================================================

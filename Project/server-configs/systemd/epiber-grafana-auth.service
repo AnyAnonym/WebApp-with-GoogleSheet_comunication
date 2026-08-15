@@ -1,0 +1,40 @@
+[Unit]
+Description=ePiber shared Grafana authentication broker
+Wants=network-online.target
+After=network-online.target epiber-piber.service epiber-paj.service epiber-pk.service
+
+[Service]
+Type=simple
+DynamicUser=true
+WorkingDirectory=/srv/http/ePiber/piber/Backend
+ExecStart=/usr/bin/env NODE_ENV=production GRAFANA_AUTH_BROKER_HOST=127.0.0.1 GRAFANA_AUTH_BROKER_PORT=8085 /usr/bin/node grafanaAuthBroker.js
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=epiber-grafana-auth
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=200
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

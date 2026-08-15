@@ -72,6 +72,7 @@ promtool check config "$ROOT/prometheus/prometheus.yml"
 
 install -d -m 0755 /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /etc/grafana/provisioning/alerting /etc/grafana/dashboards
 install -d -m 0755 /etc/grafana-alloy /etc/loki /etc/prometheus/targets/enabled /etc/prometheus/targets/available /etc/systemd/system/grafana.service.d
+install -d -o grafana -g grafana -m 0750 /var/lib/grafana/plugins
 install -m 0644 "$ROOT/alloy/config.alloy" /etc/grafana-alloy/config.alloy
 install -m 0644 "$ROOT/loki/loki.yaml" /etc/loki/loki.yaml
 install -m 0644 "$ROOT/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
@@ -93,6 +94,9 @@ usermod -a -G caddy grafana-alloy
 install -d -o caddy -g caddy -m 0750 /var/log/caddy
 if [ ! -e /var/log/caddy/epiber-paj-access.json ]; then
   install -o caddy -g caddy -m 0640 /dev/null /var/log/caddy/epiber-paj-access.json
+else
+  chown caddy:caddy /var/log/caddy/epiber-paj-access.json
+  chmod 0640 /var/log/caddy/epiber-paj-access.json
 fi
 
 promtool check config /etc/prometheus/prometheus.yml
@@ -107,13 +111,13 @@ done
 attempt=1
 while [ "$attempt" -le 60 ]; do
   grafana_health=$(curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/grafana/api/health 2>/dev/null || true)
-  case "$grafana_health" in
+  case "$(printf '%s' "$grafana_health" | tr -d '[:space:]')" in
     *'"database":"ok"'*) break ;;
   esac
   attempt=$((attempt + 1))
   sleep 2
 done
-case "$grafana_health" in
+case "$(printf '%s' "$grafana_health" | tr -d '[:space:]')" in
   *'"database":"ok"'*) ;;
   *) echo "Grafana-Datenbank ist nicht rechtzeitig bereit" >&2; exit 1 ;;
 esac

@@ -1,3 +1,35 @@
+[4.3.0-paj-1-12] - 2026-08-15
+Commit: 4.3.0-paj-1-12 | Grafana-Rollout gehaertet
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-12` gesetzt.
+  - [Infrastruktur] Die Grafana-Vorlage deaktiviert lokale Snapshots, oeffentliche Dashboards, Pluginverwaltung, automatische Pluginvorinstallation und Pluginupdates dauerhaft; der Installer legt das lokale Pluginverzeichnis mit eingeschraenkten Grafana-Rechten an.
+
+  Fixed
+  - [Infrastruktur] Der wiederholbare Installer repariert Eigentum und Modus eines bereits vorhandenen PAJ-Caddy-Access-Logs, statt nur eine fehlende Datei korrekt anzulegen.
+  - [Infrastruktur] Die Grafana-Datenbankbereitschaft wird auch bei formatiertem Health-JSON mit Leerraum korrekt erkannt.
+
+  Tests
+  - `sh -n` sowie kompakte und formatierte Grafana-Health-Antworten erfolgreich geprueft.
+  - Caddy-Adaptierung sowie Alloy-, Loki- und Prometheus-Konfigurationspruefungen erfolgreich.
+  - `npm run build`: statische Pruefung und alle 145 Tests erfolgreich.
+  - Der korrigierte Installer lief wiederholt erfolgreich durch; aktive Vorlage und `/etc/grafana.ini` stimmen ueberein, Pluginverzeichnis und Access-Log besitzen die vorgesehenen Eigentums- und Moduswerte.
+  - Nach dem Kernel-Neustart sind Host, Live, PAJ und alle Observability-Dienste gesund, alle sechs Prometheus-Ziele `up`, Grafana-SQLite integral im WAL-Modus und anonyme beziehungsweise gespoofte Grafana-Zugriffe weiterhin abgewiesen.
+  - `git diff --check`: erfolgreich.
+
+  Rollout
+  - PAJ zeigt den finalisierten Stand `4.3.0-paj-1-12`; die Laufzeit verwendet die versionierte Grafana-Haertung.
+  - Der Host laeuft nach dem vollstaendigen Upgrade auf Kernel `7.1.8-arch1-3`; der zuvor defekte `/etc/resolv.conf`-Link wurde auf den vorhandenen `systemd-resolved`-Stub korrigiert und der Arch-Keyring-WKD-Sync danach erfolgreich abgeschlossen.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/server-configs/SERVER-SETUP.txt
+  - Deaktivierte lokale und externe Snapshots, oeffentliche Dashboards, Pluginverwaltung, automatische Pluginvorinstallation und Pluginupdates als Grafana-Haertung aufnehmen.
+  - Wiederholbare Reparatur bestehender Caddy-Access-Log-Rechte, explizites Pluginverzeichnis und formatierungsunabhaengige Grafana-Health-Pruefung im Installer dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Deaktivierte Snapshot-, Public-Dashboard- und Pluginfunktionen sowie Eigentum und Modus von Pluginverzeichnis und bestehendem Access-Log praktisch pruefen.
+
 [4.3.0-paj-1-11] - 2026-08-14
 Commit: 4.3.0-paj-1-11 | Grafana ueber PAJ-Admins abgesichert
 

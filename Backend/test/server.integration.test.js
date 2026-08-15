@@ -194,6 +194,16 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(unauthenticatedStatus.status, 401);
   const unauthenticatedStatusId = unauthenticatedStatus.headers.get("x-request-id");
   assert.equal((await unauthenticatedStatus.json()).supportId, unauthenticatedStatusId);
+  const unauthenticatedGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { "X-WEBAUTH-USER": "attacker", "X-WEBAUTH-ROLE": "Admin" },
+  });
+  assert.equal(unauthenticatedGrafanaAuth.status, 401);
+  assert.equal(unauthenticatedGrafanaAuth.headers.get("x-webauth-user"), null);
+  assert.equal(unauthenticatedGrafanaAuth.headers.get("x-webauth-role"), null);
+  assert.equal((await unauthenticatedGrafanaAuth.json()).error.code, "AUTH_REQUIRED");
+  const grafanaAuthMethod = await fetch(`${httpBase}/api/admin/grafana-auth`, { method: "POST" });
+  assert.equal(grafanaAuthMethod.status, 405);
+  assert.equal(grafanaAuthMethod.headers.get("allow"), "GET");
   const methodResponse = await fetch(`${httpBase}/version`, { method: "POST" });
   assert.equal(methodResponse.status, 405);
   const methodRequestId = methodResponse.headers.get("x-request-id");
@@ -250,6 +260,15 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(loginPayload.frontendLogging.enabled, false);
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
   assert.match(cookie, /^epiber_test_session=/);
+
+  const grafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: cookie, "X-WEBAUTH-USER": "attacker", "X-WEBAUTH-ROLE": "Viewer" },
+  });
+  assert.equal(grafanaAuth.status, 200);
+  assert.equal(grafanaAuth.headers.get("cache-control"), "no-store");
+  assert.equal(grafanaAuth.headers.get("x-webauth-user"), "epiber-test:p1");
+  assert.equal(grafanaAuth.headers.get("x-webauth-role"), "Admin");
+  assert.deepEqual(await grafanaAuth.json(), { success: true });
 
   const loggingAdminView = await fetch(`${httpBase}/api/admin/frontend-logging`, { headers: { Cookie: cookie } });
   assert.equal(loggingAdminView.status, 200);
@@ -541,6 +560,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal((await fetch(`${httpBase}/api/admin/frontend-logging`, {
     headers: { Cookie: `epiber_test_session=${playerSession.token}` },
   })).status, 403);
+  const playerGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: `epiber_test_session=${playerSession.token}` },
+  });
+  assert.equal(playerGrafanaAuth.status, 403);
+  assert.equal(playerGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const forbiddenAdminPassword = await fetch(`${httpBase}/api/admin/password`, {
     method: "POST",
@@ -562,6 +586,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal((await operatorClient.request("navigator", { profil: "1" })).data.success, true);
   assert.equal((await operatorClient.request("monitorList")).data.success, true);
   assert.equal((await operatorClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
+  const operatorGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, {
+    headers: { Cookie: `epiber_test_session=${operatorSession.token}` },
+  });
+  assert.equal(operatorGrafanaAuth.status, 403);
+  assert.equal(operatorGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const authenticatedEndpoints = [
     "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
@@ -739,6 +768,10 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     const stalePeopleStatus = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
     assert.equal(stalePeopleStatus.status, 200);
     assert.deepEqual((await stalePeopleStatus.json()).authorization, { role: "admin", roleSource: "last_known_good" });
+    const staleGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, { headers: { Cookie: cookie } });
+    assert.equal(staleGrafanaAuth.status, 503);
+    assert.equal(staleGrafanaAuth.headers.get("x-webauth-user"), null);
+    assert.equal((await staleGrafanaAuth.json()).error.code, "PERSON_DATA_UNAVAILABLE");
   } finally {
     Date.now = realDateNow;
   }

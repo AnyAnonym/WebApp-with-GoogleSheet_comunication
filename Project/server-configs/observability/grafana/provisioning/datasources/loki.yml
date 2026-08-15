@@ -1,11 +1,10 @@
-# Install manually under /etc/grafana/provisioning/datasources only after the
-# separate operator organization exists and its orgId has been verified.
 apiVersion: 1
+prune: true
 
 datasources:
   - name: Loki
     uid: loki
-    orgId: 2
+    orgId: 1
     type: loki
     access: proxy
     url: http://127.0.0.1:3100

@@ -8,6 +8,7 @@ const metrics = require("../metrics.js");
 test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", () => {
   metrics.resetForTests();
   metrics.recordHttpRequest({ method: "GET", route: "/api/session", result: "success", durationMs: 25, responseBytes: 120 });
+  metrics.recordHttpRequest({ method: "GET", route: "/api/admin/grafana-auth", result: "success", durationMs: 5, responseBytes: 16 });
   metrics.recordHttpRequest({ method: "TRACE", route: "/person/p1", result: "failed", durationMs: 6000, responseBytes: 10 });
   metrics.recordWsRequest({ endpoint: "players", knownEndpoint: true, result: "success", durationMs: 10 });
   metrics.recordWsRequest({ endpoint: "person-p1", knownEndpoint: false, result: "rejected", durationMs: 20 });
@@ -35,6 +36,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   });
 
   assert.match(output, /epiber_http_requests_total\{method="GET",result="success",route="\/api\/session"\} 1/);
+  assert.match(output, /epiber_http_requests_total\{method="GET",result="success",route="\/api\/admin\/grafana-auth"\} 1/);
   assert.match(output, /# TYPE epiber_http_requests_total counter/);
   assert.match(output, /# TYPE epiber_http_request_duration_seconds histogram/);
   assert.match(output, /epiber_http_requests_total\{method="OTHER",result="failed",route="not_found"\} 1/);

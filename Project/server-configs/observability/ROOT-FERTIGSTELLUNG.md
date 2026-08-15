@@ -8,29 +8,30 @@ deaktivierte Prometheus-Ziele vorbereitet und werden nicht veraendert.
 
 - Repository: `/srv/http/ePiber/paj`
 - Erwarteter Branch: `4.3.0-paj-1`
-- Erwarteter Commit und Paketstand: `4.3.0-paj-1-10`
+- Erwarteter Commit und Paketstand: `4.3.0-paj-1-11`
 - Kein Push, Merge oder PK-/Live-Rollout ohne neuen ausdruecklichen Auftrag.
 - `Backend/.env`, Service-Account-Dateien und bestehende Geheimnisse nicht
   ausgeben oder versionieren.
-- Grafana bleibt ausschliesslich ueber einen SSH-Tunnel erreichbar.
+- Grafana ist ausschliesslich auf der PAJ-Origin unter `/grafana/` erreichbar.
+- Jeder Grafana-Request verlangt eine aktuelle aktive PAJ-Adminsession; stale
+  Personendaten, Rollenentzug, Deaktivierung, Logout und Sessionablauf sperren.
 - `/metrics`, Loki, Prometheus, Alloy und Node Exporter bleiben auf Loopback.
 - Bei einem fehlgeschlagenen Gate stoppen, Ursache beheben und nicht blind mit
   dem naechsten Abschnitt fortfahren.
 
 ## Noch benoetigte Eingaben
 
-Vor dem Root-Lauf muessen diese Werte vom Betreiber bereitgestellt werden:
+Vor dem Root-Lauf muessen diese Angaben vom Betreiber bereitgestellt werden:
 
-- Alarmempfaenger-E-Mail
-- SMTP-Host inklusive Port
-- SMTP-Benutzer
-- SMTP-Passwort
-- SMTP-Absenderadresse
-- Name beziehungsweise SSH-Ziel fuer den spaeteren Grafana-Tunnel
-- Verantwortliche und zweite pruefende Person fuer das Abnahmeprotokoll
+- verantwortliche Person und Kontrollintervall fuer die manuelle Alarmpruefung
+- zweite pruefende Person fuer das Abnahmeprotokoll
 
-Adminpasswort und Grafana-Secret-Key werden lokal mit `openssl rand` erzeugt.
-Die Werte werden nicht im Repository gespeichert.
+Adminpasswort und Grafana-Secret-Key werden nur bei der Erstinstallation lokal
+mit `openssl rand` erzeugt. Bei Wiederholung bleiben beide Werte unveraendert;
+eine Rotation des Secret-Key erfordert eine eigene Migration der verschluesselten
+Grafana-Datenbankwerte. Die Werte werden nicht im Repository gespeichert. Das
+Adminpasswort ist nur ein lokaler Break-glass-Zugang; der Normalzugang verwendet
+die PAJ-Adminsession.
 
 ## 1. Release- und Host-Gate
 
@@ -47,8 +48,8 @@ journalctl --disk-usage
 ```
 
 Erwartet werden ein sauberer Arbeitsbaum, Commitbetreff
-`4.3.0-paj-1-10 | Observability fuer PAJ integriert`, Paketversion
-`4.3.0-paj-1-10`, Node.js 26.x und npm 12.0.1. Bei Abweichung stoppen.
+`4.3.0-paj-1-11 | Grafana ueber PAJ-Admins abgesichert`, Paketversion
+`4.3.0-paj-1-11`, Node.js 26.x und npm 12.0.1. Bei Abweichung stoppen.
 
 Die lokale Paketdatenbank war vor dem Root-Lauf nicht synchronisiert. Ein
 partielles Arch-Upgrade ist unzulaessig. Falls die Observability-Pakete nicht
@@ -69,6 +70,13 @@ install -d -o root -g root -m 0700 "$BACKUP_DIR"
 sqlite3 /var/lib/epiber-paj/state.sqlite ".backup '$BACKUP_DIR/state.sqlite'"
 sqlite3 /var/lib/epiber-paj/scorelog.sqlite ".backup '$BACKUP_DIR/scorelog.sqlite'"
 sqlite3 /var/lib/epiber-paj/audit.sqlite ".backup '$BACKUP_DIR/audit.sqlite'"
+if [ -f /var/lib/grafana/grafana.db ]; then
+  sqlite3 /var/lib/grafana/grafana.db ".backup '$BACKUP_DIR/grafana.db'"
+fi
+if [ -f /etc/epiber-observability/grafana.env ]; then
+  install -o root -g root -m 0600 \
+    /etc/epiber-observability/grafana.env "$BACKUP_DIR/grafana.env"
+fi
 chmod 0600 "$BACKUP_DIR/"*.sqlite
 install -o root -g root -m 0600 /etc/caddy/Caddyfile "$BACKUP_DIR/Caddyfile"
 sha256sum "$BACKUP_DIR/"*
@@ -102,7 +110,7 @@ curl --fail --silent http://127.0.0.1:8083/ready
 curl --fail --silent http://127.0.0.1:8083/metrics >/dev/null
 ```
 
-`/version` muss exakt `4.3.0-paj-1-10` liefern.
+`/version` muss exakt `4.3.0-paj-1-11` liefern.
 
 ## 4. Arch-Pakete
 
@@ -126,7 +134,8 @@ curl --fail --silent https://epiber.at:8081/live
 
 ## 5. Lokale Grafana-Konfiguration
 
-Zufallswerte erzeugen und sicher ausserhalb des Repositories verwahren:
+Nur bei der Erstinstallation Zufallswerte erzeugen und sicher ausserhalb des
+Repositories verwahren:
 
 ```bash
 openssl rand -hex 24
@@ -135,17 +144,23 @@ openssl rand -hex 32
 
 ```bash
 install -d -o root -g root -m 0700 /etc/epiber-observability
-install -o root -g root -m 0600 \
-  /srv/http/ePiber/paj/Project/server-configs/observability/grafana/grafana.env.example \
-  /etc/epiber-observability/grafana.env
+if [ ! -e /etc/epiber-observability/grafana.env ]; then
+  install -o root -g root -m 0600 \
+    /srv/http/ePiber/paj/Project/server-configs/observability/grafana/grafana.env.example \
+    /etc/epiber-observability/grafana.env
+fi
 editor /etc/epiber-observability/grafana.env
 chown root:root /etc/epiber-observability/grafana.env
 chmod 0600 /etc/epiber-observability/grafana.env
 stat -c '%U:%G:%a %n' /etc/epiber-observability/grafana.env
 ```
 
-Alle Vorlagenwerte ersetzen. Das Ergebnis muss `root:root:600` sein. Die Datei
-nicht ausgeben und nicht nach Git kopieren.
+In einer neu angelegten Datei beide Vorlagenwerte ersetzen und
+`GF_SMTP_ENABLED=false` unveraendert lassen. In einer bestehenden Datei die
+gesicherten Geheimniswerte nicht ersetzen; nur den SMTP-Schalter auf `false`
+pruefen. Das Ergebnis muss `root:root:600` sein. Die Datei nicht ausgeben und
+nicht nach Git kopieren. SMTP-, Empfaenger- und Mailkontodaten werden in dieser
+Ausbaustufe weder benoetigt noch vorbereitet.
 
 ## 6. Observability installieren
 
@@ -190,7 +205,7 @@ curl --fail --silent http://127.0.0.1:3100/ready
 curl --fail --silent http://127.0.0.1:12345/-/ready
 curl --fail --silent http://127.0.0.1:9090/-/ready
 curl --fail --silent http://127.0.0.1:9100/metrics >/dev/null
-curl --fail --silent http://127.0.0.1:3000/api/health
+curl --fail --silent http://127.0.0.1:3000/grafana/api/health
 curl --fail --silent http://127.0.0.1:8083/metrics >/dev/null
 curl --fail --silent http://127.0.0.1:9090/api/v1/targets | python -m json.tool
 curl --fail --silent --get --data-urlencode 'query=up' \
@@ -239,47 +254,58 @@ curl --fail --silent --get \
 Request-ID muss in Backend, Caddy und Loki auffindbar sein. Personen-, Session-,
 Request-, IP- und Geraetewerte duerfen keine Loki- oder Prometheus-Labels sein.
 
-## 10. Grafana und Betreiberorganisation
+## 10. Grafana und PAJ-Adminorganisation
 
-Auf dem Administratorrechner:
-
-```bash
-ssh -N -L 33000:127.0.0.1:3000 <SSH-BENUTZER>@epiber.at
-```
-
-Danach `http://127.0.0.1:33000` aufrufen und mit Benutzer `admin` sowie dem lokal
-erzeugten Adminpasswort anmelden.
+Als aktive PAJ-Adminperson an `https://epiber.at:8081` anmelden und danach
+`https://epiber.at:8081/grafana/` aufrufen. Es darf keine zweite Passwortabfrage
+erscheinen. Grafana verwendet `epiber-paj:<Personen-ID>` als kollisionsfreien
+Benutzernamen; insbesondere kann eine Personen-ID `admin` den lokalen
+Break-glass-Serveradmin nicht uebernehmen.
 
 Manuell pruefen:
 
 1. Vier PAJ-Dashboards sind vorhanden und liefern plausible Werte.
 2. Prometheus-Datenquelle ist gesund.
 3. Grafana-Alertregeln sind vorhanden.
-4. Kontaktpunkt `epiber-operators` sendet eine Testmail.
-5. Anonyme Anmeldung ist deaktiviert.
-6. Eine getrennte Organisation `ePiber Operators` anlegen und nur autorisierte
-   Betreiber hinzufuegen.
-7. Die tatsaechliche Organisations-ID notieren.
+4. Loki-Datenquelle ist gesund und nur nach erfolgreicher PAJ-Adminpruefung
+   erreichbar.
+5. Anonyme, Player- und Operator-Sessions erhalten keinen Grafana-Zugriff.
+6. Rollenentzug, Deaktivierung, Logout und Sessionablauf sperren den naechsten
+   HTTP-Request und den naechsten WebSocket-Upgrade; eine bereits aufgebaute
+   Grafana-Live-Verbindung endet erst bei Disconnect und darf keine alleinige
+   Quelle fuer privilegierte Entscheidungen sein. Stale Personendaten liefern
+   keinen Last-known-good-Zugriff.
+7. Von einem Client gesetzte `X-WEBAUTH-USER`-/`X-WEBAUTH-ROLE`-Header koennen
+   die vom Backend gelieferte Personen-ID und Rolle nicht ueberschreiben.
+8. Die Grafana-Organisationsrolle lautet `Admin`; kein PAJ-Admin wird allein
+   dadurch Grafana-Serveradmin.
+9. Browserkonsole, Assets, API und Grafana-Live-WebSocket funktionieren unter
+   `/grafana/` ohne CSP-, Redirect-, Mixed-Content- oder Subpathfehler.
+10. Das lokal verwahrte Grafana-Adminpasswort wird nicht fuer den Normalzugang
+    verwendet und nicht in Browser, Protokoll oder Repository ausgegeben.
 
-Anschliessend auf dem Server `ORG_ID` auf die gepruefte ID setzen:
+Break-glass nur bei ausgefallener PAJ-Authentifizierung, mit dokumentiertem
+Wartungsfenster und parallelem Root-Terminal:
 
 ```bash
-cd /srv/http/ePiber/paj
-ORG_ID=2
-sed "s/^    orgId: 2$/    orgId: ${ORG_ID}/" \
-  Project/server-configs/observability/grafana/operators-loki.yml |
-install -o root -g root -m 0644 /dev/stdin \
-  /etc/grafana/provisioning/datasources/epiber-operators-loki.yml
-systemctl restart grafana.service
-curl --fail --silent http://127.0.0.1:3000/api/health
+systemctl stop grafana.service
+set -a
+. /etc/epiber-observability/grafana.env
+set +a
+runuser -u grafana -- env \
+  GF_SERVER_ROOT_URL=http://127.0.0.1:33000/grafana/ \
+  GF_SECURITY_COOKIE_SECURE=false \
+  GF_AUTH_PROXY_ENABLED=false \
+  /usr/bin/grafana server --config /etc/grafana.ini --homepath /usr/share/grafana
 ```
 
-Danach negativ und positiv pruefen:
-
-- Standardorganisation besitzt nur Prometheus und keinen Loki-Zugriff.
-- Reine Dashboardbenutzer koennen Loki nicht abfragen.
-- Betreiberorganisation besitzt Loki.
-- Nur autorisierte Betreiber koennen personenbezogene JSON-Felder durchsuchen.
+Auf dem Administratorrechner parallel `ssh -N -L
+33000:127.0.0.1:3000 <SSH-BENUTZER>@epiber.at` starten und ausschliesslich
+`http://127.0.0.1:33000/grafana/` mit dem lokalen Benutzer `admin` verwenden.
+Danach den Vordergrundprozess mit `Ctrl-C` beenden, das Terminal mit den
+exportierten Geheimnissen schliessen, `systemctl start grafana.service` ausfuehren
+und den normalen PAJ-Adminzugang erneut pruefen. Dieses Verfahren oeffnet keinen
+zusaetzlichen externen Listener und darf nicht zum Normalzugang werden.
 
 ## 11. Alerts, Ausfall und Recovery
 
@@ -298,7 +324,10 @@ for attempt in $(seq 1 60); do
 done
 ```
 
-Pruefen, dass genau der erwartete Alarm und danach die Resolve-Meldung ankommen.
+Pruefen, dass genau der erwartete Alarm und danach der aufgeloeste Zustand in der
+Grafana-Alarmansicht und 30-Tage-State-History erscheinen. SMTP muss deaktiviert
+bleiben; Grafana-Journal und UI duerfen keinen Mail- oder Kontaktpunktversuch
+zeigen. Verantwortliche Person, Kontrollzeitpunkt und Ergebnis protokollieren.
 
 Loki-Ausfall und Pipeline-Recovery:
 
@@ -318,10 +347,12 @@ beeintraechtigen.
 
 ## 12. Verbindliche manuelle PAJ-Abnahme
 
-Die vollstaendige Checkliste
-`Project/server-configs/ROLLOUT-CHECKLIST.md` und Paket 9 aus
-`Project/2do/LOGGING-OBSERVABILITY-RESTUMSETZUNGSPLAN.md` abarbeiten. Insbesondere
-nicht ueberspringen:
+Die vollstaendige Checkliste `Project/server-configs/ROLLOUT-CHECKLIST.md` und die
+weiterhin passenden Teile von Paket 9 aus
+`Project/2do/LOGGING-OBSERVABILITY-RESTUMSETZUNGSPLAN.md` abarbeiten. Dessen alte
+Kriterien fuer Alertempfaenger, Recovery-Meldung und aktiven Alerttransport sind
+in dieser Ausbaustufe durch die passive Alarm- und Historypruefung aus Abschnitt
+11 ersetzt. Insbesondere nicht ueberspringen:
 
 - Adminstatus und `pendingMetadataIntents: 0`
 - Browser-, Rollen-, WSS- und Frontenddiagnosepruefung
@@ -347,12 +378,12 @@ curl --fail --silent http://127.0.0.1:8083/live
 curl --fail --silent http://127.0.0.1:8083/ready
 curl --fail --silent http://127.0.0.1:9090/-/ready
 curl --fail --silent http://127.0.0.1:3100/ready
-curl --fail --silent http://127.0.0.1:3000/api/health
+curl --fail --silent http://127.0.0.1:3000/grafana/api/health
 systemctl is-active epiber-paj.service caddy.service loki.service \
   grafana-alloy.service prometheus.service prometheus-node-exporter.service \
   grafana.service
 ```
 
-Erwartet werden Commit und Version `4.3.0-paj-1-10`, ein sauberer Arbeitsbaum,
+Erwartet werden Commit und Version `4.3.0-paj-1-11`, ein sauberer Arbeitsbaum,
 gruene Healthchecks und ausschliesslich aktive PAJ-Observability. Push, Merge und
 PK-/Live-Aktivierung sind nicht Bestandteil dieses Runbooks.

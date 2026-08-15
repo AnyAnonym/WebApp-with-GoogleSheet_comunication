@@ -329,6 +329,15 @@ function createApplication(overrides = {}) {
         });
       }
 
+      if (pathname === "/api/admin/grafana-auth") {
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
+        const auth = authService.requireRole(sessionToken, ["admin"]);
+        return sendJson(response, 200, { success: true }, {
+          "X-WEBAUTH-USER": `epiber-${INSTANCE_ID}:${auth.principal.id}`,
+          "X-WEBAUTH-ROLE": "Admin",
+        });
+      }
+
       if (pathname === "/api/session") {
         if (request.method === "GET") {
           const auth = authService.getUserForToken(sessionToken);

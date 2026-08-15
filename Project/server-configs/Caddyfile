@@ -30,7 +30,10 @@ epiber.at {
 
 https://epiber.at:8081 {
 	import security_headers
-	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8081 wss://epiber.at:8081; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+	@paj_application not path /grafana/*
+	header @paj_application Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8081 wss://epiber.at:8081; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+	@grafana_content path /grafana/*
+	header @grafana_content Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' blob:; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' wss://epiber.at:8081; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; worker-src 'self' blob:"
 	log paj_access {
 		output file /var/log/caddy/epiber-paj-access.json {
 			mode 0640
@@ -55,6 +58,16 @@ https://epiber.at:8081 {
 		reverse_proxy 127.0.0.1:8083
 		log_append request_id {rp.header.X-Request-ID}
 		log_append route backend
+	}
+
+	redir /grafana /grafana/ 308
+	handle /grafana/* {
+		forward_auth 127.0.0.1:8083 {
+			uri /api/admin/grafana-auth
+			copy_headers X-WEBAUTH-USER X-WEBAUTH-ROLE
+		}
+		reverse_proxy 127.0.0.1:3000
+		log_append route grafana
 	}
 
 	handle {

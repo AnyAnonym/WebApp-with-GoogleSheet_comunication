@@ -9,6 +9,20 @@ fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SECRETS=/etc/epiber-observability/grafana.env
 
+wait_for_url() {
+  url=$1
+  attempt=1
+  while [ "$attempt" -le 60 ]; do
+    if curl --fail --silent --show-error --max-time 10 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  echo "Dienst nicht rechtzeitig bereit: $url" >&2
+  return 1
+}
+
 if [ ! -s "$SECRETS" ]; then
   echo "Fehlende lokale Grafana-Konfiguration: $SECRETS" >&2
   echo "Vorlage: $ROOT/grafana/grafana.env.example" >&2
@@ -25,25 +39,24 @@ set -a
 set +a
 : "${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD fehlt}"
 : "${GF_SECURITY_SECRET_KEY:?GF_SECURITY_SECRET_KEY fehlt}"
-: "${EPIBER_ALERT_EMAIL:?EPIBER_ALERT_EMAIL fehlt}"
-: "${GF_SMTP_HOST:?GF_SMTP_HOST fehlt}"
-: "${GF_SMTP_USER:?GF_SMTP_USER fehlt}"
-: "${GF_SMTP_PASSWORD:?GF_SMTP_PASSWORD fehlt}"
-: "${GF_SMTP_FROM_ADDRESS:?GF_SMTP_FROM_ADDRESS fehlt}"
+: "${GF_SMTP_ENABLED:?GF_SMTP_ENABLED fehlt}"
 
 if [ "${#GF_SECURITY_ADMIN_PASSWORD}" -lt 16 ] || [ "${#GF_SECURITY_SECRET_KEY}" -lt 32 ]; then
   echo "Grafana-Passwort oder Secret-Key ist zu kurz" >&2
   exit 1
 fi
 
-case "$GF_SECURITY_ADMIN_PASSWORD $GF_SECURITY_SECRET_KEY $EPIBER_ALERT_EMAIL $GF_SMTP_HOST $GF_SMTP_USER $GF_SMTP_PASSWORD $GF_SMTP_FROM_ADDRESS" in
-  *replace-with*|*.invalid*)
+case "$GF_SECURITY_ADMIN_PASSWORD $GF_SECURITY_SECRET_KEY" in
+  *replace-with*)
     echo "Grafana-Konfiguration enthaelt noch Vorlagenwerte" >&2
     exit 1
     ;;
 esac
 
-pacman -S --needed --noconfirm grafana grafana-alloy loki prometheus prometheus-node-exporter
+if [ "$GF_SMTP_ENABLED" != "false" ]; then
+  echo "GF_SMTP_ENABLED muss in dieser Ausbaustufe false sein" >&2
+  exit 1
+fi
 
 for command in caddy grafana grafana-alloy loki prometheus prometheus-node-exporter promtool; do
   command -v "$command" >/dev/null 2>&1 || {
@@ -69,8 +82,9 @@ install -m 0644 "$ROOT/prometheus/prometheus.env" /etc/conf.d/prometheus
 install -m 0644 "$ROOT/node-exporter/node-exporter.env" /etc/conf.d/prometheus-node-exporter
 install -o root -g grafana -m 0640 "$ROOT/grafana/grafana.ini" /etc/grafana.ini
 install -m 0644 "$ROOT/grafana/provisioning/datasources/epiber.yml" /etc/grafana/provisioning/datasources/epiber.yml
+install -m 0644 "$ROOT/grafana/provisioning/datasources/loki.yml" /etc/grafana/provisioning/datasources/loki.yml
 install -m 0644 "$ROOT/grafana/provisioning/dashboards/epiber.yml" /etc/grafana/provisioning/dashboards/epiber.yml
-install -m 0644 "$ROOT/grafana/provisioning/alerting/contact-points.yml" /etc/grafana/provisioning/alerting/contact-points.yml
+rm -f /etc/grafana/provisioning/alerting/contact-points.yml /etc/grafana/provisioning/datasources/epiber-operators-loki.yml
 install -m 0644 "$ROOT/grafana/provisioning/alerting/rules.yml" /etc/grafana/provisioning/alerting/rules.yml
 install -m 0644 "$ROOT/grafana/dashboards/"*.json /etc/grafana/dashboards/
 install -m 0644 "$ROOT/systemd/grafana.service.d/epiber-observability.conf" /etc/systemd/system/grafana.service.d/epiber-observability.conf
@@ -87,11 +101,24 @@ systemctl daemon-reload
 systemctl enable loki.service grafana-alloy.service prometheus.service prometheus-node-exporter.service grafana.service
 systemctl restart loki.service grafana-alloy.service prometheus-node-exporter.service prometheus.service grafana.service
 
-for url in http://127.0.0.1:3100/ready http://127.0.0.1:12345/-/ready http://127.0.0.1:9090/-/ready http://127.0.0.1:9100/metrics http://127.0.0.1:3000/api/health; do
-  curl --fail --silent --show-error --max-time 10 "$url" >/dev/null
+for url in http://127.0.0.1:3100/ready http://127.0.0.1:12345/-/ready http://127.0.0.1:9090/-/ready http://127.0.0.1:9100/metrics; do
+  wait_for_url "$url"
 done
+attempt=1
+while [ "$attempt" -le 60 ]; do
+  grafana_health=$(curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/grafana/api/health 2>/dev/null || true)
+  case "$grafana_health" in
+    *'"database":"ok"'*) break ;;
+  esac
+  attempt=$((attempt + 1))
+  sleep 2
+done
+case "$grafana_health" in
+  *'"database":"ok"'*) ;;
+  *) echo "Grafana-Datenbank ist nicht rechtzeitig bereit" >&2; exit 1 ;;
+esac
 
 pacman -Q grafana grafana-alloy loki prometheus prometheus-node-exporter
 
 echo "PAJ Observability installiert. Caddy-Vorlage separat kontrolliert installieren/reloaden."
-echo "Grafana nur per SSH-Tunnel auf 127.0.0.1:3000 verwenden."
+echo "Grafana nach dem Caddy-Reload als PAJ-Admin unter https://epiber.at:8081/grafana/ verwenden."

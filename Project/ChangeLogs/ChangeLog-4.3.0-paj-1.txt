@@ -1,3 +1,59 @@
+[4.3.0-paj-1-11] - 2026-08-14
+Commit: 4.3.0-paj-1-11 | Grafana ueber PAJ-Admins abgesichert
+
+  Added
+  - [Software] `GET /api/admin/grafana-auth` autorisiert ausschliesslich aktuelle aktive PAJ-Adminsessions und projiziert `epiber-<Instanz>:<Personen-ID>` sowie die feste Grafana-Organisationsrolle `Admin` als vertrauenswuerdige Auth-Proxy-Header; die Namensraeumigkeit verhindert Kollisionen mit dem lokalen Grafana-Serveradmin.
+  - [Software] Desktop- und Mobilnavigation zeigen angemeldeten PAJ-Admins einen direkten Link auf `/grafana/`; die serverseitige Caddy-/Backend-Pruefung bleibt die Autoritaet.
+  - [Infrastruktur] Loki wird als nicht editierbare Datenquelle der ausschliesslich fuer PAJ-Admins zugaenglichen Grafana-Standardorganisation provisioniert.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.3.0-paj-1-11` gesetzt.
+  - [Software] Der Grafana-Auth-Endpunkt ist eine feste Prometheus-HTTP-Route und liefert `no-store`; anonyme, Player-, Operator-, stale-, abgelaufene, widerrufene oder inaktive Sitzungen erhalten keine Identitaetsheader.
+  - [Infrastruktur] Caddy veroeffentlicht Grafana nur auf der PAJ-Origin unter `/grafana/`, prueft jeden Asset-, API- und WebSocket-Request per Forward Auth und ersetzt vom Browser gelieferte Identitaetsheader mit der Backendantwort. Grafana, Backend, Loki, Prometheus, Alloy und Node Exporter bleiben auf Loopback.
+  - [Infrastruktur] Grafana verwendet den nativen Subpath, Secure-/Strict-Cookies, Auth Proxy mit Loopback-Whitelist, automatische PAJ-Adminzuordnung ohne Serveradminrecht sowie eine pfadspezifische CSP. Das lokale Grafana-Adminpasswort bleibt ausschliesslich als Break-glass-Zugang erhalten.
+  - [Datenbank] Grafana verwendet seine eigene persistente SQLite `/var/lib/grafana/grafana.db` mit WAL; Alert-State-History wird 30 Tage als Annotation gespeichert und nicht mit ePiber-State-, ScoreLog- oder Audit-SQLite vermischt.
+  - [Infrastruktur] SMTP ist zwingend deaktiviert. E-Mail-Empfaenger, Mailkontogeheimnisse, Kontaktpunkt und Notification-Policy entfallen; Alertregeln werten weiter aus und werden von benannten Administratoren in einem festgelegten Intervall manuell kontrolliert.
+  - [Infrastruktur] Der Root-Ablauf installiert Pakete einmalig ueber den vollstaendigen Arch-Upgradepfad; das Installationsskript fuehrt kein zweites Host-Upgrade aus, installiert Prometheus/Loki fuer die PAJ-Adminorganisation, entfernt alte E-Mail-/Operator-Provisioningdateien und prueft Grafanas Subpath-Health inklusive Datenbankstatus.
+  - [Infrastruktur] Wiederholte Installationen bewahren Grafana-Adminpasswort und Secret-Key; der Installer wartet begrenzt auf alle fuenf Dienste. Ein dokumentiertes SSH-/Foreground-Break-glass-Verfahren deaktiviert Auth Proxy und Secure-Cookie nur fuer den lokal getunnelten Notfallprozess.
+  - [Infrastruktur] Prometheus scrapt Grafanas Metriken passend zum nativen Subpath unter `/grafana/metrics`.
+  - [Dokumentation] Observability-README und Root-Fertigstellungsrunbook beschreiben PAJ-Admin-SSO, Break-glass, passive Alarmkontrolle ohne garantierte Reaktionszeit, Grafana-SQLite-Backup sowie Rollen-, Spoofing-, Subpath-, Alarm- und Recovery-Abnahme.
+
+  Removed
+  - [Infrastruktur] Separater SSH-Tunnel-Normalzugang, manuell angelegte Betreiberorganisation, versionierter E-Mail-Kontaktpunkt und zwingende SMTP-/Empfaengerkonfiguration entfernt.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 145 Tests erfolgreich.
+  - Integrationstest deckt anonyme und manipulierte Header, falsche Methode, Adminerfolg, Player-/Operatorablehnung sowie current-only Ablehnung bei stale Personendaten ab; die feste Metrikroute ist separat getestet.
+  - `caddy validate`, `sh -n`, Prometheus-`promtool check config` mit dem bereitliegenden Paketbinary und `git diff --check` erfolgreich.
+  - Grafana-13.1.3-Defaults wurden gegen die verwendeten Auth-Proxy-, SQLite-WAL- und Alert-State-History-Schluessel abgeglichen; praktischer Browser-/Dienststarttest bleibt Teil des Root-Rollouts.
+
+  Rollout
+  - Hostinstallation, Spreadsheet- und SQLite-/Caddy-/Grafana-Sicherung, Caddy-Reload, Browser-, Rollen-, Logout-/Revocation-, CSP-, Loki-, Alarm-History-, Recovery- und Break-glass-Pruefung bleiben bis zum gesonderten Root-Lauf mit benannter verantwortlicher und zweiter pruefender Person offen.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/ENDPOINTS.txt
+  - `GET /api/admin/grafana-auth` mit GET-only-, no-store-, Current-Personen-, Adminrollen- und Headervertrag sowie 401/403/503-Semantik aufnehmen.
+  - Festhalten, dass Caddy jeden `/grafana/*`-Request prueft und Browserheader nie als Identitaetsautoritaet gelten.
+
+  Project/software/ARCHITEKTUR.txt
+  - Same-Origin-Datenfluss PAJ-Cookie -> Caddy Forward Auth -> current-only Backendrollenpruefung -> Grafana Auth Proxy mit stabiler Personen-ID und Org-Adminrolle ohne Serveradminrecht dokumentieren.
+  - Grafana-eigene SQLite/WAL und 30-Tage-Alertannotationshistorie von ePiber-State-, ScoreLog- und Audit-SQLite abgrenzen; SMTP und aktive Benachrichtigung als deaktiviert kennzeichnen.
+
+  Project/software/SOFTWARE-DOKU.txt
+  - Den adminsichtbaren Grafana-Link als externe Betriebsoberflaeche unter `/grafana/` von den fachlichen HTML-Seiten abgrenzen.
+
+  Project/server-configs/SERVER-DOKU.txt
+  - PAJ-Caddyroute `/grafana/`, Forward-Auth-Endpunkt, Loopback-Ziel 3000 und Ausschluss dieser Route aus PK/Live in Schnellreferenz und Verzeichnisindex aufnehmen.
+
+  Project/server-configs/SERVER-SETUP.txt
+  - Den bisherigen SSH-Tunnel-Normalzugang und E-Mail-Kontaktpunkt durch PAJ-Admin-SSO, lokalen Break-glass-Zugang, Grafana-Subpath/CSP, passive manuelle Alarmkontrolle, 30-Tage-History und Grafana-SQLite-Backup ersetzen.
+  - Grafanas Prometheus-Scrapepfad `/grafana/metrics`, einmaliges hostweites `pacman -Syu` im Wartungsfenster und paketfreien wiederholbaren Konfigurationslauf dokumentieren.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Positive und negative `/grafana/`-Pruefungen fuer Admin, Player, Operator, anonym, stale Personen, Logout, Ablauf, Rollenentzug, Deaktivierung und gespoofte Header ergaenzen.
+  - Grafana-Subpathassets/API/Live-WebSocket, CSP, Loopback-Listener, Prometheus-/Loki-Datenquellen, SMTP-off, fehlende Mailversuche, Alert/Recovery-History, manuelles Kontrollintervall sowie Grafana-DB-Backup/Restore abnehmen.
+
 [4.3.0-paj-1-10] - 2026-08-13
 Commit: 4.3.0-paj-1-10 | Observability fuer PAJ integriert
 

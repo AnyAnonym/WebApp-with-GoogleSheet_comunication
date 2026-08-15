@@ -3,7 +3,7 @@ const FIXED_HTTP_METHODS = new Set(["GET", "POST", "DELETE", "OPTIONS"]);
 const FIXED_HTTP_ROUTES = new Set([
   "/metrics", "/version", "/live", "/ready", "/health", "/status",
   "/api/frontend-logging-policy", "/api/frontend-events", "/api/session",
-  "/api/password", "/api/admin/frontend-logging", "/api/admin/frontend-logging/targets",
+  "/api/password", "/api/admin/grafana-auth", "/api/admin/frontend-logging", "/api/admin/frontend-logging/targets",
   "/api/password-reset", "/api/password-setup", "/api/admin/password-reset",
   "/api/admin/password-setup", "/api/admin/password", "/api/monitor/session",
 ]);

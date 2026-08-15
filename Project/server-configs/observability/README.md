@@ -8,20 +8,28 @@ Festgelegte Architektur:
 
 - Grafana, Loki, Prometheus, Alloy und Node Exporter laufen auf demselben Host.
 - Alle Observability-Listener binden ausschliesslich an `127.0.0.1`.
-- Grafana wird vorerst nur per SSH-Tunnel erreicht; Caddy veroeffentlicht Grafana
-  und `/metrics` nicht.
+- Caddy veroeffentlicht Grafana ausschliesslich fuer PAJ unter
+  `https://epiber.at:8081/grafana/`. Jeder Request wird ueber
+  `GET /api/admin/grafana-auth` gegen eine aktuelle aktive PAJ-Adminsession
+  autorisiert; Browser-Identitaetsheader werden durch die Backendantwort ersetzt.
+- Grafana vertraut den Auth-Proxy-Headern nur von Loopback. Die stabile
+  instanznamensraeumige Personen-ID `epiber-paj:<Personen-ID>` ist der
+  Grafana-Benutzername, PAJ-Admins erhalten die
+  Grafana-Organisationsrolle `Admin`, aber keine Grafana-Serveradminrechte.
+  Alle lokalen Prozesse gehoeren zur geschuetzten Host-Vertrauensgrenze; der
+  Grafana-Loopbackport darf keinem unkontrollierten lokalen Prozess offenstehen.
 - Prometheus scrapt PAJ direkt unter `127.0.0.1:8083/metrics`.
 - Alloy sammelt nur `epiber-paj.service` und das PAJ-Caddy-Access-Log.
 - Loki speichert normale Frontenddiagnose 14 Tage und gezielte Diagnose 7 Tage.
-- Loki-Zugriff ist nur fuer autorisierte Betreiber vorgesehen. Reine
-  Dashboardbenutzer erhalten keinen Loki-Explore-Zugriff. Die Standardorganisation
-  erhaelt daher nur Prometheus; `grafana/operators-loki.yml` wird erst nach Anlage
-  einer getrennten Betreiberorganisation und Pruefung ihrer `orgId` manuell unter
-  Grafanas Datasource-Provisioning installiert.
+- Loki-Zugriff ist auf aktive PAJ-Admins begrenzt und wird gemeinsam mit
+  Prometheus in der einzigen PAJ-Adminorganisation provisioniert.
 - Score- und Auditfachhistorien bleiben ausschliesslich in ihren SQLite-Dateien
   System of Record.
-- Alerting erfolgt ueber Grafana; Kontaktpunkte und Benachrichtigungsgeheimnisse
-  werden ueber eine lokale, nicht versionierte Environment-Datei befuellt.
+- Alerting erfolgt vorerst passiv ueber Grafana. Aktive Zustaende und ihre
+  30-Tage-Historie werden als Annotationen in der persistenten Grafana-SQLite
+  gespeichert und von verantwortlichen Administratoren manuell kontrolliert.
+  SMTP ist technisch deaktiviert; es gibt weder E-Mail-Zustellung noch eine
+  garantierte zeitnahe Reaktion.
 
 Arch-Pakete:
 
@@ -29,14 +37,21 @@ Arch-Pakete:
 grafana grafana-alloy loki prometheus prometheus-node-exporter
 ```
 
-Das Installationsskript installiert fehlende Pakete mit `pacman -S --needed` und
-protokolliert danach die konkret installierten Versionen. Es prueft ausserdem die
+Die benoetigten Pakete werden im freigegebenen Wartungsfenster mit einem
+vollstaendigen `pacman -Syu --needed` installiert. Das Installationsskript fuehrt
+selbst kein weiteres Host-Upgrade aus, protokolliert die konkret installierten
+Versionen und prueft die
 lokalen Health-/Metrics-Endpunkte der fuenf gestarteten Dienste; ein fehlgeschlagener
 Check beendet den Lauf mit Fehler.
 
 Die Installation benoetigt root. Vorher ist
 `/etc/epiber-observability/grafana.env` aus `grafana/grafana.env.example` mit
-Modus 0600 und echten lokalen Geheimnissen/Empfaengern anzulegen. `install-paj.sh`
+Modus 0600, lokal erzeugtem Notfall-Adminpasswort, Secret-Key und
+`GF_SMTP_ENABLED=false` anzulegen. Das Notfallpasswort ist kein normaler
+Benutzerzugang und wird nur fuer einen dokumentierten Break-glass-Fall verwahrt.
+Bei Wiederholung bleiben Adminpasswort und Secret-Key unveraendert; insbesondere
+darf der Secret-Key einer bestehenden `grafana.db` nicht beilaufig rotiert werden.
+`install-paj.sh`
 validiert Werkzeuge und Quellvorlagen, installiert die PAJ-Vorlagen und startet
 ausschliesslich die PAJ-bezogenen Observability-Dienste. PK-/Live-Anwendungsdienste
 und deren Konfigurationen werden nicht veraendert.
@@ -53,5 +68,6 @@ maximal 7 Tage.
 
 Vier nicht personenbezogene Standarddashboards werden provisioniert: Uebersicht,
 Ressourcen, Loggingpipeline sowie Fehler/Recovery. Grafana Alerting provisioniert
-PAJ-, SQLite-, Sheet-, Metadata- und Speicherregeln. Der lokale Kontaktpunkt muss
-vor dem ersten Start praktisch getestet werden.
+PAJ-, SQLite-, Sheet-, Metadata- und Speicherregeln. Vor der Freigabe muessen ein
+kontrollierter Alarm und seine Recovery in der Grafana-Historie sichtbar sein,
+ohne dass ein Benachrichtigungsversuch ausgeloest wird.

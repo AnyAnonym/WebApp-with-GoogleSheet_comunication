@@ -15,7 +15,7 @@ Node Exporter ----------------------------------------------------+
 ```
 
 - Grafana: `/run/epiber-observability/grafana.sock`, extern `https://epiber.at/grafana/`
-- Grafana-Metrikproxy: Caddy `127.0.0.1:3001`, ausschliesslich `/metrics`
+- Grafana-Metrikproxy: Caddy mit explizitem Loopback-Bind auf `127.0.0.1:3001`, ausschliesslich `/metrics`
 - Loki: `127.0.0.1:3100`
 - Prometheus: `127.0.0.1:9090`
 - Node Exporter: `127.0.0.1:9100`

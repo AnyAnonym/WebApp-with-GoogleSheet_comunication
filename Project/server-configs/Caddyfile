@@ -131,6 +131,8 @@ https://epiber.at:8082 {
 }
 
 http://127.0.0.1:3001 {
+	bind 127.0.0.1
+
 	handle /metrics {
 		rewrite * /grafana/metrics
 		reverse_proxy unix//run/epiber-observability/grafana.sock

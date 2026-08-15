@@ -125,7 +125,7 @@ Gesamtfreigabe.
 - [ ] Node Exporter erfasst `epiber-piber.service`, `epiber-paj.service`, `epiber-grafana-auth.service` und `grafana.service` genau einmal auf dem gemeinsamen Host, nicht aber PK.
 - [ ] Alloy liest die Live-/PAJ-Backendjournale, das Auth-Brokerjournal und `/var/log/caddy/epiber-{live,paj}-access.json`; Loki zeigt Ereignisse mit korrektem `deployment`.
 - [ ] Caddy-Access-Logs gehoeren `caddy:grafana-alloy`, haben Modus 0640, das Verzeichnis Modus 2750, rotieren maximal 14 Tage und enthalten keine Querystrings, Header, Cookies, Tokens oder Quelladressen. Alloy ist kein Mitglied der Caddy-Gruppe; nach einer kontrolliert erzwungenen Rotation kann Alloy die neue Datei lesen.
-- [ ] Grafana lauscht nur auf `/run/epiber-observability/grafana.sock` mit `grafana:caddy` und Modus 0660. Caddy stellt nur Grafanas `/metrics` auf `127.0.0.1:3001` bereit; andere Pfade und externe Zugriffe werden abgewiesen.
+- [ ] Grafana lauscht nur auf `/run/epiber-observability/grafana.sock` mit `grafana:caddy` und Modus 0660. Caddy stellt nur Grafanas `/metrics` mit explizitem Loopback-Bind auf `127.0.0.1:3001` bereit; `ss` zeigt keinen Wildcard-Listener, andere Pfade und externe Zugriffe werden abgewiesen.
 - [ ] Personen-, Session-, IP-, Request-/Support-, Client- und Geraetewerte sind keine Prometheus- oder Loki-Labels; personenbezogene JSON-Felder werden nur fuer den Betriebszweck verwendet.
 - [ ] Loki loescht normale Frontenddiagnose nach 14 und gezielte Diagnose nach 7 Tagen; Prometheus-Retention und 5-GiB-Grenze passen zur gemessenen Serienzahl beider aktiver Backends.
 - [ ] `https://epiber.at/grafana/` funktioniert als einzige Grafana-Origin; PAJ leitet `/grafana/` samt Unterpfad permanent dorthin weiter, PK besitzt keine Grafana-Integration.

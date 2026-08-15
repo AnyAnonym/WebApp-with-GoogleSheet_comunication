@@ -374,8 +374,10 @@ gueltigen Sessions gilt Live vor PAJ.
 Grafana-Benutzernamen lauten `epiber-<Instanz>:<Personen-ID>`; alle erhalten die
 Organisationsrolle `Admin`, jedoch keine Grafana-Serveradminrechte.
 Grafana selbst lauscht ausschliesslich auf dem gruppengeschuetzten Unix-Socket.
-Caddy stellt nur dessen nicht vertraulichen `/metrics`-Pfad fuer Prometheus auf
-`127.0.0.1:3001` bereit; andere Pfade liefern dort 404.
+Caddy stellt nur dessen nicht vertraulichen `/metrics`-Pfad fuer Prometheus mit
+explizitem `bind 127.0.0.1` auf `127.0.0.1:3001` bereit; andere Pfade liefern dort
+404. Der Hostteil der Site-Adresse allein wird nicht als Listenerbegrenzung
+betrachtet; die Laufzeitabnahme muss den Loopback-Bind mit `ss` bestaetigen.
 
 Installation nach vollstaendig bestandenem Release- und Backup-Gate:
 

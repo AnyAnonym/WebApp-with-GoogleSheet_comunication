@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.1
+Stand: 4.4.2
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,27 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.2] - 2026-08-15
+Commit: 4.4.2 | Grafana-Metrikproxy an Loopback gebunden
+Quelle: 4.4.1-paj-1
+
+  Fixed
+  - [Sicherheit] Caddys Grafana-Metrikproxy verwendet zusaetzlich zur Site-
+    Adresse den expliziten `bind 127.0.0.1`. Dadurch lauscht Port 3001
+    tatsaechlich nur auf Loopback und nicht als Wildcard-Listener.
+
+  Changed
+  - [Repository] Paket- und Lockfile-Version auf `4.4.2` gesetzt.
+  - [Dokumentation] Observability-README, Server-Setup und Rollout-Checkliste
+    verlangen den expliziten Bind und seine Laufzeitkontrolle mit `ss`.
+
+  Tests
+  - Caddy-Vorlage erfolgreich validiert und den adaptierten Listener exakt als
+    `127.0.0.1:3001` geprueft.
+  - Der Hotfix wurde vor der Versionierung produktiv validiert: `ss` zeigte nur
+    den Loopback-Listener und Grafanas interner Metrikpfad blieb erreichbar.
+  - `git diff --check` erfolgreich.
 
 [4.4.1] - 2026-08-15
 Commit: 4.4.1 | Observability auf Live und PAJ begrenzt

@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.0
+Stand: 4.4.1
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,53 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.1] - 2026-08-15
+Commit: 4.4.1 | Observability auf Live und PAJ begrenzt
+Quelle: 4.4.0-paj-1
+
+  Changed
+  - [Infrastruktur] Gemeinsame Observability auf die explizit aktiven Deployments
+    Live und PAJ begrenzt. Prometheus, Alloy, Node Exporter, Dashboards,
+    Anwendungsalerts, Installer und Grafana-Auth-Broker beziehen PK nicht ein.
+  - [Software] Der Grafana-Auth-Broker verlangt im Produktionsstart eine
+    fail-closed Realm-Allowlist `live,paj`; fehlende, unbekannte oder doppelte
+    Werte verhindern den Start. Auch die exportierte Server-API ist ohne
+    explizite Realms deny-all und PK-Cookies loesen keine Backendanfrage aus.
+  - [Infrastruktur] Prometheus verwendet nur `live.json` und `paj.json`. Der
+    Installer prueft ausschliesslich Ports 8080 und 8083, validiert vor
+    Installation die Allowlist-Faehigkeit des Live-Brokers und veraendert weder
+    PK-Unit noch PK-Zieldateien oder PK-Access-Logs.
+  - [Infrastruktur] Der gemeinsame Caddyblock sperrt den internen Grafana-
+    Authpfad auch auf der PK-Origin explizit mit 404. Die nie aktivierten
+    PK-Observability-Access-Logs und PK-Grafana-Redirects der 4.4.0-Sollvorlage
+    entfallen; PK-Anwendung, Checkout und Dienst bleiben unveraendert.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.1` sowie die
+    Paketmanagervorgabe auf das eingesetzte npm 12.0.2 gesetzt.
+  - [Dokumentation] Architektur-, Seiten-, Server-, Setup-, Rollout-,
+    Observability-, Runbook- und OpenCode-Dokumentation auf die aktuelle
+    PAJ-Live-Promotion ohne PK angeglichen.
+
+  Fixed
+  - [Dokumentation] Klargestellt, dass der Observability-Installer keine Caddy-,
+    Stack- oder Grafana-SQLite-Backups erstellt oder prueft und ein Rollback aus
+    den zuvor extern angelegten Sicherungen durch den Betreiber erfolgen muss.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 154 automatisierten Tests
+    erfolgreich; drei neue Brokerpruefungen decken Realmvalidierung, kanonische
+    Prioritaet, ignorierte PK-Cookies und die deny-all Standard-API ab.
+  - `npm audit --omit=dev` meldete keine bekannte Produktionsschwachstelle.
+  - Caddy, Alloy, Loki, Prometheus, aktive systemd-Units, tmpfiles, Shellsyntax,
+    Dashboard-JSON, Grafana-Alertprovisionierung und `git diff --check` wurden
+    erfolgreich validiert.
+
+  Rollout
+  - Derselbe freigegebene Stand ist zuerst auf PAJ und danach auf Live zu
+    installieren. PK bleibt deaktiviert und ist ein eigener spaeterer Release.
+  - Aktive Caddy-/Observability-Konfiguration, Grafana-SQLite, Sheets sowie die
+    drei Anwendungs-SQLite-Dateien je aktivem System sind vor der Installation
+    konsistent zu sichern; der bestehende Grafana-Secret-Key darf nicht rotieren.
 
 [4.4.0] - 2026-08-15
 Commit: 4.4.0 | Observability und Fachhistorien integriert

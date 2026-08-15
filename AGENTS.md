@@ -74,6 +74,10 @@ nicht automatisch den aktuell installierten Zustand oder Laufzeitstatus.
 TCP-Port 80 wird laut Setup zusaetzlich fuer ACME und HTTP-zu-HTTPS benoetigt.
 Server-Roots: `/srv/http/ePiber/{piber,paj,pk}/`
 
+Die gemeinsame Observability ist aktuell nur fuer Live und PAJ aktiv. PK bleibt
+als Anwendungsvorlage bestehen, wird aber weder gescraped noch in Alloy,
+Node Exporter, Grafana-Authentifizierung, Dashboards oder Alerts einbezogen.
+
 ## Repository-Struktur
 
 ```text

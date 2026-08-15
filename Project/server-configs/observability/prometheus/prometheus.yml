@@ -34,4 +34,5 @@ scrape_configs:
     metrics_path: /metrics
     file_sd_configs:
       - files:
-          - targets/epiber/*.json
+          - targets/epiber/live.json
+          - targets/epiber/paj.json

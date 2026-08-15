@@ -126,7 +126,7 @@ andere Ablehnung sind dort zulaessig; ein HTTP-Redirect ist kein Erfolgskriteriu
 3. LAUFZEIT UND DEPENDENCIES
 ================================================================================
 
-Erforderlich sind Node.js 26.x und npm 12.0.1. Andere Node-Major-Versionen sind
+Erforderlich sind Node.js 26.x und npm 12.0.2. Andere Node-Major-Versionen sind
 durch `engines` nicht freigegeben. Vor jeder Installation pruefen:
 
   node --version
@@ -311,12 +311,21 @@ AF_UNIX, AF_INET und AF_INET6.
 Vorlagen aus dem freigegebenen Commit mit Paketversion
 `<FREIGEGEBENE_VERSION>` installieren:
 
-  install -o root -g root -m 0644 Project/server-configs/systemd/*.service /etc/systemd/system/
+  install -o root -g root -m 0644 Project/server-configs/systemd/epiber-piber.service /etc/systemd/system/
+  install -o root -g root -m 0644 Project/server-configs/systemd/epiber-paj.service /etc/systemd/system/
+  install -o root -g root -m 0644 Project/server-configs/systemd/epiber-grafana-auth.service /etc/systemd/system/
   systemd-analyze verify /etc/systemd/system/epiber-piber.service
   systemd-analyze verify /etc/systemd/system/epiber-paj.service
-  systemd-analyze verify /etc/systemd/system/epiber-pk.service
+  systemd-analyze verify /etc/systemd/system/epiber-grafana-auth.service
   systemctl daemon-reload
-  systemctl enable epiber-piber epiber-paj epiber-pk
+  systemctl enable epiber-piber epiber-paj epiber-grafana-auth
+
+Die PK-Unit wird im aktuellen Zwei-System-Release weder installiert, veraendert
+noch aktiviert. Ihre versionierte Vorlage bleibt ausschliesslich fuer einen
+spaeteren getrennt freigegebenen PK-Rollout erhalten. Im gemeinsamen Caddy wird
+auf der PK-Origin der interne Grafana-Auth-Pfad explizit mit 404 gesperrt;
+gegenueber dem installierten PK-Iststand ist dies die einzige Verhaltensaenderung.
+Die nicht aktivierten PK-Logging-/Redirectteile der vorherigen Sollvorlage entfallen.
 
 Die journald-Vorlage als root installieren und journald neu starten:
 
@@ -335,31 +344,33 @@ trotz Persistenz nur Diagnosekanal; Score-/Audit-Historie bleibt in SQLite.
 ================================================================================
 
 Grafana, Prometheus, Loki, Alloy, Node Exporter und der Auth-Broker bilden einen
-gemeinsamen Hoststack fuer Live, PAJ und PK. Vor seiner Installation muessen alle
-drei Backends denselben freigegebenen Stand ausliefern und intern `GET /metrics`
-sowie `GET /api/admin/grafana-auth` bereitstellen. PK-Backendport 8084 darf erst
-als Prometheusziel aktiviert werden, wenn der PK-Dienst gesund laeuft.
+gemeinsamen Hoststack fuer die aktiven Deployments Live und PAJ. Vor seiner
+Installation muessen beide Backends denselben freigegebenen Stand ausliefern und
+intern `GET /metrics` sowie `GET /api/admin/grafana-auth` bereitstellen. PK bleibt
+deaktiviert und wird weder geprueft noch gescraped oder als Auth-Realm verwendet.
 
 Datenfluss:
 
-  epiber-{piber,paj,pk}.service --journald--+
-  drei Caddy-Access-Logs -------------------+--> Alloy --> Loki
-  drei Backend-/metrics ------------------------> Prometheus --+
+  epiber-{piber,paj}.service --journald-----+
+  zwei Caddy-Access-Logs -------------------+--> Alloy --> Loki
+  zwei Backend-/metrics ------------------------> Prometheus --+
   Node Exporter ----------------------------------------------+--> Grafana
 
-Alloy setzt `deployment=live|paj|pk`. Personen-ID, Klarname, E-Mail, IP,
+Alloy setzt `deployment=live|paj`. Personen-ID, Klarname, E-Mail, IP,
 Support-/Request-ID, Session-, Client- und Geraetewerte bleiben JSON-Felder und
 werden keine Labels. Caddy entfernt Querystrings, Request-/Responseheader und
 Quelladressen aus den Access-Logs. Loki ist ein gemeinsamer Tenant: Jeder
-zugelassene Grafana-Admin darf bewusst Daten aller drei Systeme sehen.
+zugelassene Grafana-Admin darf bewusst Daten beider aktiver Systeme sehen.
 
 Grafana besitzt genau eine kanonische Origin `https://epiber.at/grafana/`. PAJ
-und PK antworten auf `/grafana/` mit einer permanenten Weiterleitung dorthin.
+antwortet auf `/grafana/` mit einer permanenten Weiterleitung dorthin. Der
+PK-Caddyblock besitzt weder Grafana-Redirect noch Observability-Access-Logging.
 Vor jedem Asset-, API- oder Grafana-Live-WebSocket-Request fragt Caddy den
 Loopback-Broker auf Port 8085. Dieser sendet jedes vorhandene Sessioncookie nur
-an sein eigenes Backend. Eine aktuelle aktive Adminsession aus Live, PK oder PAJ
-genuegt; Player, Operator, anonyme, stale, abgelaufene, widerrufene und inaktive
-Sessions werden abgewiesen. Bei mehreren gueltigen Sessions gilt Live, PK, PAJ.
+an sein eigenes Backend. Eine aktuelle aktive Adminsession aus Live oder PAJ
+genuegt; PK-Cookies werden ignoriert. Player, Operator, anonyme, stale,
+abgelaufene, widerrufene und inaktive Sessions werden abgewiesen. Bei mehreren
+gueltigen Sessions gilt Live vor PAJ.
 Grafana-Benutzernamen lauten `epiber-<Instanz>:<Personen-ID>`; alle erhalten die
 Organisationsrolle `Admin`, jedoch keine Grafana-Serveradminrechte.
 Grafana selbst lauscht ausschliesslich auf dem gruppengeschuetzten Unix-Socket.
@@ -377,20 +388,21 @@ Installation nach vollstaendig bestandenem Release- und Backup-Gate:
 
 Das Skript verlangt die Pakete `grafana`, `grafana-alloy`, `loki`, `prometheus`
 und `prometheus-node-exporter`, validiert alle Vorlagen, installiert den
-Auth-Broker, aktiviert alle drei Scrapeziele und repariert die drei Caddy-
+Auth-Broker, aktiviert die Scrapeziele Live und PAJ und repariert deren Caddy-
 Access-Logrechte auch bei bereits vorhandenen Dateien wiederholbar auf
 `caddy:grafana-alloy` und Modus 0640. Es legt
 `/var/lib/grafana/plugins` als `grafana:grafana` mit Modus 0750 an. Die
 Grafana-Bereitschaftspruefung entfernt JSON-Leerraum vor der Auswertung und
 erkennt dadurch kompakte wie formatierte Health-Antworten
-formatierungsunabhaengig. Vor dem Skriptlauf werden aktive Caddy-Konfiguration und
-Observability-Daten gesichert und die neue Caddy-Vorlage separat validiert. Der
+formatierungsunabhaengig. Vor dem Skriptlauf muss der Betreiber aktive Caddy- und
+Observability-Konfiguration sowie Grafana-SQLite konsistent sichern und die neue
+Caddy-Vorlage separat validieren. Das Skript erstellt oder prueft keine Backups. Der
 Skriptlauf stellt Grafana auf den Unix-Socket um; bis zum unmittelbar folgenden
 kontrollierten Caddy-Install/Reload ist nur Grafana voruebergehend nicht
-erreichbar, die drei ePiber-Anwendungen bleiben unbeeintraechtigt. Scheitert der
-Caddy-Reload, werden die gesicherte Caddydatei und die vorherigen
-Observability-Vorlagen wiederhergestellt, Grafana neu gestartet und Caddy erneut
-validiert und geladen. Der Wechsel findet deshalb ausschliesslich in einem
+erreichbar, die ePiber-Anwendungen bleiben unbeeintraechtigt. Scheitert der
+Caddy-Reload, muss der Betreiber die gesicherte Caddydatei und die vorherigen
+Observability-Vorlagen wiederherstellen, Grafana neu starten und Caddy erneut
+validieren und laden. Der Wechsel findet deshalb ausschliesslich in einem
 dokumentierten Wartungsfenster statt.
 
 Lokale Daten und Aufbewahrung:
@@ -438,8 +450,9 @@ verwendet. Danach Vordergrundprozess und Tunnel beenden, das Terminal mit den
 exportierten Geheimnissen schliessen, `systemctl start grafana.service`
 ausfuehren und den normalen ePiber-Adminzugang erneut testen.
 
-Nicht alle Systeme bei einer Versionspromotion gleichzeitig starten. Die
-Reihenfolge PAJ, PK, Live einhalten. Beim Stop sendet systemd SIGTERM. Der Server
+Nicht alle aktiven Systeme bei einer Versionspromotion gleichzeitig starten. Im
+aktuellen Zwei-System-Betrieb gilt die Reihenfolge PAJ, Live; eine spaetere
+PK-Aktivierung ist ein eigener freizugebender Rollout. Beim Stop sendet systemd SIGTERM. Der Server
 nimmt keine neue Arbeit an, setzt Liveness auf stopping, stoppt Poller, schliesst
 WebSockets mit 1012, drainiert HTTP-/Sheets-Arbeit und schliesst alle drei
 SQLite-Datenbanken. Nach 95
@@ -545,10 +558,10 @@ und keine Mixed-Content-, CSP-, Zertifikats- oder Originfehler zeigen.
 Die vollstaendige fachliche und technische Abnahme steht in
 ROLLOUT-CHECKLIST.md. Kurzregel:
 
-  1. Sheets sowie alle drei SQLite-Datenbanken sichern, Schema/Credentials pruefen.
+  1. Sheets sowie alle drei SQLite-Datenbanken je aktivem System sichern, Schema/Credentials pruefen.
   2. Exakten Release-Commit und Lockfile auf PAJ installieren und abnehmen.
-  3. Exakt denselben Commit auf PK installieren und Smoke-/Integrationscheck.
-  4. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.
+  3. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.
+  4. PK deaktiviert lassen; seine spaetere Aufnahme separat versionieren und abnehmen.
 
 Vor jeder Stufe den vorherigen Commit/Release, `.env`, Credential-Zuordnung,
 Caddy-/systemd-Version und konsistente Backups festhalten. Rollback bedeutet

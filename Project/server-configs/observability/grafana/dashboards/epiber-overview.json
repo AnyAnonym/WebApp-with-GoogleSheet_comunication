@@ -13,7 +13,7 @@
   ],
   "schemaVersion": 41,
   "tags": ["epiber", "observability"],
-  "templating": { "list": [{ "name": "deployment", "label": "System", "type": "custom", "query": "live,paj,pk", "current": { "text": "Live", "value": "live" }, "options": [{ "text": "Live", "value": "live", "selected": true }, { "text": "PAJ", "value": "paj", "selected": false }, { "text": "PK", "value": "pk", "selected": false }] }] },
+  "templating": { "list": [{ "name": "deployment", "label": "System", "type": "custom", "query": "live,paj", "current": { "text": "Live", "value": "live" }, "options": [{ "text": "Live", "value": "live", "selected": true }, { "text": "PAJ", "value": "paj", "selected": false }] }] },
   "time": { "from": "now-6h", "to": "now" },
   "timezone": "browser",
   "title": "ePiber Uebersicht",

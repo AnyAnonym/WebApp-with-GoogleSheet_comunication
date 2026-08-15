@@ -26,7 +26,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'up{job="epiber",deployment=~"live|paj|pk"}'
+              expr: 'up{job="epiber",deployment=~"live|paj"}'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -64,7 +64,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'epiber_ready{deployment=~"live|paj|pk"}'
+              expr: 'epiber_ready{deployment=~"live|paj"}'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -102,7 +102,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'min by (deployment) (epiber_sheet_table_current{deployment=~"live|paj|pk",table!="matchtyp"})'
+              expr: 'min by (deployment) (epiber_sheet_table_current{deployment=~"live|paj",table!="matchtyp"})'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -140,7 +140,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'epiber_court_source_stale{deployment=~"live|paj|pk"}'
+              expr: 'epiber_court_source_stale{deployment=~"live|paj"}'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -178,7 +178,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'min by (deployment) (epiber_sqlite_ready{deployment=~"live|paj|pk"})'
+              expr: 'min by (deployment) (epiber_sqlite_ready{deployment=~"live|paj"})'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -216,7 +216,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'epiber_sheet_metadata_intents_pending{deployment=~"live|paj|pk"}'
+              expr: 'epiber_sheet_metadata_intents_pending{deployment=~"live|paj"}'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -254,7 +254,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'sum by (deployment) (rate(epiber_http_requests_total{deployment=~"live|paj|pk",result="failed"}[5m]))'
+              expr: 'sum by (deployment) (rate(epiber_http_requests_total{deployment=~"live|paj",result="failed"}[5m]))'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200

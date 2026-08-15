@@ -40,5 +40,5 @@ Frontend-Logging - Administration und temporaere Diagnoseziele
   Betreiber bestimmt und duerfen in Loki nicht als Labels verwendet werden.
   Die Seite zeigt keine Ereignisinhalte. Alloy transportiert angenommene Events
   aus dem Journal zu Loki; Suche und Darstellung erfolgen im zentralen Grafana
-  ausschliesslich fuer aktuelle Admins aus Live, PAJ oder PK. Jeder dieser Admins
-  darf die Daten aller drei Systeme sehen.
+  ausschliesslich fuer aktuelle Admins aus Live oder PAJ. Jeder dieser Admins
+  darf die Daten beider aktiven Systeme sehen; PK ist nicht angebunden.

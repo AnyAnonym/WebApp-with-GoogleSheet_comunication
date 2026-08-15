@@ -8,6 +8,20 @@ const DEFAULT_REALMS = Object.freeze([
   Object.freeze({ name: "paj", cookie: "epiber_paj_session", url: "http://127.0.0.1:8083/api/admin/grafana-auth", userPrefix: "epiber-paj:" }),
 ]);
 
+function selectRealms(value, realms = DEFAULT_REALMS) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("GRAFANA_AUTH_BROKER_REALMS fehlt");
+  const names = value.split(",").map((name) => name.trim());
+  if (names.some((name) => !name)) throw new Error("GRAFANA_AUTH_BROKER_REALMS enthaelt einen leeren Eintrag");
+  const selected = new Set();
+  const known = new Set(realms.map((realm) => realm.name));
+  for (const name of names) {
+    if (!known.has(name)) throw new Error(`Unbekanntes Grafana-Auth-Realm: ${name}`);
+    if (selected.has(name)) throw new Error(`Doppeltes Grafana-Auth-Realm: ${name}`);
+    selected.add(name);
+  }
+  return Object.freeze(realms.filter((realm) => selected.has(realm.name)));
+}
+
 function writeLog(level, event, fields = {}) {
   const line = JSON.stringify({
     ...fields,
@@ -67,7 +81,7 @@ async function verifyRealm(realm, token, { fetchImpl, timeoutMs }) {
   }
 }
 
-function createHandler({ realms = DEFAULT_REALMS, fetchImpl = fetch, timeoutMs = 2000, log = writeLog } = {}) {
+function createHandler({ realms = [], fetchImpl = fetch, timeoutMs = 2000, log = writeLog } = {}) {
   return async function handler(request, response) {
     if (request.url === "/metrics") {
       if (request.method !== "GET") return json(response, 405, { success: false }, { Allow: "GET" });
@@ -116,10 +130,11 @@ function start() {
   const host = process.env.GRAFANA_AUTH_BROKER_HOST || "127.0.0.1";
   const port = Number(process.env.GRAFANA_AUTH_BROKER_PORT || 8085);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Ungueltiger GRAFANA_AUTH_BROKER_PORT");
-  const server = createApplication();
+  const realms = selectRealms(process.env.GRAFANA_AUTH_BROKER_REALMS);
+  const server = createApplication({ realms });
   server.listen(port, host, () => writeLog("info", "grafana_auth_broker_started", { host, port }));
 }
 
 if (require.main === module) start();
 
-module.exports = { DEFAULT_REALMS, createApplication, createHandler, verifyRealm };
+module.exports = { DEFAULT_REALMS, createApplication, createHandler, selectRealms, verifyRealm };

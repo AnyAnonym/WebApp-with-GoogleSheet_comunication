@@ -15,7 +15,7 @@ Datei/Verzeichnis           | Beschreibung
 ----------------------------|---------------------------------------------------
 SERVER-DOKU.txt             | Dieser Verzeichnisindex
 SERVER-SETUP.txt            | Installation, Topologie, Betrieb und Diagnose
-ROLLOUT-CHECKLIST.md        | Verbindliche Abnahme und PAJ-PK-Live-Promotion
+ROLLOUT-CHECKLIST.md        | Verbindliche Abnahme und aktuelle PAJ-Live-Promotion
 Caddyfile                   | Vorlage fuer /etc/caddy/Caddyfile
 systemd/                    | Vorlagen fuer /etc/systemd/system/
   epiber-piber.service      | Live, User piber, Backend 127.0.0.1:8080
@@ -25,7 +25,7 @@ journald/epiber.conf        | Persistente, groessen- und zeitbegrenzte Journalvo
 observability/              | Gemeinsame Grafana-/Prometheus-/Loki-/Alloy-
                             | Vorlagen, Dashboards, Alerts und Runbooks
 systemd/epiber-grafana-     | Gemeinsamer Loopback-Auth-Broker fuer Adminsessions
-  auth.service              | aus Live, PAJ und PK
+  auth.service              | aus den aktiven Realms Live und PAJ
 tmpfiles/epiber-            | Geschuetztes Laufzeitverzeichnis fuer den
   observability.conf        | Caddy-/Grafana-Unix-Socket
 
@@ -47,14 +47,21 @@ Client leitet die WebSocket-Adresse same-origin aus window.location und dem Pfad
 Caddy liefert das jeweilige Frontend aus und proxyt nur diese Anwendungspfade:
   /ws, /api/*, /live, /ready, /health, /version, /status
 
-Grafana ist zentral unter `https://epiber.at/grafana/` erreichbar. Die
-gleichnamigen Pfade auf PAJ und PK leiten auf diese Adresse weiter. Caddy prueft
+Grafana ist zentral unter `https://epiber.at/grafana/` erreichbar. Der
+gleichnamige Pfad auf PAJ leitet auf diese Adresse weiter; der PK-Caddyblock
+besitzt weder Grafana-Redirect noch Access-Logging fuer Observability. Caddy prueft
 jeden zentralen Grafana-Request ueber den Auth-Broker auf Port 8085 gegen die
-aktuellen Adminsessions aller drei Systeme und proxyt danach ueber den
+aktuellen Adminsessions von Live und PAJ und proxyt danach ueber den
 gruppengeschuetzten Unix-Socket `/run/epiber-observability/grafana.sock`.
 Caddy stellt Grafanas nicht vertraulichen Metrikpfad fuer Prometheus getrennt auf
 `127.0.0.1:3001` bereit. `/metrics` bleibt von allen externen Matchern
 ausgeschlossen.
+
+PK bleibt als Anwendungssystem und Caddy-Origin dokumentiert, ist im aktuellen
+Observability-Stand aber deaktiviert: Port 8084 wird nicht gescraped, PK-Journale
+und -Access-Logs werden nicht gesammelt und PK-Sessions autorisieren Grafana nicht.
+Caddy sperrt dort den internen Authpfad explizit mit 404. Gegenueber dem
+installierten PK-Caddy-Iststand ist das die einzige Verhaltensaenderung.
 
 Zu den HTTP-Routen gehoeren `POST /api/password-setup` fuer die
 freigegebene Erstvergabe und `POST /api/admin/password-setup` zum Setzen oder
@@ -132,8 +139,8 @@ Die ausfuehrliche Installation steht in SERVER-SETUP.txt. Vor jeder Freigabe ist
 ROLLOUT-CHECKLIST.md vollstaendig abzuarbeiten. Vorgeschriebene Reihenfolge:
 
   1. PAJ installieren, migrieren und vollstaendig abnehmen.
-  2. Identischen bestaetigten Stand auf PK installieren und Smoke-Test ausfuehren.
-  3. Identischen bestaetigten Stand zuletzt auf Live installieren.
+  2. Identischen bestaetigten Stand zuletzt auf Live installieren.
+  3. PK deaktiviert lassen; eine spaetere Aktivierung separat versionieren und abnehmen.
 
 Die freigegebene Version wird fuer jeden Rollout aus `Backend/package.json` des
 freigegebenen Commits uebernommen. `Backend/package-lock.json`, installierter

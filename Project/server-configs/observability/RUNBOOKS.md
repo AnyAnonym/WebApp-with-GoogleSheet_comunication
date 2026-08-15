@@ -2,7 +2,7 @@
 
 Alerts enthalten keine personenbezogenen Werte. Logauszuege werden nur von
 aktuellen ePiber-Admins in Grafana untersucht und vor Export redigiert. Der
-Alert-Labelwert `deployment` bestimmt `live`, `paj` oder `pk`.
+Alert-Labelwert `deployment` bestimmt im aktiven Stand `live` oder `paj`.
 
 Zuordnung:
 
@@ -10,7 +10,9 @@ Zuordnung:
 |------------|-------------|--------------|
 | `live` | 8080 | `epiber-piber.service` |
 | `paj` | 8083 | `epiber-paj.service` |
-| `pk` | 8084 | `epiber-pk.service` |
+
+PK ist derzeit kein aktives Observability-Deployment und wird erst nach einer
+separaten Freigabe wieder in Scrapes, Logs, Authentifizierung und Alerts aufgenommen.
 
 ## Backend Down
 
@@ -57,7 +59,7 @@ wiederholen.
 
 1. Das ausgefallene Ziel mit `up` nach `job` bestimmen.
 2. Den zugehoerigen Dienststatus und dessen Journal lokal pruefen.
-3. Bei Auth-Brokerfehlern `/live` und die drei Backend-Authpfade getrennt pruefen.
+3. Bei Auth-Brokerfehlern `/live` und die Backend-Authpfade von Live und PAJ getrennt pruefen.
 4. Bei Loki-, Prometheus- oder Grafana-Ausfall bleibt ePiber unabhaengig; den
    Anwendungsdienst nicht ohne separaten Befund neu starten.
 

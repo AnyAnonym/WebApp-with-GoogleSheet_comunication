@@ -113,24 +113,6 @@ https://epiber.at:8081 {
 https://epiber.at:8082 {
 	import security_headers
 	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8082 wss://epiber.at:8082; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
-	log pk_access {
-		output file /var/log/caddy/epiber-pk-access.json {
-			mode 0640
-			roll_size 20MiB
-			roll_at 00:00
-			roll_keep 14
-			roll_keep_for 336h
-		}
-		format filter {
-			request>uri regexp `\?.*$` ""
-			request>headers delete
-			request>remote_ip delete
-			request>remote_port delete
-			request>client_ip delete
-			resp_headers delete
-			wrap json
-		}
-	}
 
 	handle /api/admin/grafana-auth {
 		respond 404
@@ -139,15 +121,9 @@ https://epiber.at:8082 {
 	@backend path /ws /api/* /live /ready /health /version /status
 	handle @backend {
 		reverse_proxy 127.0.0.1:8084
-		log_append request_id {rp.header.X-Request-ID}
-		log_append route backend
 	}
 
-	redir /grafana https://epiber.at/grafana/ 308
-	redir /grafana/* https://epiber.at{uri} 308
-
 	handle {
-		log_append route static
 		root * /srv/http/ePiber/pk/Frontend
 		header Cache-Control "no-cache"
 		file_server

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createApplication, createHandler } = require("../grafanaAuthBroker.js");
+const { createApplication, createHandler, selectRealms } = require("../grafanaAuthBroker.js");
 
 const realms = [
   { name: "live", cookie: "live_session", url: "http://live/auth", userPrefix: "epiber-piber:" },
@@ -11,6 +11,42 @@ const realms = [
 function response(status, user = "", role = "") {
   return new Response("{}", { status, headers: { "X-WEBAUTH-USER": user, "X-WEBAUTH-ROLE": role } });
 }
+
+test("Broker waehlt nur explizit konfigurierte Realms in kanonischer Prioritaet", () => {
+  assert.deepEqual(selectRealms("paj,live", realms).map((realm) => realm.name), ["live", "paj"]);
+  for (const value of [undefined, "", " ", "live,,paj", "live,live", "live,unknown", "LIVE,paj"]) {
+    assert.throws(() => selectRealms(value, realms));
+  }
+});
+
+test("Deaktiviertes PK-Realm wird auch mit vorhandenem Cookie nicht angefragt", async (context) => {
+  const requests = [];
+  const activeRealms = selectRealms("live,paj", realms);
+  const server = createApplication({
+    realms: activeRealms,
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return response(200, "epiber-piber:live-admin", "Admin");
+    },
+    log: () => {},
+  });
+  context.after(() => server.close());
+  const base = await listen(server);
+  assert.equal((await fetch(`${base}/auth`, { headers: { Cookie: "pk_session=pk" } })).status, 401);
+  assert.deepEqual(requests, []);
+  const accepted = await fetch(`${base}/auth`, { headers: { Cookie: "pk_session=pk; live_session=live" } });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(requests, ["http://live/auth"]);
+});
+
+test("Broker-API bleibt ohne explizite Realms fail-closed", async (context) => {
+  let called = false;
+  const server = createApplication({ fetchImpl: async () => { called = true; return response(200); }, log: () => {} });
+  context.after(() => server.close());
+  const base = await listen(server);
+  assert.equal((await fetch(`${base}/auth`, { headers: { Cookie: "pk_session=pk; live_session=live" } })).status, 401);
+  assert.equal(called, false);
+});
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

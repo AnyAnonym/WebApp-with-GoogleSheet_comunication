@@ -8,6 +8,7 @@ fi
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SECRETS=/etc/epiber-observability/grafana.env
+ENABLED_DEPLOYMENTS="live paj"
 
 wait_for_url() {
   url=$1
@@ -58,7 +59,7 @@ if [ "$GF_SMTP_ENABLED" != "false" ]; then
   exit 1
 fi
 
-for command in caddy getent gpasswd grafana grafana-alloy id loki prometheus prometheus-node-exporter promtool systemd-tmpfiles usermod; do
+for command in caddy getent gpasswd grafana grafana-alloy id loki node prometheus prometheus-node-exporter promtool systemd-tmpfiles usermod; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Fehlendes Arch-Paketwerkzeug: $command" >&2
     exit 1
@@ -76,14 +77,24 @@ grafana-alloy validate "$ROOT/alloy"
 loki -config.file="$ROOT/loki/loki.yaml" -verify-config=true
 promtool check config "$ROOT/prometheus/prometheus.yml"
 
-for port in 8080 8083 8084; do
+for deployment in $ENABLED_DEPLOYMENTS; do
+  case "$deployment" in
+    live) port=8080 ;;
+    paj) port=8083 ;;
+    *) echo "Unbekanntes aktives Deployment: $deployment" >&2; exit 1 ;;
+  esac
   curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$port/metrics" >/dev/null || {
-    echo "ePiber-Backend auf Port $port stellt /metrics noch nicht bereit" >&2
+    echo "ePiber-Backend $deployment auf Port $port stellt /metrics noch nicht bereit" >&2
     exit 1
   }
 done
-if [ ! -r /srv/http/ePiber/piber/Backend/grafanaAuthBroker.js ]; then
+BROKER=/srv/http/ePiber/piber/Backend/grafanaAuthBroker.js
+if [ ! -r "$BROKER" ]; then
   echo "Der freigegebene Live-Stand enthaelt grafanaAuthBroker.js noch nicht" >&2
+  exit 1
+fi
+if ! node -e 'const broker = require(process.argv[1]); const selected = broker.selectRealms?.("live,paj").map((realm) => realm.name).join(","); if (selected !== "live,paj") process.exit(1);' "$BROKER"; then
+  echo "Der installierte Grafana-Auth-Broker unterstuetzt die fail-closed Live-/PAJ-Allowlist nicht" >&2
   exit 1
 fi
 
@@ -93,13 +104,14 @@ install -d -o grafana -g grafana -m 0750 /var/lib/grafana/plugins
 install -m 0644 "$ROOT/alloy/config.alloy" /etc/grafana-alloy/config.alloy
 install -m 0644 "$ROOT/loki/loki.yaml" /etc/loki/loki.yaml
 install -m 0644 "$ROOT/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
-rm -f /etc/prometheus/targets/epiber/*.json
-for target in "$ROOT"/prometheus/targets/epiber/*.json; do
-  install -m 0644 "$target" "/etc/prometheus/targets/epiber/$(basename "$target")"
+for deployment in $ENABLED_DEPLOYMENTS; do
+  target="$ROOT/prometheus/targets/epiber/$deployment.json"
+  if [ ! -r "$target" ]; then
+    echo "Fehlende Prometheus-Zielvorlage: $target" >&2
+    exit 1
+  fi
+  install -m 0644 "$target" "/etc/prometheus/targets/epiber/$deployment.json"
 done
-rm -f /etc/prometheus/targets/enabled/paj.json /etc/prometheus/targets/enabled/pk.json /etc/prometheus/targets/enabled/live.json
-rm -f /etc/prometheus/targets/available/pk.json /etc/prometheus/targets/available/live.json
-rmdir /etc/prometheus/targets/available 2>/dev/null || true
 install -m 0644 "$ROOT/prometheus/prometheus.env" /etc/conf.d/prometheus
 install -m 0644 "$ROOT/node-exporter/node-exporter.env" /etc/conf.d/prometheus-node-exporter
 install -o root -g grafana -m 0640 "$ROOT/grafana/grafana.ini" /etc/grafana.ini
@@ -127,7 +139,7 @@ case " $(id -nG grafana-alloy) " in
 esac
 systemd-tmpfiles --create /etc/tmpfiles.d/epiber-observability.conf
 install -d -o caddy -g grafana-alloy -m 2750 /var/log/caddy
-for deployment in live paj pk; do
+for deployment in $ENABLED_DEPLOYMENTS; do
   access_log="/var/log/caddy/epiber-$deployment-access.json"
   if [ ! -e "$access_log" ]; then
     install -o caddy -g grafana-alloy -m 0640 /dev/null "$access_log"
@@ -162,5 +174,5 @@ esac
 
 pacman -Q grafana grafana-alloy loki prometheus prometheus-node-exporter
 
-echo "Gemeinsame ePiber-Observability installiert. Caddy-Vorlage separat kontrolliert installieren/reloaden."
-echo "Grafana nach dem Caddy-Reload als Live-, PAJ- oder PK-Admin unter https://epiber.at/grafana/ verwenden."
+echo "Gemeinsame Live-/PAJ-Observability installiert. Caddy-Vorlage separat kontrolliert installieren/reloaden."
+echo "Grafana nach dem Caddy-Reload als Live- oder PAJ-Admin unter https://epiber.at/grafana/ verwenden."

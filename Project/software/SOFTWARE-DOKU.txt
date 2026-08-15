@@ -70,7 +70,7 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
 
   `Project/server-configs/observability/README.md`
       Gemeinsame Grafana-, Prometheus-, Loki-, Alloy- und Node-Exporter-
-      Topologie fuer Live, PAJ und PK.
+      Aktive gemeinsame Topologie fuer Live und PAJ; PK bleibt deaktiviert vorbereitet.
 
   `Project/server-configs/observability/RUNBOOKS.md`
       Dauerhafte Betriebsablaeufe fuer Alerts, Fehler und Recovery.
@@ -88,9 +88,9 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
       Kommunikationsanalyse und verbleibende manuelle Risiken.
 
   Grafana ist eine externe Betriebsoberflaeche und keine fachliche HTML-Seite.
-  Aktuelle Admins aller drei Systeme erreichen dieselbe Instanz unter
-  `https://epiber.at/grafana/`; PAJ und PK leiten ihren `/grafana/`-Einstieg
-  dorthin weiter.
+  Aktuelle Admins aus Live und PAJ erreichen dieselbe Instanz unter
+  `https://epiber.at/grafana/`; PAJ leitet seinen `/grafana/`-Einstieg dorthin
+  weiter. PK besitzt im aktuellen Stand keine Grafana-Integration.
 
 
 ================================================================================

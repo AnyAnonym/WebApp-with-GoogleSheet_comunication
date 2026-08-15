@@ -1,13 +1,17 @@
 [Unit]
 Description=ePiber shared Grafana authentication broker
 Wants=network-online.target
-After=network-online.target epiber-piber.service epiber-paj.service epiber-pk.service
+After=network-online.target epiber-piber.service epiber-paj.service
 
 [Service]
 Type=simple
 DynamicUser=true
 WorkingDirectory=/srv/http/ePiber/piber/Backend
-ExecStart=/usr/bin/env NODE_ENV=production GRAFANA_AUTH_BROKER_HOST=127.0.0.1 GRAFANA_AUTH_BROKER_PORT=8085 /usr/bin/node grafanaAuthBroker.js
+Environment=NODE_ENV=production
+Environment=GRAFANA_AUTH_BROKER_HOST=127.0.0.1
+Environment=GRAFANA_AUTH_BROKER_PORT=8085
+Environment=GRAFANA_AUTH_BROKER_REALMS=live,paj
+ExecStart=/usr/bin/node grafanaAuthBroker.js
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=epiber-grafana-auth

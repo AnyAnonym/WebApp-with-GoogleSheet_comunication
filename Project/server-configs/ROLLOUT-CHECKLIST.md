@@ -2,7 +2,7 @@
 
 Stand: 15.08.2026
 
-Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> Live**. Jede Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
+Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -> Live**. PK bleibt deaktiviert und wird erst in einem eigenen spaeteren Release aufgenommen. Jede aktive Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
 ## Freigabeprotokoll
 
@@ -66,14 +66,14 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 ## 4. Installation und statische Verifikation
 
 - [ ] `node --version` meldet Node.js 26.x.
-- [ ] `npm --version` meldet npm 12.0.1.
+- [ ] `npm --version` meldet npm 12.0.2.
 - [ ] `package-lock.json` ist versioniert, unveraendert und Lockfile-Version 3.
 - [ ] Im `Backend/` des Releasecheckouts ist `npm ci --omit=dev` erfolgreich.
 - [ ] `npm run build` ist erfolgreich; statischer Check und vollstaendige Testsuite sind gruen.
 - [ ] `npm audit --omit=dev` meldet keine nicht akzeptierte Produktionsluecke.
 - [ ] `caddy validate --config /etc/caddy/Caddyfile` ist mit der Vorlage aus dem eingetragenen Release-Commit erfolgreich.
-- [ ] Alle vier ePiber-Units einschliesslich `epiber-grafana-auth.service` bestehen `systemd-analyze verify`.
-- [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die systemspezifischen Backends; `/metrics` und `/api/admin/grafana-auth` bleiben extern gesperrt. Nur die zentrale Live-Origin proxyt das separat geschuetzte `/grafana/*` ueber den Grafana-Unix-Socket.
+- [ ] Die aktiven Units `epiber-piber.service`, `epiber-paj.service` und `epiber-grafana-auth.service` bestehen `systemd-analyze verify`; die installierte PK-Unit bleibt unveraendert.
+- [ ] Caddy proxyt nur `/ws`, `/api/*`, `/live`, `/ready`, `/health`, `/version`, `/status` auf die aktiven Backends; `/metrics` und `/api/admin/grafana-auth` bleiben auf allen Origins extern gesperrt. Nur die zentrale Live-Origin proxyt das separat geschuetzte `/grafana/*` ueber den Grafana-Unix-Socket. Auf PK bleibt ausser der expliziten 404-Sperre des internen Authpfads das bestehende Anwendungsrouting unveraendert.
 - [ ] Caddy-Roots zeigen exakt auf die jeweiligen `Frontend/`-Verzeichnisse; Backend, `.env`, Credentials und SQLite sind nicht statisch erreichbar.
 - [ ] CSP und Security-Header sind vorhanden; alle drei Origins und WebSockets verwenden HTTPS/WSS ohne Mixed Content.
 - [ ] Es existiert keine systemspezifische `SDK.js`; der Browser verbindet same-origin auf `/ws`.
@@ -114,28 +114,29 @@ Diese Checkliste ist das verbindliche Gate fuer die Reihenfolge **PAJ -> PK -> L
 ## 7. Gemeinsame Observability nach der Live-Promotion
 
 Dieser Abschnitt wird erst ausgefuehrt, nachdem derselbe Anwendungstand zuerst
-auf PAJ, dann PK und zuletzt Live erfolgreich abgenommen wurde. Er blockiert die
+auf PAJ und danach Live erfolgreich abgenommen wurde. PK bleibt in diesem
+Release deaktiviert und ist ein eigener spaeterer Rollout. Der Abschnitt blockiert die
 vorherigen Anwendungsstufen nicht; danach blockiert jeder offene Punkt die
 Gesamtfreigabe.
 
-- [ ] Live, PAJ und PK liefern denselben freigegebenen Stand und intern jeweils `GET /metrics` im Prometheus-Textformat 0.0.4.
+- [ ] Live und PAJ liefern denselben freigegebenen Stand und intern jeweils `GET /metrics` im Prometheus-Textformat 0.0.4; PK wird nicht abgefragt.
 - [ ] Externe Aufrufe von `/metrics` an allen drei Origins liefern keine Metriken; Loki, Prometheus, Alloy, Node Exporter und Auth-Broker lauschen nur auf Loopback, Grafana ausschliesslich auf dem gruppengeschuetzten Unix-Socket.
-- [ ] Prometheus zeigt `live`, `paj` und `pk` im Job `epiber` dauerhaft `up`; PK wurde erst nach gesundem Backend aktiviert.
-- [ ] Node Exporter erfasst `epiber-piber.service`, `epiber-paj.service`, `epiber-pk.service`, `epiber-grafana-auth.service` und `grafana.service` genau einmal auf dem gemeinsamen Host.
-- [ ] Alloy liest alle drei Backendjournale, das Auth-Brokerjournal und `/var/log/caddy/epiber-{live,paj,pk}-access.json`; Loki zeigt Ereignisse mit korrektem `deployment`.
+- [ ] Prometheus zeigt exakt `live` und `paj` im Job `epiber` dauerhaft `up`; es existiert kein aktives PK-Ziel.
+- [ ] Node Exporter erfasst `epiber-piber.service`, `epiber-paj.service`, `epiber-grafana-auth.service` und `grafana.service` genau einmal auf dem gemeinsamen Host, nicht aber PK.
+- [ ] Alloy liest die Live-/PAJ-Backendjournale, das Auth-Brokerjournal und `/var/log/caddy/epiber-{live,paj}-access.json`; Loki zeigt Ereignisse mit korrektem `deployment`.
 - [ ] Caddy-Access-Logs gehoeren `caddy:grafana-alloy`, haben Modus 0640, das Verzeichnis Modus 2750, rotieren maximal 14 Tage und enthalten keine Querystrings, Header, Cookies, Tokens oder Quelladressen. Alloy ist kein Mitglied der Caddy-Gruppe; nach einer kontrolliert erzwungenen Rotation kann Alloy die neue Datei lesen.
 - [ ] Grafana lauscht nur auf `/run/epiber-observability/grafana.sock` mit `grafana:caddy` und Modus 0660. Caddy stellt nur Grafanas `/metrics` auf `127.0.0.1:3001` bereit; andere Pfade und externe Zugriffe werden abgewiesen.
 - [ ] Personen-, Session-, IP-, Request-/Support-, Client- und Geraetewerte sind keine Prometheus- oder Loki-Labels; personenbezogene JSON-Felder werden nur fuer den Betriebszweck verwendet.
-- [ ] Loki loescht normale Frontenddiagnose nach 14 und gezielte Diagnose nach 7 Tagen; Prometheus-Retention und 5-GiB-Grenze passen zur gemessenen Serienzahl aller drei Backends.
-- [ ] `https://epiber.at/grafana/` funktioniert als einzige Grafana-Origin; PAJ und PK leiten `/grafana/` samt Unterpfad permanent dorthin weiter.
-- [ ] Je eine aktuelle aktive Adminsession aus Live, PAJ und PK erhaelt ohne zweite Passwortabfrage Zugriff. Benutzernamen sind korrekt als `epiber-<Instanz>:<Personen-ID>` getrennt.
-- [ ] Jeder zugelassene ePiber-Admin besitzt Grafana-Organisationsrolle `Admin`, aber keine Serveradminrolle, und kann Metriken und Logs aller drei Deployments abfragen.
+- [ ] Loki loescht normale Frontenddiagnose nach 14 und gezielte Diagnose nach 7 Tagen; Prometheus-Retention und 5-GiB-Grenze passen zur gemessenen Serienzahl beider aktiver Backends.
+- [ ] `https://epiber.at/grafana/` funktioniert als einzige Grafana-Origin; PAJ leitet `/grafana/` samt Unterpfad permanent dorthin weiter, PK besitzt keine Grafana-Integration.
+- [ ] Je eine aktuelle aktive Adminsession aus Live und PAJ erhaelt ohne zweite Passwortabfrage Zugriff. Eine PK-only-Session erhaelt keinen Zugriff. Benutzernamen sind korrekt als `epiber-<Instanz>:<Personen-ID>` getrennt.
+- [ ] Jeder zugelassene ePiber-Admin besitzt Grafana-Organisationsrolle `Admin`, aber keine Serveradminrolle, und kann Metriken und Logs von Live und PAJ abfragen.
 - [ ] Anonyme, Player-, Operator-, stale, abgelaufene, widerrufene, deaktivierte und nach Rollenentzug nicht mehr administrative Sessions erhalten keinen Grafana-Zugriff.
 - [ ] Vom Client gesetzte `X-WEBAUTH-USER`-/`X-WEBAUTH-ROLE`-Header werden nicht vertraut. Der Broker reicht pro Backend nur dessen eigenes Cookie weiter.
-- [ ] Bei mehreren gueltigen Admincookies verwendet der Broker deterministisch Live, PK, PAJ; ein ausgefallenes Realm blockiert eine andere gueltige Adminsession nicht.
+- [ ] Bei mehreren gueltigen Admincookies verwendet der Broker deterministisch Live vor PAJ; PK-Cookies werden ignoriert und ein ausgefallenes aktives Realm blockiert eine andere gueltige Adminsession nicht.
 - [ ] Logout, Sessionablauf, Rollenentzug und Deaktivierung sperren den naechsten HTTP-Request und WebSocket-Neuaufbau. Eine bestehende Grafana-Live-Verbindung ist keine Autoritaet fuer privilegierte Entscheidungen.
 - [ ] Grafana-Assets, API und Live-WebSocket funktionieren ohne CSP-, Redirect-, Mixed-Content-, Cookie- oder Subpathfehler.
-- [ ] Vier gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj|pk` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht dreifach gezaehlt.
+- [ ] Vier gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht doppelt gezaehlt.
 - [ ] Anwendungsalerts erzeugen getrennte Alarm- und Recoveryzustaende je Deployment; Host-/Stackalarme existieren nur einmal.
 - [ ] SMTP, Benachrichtigungsversuche, oeffentliche Dashboards, lokale und externe Snapshots, Pluginverwaltung, automatische Pluginvorinstallation und automatische Pluginupdates sind deaktiviert.
 - [ ] `/var/lib/grafana/plugins` gehoert `grafana:grafana` und hat Modus 0750; ein wiederholter Installerlauf erhaelt beziehungsweise repariert diesen Zustand.
@@ -262,7 +263,7 @@ Gesamtfreigabe.
 - [ ] Nach Rollback sind Version, `/live`, `/ready`, `/health`, Rollen, WSS, Monitor und Kerndaten geprueft.
 - [ ] Rollbackdauer, Datenverlustfenster, Schritte und verantwortliche Person sind dokumentiert.
 
-## 14. Promotion PAJ -> PK -> Live
+## 14. Promotion PAJ -> Live; PK bleibt deaktiviert
 
 ### PAJ
 
@@ -271,18 +272,16 @@ Gesamtfreigabe.
 - [ ] PAJ-Journal und Adminstatus nach Abnahme unauffaellig; `pendingMetadataIntents: 0`.
 - [ ] PAJ-Abnahme von verantwortlicher und zweiter pruefender Person signiert.
 
-### PK
+### PK, nicht Teil dieses Releases
 
-- [ ] Exakt derselbe Release-Commit, Lockfile-Hash und Vorlagenstand wie auf PAJ installiert.
-- [ ] PK-Sheet-ID, Credential-Datei und Backup separat bestaetigt; keine PAJ-/Live-Zuordnung versehentlich verwendet.
-- [ ] PK-Origin `https://epiber.at:8082`, WSS, Version, live/ready/health, Adminstatus, Rollen, ein kontrollierter Read/Write und Monitor-Smoke-Test erfolgreich.
-- [ ] PK mindestens fuer das vereinbarte Beobachtungsfenster ohne neue Fehler oder pending Metadata betrieben.
-- [ ] PK-Freigabe signiert.
+- [ ] PK-Dienst und PK-Checkout wurden nicht veraendert oder gestartet.
+- [ ] Prometheus, Alloy, Node Exporter, Auth-Broker, Dashboards und Anwendungsalerts beziehen PK nicht ein.
+- [ ] Eine spaetere PK-Aktivierung wird als eigener Release mit Sheet-ID, Credential, Backup und vollstaendiger Abnahme durchgefuehrt.
 
 ### Live
 
 - [ ] Live-Backup und Rollbackpunkt unmittelbar vor Deployment aktualisiert.
-- [ ] Exakt derselbe auf PAJ und PK freigegebene Commit und Lockfile-Hash installiert.
+- [ ] Exakt derselbe auf PAJ freigegebene Commit und Lockfile-Hash installiert.
 - [ ] Live-Sheet-ID und Live-Credential nochmals im Vier-Augen-Prinzip bestaetigt.
 - [ ] Live-Origin `https://epiber.at`, WSS, Version, live/ready/health und Adminstatus erfolgreich.
 - [ ] Kerndaten, Rollen/Login, Scoreboard, Court und mindestens ein Monitor ohne riskanten Testwrite geprueft.
@@ -291,7 +290,7 @@ Gesamtfreigabe.
 
 ## Erfolgskriterien
 
-- [ ] Alle drei Systeme liefern exakt Version `<FREIGEGEBENE_VERSION>` und verwenden den identischen freigegebenen Commit.
+- [ ] Live und PAJ liefern exakt Version `<FREIGEGEBENE_VERSION>` und verwenden den identischen freigegebenen Commit; PK ist nicht Teil des Releases.
 - [ ] Alle drei Systeme sind ausschliesslich ueber HTTPS/WSS erreichbar; Backends lauschen nur an Loopback.
 - [ ] `/live`, `/ready` und `/health` sind stabil gruen; Adminstatus enthaelt keine Secrets, keine pending Metadata und keine aktiven unresolved Court-Regeln.
 - [ ] Rollen- und Datenprojektionen werden serverseitig korrekt durchgesetzt.
@@ -300,5 +299,5 @@ Gesamtfreigabe.
 - [ ] Browser-, Kiosk-, Mobil-, Scoreboard-, Monitor-, Reconnect-, Standby-, BFCache- und WLAN-Matrix ist bestanden.
 - [ ] Erwartete und doppelte Spitzenlast, Veranstaltungstag-Dauerbetrieb und kontrollierter SIGTERM sind bestanden.
 - [ ] Praktischer Rollback ist innerhalb des dokumentierten Zeitfensters moeglich und getestet.
-- [ ] Grafana ist zentral fuer aktuelle Admins aller drei Systeme erreichbar; Prometheus und Loki enthalten getrennt filterbare Daten aus Live, PAJ und PK ohne verbotene Labels.
+- [ ] Grafana ist zentral fuer aktuelle Admins aus Live und PAJ erreichbar; Prometheus und Loki enthalten getrennt filterbare Daten aus Live und PAJ ohne verbotene Labels und ohne aktives PK-Ziel.
 - [ ] Nachbeobachtungsfenster abgeschlossen, keine offenen kritischen/hohen Fehler, Freigabe protokolliert.

@@ -22,17 +22,6 @@ loki.source.journal "paj" {
   }
 }
 
-loki.source.journal "pk" {
-  forward_to    = [loki.process.epiber.receiver]
-  relabel_rules = loki.relabel.epiber_journal.rules
-  matches       = "_SYSTEMD_UNIT=epiber-pk.service"
-  max_age       = "24h"
-  labels = {
-    deployment = "pk",
-    service    = "epiber-backend",
-  }
-}
-
 loki.source.journal "live" {
   forward_to    = [loki.process.epiber.receiver]
   relabel_rules = loki.relabel.epiber_journal.rules
@@ -65,11 +54,6 @@ local.file_match "epiber_caddy" {
     {
       __path__   = "/var/log/caddy/epiber-paj-access.json",
       deployment = "paj",
-      service    = "caddy-access",
-    },
-    {
-      __path__   = "/var/log/caddy/epiber-pk-access.json",
-      deployment = "pk",
       service    = "caddy-access",
     },
   ]

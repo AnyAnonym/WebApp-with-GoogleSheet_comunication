@@ -1,3 +1,51 @@
+[4.4.0-paj-1-2] - 2026-08-15
+Commit: 4.4.0-paj-1-2 | Observability auf Live und PAJ begrenzt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.0-paj-1-2` gesetzt.
+  - [Infrastruktur] Gemeinsame Observability auf die explizit aktiven Deployments Live und PAJ begrenzt; PK bleibt als spaetere Vorlage erhalten, wird aber nicht geprueft, gescraped, gesammelt, authentifiziert, in Dashboards angeboten oder alarmiert.
+  - [Infrastruktur] Prometheus verwendet ausschliesslich die expliziten Zieldefinitionen `live.json` und `paj.json`; Installer, Alloy, Node Exporter, Grafana-Dashboards und Anwendungsalerts enthalten keine aktive PK-Anbindung.
+  - [Sicherheit] Der gemeinsame Caddyblock weist den internen Grafana-Auth-Pfad auch auf der nicht aktiven PK-Origin explizit mit 404 ab; sonstige PK-Anwendungsrouten, Checkout und Dienst bleiben unveraendert.
+  - [Software] Grafana-Auth-Broker verlangt eine fail-closed Realm-Allowlist und verwendet im systemd-Betrieb `live,paj`; PK-Cookies werden ohne Backendanfrage ignoriert.
+  - [Repository] Vorgabe fuer den auf Node.js 26.7.0 eingesetzten Paketmanager auf npm 12.0.2 aktualisiert.
+  - [Dokumentation] Architektur-, Seiten-, Softwareindex-, Server-, Setup-, Rollout-, Observability- und Runbookdokumentation auf die freigegebene PAJ-Live-Promotion ohne PK angeglichen.
+
+  Fixed
+  - [Dokumentation] Klarstellt, dass der Observability-Installer keine Caddy-, Stack- oder Grafana-SQLite-Backups erstellt oder prueft und ein Rollback durch den Betreiber erfolgen muss.
+
+  Removed
+  - [Infrastruktur] Die in der noch nicht aktivierten 4.4.0-Sollvorlage vorgesehenen PK-Access-Logs und PK-Grafana-Redirects entfernt; gegenueber dem installierten PK-Caddy-Iststand kommt nur die explizite 404-Sperre des internen Authpfads hinzu.
+
+  Sicherheit und Betrieb
+  - PK-Dienst und PK-Checkout bleiben unangetastet. PK besitzt keine Grafana-Integration und eine PK-Session autorisiert keinen Grafana-Zugriff. Die nicht aktivierten PK-Logging-/Redirectteile der 4.4.0-Sollvorlage entfallen; Caddy sperrt gegenueber dem installierten Iststand nur den internen Authpfad zusaetzlich extern.
+  - Vor jedem Installerlauf sind aktive Caddy-/Observability-Konfiguration und Grafana-SQLite extern konsistent zu sichern; der bestehende Grafana-Secret-Key darf nicht rotiert werden.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 154 Tests erfolgreich; drei neue Brokerpruefungen decken Realmvalidierung, kanonische Prioritaet, ignorierte PK-Cookies ohne Port-8084-Anfrage und die deny-all Standard-API ab.
+  - `npm audit --omit=dev`: keine bekannte Produktionsschwachstelle.
+  - Caddy, Alloy, Loki, Prometheus, drei systemd-Units, tmpfiles, Shellsyntax, Dashboard-JSON und `git diff --check` erfolgreich validiert.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  AGENTS.md
+  - Aktiven Observability-Sollstand Live/PAJ und die vollstaendige Deaktivierung der PK-Anbindung in Scrapes, Logs, Auth, Dashboards und Alerts aufnehmen.
+
+  Project/software/ARCHITEKTUR.txt
+  - Datenfluss, Labels, Scrapes, Unitmetriken, Grafana-Zugriff und npm-Vorgabe auf Live/PAJ beziehungsweise npm 12.0.2 begrenzen.
+
+  Project/software/SOFTWARE-DOKU.txt
+  Project/software/seiten/adminLogging.txt
+  - Zentrale Observability und Adminzugriff als Live-/PAJ-Funktion dokumentieren; PK als nicht angebunden kennzeichnen.
+
+  Project/server-configs/SERVER-DOKU.txt
+  Project/server-configs/SERVER-SETUP.txt
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Aktive PAJ-Live-Promotion, deaktiviertes PK, explizite Backupverantwortung, npm 12.0.2 sowie technische und fachliche Abnahme aktualisieren.
+
+  Project/server-configs/observability/README.md
+  Project/server-configs/observability/RUNBOOKS.md
+  - Topologie, Auth-Realm, Datenquellen, Dashboards, Alerts, Installation, Backup und Recovery auf Live/PAJ umstellen.
+
 [4.4.0-paj-1-1] - 2026-08-15
 Commit: 4.4.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 

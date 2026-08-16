@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.2
+Stand: 4.4.3
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,45 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.3] - 2026-08-16
+Commit: 4.4.3 | Freigabeprotokoll dauerhaft abgelegt
+Quelle: 4.4.2-paj-1
+
+  Added
+  - [Dokumentation] Datensparsame, versionierte Freigabeprotokolle unter
+    `Project/server-configs/rollouts/` eingefuehrt und die abgeschlossene
+    Produktionsfreigabe 4.4.2 mit Umfang, Backupklassen, Migrationen, technischer
+    Abnahme, Benutzerabnahme und bekannten Abweichungen festgehalten.
+
+  Changed
+  - [Dokumentation] Serverindex und Rollout-Checkliste um Ablage, Datenschutz und
+    Abschlusskontrolle dauerhafter Freigabeprotokolle ergaenzt.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.3` gesetzt.
+
+  Removed
+  - [Repository] Temporaeres Branch-Changelog `ChangeLog-4.4.2-paj-1.txt` nach
+    vollstaendiger Uebernahme in Main-Changelog und Serverdokumentation entfernt.
+
+  Sicherheit und Betrieb
+  - [Infrastruktur] Frischen akzeptierten root-only Sicherungsstand unter
+    `/var/backups/epiber/20260816-4.4.2-accepted/` nach erneuter
+    Pruefsummenkontrolle beibehalten und die alten temporaeren Rolloutdaten unter
+    `/root/epiber-rollout-20260815-2005/` vollstaendig geloescht.
+  - [Dokumentation] Freigabeprotokoll auf Betriebsnachweise begrenzt; Namen,
+    Kontaktdaten, Clientkennungen, personenbezogene IP-Adressen, Cookies, Tokens,
+    Passwortwerte, private Schluessel, lokale Geheimnisse und Dateninhalte sind
+    von der versionierten Ablage ausgeschlossen.
+
+  Tests
+  - `npm run build`: statische Pruefung und alle 154 automatisierten Tests
+    erfolgreich.
+  - `npm audit --omit=dev` meldete keine bekannte Produktionsschwachstelle.
+  - Sicherungspruefsummen erneut erfolgreich geprueft; alle sieben enthaltenen
+    SQLite-Sicherungen hatten zuvor `PRAGMA integrity_check` bestanden.
+  - Dokumentinhalte gegen Main-Changelog, Serverdokumentation, Rollout-Checkliste
+    und den lokalen Abschlussnachweis abgeglichen; Geheimnis- und
+    Personendatenmuster sowie `git diff --check` erfolgreich kontrolliert.
 
 [4.4.2] - 2026-08-15
 Commit: 4.4.2 | Grafana-Metrikproxy an Loopback gebunden

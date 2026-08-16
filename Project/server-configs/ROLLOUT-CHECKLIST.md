@@ -1,6 +1,6 @@
 # ePiber Rollout-Checkliste
 
-Stand: 15.08.2026
+Stand: 16.08.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -> Live**. PK bleibt deaktiviert und wird erst in einem eigenen spaeteren Release aufgenommen. Jede aktive Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
@@ -14,6 +14,7 @@ Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -
 - [ ] Vorheriger freigegebener Commit/Release fuer Rollback notiert: `____________________________`
 - [ ] `Backend/package.json` und `Backend/package-lock.json` melden exakt `<FREIGEGEBENE_VERSION>` und gehoeren zum eingetragenen Release-Commit.
 - [ ] `git status` des Deploymentstands ist sauber; keine lokalen Code-/Vorlagenaenderungen werden ausgerollt.
+- [ ] Nach abgeschlossener Nachbeobachtung wird ein datensparsames Protokoll unter `Project/server-configs/rollouts/<FREIGEGEBENE_VERSION>.md` angelegt; Inhalt und Ausschluesse entsprechen `rollouts/README.md`.
 
 ## 1. Google-Sheets-Backup und Schema
 
@@ -301,3 +302,4 @@ Gesamtfreigabe.
 - [ ] Praktischer Rollback ist innerhalb des dokumentierten Zeitfensters moeglich und getestet.
 - [ ] Grafana ist zentral fuer aktuelle Admins aus Live und PAJ erreichbar; Prometheus und Loki enthalten getrennt filterbare Daten aus Live und PAJ ohne verbotene Labels und ohne aktives PK-Ziel.
 - [ ] Nachbeobachtungsfenster abgeschlossen, keine offenen kritischen/hohen Fehler, Freigabe protokolliert.
+- [ ] Das versionierte Freigabeprotokoll enthaelt keine Geheimnisse oder personenbezogenen Diagnosewerte und verweist nicht auf temporaere Dateien als dauerhafte Sicherung.

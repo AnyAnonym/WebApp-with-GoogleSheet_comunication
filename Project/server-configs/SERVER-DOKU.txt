@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Letzte Aenderung: 15.08.2026
+Letzte Aenderung: 16.08.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -24,6 +24,8 @@ systemd/                    | Vorlagen fuer /etc/systemd/system/
 journald/epiber.conf        | Persistente, groessen- und zeitbegrenzte Journalvorlage
 observability/              | Gemeinsame Grafana-/Prometheus-/Loki-/Alloy-
                             | Vorlagen, Dashboards, Alerts und Runbooks
+rollouts/                   | Datensparsame versionierte Protokolle abgeschlossener
+                            | Produktionsfreigaben; keine Backups oder Geheimnisse
 systemd/epiber-grafana-     | Gemeinsamer Loopback-Auth-Broker fuer Adminsessions
   auth.service              | aus den aktiven Realms Live und PAJ
 tmpfiles/epiber-            | Geschuetztes Laufzeitverzeichnis fuer den

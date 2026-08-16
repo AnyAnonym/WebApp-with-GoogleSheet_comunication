@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.3
+Stand: 4.4.4
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,30 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.4] - 2026-08-16
+Commit: 4.4.4 | Backup- und Restore-Konzept dokumentiert
+Quelle: direkte Main-Ausnahme
+
+  Added
+  - [Dokumentation] Umfassendes Backup- und Restore-Zielkonzept fuer ePiber mit
+    verifiziertem Ausgangsstand, Schutzobjekten, Risikoanalyse, vorgeschlagenen
+    RPO-/RTO-Werten, 3-2-1-1-0-Architektur, Retention, Sicherheitsmodell,
+    Restore-Runbooks, Tests, Monitoring, Verantwortlichkeiten, Abnahmekriterien
+    und stufenweisem Umsetzungsplan eingefuehrt.
+
+  Changed
+  - [Dokumentation] Serverindex um das Backup- und Restore-Konzept sowie dessen
+    ausdrueckliche Abgrenzung von bereits aktiven Sicherungen ergaenzt.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.4` gesetzt.
+
+  Tests
+  - `npm run build`: statische Pruefung und vollstaendige automatisierte
+    Backend-Tests erfolgreich.
+  - `git diff --check` ohne Fehler.
+  - Neues Konzept auf offensichtliche private Schluessel, Tokens und
+    Passwortzuweisungen geprueft; keine Geheimnismuster gefunden.
+  - Paket-, Lockfile-, Changelog- und Commit-Version auf `4.4.4` abgeglichen.
 
 [4.4.3] - 2026-08-16
 Commit: 4.4.3 | Freigabeprotokoll dauerhaft abgelegt

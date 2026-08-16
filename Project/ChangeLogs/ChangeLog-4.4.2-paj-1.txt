@@ -1,3 +1,36 @@
+[4.4.2-paj-1-2] - 2026-08-16
+Commit: 4.4.2-paj-1-2 | Freigabeprotokoll vorbereitet
+
+  Changed
+  - [Repository] Branchstand in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.2-paj-1-2` finalisiert.
+  - [Dokumentation] Dauerhafte, datensparsame Ablage abgeschlossener Freigabeprotokolle unter `Project/server-configs/rollouts/` fuer die Main-Uebernahme vorbereitet.
+
+  Dokumentationsvorbereitung
+  - `Project/server-configs/rollouts/README.md` soll Benennung, erlaubte Betriebsnachweise, Geheimnis-/Personendatenausschluss und Abgrenzung zu Changelog, Checkliste und technischen Backups definieren.
+  - Das bereinigte Freigabeprotokoll `Project/server-configs/rollouts/4.4.2.md` soll Releaseumfang, bestaetigte Backupklassen, Rollenmigration, technische Abnahme, abgeschlossene Benutzerabnahme und bekannte Datenqualitaetswarnung festhalten.
+
+  Sicherheit und Betrieb
+  - Das versionierte Protokoll enthaelt keine Namen, Kontaktdaten, IP-, Personen-, Session-, Request-, Support-, Client- oder Geraetewerte sowie keine Cookies, Tokens, Hashes, privaten Schluessel, lokalen Geheimnisse oder Dateninhalte.
+  - Ein frischer akzeptierter, root-only Sicherungsstand liegt unter `/var/backups/epiber/20260816-4.4.2-accepted/`; temporaere personenbezogene Sheets-API-Snapshots und alte Rolloutkopien werden erst nach Main-Uebernahme und Abschlusskontrolle geloescht.
+
+  Tests
+  - Vorgesehene Dokumentinhalte gegen Main-Changelog, Serverdokumentation, Rollout-Checkliste und das lokale Abschlussprotokoll abgeglichen.
+  - Geheimnis- und Personendatenmuster im vorgesehenen versionierten Protokoll kontrolliert; `git diff --check` erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/server-configs/rollouts/README.md
+  - Dauerhafte Regeln fuer versionierte Freigabeprotokolle aufnehmen.
+
+  Project/server-configs/rollouts/4.4.2.md
+  - Bereinigten Nachweis der abgeschlossenen Freigabe 4.4.2 aufnehmen.
+
+  Project/server-configs/SERVER-DOKU.txt
+  - Das neue Protokollverzeichnis in den Infrastrukturindex aufnehmen.
+
+  Project/server-configs/ROLLOUT-CHECKLIST.md
+  - Datensparsames Protokoll nach Nachbeobachtung als verbindlichen Abschluss aufnehmen.
+
 [4.4.2-paj-1-1] - 2026-08-16
 Commit: 4.4.2-paj-1-1 | Branch-Stand nummeriert initialisiert
 

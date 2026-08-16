@@ -1,0 +1,8 @@
+[4.4.4-paj-1-1] - 2026-08-16
+Commit: 4.4.4-paj-1-1 | Branch-Stand nummeriert initialisiert
+
+  Added
+  - [Dokumentation] Temporaeres Branch-Changelog fuer den Seitenbranch `4.4.4-paj-1` angelegt.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-1` gesetzt.

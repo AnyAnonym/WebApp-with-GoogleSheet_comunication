@@ -6,3 +6,18 @@ Commit: 4.4.5-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.5-paj-1-1` gesetzt.
+
+[4.4.5-paj-1-2] - 2026-08-17
+Commit: 4.4.5-paj-1-2 | Rasterabstaende vor Terminsetzung vereinheitlicht
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.5-paj-1-2` gesetzt.
+  - [Tests] Statische Projektpruefung, vollstaendige Backend-Testsuite mit 155 Tests und Diff-Pruefung erfolgreich ausgefuehrt.
+
+  Fixed
+  - [Frontend] Turnierraster reservieren den Terminabstand fuer alle Matches bereits vor einer Terminsetzung, sodass insbesondere kleine Raster ab dem Halbfinale nicht mehr zu eng dargestellt werden.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/bewerbsRaster.txt
+    - Unter Darstellung festhalten, dass jeder Matchplatz ab dem ersten Rendern den vertikalen Bereich fuer einen optionalen Termin reserviert, auch solange `Matchdate` leer ist. Die leere Reserve bleibt unsichtbar und ohne Bedienaktion; dadurch behalten die Matchboxen in allen Runden, insbesondere bei einem Rasterstart im Halbfinale, bereits vor der Terminsetzung denselben Abstand wie danach.

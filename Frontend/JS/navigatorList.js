@@ -939,6 +939,16 @@ async function openCourtAssignmentOverlay(court) {
   status.setAttribute("role", "status");
   let selection = null;
 
+  const emptyButton = element("button", "platz-overlay-option");
+  emptyButton.type = "button";
+  emptyButton.appendChild(element("span", "platz-overlay-paarung", "kein Spiel zuweisen"));
+  emptyButton.addEventListener("click", () => {
+    for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
+    emptyButton.classList.add("selected");
+    selection = { kind: "empty" };
+  });
+  list.appendChild(emptyButton);
+
   const individualButton = element("button", "platz-overlay-option");
   individualButton.type = "button";
   individualButton.appendChild(element("span", "platz-overlay-paarung", "Individual"));
@@ -981,6 +991,8 @@ async function openCourtAssignmentOverlay(court) {
       let assignment;
       if (selection.kind === "match") {
         assignment = { matchId: selection.matchId };
+      } else if (selection.kind === "empty") {
+        assignment = { empty: true };
       } else {
         const home = await openPlayerOverlay("Spieler Heim");
         if (!home) return;

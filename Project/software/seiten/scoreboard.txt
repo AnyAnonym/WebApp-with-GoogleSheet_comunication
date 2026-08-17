@@ -105,4 +105,14 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   oben fuehrt `Naechste Spiele` in der Platz-1-Haelfte zu
   `Matches1.html?category=open`; `Letzte Spiele` in der Platz-2-Haelfte oeffnet
   `Matches1.html?category=played`. Oberhalb des mobilen Breakpoints sind diese
-  beiden Schaltflaechen ausgeblendet.
+  beiden Schaltflaechen ausgeblendet. Bei hoechstens 1000 px Breite und 500 px
+  Hoehe ordnet das Smartphone-Querformat Namen und Scores kompakt nebeneinander an
+  und reduziert Schriften sowie Abstaende, damit beide Courts ohne Ueberlauf in
+  `100dvh` bleiben.
+
+-- Browser-Layouttest --
+  `Backend/test/scoreboardLayout.browser.js` steuert ueber das als Dev-Abhaengigkeit
+  installierte `playwright-core` 1.62.1 das systemweite Chromium headless gegen die
+  PAJ-Scoreboard-Origin. `npm run test:browser` prueft Namensbreite, Mindestschrift,
+  Court-Ueberlauf und die Mindesthoehe leerer Namensfelder bei 360x800, 390x844,
+  844x390, 1000x768, 1001x768, 1280x720, 1366x768 und 1920x1080 CSS-Pixeln.

@@ -344,7 +344,7 @@ function setText(id, value, fallback = "-") {
 function setPlayerName(id, value) {
   const element = document.getElementById(id);
   if (!element) return;
-  const name = value === null || value === undefined || value === "" ? "-" : String(value);
+  const name = value === null || value === undefined || value === "" ? "" : String(value);
   const parts = name.includes(" / ") ? name.split(" / ") : null;
   element.classList.toggle("platz-cell-double", Boolean(parts));
   if (!parts) {
@@ -373,12 +373,12 @@ function playerNamesFit(elements) {
   });
 }
 
-function applyCourtPlayerNameSize(elements, fontSize) {
+function applyCourtPlayerNameSize(elements, fontSize, minimumHeight = 0) {
   elements.forEach((element) => {
     element.style.fontSize = `${fontSize}px`;
     element.style.minHeight = "";
   });
-  const commonHeight = Math.max(...elements.map((element) => element.offsetHeight));
+  const commonHeight = Math.max(minimumHeight, ...elements.map((element) => element.offsetHeight));
   elements.forEach((element) => { element.style.minHeight = `${commonHeight}px`; });
 }
 
@@ -389,6 +389,8 @@ function sizeCourtPlayerNames(courtKey) {
     document.getElementById(`p${courtKey}-name-g`),
   ].filter(Boolean);
   if (!court || elements.length !== 2 || elements.some((element) => element.clientWidth <= 0)) return;
+  const scoreCells = [...court.querySelectorAll(".platz-row .platz-scores .platz-cell")];
+  const minimumHeight = Math.max(0, ...scoreCells.map((element) => element.offsetHeight));
 
   elements.forEach((element) => {
     element.style.fontSize = "";
@@ -399,14 +401,14 @@ function sizeCourtPlayerNames(courtKey) {
     minimum: Math.min(8, maximum),
     maximum,
     measure(candidate) {
-      applyCourtPlayerNameSize(elements, candidate);
+      applyCourtPlayerNameSize(elements, candidate, minimumHeight);
       return {
         widthFits: playerNamesFit(elements),
         overflow: Math.max(0, court.scrollHeight - court.clientHeight),
       };
     },
   });
-  applyCourtPlayerNameSize(elements, fontSize);
+  applyCourtPlayerNameSize(elements, fontSize, minimumHeight);
 }
 
 function schedulePlayerNameSizing() {

@@ -28,10 +28,13 @@ Navigator-Steuerung - Regie fuer mehrere Monitorgeraete
 -- Court-Steuerung --
   Operator und Admin koennen Platz 1/2 aus den naechsten 20 offenen Matches oder
   als individuelle Einzelpaarung zuweisen und beide Plaetze aktiv/inaktiv setzen.
+  Die immer erste Auswahl `kein Spiel zuweisen` leert Match-, Bewerbs-, Datums-
+  und Spielerdaten ohne den Aktivstatus zu veraendern. Das Scoreboard zeigt danach
+  fuer Datum und Bewerb jeweils `-`; die beiden Spielernamen bleiben leer.
   Bei einer Matchzuweisung werden die zu diesem Zeitpunkt wirksamen Matchtyp-
   Anzeigeregeln gemeinsam mit dem Court-State gespeichert; spaetere Aenderungen
-  des Matchtyps wirken erst nach einer Neuzuweisung. Eine Individualzuweisung
-  leert Matchtyp-ID und Anzeigeregeln (`displayRules: null`).
+  des Matchtyps wirken erst nach einer Neuzuweisung. Individual- und Leerzuweisung
+  leeren Matchtyp-ID und Anzeigeregeln (`displayRules: null`).
   `courtAssign` und `courtSetActive` verwenden stabile operationIds und
   `expectedRevision`; bei Konflikt/Fehler werden frische Revisionen geladen statt
   alte Werte blind zu ueberschreiben. Externe Namen und Konfigurationswerte werden

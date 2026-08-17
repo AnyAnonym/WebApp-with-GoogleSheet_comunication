@@ -148,20 +148,23 @@ Optionale PAJ-Browserlayouttests:
 
   pacman -S --needed chromium
   cd /srv/http/ePiber/paj/Backend
-  npm ci
+  npm ci --include=dev
+  npm ls playwright-core --depth=0
   npm run test:browser
 
 Chromium ist ausschliesslich ein systemweites Testwerkzeug und wird durch root
-ueber pacman installiert und aktualisiert. `playwright-core` ist exakt versioniert
-als Dev-Abhaengigkeit im Backend-Lockfile enthalten und laedt keinen eigenen
+ueber pacman installiert und aktualisiert. Im PAJ-Testcheckout installiert der
+Benutzer `paj` die Dev-Abhaengigkeiten einschliesslich des exakt versionierten
+`playwright-core` 1.62.1 mit `npm ci --include=dev`; Playwright laedt keinen eigenen
 Browser herunter. Der Test verwendet standardmaessig `/usr/bin/chromium` und die
 PAJ-Origin; abweichende sichere Testpfade beziehungsweise Origins koennen mit
 `CHROMIUM_PATH` und `SCOREBOARD_TEST_URL` gesetzt werden.
 
 Der Browserlauf erfolgt unprivilegiert als Benutzer `paj`, nie als root, nicht im
-systemd-Backenddienst und ohne `--no-sandbox`. Er prueft definierte Desktop- und
-Breakpointgroessen der live geladenen Scoreboardseite; bei einem Fehler legt er
-einen Screenshot nur temporaer unter `/tmp/opencode/` ab. PK und Live benoetigen
+systemd-Backenddienst und ohne `--no-sandbox`. Er prueft Smartphone-Hoch- und
+-Querformat, mobile Breakpointkanten und Desktopgroessen der live geladenen
+Scoreboardseite; bei einem Fehler legt er einen Screenshot nur temporaer unter
+`/tmp/opencode/` ab. PK und Live benoetigen
 Chromium nicht. `npm ci --omit=dev`, der normale Backendprozess und
 `npm run build` bleiben von der optionalen Browserinstallation unabhaengig.
 

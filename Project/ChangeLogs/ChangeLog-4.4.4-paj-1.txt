@@ -6,3 +6,33 @@ Commit: 4.4.4-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-1` gesetzt.
+
+[4.4.4-paj-1-2] - 2026-08-17
+Commit: 4.4.4-paj-1-2 | Leere Platzzuweisung und mobile Layouttests erweitert
+
+  Added
+  - [Software] Navigator-Auswahl `kein Spiel zuweisen` als ersten Eintrag der Platzzuweisung ergaenzt.
+  - [Software] `courtAssign` um die exklusive, Sheet-unabhaengige Leerzuweisung `empty: true` erweitert.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-2` gesetzt.
+  - [Software] Leere Court-Zuweisungen behalten den Aktivstatus bei, setzen den Score zurueck und zeigen Datum sowie Bewerb als `-`, Spielernamen aber leer an.
+  - [Software] Leere Spielernamensfelder behalten mindestens die Hoehe der zugehoerigen Scorezellen und kollabieren nicht zu schmalen Balken.
+  - [Software] Smartphone-Querformat bis 500 px Hoehe mit kompakten, nebeneinander angeordneten Namen und Scores gegen vertikalen Court-Ueberlauf abgesichert.
+  - [Tests] Requestvertrag und WebSocket-Integration fuer Leerzuweisung, unzulaessige Mischformen, leeren Court-State und Score-Reset sowie Browserlayouts fuer leere Namensfelder in drei Smartphone- und fuenf Breakpoint-/Desktopaufloesungen abgesichert.
+  - [Infrastruktur] PAJ-Browserlayouttest verwendet das als Benutzer `paj` installierte `playwright-core` 1.62.1 und das systemweite Chromium.
+  - [Dokumentation] Navigator-, Endpoint-, Scoreboard- und PAJ-Setupdokumentation um Leerzuweisung, responsive Browsertests und Playwright-Installation ergaenzt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/navigator.txt
+    - Die erste Platzoption `kein Spiel zuweisen` sowie Leeranzeige und beibehaltener Aktivstatus sind zu uebernehmen.
+
+    Project/software/ENDPOINTS.txt
+    - `courtAssign` ist um die exklusive Option `empty: true`, deren Sheet-Unabhaengigkeit und den resultierenden leeren Court-State zu ergaenzen.
+
+    Project/software/seiten/scoreboard.txt
+    - Mindesthoehe leerer Namensfelder, kompaktes Smartphone-Querformat und die acht geprueften Browser-Viewports sind zu uebernehmen.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - PAJ-Installation und Pruefung von `playwright-core` 1.62.1 als Benutzer `paj` sowie Smartphone- und Desktopumfang des Browserlayouttests sind zu uebernehmen.

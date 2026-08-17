@@ -504,9 +504,13 @@ OPERATOR ODER ADMIN:
   `navigator { profil? }`
       Kompilierte, serverseitig erlaubte Navigatoraktionen; Profil max. 32.
 
-  `courtAssign { operationId, court, expectedRevision, matchId? }`
-      Alternativ zu matchId exakt `homePlayerIds` und `guestPlayerIds`, jeweils
-      ein bis zwei eindeutige Personen-IDs. court ist 1 oder 2,
+  `courtAssign { operationId, court, expectedRevision, matchId?, empty? }`
+      Exakt eine Zuweisungsart ist erforderlich: `matchId`, die beiden Felder
+      `homePlayerIds` und `guestPlayerIds` mit jeweils ein bis zwei eindeutigen
+      Personen-IDs oder `empty: true`. Eine Leerzuweisung leert Match-, Bewerbs-,
+      Datums-, Runden- und Spielerdaten sowie Matchtyp-ID und Anzeigeregeln, bleibt
+      auch ohne aktuelle Sheet-Tabellen moeglich und behaelt den Aktivstatus bei.
+      court ist 1 oder 2,
       expectedRevision eine Ganzzahl >=1. Eine tatsaechlich neu angewendete
       Zuweisung setzt den Score dieses Courts auf acht `"0"`-Werte zurueck; eine
       idempotent wiedergegebene Operation loest keinen erneuten Reset aus.

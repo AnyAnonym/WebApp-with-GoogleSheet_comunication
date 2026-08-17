@@ -98,3 +98,11 @@ Commit: 4.4.4-paj-1-5 | PRE-Dokumentationsuebernahme konkretisiert
     - Sobald `PRE` in den Matchdaten durch eine bekannte Personen-ID ersetzt wird, beim naechsten Rendern den Spielernamen anzeigen und die Blinkdarstellung entfernen.
     - Nur IDs, die in der geladenen Spielerliste vorhanden sind, erhalten `data-player-id` und den Klickhandler fuer das gemeinsame Profilmodal. `PRE`, `BYE` und unbekannte Platzhalter bleiben ohne Profilaktion.
     - Die automatische Gewinnerbehandlung von `BYE` und die Verwendung von `PRE` als Auslosungsmarkierung sind getrennte Fachfaelle und duerfen in Darstellung oder Bedienung nicht gleichgesetzt werden.
+
+[4.4.4-paj-1-6] - 2026-08-17
+Commit: 4.4.4-paj-1-6 | Detaillierte Dokumentationsuebernahmen verbindlich geregelt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-6` gesetzt.
+  - [Dokumentation] `Project/DokuVersGit.txt` verlangt fuer Dokumentationsuebernahmelisten eine ohne Ursprungsgespraech ausfuehrbare Beschreibung aller relevanten Zwecke, Rollen, Ablaeufe, sichtbaren Zustaende, Datenbedeutungen, Zustandsenden, Abgrenzungen, Aktionen sowie Fehler- und Randfaelle.
+  - [Tests] Statische Projektpruefung, vollstaendige Backend-Testsuite mit 155 Tests und Diff-Pruefung fuer die organisatorische Regel- und Versionsaenderung erfolgreich ausgefuehrt.

@@ -394,6 +394,17 @@ Regeln:
     `Status: uncommitted`. Bei der Finalisierung werden Ueberschrift und
     Zielcommit auf die Zielcommit-ID ohne `-x` vereinheitlicht, das Abschlussdatum
     und der konkrete Commit-Betreff gesetzt und der Statusvermerk entfernt.
+14. Eine Dokumentationsuebernahmeliste muss ohne Kenntnis des urspruenglichen
+    Auftrags oder Gespraechs vollstaendig ausfuehrbar sein. Sie beschreibt fuer
+    jede Zieldatei alle jeweils relevanten Punkte: fachlichen Zweck und Ausloeser,
+    beteiligte Benutzerrolle, zeitliche Bedien- oder Verarbeitungsfolge, sichtbare
+    Zustaende vor, waehrend und nach dem Ablauf, betroffene Felder und Werte mit
+    ihrer genauen Bedeutung, Abschluss und Ende temporaerer Zustaende,
+    Abgrenzungen zu aehnlichen Sonderfaellen, erlaubte und ausgeschlossene
+    Aktionen sowie bekannte Fehler- und Randfaelle. Nicht zutreffende Punkte
+    duerfen entfallen. Unklare Fakten werden vor der Aufnahme geklaert oder
+    ausdruecklich als offen markiert. Die fertige Uebernahmeliste ist gegen die
+    Implementierung und alle bestaetigten fachlichen Aussagen zu pruefen.
 
 Format eines Branch-Abschnitts:
 

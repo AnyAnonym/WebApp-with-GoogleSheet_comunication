@@ -45,6 +45,15 @@ test("Court-Zuweisung erlaubt genau Match, Spielerpaarung oder leeren Platz", ()
     homePlayerIds: ["p1"],
     guestPlayerIds: ["p2"],
   });
+  assert.deepEqual(validateEndpointRequest("courtAssign", {
+    ...base,
+    homePlayerIds: ["p1", "p2"],
+    guestPlayerIds: ["p3", "p4"],
+  }), {
+    ...base,
+    homePlayerIds: ["p1", "p2"],
+    guestPlayerIds: ["p3", "p4"],
+  });
   for (const params of [
     base,
     { ...base, empty: false },

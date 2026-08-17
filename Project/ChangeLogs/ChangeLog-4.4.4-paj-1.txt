@@ -36,3 +36,17 @@ Commit: 4.4.4-paj-1-2 | Leere Platzzuweisung und mobile Layouttests erweitert
 
     Project/server-configs/SERVER-SETUP.txt
     - PAJ-Installation und Pruefung von `playwright-core` 1.62.1 als Benutzer `paj` sowie Smartphone- und Desktopumfang des Browserlayouttests sind zu uebernehmen.
+
+[4.4.4-paj-1-3] - 2026-08-17
+Commit: 4.4.4-paj-1-3 | Individuelle Doppelzuweisung im Navigator ergaenzt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-3` gesetzt.
+  - [Software] Navigator-Platzzuweisung in `Individual Einzel` und `Individual Doppel` aufgeteilt; Doppel fragt je zwei eindeutige Heim- und Gastspieler ab und uebergibt sie als bestehende Court-Spielerarrays.
+  - [Tests] Requestvertrag fuer individuelle Court-Doppel mit zwei Personen-IDs je Seite abgesichert.
+  - [Dokumentation] Navigator-Dokumentation um individuelle Doppelzuweisungen ergaenzt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/navigator.txt
+    - Die Platzzuweisung erlaubt neben individuellen Einzelpaarungen auch individuelle Doppelpaarungen.

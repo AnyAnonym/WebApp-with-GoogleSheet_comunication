@@ -27,7 +27,8 @@ Navigator-Steuerung - Regie fuer mehrere Monitorgeraete
 
 -- Court-Steuerung --
   Operator und Admin koennen Platz 1/2 aus den naechsten 20 offenen Matches oder
-  als individuelle Einzelpaarung zuweisen und beide Plaetze aktiv/inaktiv setzen.
+  als individuelle Einzel- oder Doppelpaarung zuweisen und beide Plaetze
+  aktiv/inaktiv setzen.
   Die immer erste Auswahl `kein Spiel zuweisen` leert Match-, Bewerbs-, Datums-
   und Spielerdaten ohne den Aktivstatus zu veraendern. Das Scoreboard zeigt danach
   fuer Datum und Bewerb jeweils `-`; die beiden Spielernamen bleiben leer.

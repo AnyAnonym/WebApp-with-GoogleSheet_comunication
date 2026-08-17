@@ -949,15 +949,20 @@ async function openCourtAssignmentOverlay(court) {
   });
   list.appendChild(emptyButton);
 
-  const individualButton = element("button", "platz-overlay-option");
-  individualButton.type = "button";
-  individualButton.appendChild(element("span", "platz-overlay-paarung", "Individual"));
-  individualButton.addEventListener("click", () => {
-    for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
-    individualButton.classList.add("selected");
-    selection = { kind: "individual" };
-  });
-  list.appendChild(individualButton);
+  for (const individual of [
+    { label: "Individual Einzel", kind: "individual-single" },
+    { label: "Individual Doppel", kind: "individual-doubles" },
+  ]) {
+    const button = element("button", "platz-overlay-option");
+    button.type = "button";
+    button.appendChild(element("span", "platz-overlay-paarung", individual.label));
+    button.addEventListener("click", () => {
+      for (const option of list.querySelectorAll(".platz-overlay-option")) option.classList.remove("selected");
+      button.classList.add("selected");
+      selection = { kind: individual.kind };
+    });
+    list.appendChild(button);
+  }
 
   for (const match of nextMatches) {
     const home = [match.player1, match.player2].filter(Boolean).map((id) => playerMap.get(id) || id).join(" / ");
@@ -994,11 +999,20 @@ async function openCourtAssignmentOverlay(court) {
       } else if (selection.kind === "empty") {
         assignment = { empty: true };
       } else {
-        const home = await openPlayerOverlay("Spieler Heim");
-        if (!home) return;
-        const guest = await openPlayerOverlay("Spieler Gast", new Set([home.id]));
-        if (!guest) return;
-        assignment = { homePlayerIds: [home.id], guestPlayerIds: [guest.id] };
+        const labels = selection.kind === "individual-doubles"
+          ? ["Heim Spieler 1", "Heim Spieler 2", "Gast Spieler 1", "Gast Spieler 2"]
+          : ["Spieler Heim", "Spieler Gast"];
+        const players = [];
+        for (const label of labels) {
+          const player = await openPlayerOverlay(label, new Set(players.map((entry) => entry.id)));
+          if (!player) return;
+          players.push(player);
+        }
+        const homePlayerCount = selection.kind === "individual-doubles" ? 2 : 1;
+        assignment = {
+          homePlayerIds: players.slice(0, homePlayerCount).map((player) => player.id),
+          guestPlayerIds: players.slice(homePlayerCount).map((player) => player.id),
+        };
       }
       operationKey = `court-assign:${court}:${JSON.stringify(assignment)}`;
       await endpointData(assignCourt, {

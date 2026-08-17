@@ -235,6 +235,24 @@ function scoreboardSnapshot() {
 function resolveCourtAssignment(params) {
   const court = idValue(params.court, "court");
   if (!['1', '2'].includes(court)) throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
+  if (params.empty === true) {
+    return {
+      court,
+      data: {
+        matchId: "",
+        bewerbId: "",
+        matchtypId: "",
+        displayRules: null,
+        bewerb: "",
+        homePlayerIds: [],
+        guestPlayerIds: [],
+        homePlayer: "",
+        guestPlayer: "",
+        dateTime: "",
+        runde: "",
+      },
+    };
+  }
   const names = playerNameMap();
   if (params.matchId) {
     const matchId = idValue(params.matchId, "matchId");
@@ -468,13 +486,18 @@ const endpoints = {
       const court = idValue(params.court, "court");
       if (!['1', '2'].includes(court)) throw new AppError("COURT_INVALID", "Court muss 1 oder 2 sein");
       const expectedRevision = integerValue(params.expectedRevision, "expectedRevision", { min: 1 });
-      const request = params.matchId
-        ? { court, matchId: idValue(params.matchId, "matchId") }
-        : {
+      let request;
+      if (params.empty === true) {
+        request = { court, empty: true };
+      } else if (params.matchId) {
+        request = { court, matchId: idValue(params.matchId, "matchId") };
+      } else {
+        request = {
           court,
           homePlayerIds: (Array.isArray(params.homePlayerIds) ? params.homePlayerIds : []).map((id) => idValue(id, "homePlayerId")),
           guestPlayerIds: (Array.isArray(params.guestPlayerIds) ? params.guestPlayerIds : []).map((id) => idValue(id, "guestPlayerId")),
         };
+      }
       const payload = { ...request, expectedRevision };
       return stateStore.applyCourtOperation(court, {
         principal: context.principal,
@@ -483,7 +506,7 @@ const endpoints = {
         payload,
         expectedRevision,
       }, (current) => {
-        requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
+        if (!request.empty) requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
         const assignment = resolveCourtAssignment(request);
         return { ...assignment.data, aktiv: current.aktiv };
       }, () => courtPoller.resetCourtScore(court));

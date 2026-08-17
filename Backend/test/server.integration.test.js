@@ -751,7 +751,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   for (const [table, values] of Object.entries(currentTables)) {
     if (table !== "matchtyp") dataStore.set(table, values, { source: "stale-matchtyp-test" });
   }
-  await new Promise((resolve) => setTimeout(resolve, 5100)); // Replenish the shared per-IP write token.
+  await new Promise((resolve) => setTimeout(resolve, 10100)); // Replenish two shared per-IP write tokens.
   const staleMatchtypReplay = await operatorClient.request("courtAssign", {
     court: "1",
     matchId: "m1",
@@ -760,6 +760,46 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(staleMatchtypReplay.data.error, undefined);
   assert.deepEqual(staleMatchtypReplay.data.court.displayRules, assignment.data.court.displayRules);
+
+  const emptyAssignment = await operatorClient.request("courtAssign", {
+    court: "1",
+    empty: true,
+    operationId: "00000000-0000-4000-8000-000000000310",
+    expectedRevision: reassignment.data.court.revision,
+  });
+  assert.deepEqual({
+    matchId: emptyAssignment.data.court.matchId,
+    bewerbId: emptyAssignment.data.court.bewerbId,
+    matchtypId: emptyAssignment.data.court.matchtypId,
+    displayRules: emptyAssignment.data.court.displayRules,
+    bewerb: emptyAssignment.data.court.bewerb,
+    homePlayerIds: emptyAssignment.data.court.homePlayerIds,
+    guestPlayerIds: emptyAssignment.data.court.guestPlayerIds,
+    homePlayer: emptyAssignment.data.court.homePlayer,
+    guestPlayer: emptyAssignment.data.court.guestPlayer,
+    dateTime: emptyAssignment.data.court.dateTime,
+    runde: emptyAssignment.data.court.runde,
+    aktiv: emptyAssignment.data.court.aktiv,
+  }, {
+    matchId: "",
+    bewerbId: "",
+    matchtypId: "",
+    displayRules: null,
+    bewerb: "",
+    homePlayerIds: [],
+    guestPlayerIds: [],
+    homePlayer: "",
+    guestPlayer: "",
+    dateTime: "",
+    runde: "",
+    aktiv: reassignment.data.court.aktiv,
+  });
+  const emptyScores = await operatorClient.request("courtScores");
+  assert.deepEqual(emptyScores.data.data.courts.find((court) => court.platz === "1"), {
+    platz: "1",
+    satz1home: "0", satz1gast: "0", satz2home: "0", satz2gast: "0",
+    satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
+  });
 
   const realDateNow = Date.now;
   const staleNow = realDateNow() + 120000;

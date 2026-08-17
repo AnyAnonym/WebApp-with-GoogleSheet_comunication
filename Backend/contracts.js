@@ -35,6 +35,27 @@ const playerIds = (name) => (value) => {
   return value.map((entry) => idValue(entry, name));
 };
 
+function courtAssignment(params) {
+  const value = objectShape(params, {
+    operationId: operation,
+    court: id("court"),
+    expectedRevision: integer("expectedRevision", { min: 1 }),
+    empty: optional((entry) => booleanValue(entry, "empty")),
+    matchId: optional(id("matchId")),
+    homePlayerIds: optional(playerIds("homePlayerIds")),
+    guestPlayerIds: optional(playerIds("guestPlayerIds")),
+  });
+  const hasMatch = value.matchId !== undefined;
+  const hasPlayers = value.homePlayerIds !== undefined || value.guestPlayerIds !== undefined;
+  const isEmpty = value.empty === true;
+  if (Number(hasMatch) + Number(hasPlayers) + Number(isEmpty) !== 1
+    || value.empty === false
+    || (hasPlayers && (value.homePlayerIds === undefined || value.guestPlayerIds === undefined))) {
+    throw new AppError("VALIDATION_ERROR", "Court-Zuweisung benoetigt genau Match, Spielerpaarung oder empty: true");
+  }
+  return value;
+}
+
 const requestContracts = {
   players: empty,
   publicProfile: (params) => objectShape(params, { id: id("id") }),
@@ -66,14 +87,7 @@ const requestContracts = {
     reason: text("reason", { min: 3, max: 500 }),
   }),
   navigator: (params) => objectShape(params, { profil: optional(text("profil", { max: 32 })) }),
-  courtAssign: (params) => objectShape(params, {
-    operationId: operation,
-    court: id("court"),
-    expectedRevision: integer("expectedRevision", { min: 1 }),
-    matchId: optional(id("matchId")),
-    homePlayerIds: optional(playerIds("homePlayerIds")),
-    guestPlayerIds: optional(playerIds("guestPlayerIds")),
-  }),
+  courtAssign: courtAssignment,
   courtSetActive: (params) => objectShape(params, {
     operationId: operation,
     court: id("court"),

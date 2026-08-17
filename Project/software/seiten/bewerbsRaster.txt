@@ -22,16 +22,22 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
 -- Bedienung --
   Pflichtparameter `?id=<bewerbId>`, optional `?paarungslayout=<0-5>` fuer die
   eingebettete RoundRobin-Ansicht. Bei RoundRobin-Bewerben kann zwischen Raster
-  und Gruppe gewechselt werden. Klick auf einen Spieler oeffnet das gemeinsame
-  Profilmodal: anonym nur ID/Name, angemeldet zusaetzlich E-Mail, Telefon und
-  Geburtsdatum. Nur Admins sehen bei fremden Profilen die statusabhaengige Aktion
-  zum Freigeben beziehungsweise Aufheben der erstmaligen Passwortvergabe sowie
-  Reset-Code-Erstellung und direktes Passwortsetzen.
+  und Gruppe gewechselt werden. Nur eine ID aus der geladenen Spielerliste ist als
+  Spieler anklickbar und oeffnet das gemeinsame Profilmodal: anonym nur ID/Name,
+  angemeldet zusaetzlich E-Mail, Telefon und Geburtsdatum. `PRE`, `BYE` und
+  unbekannte Platzhalter bleiben ohne Profilaktion. Nur Admins sehen bei fremden
+  Profilen die statusabhaengige Aktion zum Freigeben beziehungsweise Aufheben der
+  erstmaligen Passwortvergabe sowie Reset-Code-Erstellung und direktes
+  Passwortsetzen.
 
 -- Darstellung und Sicherheit --
   Einzel/Doppel, BYE/PRE, die exakt kleingeschriebenen Marker [wo] und [ret],
-  [gesetzt], Ergebnisse und Gewinner werden speziell dargestellt. Enthaelt ein
-  Einzelspieler oder einer der beiden
+  [gesetzt], Ergebnisse und Gewinner werden speziell dargestellt. `BYE` ist ein
+  Freilos mit automatischer Gewinnerbehandlung. `PRE` ist davon getrennt und
+  markiert bei einer manuellen Auslosung temporaer die aktuell zu besetzende
+  Rasterposition: Der Slot zeigt `—` und blinkt gruen. Wird `PRE` durch eine
+  bekannte Personen-ID ersetzt, zeigt das naechste Rendern den Spielernamen und
+  entfernt die Blinkdarstellung. Enthaelt ein Einzelspieler oder einer der beiden
   Doppelpartner die aktuelle Session-ID, werden Name und gegebenenfalls Ergebnis
   des gesamten Slots blau dargestellt. Namen, Resultate, Meldungen und Badges
   entstehen aus sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes

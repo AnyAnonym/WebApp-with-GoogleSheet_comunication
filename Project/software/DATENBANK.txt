@@ -65,8 +65,10 @@ Matches1 enthaelt offene und gespielte Matches.
                   | ueberstimmt sie `Bewerb.MatchtypID Standard`.
   Spieler1ID      | Erste Heim-/Gegner-ID; als Abschlussmarker sind nur die
                   | exakt kleingeschriebenen Suffixe [wo] oder [ret] zulaessig.
+                  | Bei manueller Auslosung ist temporaer `PRE` zulaessig.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
-  Spieler3ID      | Erste Gast-/Forderer-ID.
+  Spieler3ID      | Erste Gast-/Forderer-ID; bei manueller Auslosung ist
+                  | temporaer `PRE` zulaessig.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
   PTN-Wertung     | Reserviert.
@@ -76,6 +78,12 @@ Matches1 enthaelt offene und gespielte Matches.
 oder dem exakten Abschlussmarker [wo]/[ret] berechnet, nicht in einer eigenen
 Spalte gespeichert. Varianten wie [w.o.], [WO] oder [RET] sind keine gueltigen
 Marker und werden nicht normalisiert.
+Der kanonische Sonderwert `PRE` in `Spieler1ID` oder `Spieler3ID` markiert
+waehrend einer manuellen Auslosung ausschliesslich die aktuell zu besetzende
+Rasterposition. Er ist keine Referenz auf `Personen.ID`, kein Matchteilnehmer und
+kein `BYE` und muss nach dem Ziehungsschritt durch die tatsaechliche Personen-ID
+ersetzt werden. Fuer `Spieler2ID` und `Spieler4ID` ist keine `PRE`-Verwendung
+vorgesehen.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
 

@@ -139,6 +139,19 @@ werden. Die Anzeige selbst soll ohne laufende Bedienung am Monitor funktionieren
 Spieler koennen die fuer einen Bewerb vorgesehene Eintragungsliste einsehen und
 die angebotenen Anmeldefunktionen verwenden.
 
+5.6 Manuelle Auslosung im KO-Raster [Bestaetigt]
+
+Vor einem Ziehungsschritt kennzeichnet die Turnierleitung die aktuell als
+Naechstes zu besetzende Position des KO-Rasters mit dem temporaeren Wert `PRE`.
+Diese Position blinkt gruen, damit waehrend der Auslosung eindeutig sichtbar ist,
+an welcher Stelle der gezogene Spieler eingetragen wird.
+
+Nach der Ziehung ersetzt die Turnierleitung `PRE` durch die Personen-ID des
+gezogenen Spielers. Das Raster zeigt danach den Spielernamen an, beendet das
+Blinken und behandelt den Eintrag wieder als normalen Spieler. `PRE` bezeichnet
+weder eine Person noch ein Freilos und darf fachlich nicht mit `BYE` gleichgesetzt
+werden. Fuer `PRE` gibt es deshalb kein Spielerprofil.
+
 
 ================================================================================
 6. FACHLICHE ANFORDERUNGEN

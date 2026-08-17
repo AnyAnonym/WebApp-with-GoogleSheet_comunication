@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.4
+Stand: 4.4.5
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,54 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.5] - 2026-08-17
+Commit: 4.4.5 | Platzzuweisung und Rasterablaeufe erweitert
+Quelle: 4.4.4-paj-1
+
+  Added
+  - [Software] Navigator-Platzzuweisung um die erste Option `kein Spiel zuweisen`
+    und um getrennte Auswahlen fuer `Individual Einzel` sowie `Individual Doppel`
+    mit zwei beziehungsweise vier eindeutigen Spielerabfragen erweitert.
+  - [Software] `courtAssign` um die exklusive, Sheet-unabhaengige Leerzuweisung
+    `empty: true` erweitert.
+
+  Changed
+  - [Software] Eine Leerzuweisung behaelt den Court-Aktivstatus, leert Match-,
+    Bewerbs-, Datums-, Runden-, Spieler- und Matchtypdaten und setzt den Score
+    einmalig auf acht `"0"`-Werte zurueck.
+  - [Software] Leere Scoreboard-Namensfelder behalten die notwendige Zeilenhoehe;
+    Smartphone-Querformat bis 500 px Hoehe ordnet Namen und Scores kompakt ohne
+    vertikalen Court-Ueberlauf an.
+  - [Dokumentation] Den bestaetigten manuellen Auslosungsablauf mit `PRE` als
+    gruen blinkender, temporaerer KO-Rasterposition, ihrer Ersetzung durch die
+    gezogene Personen-ID und ihrer Abgrenzung von Person sowie `BYE` in
+    Fachkonzept, Datenvertrag und Raster-Seitendokumentation aufgenommen.
+  - [Dokumentation] Dokumentationsuebernahmelisten muessen ohne Ursprungsgespraech
+    ausfuehrbar sein und relevante Zwecke, Rollen, Ablaeufe, sichtbare Zustaende,
+    Datenbedeutungen, Zustandsenden, Abgrenzungen, Aktionen sowie Fehler- und
+    Randfaelle enthalten.
+  - [Infrastruktur] PAJ-Browserlayouttests verwenden `playwright-core` 1.62.1 und
+    das systemweite Chromium fuer drei Smartphone- sowie fuenf Breakpoint- und
+    Desktopaufloesungen.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.5` gesetzt.
+
+  Fixed
+  - [Software] Das Bewerbsraster bindet Profilaktionen nur noch fuer IDs aus der
+    geladenen Spielerliste; `BYE`, `PRE` und unbekannte Platzhalter loesen keinen
+    fehlerhaften Profilaufruf mehr aus.
+
+  Removed
+  - [Repository] Temporaeres Branch-Changelog
+    `Project/ChangeLogs/ChangeLog-4.4.4-paj-1.txt` nach vollstaendiger Uebernahme
+    in Main-Changelog und permanente Dokumentation entfernt.
+
+  Tests
+  - `npm run build`: statische Projektpruefung und alle 155 automatisierten
+    Backend-Tests erfolgreich.
+  - `npm run test:browser`: Scoreboard-Layouttest mit drei Smartphone- und fuenf
+    Breakpoint-/Desktopaufloesungen erfolgreich.
+  - `git diff --check` ohne Fehler.
 
 [4.4.4] - 2026-08-16
 Commit: 4.4.4 | Backup- und Restore-Konzept dokumentiert

@@ -6,6 +6,9 @@ const { chromium } = require("playwright-core");
 const CHROMIUM_PATH = process.env.CHROMIUM_PATH || "/usr/bin/chromium";
 const SCOREBOARD_URL = process.env.SCOREBOARD_TEST_URL || "https://epiber.at:8081/scoreboard.html";
 const VIEWPORTS = [
+  { width: 360, height: 800 },
+  { width: 390, height: 844 },
+  { width: 844, height: 390 },
   { width: 1000, height: 768 },
   { width: 1001, height: 768 },
   { width: 1280, height: 720 },
@@ -13,7 +16,7 @@ const VIEWPORTS = [
   { width: 1920, height: 1080 },
 ];
 
-test("Scoreboard-Namen bleiben an Desktop-Breakpoints lesbar und im Layout", {
+test("Scoreboard-Namen bleiben an mobilen und Desktop-Breakpoints lesbar und im Layout", {
   skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
   timeout: 60000,
 }, async () => {
@@ -70,6 +73,41 @@ test("Scoreboard-Namen bleiben an Desktop-Breakpoints lesbar und im Layout", {
           metrics.maxCourtOverflow <= 2,
           true,
           `${viewport.width}x${viewport.height}: Court-Ueberlauf ${metrics.maxCourtOverflow}px`,
+        );
+
+        await page.evaluate(() => {
+          for (const id of ["p1-name-h", "p1-name-g", "p2-name-h", "p2-name-g"]) {
+            const element = document.getElementById(id);
+            element.replaceChildren();
+            element.classList.remove("platz-cell-double");
+          }
+          window.dispatchEvent(new Event("resize"));
+        });
+        await page.waitForTimeout(100);
+        const emptyMetrics = await page.evaluate(() => {
+          const heightPairs = ["1", "2"].flatMap((court) => {
+            const scoreHeight = Math.max(...[...document.querySelectorAll(`#platz${court} .platz-row .platz-scores .platz-cell`)]
+              .map((element) => element.offsetHeight));
+            return ["h", "g"].map((side) => ({
+              nameHeight: document.getElementById(`p${court}-name-${side}`).offsetHeight,
+              scoreHeight,
+            }));
+          });
+          const courtOverflows = ["platz1", "platz2"].map((id) => {
+            const court = document.getElementById(id);
+            return Math.max(0, court.scrollHeight - court.clientHeight);
+          });
+          return { heightPairs, maxCourtOverflow: Math.max(...courtOverflows) };
+        });
+        assert.equal(
+          emptyMetrics.heightPairs.every(({ nameHeight, scoreHeight }) => nameHeight >= scoreHeight),
+          true,
+          `${viewport.width}x${viewport.height}: Leeres Namensfeld ist niedriger als die Scorezellen`,
+        );
+        assert.equal(
+          emptyMetrics.maxCourtOverflow <= 2,
+          true,
+          `${viewport.width}x${viewport.height}: Leerer Court-Ueberlauf ${emptyMetrics.maxCourtOverflow}px`,
         );
         results.push({ ...viewport, ...metrics });
       } catch (error) {

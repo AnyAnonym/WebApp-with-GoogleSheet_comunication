@@ -71,3 +71,30 @@ Commit: 4.4.4-paj-1-4 | Rasterplatzhalter von Profilaufrufen ausgeschlossen
 
     Project/software/seiten/bewerbsRaster.txt
     - `PRE` als blinkenden Auslosungsplatzhalter ohne Profilaktion sowie Profilklicks ausschliesslich fuer tatsaechliche Spieler dokumentieren.
+
+[4.4.4-paj-1-5] - 2026-08-17
+Commit: 4.4.4-paj-1-5 | PRE-Dokumentationsuebernahme konkretisiert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-5` gesetzt.
+  - [Dokumentation] Uebernahmeanweisungen fuer den bestaetigten `PRE`-Auslosungsablauf um Zweck, Bedienfolge, sichtbare Darstellung, Datenbedeutung und Ende des Platzhalterzustands konkretisiert.
+  - [Tests] Statische Projektpruefung, vollstaendige Backend-Testsuite mit 155 Tests und Diff-Pruefung fuer den Dokumentationsarbeitsstand erfolgreich ausgefuehrt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/FACHKONZEPT.txt
+    - Ein bestaetigtes Nutzungsszenario `Manuelle Auslosung im KO-Raster` aufnehmen.
+    - Vor einem Ziehungsschritt kennzeichnet die Turnierleitung die aktuell als Naechstes zu besetzende Rasterposition mit dem temporaeren Wert `PRE`. Die Position blinkt gruen, damit waehrend der Auslosung eindeutig sichtbar ist, an welcher Stelle der gezogene Spieler eingetragen wird.
+    - Nach der Ziehung ersetzt die Turnierleitung `PRE` durch die Personen-ID des gezogenen Spielers. Das Raster zeigt danach den Spielernamen an, beendet das Blinken und behandelt den Eintrag wieder als normalen Spieler.
+    - `PRE` bezeichnet weder eine Person noch ein Freilos und darf fachlich nicht mit `BYE` gleichgesetzt werden. Fuer `PRE` gibt es deshalb kein Spielerprofil.
+
+    Project/software/DATENBANK.txt
+    - In den Feldvertraegen von `Matches1.Spieler1ID` und `Matches1.Spieler3ID` den kanonischen Sonderwert `PRE` als waehrend einer manuellen Auslosung zulaessigen, temporaeren Platzhalter ergaenzen.
+    - `PRE` ist keine Referenz auf `Personen.ID`, kein Matchteilnehmer und kein `BYE`. Der Wert darf nur den aktuell zu besetzenden Rasterplatz markieren und muss nach dem Ziehungsschritt durch die tatsaechliche Personen-ID ersetzt werden.
+    - `Matches1.Spieler2ID` und `Matches1.Spieler4ID` bleiben optionale Doppelpartnerfelder; fuer sie ist aus dem bestaetigten Ablauf keine `PRE`-Verwendung abzuleiten.
+
+    Project/software/seiten/bewerbsRaster.txt
+    - Bei einer Spieler-ID `PRE` keinen Namen aufloesen, im Slot `—` darstellen und den Slot mit der vorhandenen gruenen Blinkdarstellung hervorheben.
+    - Sobald `PRE` in den Matchdaten durch eine bekannte Personen-ID ersetzt wird, beim naechsten Rendern den Spielernamen anzeigen und die Blinkdarstellung entfernen.
+    - Nur IDs, die in der geladenen Spielerliste vorhanden sind, erhalten `data-player-id` und den Klickhandler fuer das gemeinsame Profilmodal. `PRE`, `BYE` und unbekannte Platzhalter bleiben ohne Profilaktion.
+    - Die automatische Gewinnerbehandlung von `BYE` und die Verwendung von `PRE` als Auslosungsmarkierung sind getrennte Fachfaelle und duerfen in Darstellung oder Bedienung nicht gleichgesetzt werden.

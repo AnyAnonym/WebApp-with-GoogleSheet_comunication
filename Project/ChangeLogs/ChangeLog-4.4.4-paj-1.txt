@@ -50,3 +50,24 @@ Commit: 4.4.4-paj-1-3 | Individuelle Doppelzuweisung im Navigator ergaenzt
 
     Project/software/seiten/navigator.txt
     - Die Platzzuweisung erlaubt neben individuellen Einzelpaarungen auch individuelle Doppelpaarungen.
+
+[4.4.4-paj-1-4] - 2026-08-17
+Commit: 4.4.4-paj-1-4 | Rasterplatzhalter von Profilaufrufen ausgeschlossen
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.4-paj-1-4` gesetzt.
+  - [Tests] Statische Projektpruefung, vollstaendige Backend-Testsuite mit 155 Tests, Diff-Pruefung und manuelle Funktionspruefung durch den Auftraggeber erfolgreich ausgefuehrt.
+
+  Fixed
+  - [Software] Profilaufrufe im Bewerbsraster auf IDs aus der geladenen Spielerliste begrenzt, sodass `BYE`, `PRE` und unbekannte Platzhalter kein fehlerhaftes Profilmodal mehr oeffnen.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/FACHKONZEPT.txt
+    - Den bestaetigten Auslosungsablauf dokumentieren: `PRE` markiert voruebergehend die aktuell zu besetzende, blinkende KO-Rasterposition und wird nach der Ziehung durch die Personen-ID ersetzt.
+
+    Project/software/DATENBANK.txt
+    - `PRE` bei `Matches1.Spieler1ID` beziehungsweise `Spieler3ID` als temporaeren Auslosungsplatzhalter ohne Referenz auf `Personen.ID` dokumentieren.
+
+    Project/software/seiten/bewerbsRaster.txt
+    - `PRE` als blinkenden Auslosungsplatzhalter ohne Profilaktion sowie Profilklicks ausschliesslich fuer tatsaechliche Spieler dokumentieren.

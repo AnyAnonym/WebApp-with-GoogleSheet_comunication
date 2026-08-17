@@ -441,7 +441,7 @@ function renderBracket(rounds) {
           if (!slot.name && !slot.special) el.classList.add("bye");
         }
 
-        if (slotId) {
+        if (slotId && playerMap.has(slotId)) {
           el.dataset.playerId = slotId;
           el.addEventListener("click", () => {
             if (typeof window.openProfileModal === "function") {

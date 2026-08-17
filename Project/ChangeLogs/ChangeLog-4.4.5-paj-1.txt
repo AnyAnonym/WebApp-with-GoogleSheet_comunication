@@ -21,3 +21,29 @@ Commit: 4.4.5-paj-1-2 | Rasterabstaende vor Terminsetzung vereinheitlicht
 
     Project/software/seiten/bewerbsRaster.txt
     - Unter Darstellung festhalten, dass jeder Matchplatz ab dem ersten Rendern den vertikalen Bereich fuer einen optionalen Termin reserviert, auch solange `Matchdate` leer ist. Die leere Reserve bleibt unsichtbar und ohne Bedienaktion; dadurch behalten die Matchboxen in allen Runden, insbesondere bei einem Rasterstart im Halbfinale, bereits vor der Terminsetzung denselben Abstand wie danach.
+
+[4.4.5-paj-1-3] - 2026-08-17
+Commit: 4.4.5-paj-1-3 | Round-Robin-Layouts responsiv vereinheitlicht
+
+  Changed
+  - [Frontend] Gruppenkarten verwenden schrumpfbare Gridspalten und werden unter 1000 CSS-Pixeln einspaltig angeordnet; der fruehere Darstellungssprung oberhalb von 1500 Pixeln wurde entfernt.
+  - [Frontend] Gruppentabellen skalieren Beschriftungen, Namen und Werte gemeinsam bis zur verfuegbaren Breite und reduzieren die Schrift vor einem Umbruch auf die definierte Mindestgroesse. Optimierte Spaltenanteile und Innenabstaende halten insbesondere `Spiele`, `Siege`, `Saetze` und `Games` lesbar.
+  - [Frontend] Passt mindestens eine Doppel-Namenszelle bei Mindestgroesse nicht einzeilig, werden alle Doppel-Namen der Anzeige untereinander dargestellt und alle Schraegstriche ausgeblendet. Die Zusatzzeile `W-L` unter `Saetze` und `Games` wurde entfernt.
+  - [Frontend] Paarungsnamen und Ergebnisse erhalten eine gemeinsam berechnete, maximal passende Schriftgroesse. Passt mindestens eine Paarung bei Mindestgroesse nicht einzeilig, wechseln alle Paarungen in ein dreizeiliges Schema mit Datum/Uhrzeit links, Namen und `vs` in der Mitte sowie rechtsbuendigem Ergebnis.
+  - [Frontend] Ein `ResizeObserver` berechnet Tabellen- und Paarungslayout nach Groessenaenderungen erneut; dieselbe inhaltsabhaengige Entscheidung gilt fuer Desktop- und Mobilansichten.
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.5-paj-1-3` gesetzt.
+  - [Tests] Statische Projektpruefung, vollstaendige Backend-Testsuite mit 155 Tests und gezielte Browserpruefungen der Round-Robin-Seiten fuer Desktop- und Mobilkontexte zwischen 320 und 2200 CSS-Pixeln erfolgreich ausgefuehrt.
+
+  Fixed
+  - [Frontend] Tabellenwerte, Satz-/Gamespalten und Paarungsergebnisse werden bei breiten sowie schmalen Gruppenkarten nicht mehr rechts abgeschnitten.
+  - [Frontend] Mobile Paarungen werden nicht mehr allein durch den Unter-500-Pixel-Breakpoint umgebrochen; Ergebnisse bleiben in einzeiligen und dreizeiligen Paarungen rechtsbuendig.
+  - [Frontend] Doppel-Namen koennen nicht mehr in einen Zwischenzustand umbrechen, in dem der zweite Name in die Folgezeile springt, der Schraegstrich aber beim ersten Namen sichtbar bleibt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/roundRobin.txt
+    - Den Abschnitt `Darstellung und Sicherheit` ersetzen beziehungsweise erweitern: Das Gruppenraster waehlt weiterhin anhand der Gruppenzahl eine bis vier Spalten, erzwingt jedoch unter 1000 CSS-Pixeln genau eine Spalte. Gridspalten und Gruppenkarten duerfen auf ihre verfuegbare Breite schrumpfen; es gibt keinen gesonderten Grossdisplay-Stil oberhalb von 1500 Pixeln.
+    - Dokumentieren, dass Gruppentabellen feste, auf Lesbarkeit optimierte Spaltenanteile verwenden. Die gemeinsame Schriftgroesse von Tabellenkoepfen, Namen und Werten wird inhaltsabhaengig bis zu einer Obergrenze vergroessert und beim Verkleinern bis zur definierten Mindestgroesse reduziert, bevor Namen umgebrochen werden. Die Spaltenkoepfe lauten `Rang`, `Name`, `Spiele`, `Siege`, `Saetze` und `Games`; eine zusaetzliche `W-L`-Zeile wird nicht angezeigt.
+    - Dokumentieren, dass bei Doppel-Namen zuerst die einzeilige Darstellung ohne internen Umbruch gemessen wird. Passt mindestens eine Namenszelle bei Mindestschrift nicht, stehen in allen Gruppentabellen der Anzeige beide Doppelpartner untereinander und die Schraegstriche sind ausgeblendet; bei ausreichendem Platz bleiben Namen und Schraegstrich einzeilig.
+    - Dokumentieren, dass Paarungsnamen und Ergebnisse dieselbe dynamisch ermittelte Schriftgroesse verwenden. Solange jede Paarung einzeilig passt, stehen Datum/Uhrzeit, beide Seiten, Trennzeichen und rechtsbuendiges Ergebnis in einer Zeile. Passt eine Paarung bei Mindestschrift nicht, wechseln alle Paarungen der Anzeige gemeinsam in drei Zeilen: erste Seite in Zeile 1, Datum/Uhrzeit links, `vs` mit den Namen linksbuendig in der mittleren Spalte und das Ergebnis rechtsbuendig in Zeile 2 sowie zweite Seite in Zeile 3. Datum/Uhrzeit verwendet die dunkle Standardschriftfarbe.
+    - Festhalten, dass die Breiten- und Schriftberechnung nach Groessenaenderungen per `ResizeObserver` erneut erfolgt und Mobilansichten keinen separaten erzwungenen Paarungsumbruch besitzen. Dieselben Einpassregeln gelten unabhaengig vom Geraetetyp; mobile Breakpoints reduzieren nur Grundschrift, Abstaende und Tabellenanteile.

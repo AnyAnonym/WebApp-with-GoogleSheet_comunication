@@ -4,6 +4,8 @@ Stand der Analyse: 25.07.2026
 Analysierter Stand: ePiber v3.0.2  
 Gegenstand: Frontend, Backend, Caddy, WebSocket, Seitenwechsel, Navigator und Monitor
 
+Archivstatus: Die Analyse ist abgeschlossen und wird nicht fortgeschrieben.
+
 Diese Datei dokumentiert den zum Analysezeitpunkt vorhandenen Zustand. Die
 Verbesserungsvorschlaege waren damals nicht umgesetzt; der aktuelle Stand steht
 im Schlussabschnitt "Implementierungsstatus 2026-07-29".

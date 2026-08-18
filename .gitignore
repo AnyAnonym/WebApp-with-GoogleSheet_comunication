@@ -37,6 +37,9 @@ desktop.ini
 .env
 .eslintcache
 
+# Lokale Mitgliederexporte mit personenbezogenen Daten
+/export*.csv
+
 # ── Lokales temporaeres Main-Changelog ──
 Project/ChangeLogs/ChangeLog-main.tmp
 

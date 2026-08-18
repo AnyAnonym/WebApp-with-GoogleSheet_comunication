@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.6
+Stand: 4.4.7
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,32 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.7] - 2026-08-18
+Commit: 4.4.7 | Mitgliederabgleich geplant und Kommunikationsanalyse archiviert
+Quelle: direkte Main-Ausnahme
+
+  Added
+  - [Dokumentation] Ausfuehrlichen Arbeitsplan fuer die getrennte Normalisierung
+    des ePiber-Personenbestands und den spaeteren browserseitigen
+    CSV-Mitgliederabgleich angelegt. Der Plan dokumentiert Analysebefunde,
+    ExternalID-Strategie, Sicherheitsgrenzen, offene Normalisierungsregeln,
+    Testanforderungen, PAJ-/Live-Rollout und den verbindlichen Stopppunkt vor der
+    Importimplementierung.
+
+  Changed
+  - [Dokumentation] Abgeschlossene Kommunikationsanalyse aus den aktiven Aufgaben
+    in das historische Archiv verschoben. Der Softwareindex verweist fuer die
+    verbleibenden manuellen Kommunikations- und Rolloutpruefungen auf die
+    kanonische Rollout-Checkliste.
+  - [Repository] Lokale CSV-Mitgliederexporte im Repository-Root vor
+    versehentlicher Versionierung geschuetzt und Paket- sowie Lockfile-Version auf
+    `4.4.7` gesetzt.
+
+  Tests
+  - `npm run build`: statische Projektpruefung und alle 155 automatisierten
+    Backend-Tests erfolgreich.
+  - `git diff --check` ohne Fehler.
 
 [4.4.6] - 2026-08-17
 Commit: 4.4.6 | Round-Robin-Layouts und Rasterabstaende vereinheitlicht

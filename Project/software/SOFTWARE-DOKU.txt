@@ -84,9 +84,6 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
   `AGENTS.md`
       OpenCode-Einstiegspunkt mit Projektkontext und gezieltem Doku-Routing.
 
-  `Project/2do/KOMMUNIKATION-ANALYSE.md`
-      Kommunikationsanalyse und verbleibende manuelle Risiken.
-
   Grafana ist eine externe Betriebsoberflaeche und keine fachliche HTML-Seite.
   Aktuelle Admins aus Live und PAJ erreichen dieselbe Instanz unter
   `https://epiber.at/grafana/`; PAJ leitet seinen `/grafana/`-Einstieg dorthin
@@ -97,5 +94,8 @@ technische Testseite und besitzt keine eigene fachliche Seitendokumentation.
   ARCHIV
 ================================================================================
 
-`Project/archive/DB.txt`, `Project/archive/Seiten.txt` und
-`Project/archive/PROTOKOLL.txt` sind historisch und werden nicht fortgeschrieben.
+`Project/archive/DB.txt`, `Project/archive/Seiten.txt`,
+`Project/archive/PROTOKOLL.txt` und
+`Project/archive/KOMMUNIKATION-ANALYSE.md` sind historisch und werden nicht
+fortgeschrieben. Die verbleibenden manuellen Kommunikations- und Rolloutpruefungen
+stehen in `Project/server-configs/ROLLOUT-CHECKLIST.md`.

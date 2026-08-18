@@ -41,4 +41,8 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   Doppelpartner die aktuelle Session-ID, werden Name und gegebenenfalls Ergebnis
   des gesamten Slots blau dargestellt. Namen, Resultate, Meldungen und Badges
   entstehen aus sicheren DOM-Knoten; externe Werte werden nicht als ungeprueftes
-  HTML eingesetzt.
+  HTML eingesetzt. Jeder Matchplatz reserviert ab dem ersten Rendern den
+  vertikalen Bereich fuer einen optionalen Termin, auch solange `Matchdate` leer
+  ist. Die leere Reserve bleibt unsichtbar und ohne Bedienaktion; dadurch behalten
+  die Matchboxen insbesondere bei einem Rasterstart im Halbfinale vor und nach
+  einer Terminsetzung denselben Abstand.

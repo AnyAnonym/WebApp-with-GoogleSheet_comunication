@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.5
+Stand: 4.4.6
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,59 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.4.6] - 2026-08-17
+Commit: 4.4.6 | Round-Robin-Layouts und Rasterabstaende vereinheitlicht
+Quelle: 4.4.5-paj-1
+
+  Changed
+  - [Software] Gruppenkarten verwenden schrumpfbare Gridspalten und werden unter
+    1000 CSS-Pixeln einspaltig angeordnet; der fruehere Darstellungssprung
+    oberhalb von 1500 Pixeln wurde entfernt.
+  - [Software] Gruppentabellen skalieren Koepfe, Namen und Werte gemeinsam bis zur
+    verfuegbaren Breite, reduzieren die Schrift vor einem Umbruch bis zur
+    Mindestgroesse und verwenden optimierte Spaltenanteile sowie Innenabstaende.
+  - [Software] Passt mindestens eine Doppel-Namenszelle bei Mindestgroesse nicht
+    einzeilig, stehen alle Doppel-Namen der Anzeige untereinander und alle
+    Schraegstriche werden ausgeblendet. Die Zusatzzeile `W-L` unter `Saetze` und
+    `Games` wurde entfernt.
+  - [Software] Paarungsnamen und Ergebnisse erhalten eine gemeinsam berechnete
+    Schriftgroesse. Passt mindestens eine Paarung bei Mindestgroesse nicht
+    einzeilig, wechseln alle Paarungen in das dreizeilige Schema mit Datum/Uhrzeit
+    links, Namen und `vs` in der Mitte sowie rechtsbuendigem Ergebnis.
+  - [Software] Ein `ResizeObserver` berechnet Tabellen- und Paarungslayout nach
+    Groessenaenderungen neu; Desktop und Mobilansichten verwenden dieselbe
+    inhaltsabhaengige Einpassentscheidung.
+  - [Dokumentation] Seitenbeschreibungen fuer Bewerbsraster und Round Robin um
+    Terminreserve, responsive Rastergrenze, dynamische Schriftgroessen sowie
+    globale Tabellen- und Paarungsumbrueche erweitert.
+  - [Repository] Paket- und Lockfile-Version auf `4.4.6` gesetzt.
+
+  Fixed
+  - [Software] Turnierraster reservieren den Terminabstand fuer alle Matches schon
+    vor einer Terminsetzung, sodass insbesondere kleine Raster ab dem Halbfinale
+    nicht mehr zu eng dargestellt werden.
+  - [Software] Tabellenwerte, Satz-/Gamespalten und Paarungsergebnisse werden bei
+    breiten sowie schmalen Gruppenkarten nicht mehr rechts abgeschnitten.
+  - [Software] Mobile Paarungen werden nicht mehr allein durch den
+    Unter-500-Pixel-Breakpoint umgebrochen; Ergebnisse bleiben in einzeiligen und
+    dreizeiligen Paarungen rechtsbuendig.
+  - [Software] Doppel-Namen koennen nicht mehr mit einem beim ersten Namen
+    sichtbaren Schraegstrich in einen inkonsistenten Zwischenzustand umbrechen.
+
+  Removed
+  - [Repository] Temporaeres Branch-Changelog
+    `Project/ChangeLogs/ChangeLog-4.4.5-paj-1.txt` nach vollstaendiger Uebernahme
+    in Main-Changelog und permanente Dokumentation entfernt.
+
+  Tests
+  - `npm run build`: statische Projektpruefung und alle 155 automatisierten
+    Backend-Tests erfolgreich.
+  - `npm run test:browser`: Scoreboard-Layouttest mit drei Smartphone- und fuenf
+    Breakpoint-/Desktopaufloesungen erfolgreich.
+  - Gezielte Browserpruefungen der Round-Robin-Seiten fuer Desktop- und
+    Mobilkontexte zwischen 320 und 2200 CSS-Pixeln erfolgreich.
+  - `git diff --check` ohne Fehler.
 
 [4.4.5] - 2026-08-17
 Commit: 4.4.5 | Platzzuweisung und Rasterablaeufe erweitert

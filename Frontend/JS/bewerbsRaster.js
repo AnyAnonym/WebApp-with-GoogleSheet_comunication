@@ -371,12 +371,11 @@ function renderBracket(rounds) {
 
       if (match.result || match.winner) md.classList.add("has-result");
 
-      if (match.matchDate) {
-        const date = document.createElement("div");
-        date.className = "bracket-match-date";
-        date.textContent = match.matchDate;
-        md.appendChild(date);
-      }
+      const date = document.createElement("div");
+      date.className = "bracket-match-date";
+      date.textContent = match.matchDate || "\u00a0";
+      if (!match.matchDate) date.setAttribute("aria-hidden", "true");
+      md.appendChild(date);
 
       const matchBox = document.createElement("div");
       matchBox.className = "bracket-match-box";

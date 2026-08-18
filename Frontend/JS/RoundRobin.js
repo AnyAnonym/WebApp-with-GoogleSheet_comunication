@@ -11,6 +11,7 @@ const readBewerbe     = createEndpoint("bewerbe");
 const readBewerbsart  = createEndpoint("bewerbsart");
 let renderGeneration = 0;
 const profileLinkContainers = new WeakSet();
+let layoutResizeObserver = null;
 
 export function invalidateRoundRobinRender() {
   renderGeneration++;
@@ -371,9 +372,85 @@ function renderMessage(container, message) {
   container.replaceChildren(paragraph);
 }
 
+function setLargestFittingFont(container, property, minimum, maximum, fits) {
+  let lower = minimum;
+  let upper = maximum;
+  for (let i = 0; i < 7; i++) {
+    const size = (lower + upper) / 2;
+    container.style.setProperty(property, `${size}px`);
+    if (fits()) lower = size;
+    else upper = size;
+  }
+  container.style.setProperty(property, `${lower}px`);
+}
+
+function updateRoundRobinLayouts(container) {
+  const pairings = [...container.querySelectorAll(".rr-pairing")];
+  container.style.removeProperty("--rr-pairing-name-size");
+  pairings.forEach((pairing) => pairing.classList.remove("rr-pairing-stacked"));
+  const pairingNames = [...container.querySelectorAll(".rr-pairing-team")];
+  if (pairingNames.length > 0) {
+    const minimumPairingNameSize = parseFloat(getComputedStyle(pairingNames[0]).fontSize);
+    container.style.setProperty("--rr-pairing-name-size", `${minimumPairingNameSize}px`);
+    const pairingFits = () => pairings.every((pairing) => {
+      const children = [...pairing.children];
+      const gap = parseFloat(getComputedStyle(pairing).columnGap) || 0;
+      const requiredWidth = children.reduce((width, child) => width + child.scrollWidth, 0)
+        + Math.max(0, children.length - 1) * gap;
+      return requiredWidth <= pairing.clientWidth + 0.5;
+    });
+    const requiresStackedLayout = !pairingFits();
+    pairings.forEach((pairing) => pairing.classList.toggle("rr-pairing-stacked", requiresStackedLayout));
+    if (!requiresStackedLayout) {
+      setLargestFittingFont(
+        container,
+        "--rr-pairing-name-size",
+        minimumPairingNameSize,
+        minimumPairingNameSize * 1.375,
+        pairingFits,
+      );
+    }
+  }
+
+  const nameCells = [...container.querySelectorAll(".rr-table .rr-name-cell")];
+  const tables = [...container.querySelectorAll(".rr-table")];
+  container.style.removeProperty("--rr-table-name-size");
+  container.style.removeProperty("--rr-table-size");
+  container.classList.remove("rr-table-names-stacked");
+  if (nameCells.length > 0 && tables.length > 0) {
+    nameCells.forEach((cell) => cell.classList.add("rr-table-team-measuring"));
+    const minimumTableSize = parseFloat(getComputedStyle(tables[0]).fontSize);
+    container.style.setProperty("--rr-table-size", `${minimumTableSize}px`);
+    const tableNamesFit = () => nameCells.every((cell) => cell.scrollWidth <= cell.clientWidth + 0.5);
+    const namesNeedStacking = !tableNamesFit();
+    container.classList.toggle("rr-table-names-stacked", namesNeedStacking);
+    if (!namesNeedStacking) {
+      const tableFits = () => tables.every((table) => [...table.querySelectorAll("th, td")]
+        .every((cell) => cell.scrollWidth <= cell.clientWidth + 0.5));
+      setLargestFittingFont(
+        container,
+        "--rr-table-size",
+        minimumTableSize,
+        minimumTableSize * 1.375,
+        tableFits,
+      );
+    }
+    nameCells.forEach((cell) => cell.classList.remove("rr-table-team-measuring"));
+  }
+}
+
+function observeRoundRobinLayouts(container) {
+  layoutResizeObserver?.disconnect();
+  updateRoundRobinLayouts(container);
+  if (typeof ResizeObserver === "undefined") return;
+  layoutResizeObserver = new ResizeObserver(() => updateRoundRobinLayouts(container));
+  layoutResizeObserver.observe(container);
+}
+
 export async function renderRoundRobin(bewerbId, container, paarungslayout) {
   const generation = ++renderGeneration;
   bindProfileLinks(container);
+  layoutResizeObserver?.disconnect();
   container.replaceChildren();
   showLoadingOverlay("Lade Gruppen...");
 
@@ -512,8 +589,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
       html += `<table class="rr-table">`;
       html += `<thead><tr>`;
       html += `<th>Rang</th><th class="rr-name-col">Name</th><th>Spiele</th><th>Siege</th>`;
-      html += `<th>Sätze<br><span class="rr-sub">W-L</span></th>`;
-      html += `<th>Games<br><span class="rr-sub">W-L</span></th>`;
+      html += `<th>Sätze</th><th>Games</th>`;
       html += `</tr></thead><tbody>`;
 
       rows.forEach((r, idx) => {
@@ -525,7 +601,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
         const teamHtml = formatTeamHtml(r.id, r.partner, playerMap);
         html += `<tr${cls}>`;
         html += `<td class="rr-center">${escapeHtml(rang)}</td>`;
-        html += `<td>${teamHtml}</td>`;
+        html += `<td class="rr-name-cell">${teamHtml}</td>`;
         html += `<td class="rr-center">${escapeHtml(r.matches.length)}</td>`;
         html += `<td class="rr-center">${escapeHtml(r.siege)}</td>`;
         html += `<td class="rr-center">${escapeHtml(r.saetzeW)}-${escapeHtml(r.saetzeL)}</td>`;
@@ -549,7 +625,9 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
           const datumDisplay = formatPairingDate(p.datumRaw, p.played, paarungslayout);
           html += `<div class="${cls}">`;
           if (datumDisplay) html += `<span class="rr-pairing-date">${escapeHtml(datumDisplay)}</span>`;
-          html += `<span class="rr-pairing-teams"><span class="${t1cls}">${p.team1Html}</span> <span class="rr-pairing-sep">-</span> <span class="${t2cls}">${p.team2Html}</span></span>`;
+          html += `<span class="rr-pairing-team rr-pairing-team-1 ${t1cls}">${p.team1Html}</span>`;
+          html += `<span class="rr-pairing-sep">-</span>`;
+          html += `<span class="rr-pairing-team rr-pairing-team-2 ${t2cls}">${p.team2Html}</span>`;
           if (p.ergebnis) html += `<span class="rr-pairing-result">${escapeHtml(p.ergebnis)}</span>`;
           html += `</div>`;
         });
@@ -563,6 +641,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
     if (generation !== renderGeneration) return null;
     // Backend-derived text is escaped before it is added to this markup string.
     container.innerHTML = html;
+    observeRoundRobinLayouts(container);
     hideLoadingOverlay();
     return true;
   } catch {

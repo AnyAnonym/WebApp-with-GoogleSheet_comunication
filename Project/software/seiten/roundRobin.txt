@@ -28,11 +28,37 @@ RoundRobin-Gruppenphase - Tabellen und Paarungslisten
   leere Spielerpositionen bleiben reine Anzeige.
 
 -- Darstellung und Sicherheit --
-  Das Grid waehlt je nach Gruppenzahl eine bis vier Spalten und wird mobil
-  einspaltig. Enthaelt eine Tabellenzeile die aktuelle Person als Einzelspieler
+  Das Grid waehlt je nach Gruppenzahl eine bis vier schrumpfbare Spalten und wird
+  unter 1000 CSS-Pixeln einspaltig. Es gibt keinen gesonderten Grossdisplay-Stil
+  oberhalb von 1500 Pixeln. Gruppentabellen verwenden feste, auf Lesbarkeit
+  optimierte Spaltenanteile. Die gemeinsame Schriftgroesse von Tabellenkoepfen,
+  Namen und Werten waechst inhaltsabhaengig bis zu einer Obergrenze und sinkt beim
+  Verkleinern bis zur Mindestgroesse, bevor Namen umgebrochen werden. Die Koepfe
+  lauten `Rang`, `Name`, `Spiele`, `Siege`, `Saetze` und `Games`; eine zusaetzliche
+  `W-L`-Zeile wird nicht angezeigt.
+
+  Doppel-Namen werden zuerst einzeilig ohne internen Umbruch gemessen. Passt
+  mindestens eine Namenszelle bei Mindestschrift nicht, stehen in allen
+  Gruppentabellen der Anzeige beide Partner untereinander und die Schraegstriche
+  sind ausgeblendet. Bei ausreichendem Platz bleiben Namen und Schraegstrich
+  einzeilig. Enthaelt eine Tabellenzeile die aktuelle Person als Einzelspieler
   oder Doppelpartner, sind ab der Namensspalte alle Zellen blau; die Rangzelle
   bleibt unabhaengig davon schwarz. Aufsteigerzeilen werden vollstaendig fett
   dargestellt und ihre Rangzelle ist gruen, auch wenn die aktuelle Person in
-  dieser Zeile steht. Alle externen Namen, Resultate, Gruppen- und Statistikwerte
-  werden vor dem begrenzten Template-Markup HTML-escaped. Externe Webfonts wurden
-  entfernt; lokale/systemeigene Schrift-Fallbacks gelten.
+  dieser Zeile steht.
+
+  Paarungsnamen und Ergebnisse verwenden dieselbe dynamisch ermittelte
+  Schriftgroesse. Solange jede Paarung einzeilig passt, stehen Datum/Uhrzeit,
+  beide Seiten, Trennzeichen und das rechtsbuendige Ergebnis in einer Zeile.
+  Passt eine Paarung bei Mindestschrift nicht, wechseln alle Paarungen gemeinsam
+  in drei Zeilen: erste Seite in Zeile 1, Datum/Uhrzeit links, `vs` mit den Namen
+  linksbuendig in der mittleren Spalte und das Ergebnis rechtsbuendig in Zeile 2
+  sowie zweite Seite in Zeile 3. Datum/Uhrzeit verwendet die dunkle
+  Standardschriftfarbe. Ein `ResizeObserver` berechnet Breiten und Schriftgroessen
+  nach Groessenaenderungen neu. Dieselben Einpassregeln gelten fuer Desktop und
+  Mobilgeraete; mobile Breakpoints reduzieren nur Grundschrift, Abstaende und
+  Tabellenanteile.
+
+  Alle externen Namen, Resultate, Gruppen- und Statistikwerte werden vor dem
+  begrenzten Template-Markup HTML-escaped. Externe Webfonts wurden entfernt;
+  lokale/systemeigene Schrift-Fallbacks gelten.

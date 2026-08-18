@@ -25,7 +25,7 @@
 /* ── Gruppen-Layout ── */
 .rr-groups {
   display: grid;
-  grid-template-columns: repeat(var(--rr-cols, 2), 1fr);
+  grid-template-columns: repeat(var(--rr-cols, 2), minmax(0, 1fr));
   gap: 10px;
   align-items: start;
 }
@@ -33,6 +33,7 @@
 .rr-group-card {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   border: 2px solid var(--accent);
   border-radius: 12px;
   padding: 16px;
@@ -51,7 +52,8 @@
 .rr-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: var(--rr-table-size, 0.8rem);
+  table-layout: fixed;
 }
 
 .rr-table thead tr {
@@ -67,6 +69,76 @@
 
 .rr-table th.rr-name-col {
   text-align: left;
+  width: 47%;
+}
+
+.rr-table th:first-child {
+  width: 10%;
+}
+
+.rr-table th:nth-child(3),
+.rr-table th:nth-child(4) {
+  white-space: nowrap;
+}
+
+.rr-table th:nth-child(3) {
+  width: 9%;
+}
+
+.rr-table th:nth-child(4) {
+  width: 8%;
+}
+
+.rr-table th:nth-child(5),
+.rr-table th:nth-child(6) {
+  width: 13%;
+  white-space: nowrap;
+}
+
+@media (min-width: 500px) {
+  .rr-table th:first-child,
+  .rr-table th:nth-child(n + 3),
+  .rr-table td:first-child,
+  .rr-table td:nth-child(n + 3) {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .rr-table th:nth-child(3),
+  .rr-table td:nth-child(3) {
+    padding-right: 8px;
+  }
+
+  .rr-table th:nth-child(4),
+  .rr-table td:nth-child(4) {
+    padding-left: 8px;
+  }
+}
+
+@media (min-width: 500px) and (max-width: 999px) {
+  .rr-table th.rr-name-col {
+    width: 42%;
+  }
+
+  .rr-table th:nth-child(3) {
+    width: 12%;
+  }
+
+  .rr-table th:nth-child(4) {
+    width: 11%;
+  }
+
+  .rr-table th:nth-child(5) {
+    width: 12%;
+  }
+
+  .rr-table th:nth-child(6) {
+    width: 13%;
+  }
+}
+
+.rr-name-cell {
+  white-space: nowrap;
 }
 
 .rr-table td {
@@ -77,11 +149,6 @@
 
 .rr-center {
   text-align: center;
-}
-
-.rr-sub {
-  font-weight: 400;
-  font-size: 0.7rem;
 }
 
 /* ── Spieler-Name (Doppel) ── */
@@ -105,6 +172,19 @@
 
 .rr-team-sep {
   /* Default: sichtbar als " / " */
+}
+
+.rr-table-team-measuring {
+  white-space: nowrap;
+}
+
+.rr-table-names-stacked .rr-table .rr-player,
+.rr-table-names-stacked .rr-table .rr-player-name {
+  display: block;
+}
+
+.rr-table-names-stacked .rr-table .rr-team-sep {
+  display: none;
 }
 
 /* ── Hervorhebung Top-Ränge ── */
@@ -162,13 +242,15 @@
 }
 
 .rr-pairing-date {
+  flex-shrink: 0;
   font-size: 0.75rem;
-  color: var(--muted);
+  color: var(--fg);
   white-space: nowrap;
 }
 
-.rr-pairing-teams {
-  flex: 1;
+.rr-pairing-team {
+  min-width: 0;
+  font-size: var(--rr-pairing-name-size, inherit);
   white-space: nowrap;
   font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
   font-stretch: 75%;
@@ -180,10 +262,58 @@
 }
 
 .rr-pairing-result {
+  flex-shrink: 0;
+  font-size: var(--rr-pairing-name-size, inherit);
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
   margin-left: auto;
+}
+
+.rr-pairing-stacked {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0 8px;
+}
+
+.rr-pairing-stacked .rr-pairing-team {
+  grid-column: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-self: start;
+}
+
+.rr-pairing-stacked .rr-pairing-team-1 {
+  grid-row: 1;
+}
+
+.rr-pairing-stacked .rr-pairing-date {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+}
+
+.rr-pairing-stacked .rr-pairing-sep {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  font-size: 0;
+}
+
+.rr-pairing-stacked .rr-pairing-sep::after {
+  content: "vs";
+  font-size: 0.72rem;
+}
+
+.rr-pairing-stacked .rr-pairing-result {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  margin-left: 0;
+}
+
+.rr-pairing-stacked .rr-pairing-team-2 {
+  grid-row: 3;
 }
 
 .rr-pairing-winner {
@@ -193,6 +323,13 @@
 .rr-pairing-loser {
   font-weight: 400;
   opacity: 0.6;
+}
+
+/* Unter 1000px Gruppen untereinander darstellen. */
+@media (max-width: 999px) {
+  .rr-groups {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* ================================================== */
@@ -218,7 +355,11 @@
 
   /* Tabelle: kleinere Schrift, minimaler Rand */
   .rr-table {
-    font-size: 0.7rem;
+    font-size: var(--rr-table-size, 0.7rem);
+  }
+
+  .rr-table thead {
+    font-size: 0.62rem;
   }
 
   .rr-table th,
@@ -226,18 +367,28 @@
     padding: 3px 2px;
   }
 
-  /* Doppel-Namen untereinander statt nebeneinander */
-  .rr-player {
-    display: block;
+  .rr-table th.rr-name-col {
+    width: 42%;
   }
 
-  .rr-team-sep {
-    display: none;
+  .rr-table th:nth-child(3) {
+    width: 12%;
+  }
+
+  .rr-table th:nth-child(4) {
+    width: 11%;
+  }
+
+  .rr-table th:nth-child(5) {
+    width: 12%;
+  }
+
+  .rr-table th:nth-child(6) {
+    width: 13%;
   }
 
   /* Paarungen: kompakter */
   .rr-pairing {
-    flex-wrap: wrap;
     gap: 2px;
     font-size: 0.6rem;
     padding: 4px 0;
@@ -245,12 +396,10 @@
 
   .rr-pairing-date {
     font-size: 0.65rem;
-    width: 100%;
   }
 
-  .rr-pairing-teams {
-    white-space: normal;
-    font-size: 0.7rem;
+  .rr-pairing-team {
+    font-size: var(--rr-pairing-name-size, 0.7rem);
   }
 
   .rr-pairing-sep {
@@ -258,76 +407,12 @@
   }
 
   .rr-pairing-result {
-    margin-left: 0;
-    font-size: 0.7rem;
+    font-size: var(--rr-pairing-name-size, 0.7rem);
   }
 
   .rr-pairings-title {
     font-size: 0.75rem;
     margin: 6px 0 4px 0;
     padding-top: 4px;
-  }
-}
-
-/* ================================================== */
-/*  RESPONSIVE: über 1500px (große Displays)          */
-/* ================================================== */
-@media (min-width: 1501px) {
-  .rr-group-card {
-    padding: 24px;
-  }
-
-  .rr-group-title {
-    font-size: 1.8rem;
-    margin-bottom: 16px;
-  }
-
-  .rr-table {
-    font-size: 1.6rem;
-    table-layout: auto;
-  }
-
-  .rr-table th,
-  .rr-table td {
-    padding: 10px 14px;
-  }
-
-  .rr-sub {
-    font-size: 1.1rem;
-  }
-
-  /* Doppel-Namen untereinander nur in Tabelle */
-  .rr-table .rr-player {
-    display: block;
-  }
-
-  .rr-table .rr-team-sep {
-    display: none;
-  }
-
-  .rr-pairings-title {
-    font-size: 1.5rem;
-    margin: 18px 0 10px 0;
-  }
-
-  .rr-pairing {
-    font-size: 1.2rem;
-    padding: 8px 0;
-  }
-
-  .rr-pairing-date {
-    font-size: 1.2rem;
-  }
-
-  .rr-pairing-teams {
-    white-space: nowrap;
-  }
-
-  .rr-pairing-sep {
-    font-size: 1.4rem;
-  }
-
-  .rr-pairing-result {
-    font-size: 1.4rem;
   }
 }

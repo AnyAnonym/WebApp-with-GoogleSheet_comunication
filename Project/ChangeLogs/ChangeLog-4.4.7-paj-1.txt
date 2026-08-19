@@ -515,3 +515,92 @@ Commit: 4.4.7-paj-1-5 | Google-Sheets-Lesezugriffe optimiert
     Project/server-configs/observability/grafana/dashboards/epiber-overview.json
     - Uebersichts-Dashboard um Sheets-Read-Cooldown, API-Versuchsrate und die
       Aufschluesselung logischer Requests beziehungsweise Retries erweitern.
+
+[4.4.7-paj-1-6] - 2026-08-19
+Commit: 4.4.7-paj-1-6 | Platz- und Scoreverlauf in Grafana bereitgestellt
+
+  Added
+  - [Software] Kontrollierte Court-Snapshots und angereicherte Scoreereignisse
+    mit Match, Spielerpaarung und Bewerb fuer die 14-taegige Loki-Ansicht
+    bereitgestellt.
+  - [Infrastruktur] Provisioniertes Grafana-Dashboard fuer den chronologischen
+    Platz- und Scoreverlauf von Live und PAJ ergaenzt.
+
+  Changed
+  - [Software] Erfolgreiche `score_logged`-Ereignisse um Ereigniszeit, Bewerb und
+    Anzeigenamen der aktuellen Paarung erweitert. Match-, Bewerbs- und
+    Personenwerte bleiben JSON-Felder und werden keine Loki-Labels.
+  - [Software] Zuweisung, Aktivierung, Deaktivierung, Prozessstart und die erste
+    uebernommene Startbaseline als `court_state_snapshot` erfasst. Ein
+    fehlgeschlagener SQLite-Scorewrite erzeugt weiterhin kein Scoreereignis.
+  - [Infrastruktur] Das neue Dashboard zeigt neueste Ereignisse zuerst, filtert
+    nach Live oder PAJ sowie optional Platz 1 oder 2 und nutzt unveraendert die
+    normale Loki-Aufbewahrung von hoechstens 14 Tagen.
+  - [Dokumentation] Dashboardanzahl, Datenprojektion, Datenschutzgrenzen,
+    Retention und Abgrenzung zur dauerhaften `scorelog.sqlite`-Historie in
+    Softwarearchitektur, Observability-README, Serverueberblick und Setup
+    dokumentiert.
+  - [Repository] Paket- und Root-Lockfile-Version auf den Zielcommitstand
+    `4.4.7-paj-1-6` gesetzt.
+
+  Pruefungen
+  - [Repository] `npm run build` erfolgreich; statische Pruefungen und alle 178
+    Backendtests bestanden.
+  - [Repository] Pollertests pruefen Kontextprojektion, Zuweisungs-, Start-,
+    Aktivierungs-, Deaktivierungs- und Startbaseline-Snapshots, Datenschutz sowie
+    unterdrueckte Ereignisse nach fehlgeschlagenem Scorewrite. Ein statischer
+    Dashboardtest prueft Datenquelle, Filter, Sortierung, erwartete Felder und
+    ausgeschlossene Personendaten.
+  - [Infrastruktur] `grafana-alloy validate` und Lokis `-verify-config=true`
+    erfolgreich; `git diff --check` meldet keine Whitespacefehler.
+
+  Betrieb und bekannte Einschraenkungen
+  - [Infrastruktur] Historische Loki-Ereignisse vor dem Rollout enthalten keine
+    nachtraeglich ermittelten Spieler- oder Bewerbswerte. Die vollstaendige
+    Verknuepfung beginnt mit dem Backendrollout; die Dashboarddatei wird danach
+    ueber den bestehenden Provider installiert.
+  - [Datenbank] Schema und unbegrenzte Aufbewahrung von `scorelog.sqlite` bleiben
+    unveraendert. Die mit Namen angereicherte Grafana-Projektion verbleibt nur in
+    journald/Loki und wird nach hoechstens 14 Tagen entfernt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/ARCHITEKTUR.txt
+    - Beim Modul `courtPoller.js` den kontrollierten Journalspiegel erfolgreicher
+      ScoreLog-Writes als `score_logged` mit Match, Bewerb und Anzeigenamen der
+      Paarung dokumentieren.
+    - `court_state_snapshot` fuer Zuweisung, Aktivitaetswechsel, Prozessstart und
+      uebernommene Startbaseline sowie das Ausbleiben eines Scoreereignisses bei
+      fehlgeschlagenem SQLite-Write aufnehmen.
+    - Personen- und Fachwerte als JSON-Felder ohne Kontaktwerte abgrenzen und
+      ihre Verwendung als Loki-Labels ausschliessen.
+
+    Project/server-configs/observability/README.md
+    - Die Anzahl der provisionierten Dashboards von fuenf auf sechs erhoehen und
+      `ePiber Platz- und Scoreverlauf` mit Deployment-/Platzfilter, absteigender
+      Ereignisfolge und platzbezogener Scoresequenz aufnehmen.
+    - Erlaubte JSON-Felder, ausgeschlossene Kontakt-/Adress-/Geburts-/Geschlechts-
+      und freie Werte, fehlende Personenlabels, 14-Tage-Retention und die
+      Abgrenzung zu `scorelog.sqlite` dokumentieren.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Den Infrastrukturueberblick auf sechs Dashboards aktualisieren und den
+      hoechstens 14 Tage reichenden Platz-/Scoreverlauf fuer Live und PAJ mit
+      optionalem Platzfilter beschreiben.
+    - Match-ID, Bewerb und Anzeigenamen als kontrollierte JSON-Felder ohne
+      Loki-Labels oder zusaetzliche dauerhafte Historie festhalten.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Dashboard, Filter, Scoresequenz und Snapshot-Ausloeser sowie die erlaubte
+      Projektion aus Platz, Score, Match/Bewerb, Paarung, Aktivstatus und
+      Court-Revision dokumentieren.
+    - `SCORE_LOG_JOURNAL`, die Ereignisse `score_logged` und
+      `court_state_snapshot`, die 14-Tage-Grenze und das Ausbleiben eines
+      Scoreereignisses bei SQLite-Writefehler aufnehmen.
+
+    Project/server-configs/observability/grafana/dashboards/epiber-score-history.json
+    - Das neue nicht editierbare Loki-Dashboard mit Live-/PAJ-Auswahl,
+      Platzfilter, zehnsekundiger Aktualisierung und neuester Ereignisfolge zuerst
+      provisionieren.
+    - Nur die kontrollierten Court-/Scorefelder formatieren; Namen, Match- und
+      Bewerbskennungen nicht zu Labels erheben.

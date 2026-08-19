@@ -73,8 +73,9 @@ Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
 
 ## Dashboards und Alerts
 
-Fuenf Dashboards werden provisioniert: Uebersicht, Hostressourcen,
-Loggingpipeline, Fehler/Recovery sowie Personennormalisierung.
+Sechs Dashboards werden provisioniert: Uebersicht, Hostressourcen,
+Loggingpipeline, Fehler/Recovery, Personennormalisierung sowie Platz- und
+Scoreverlauf.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
@@ -84,6 +85,18 @@ Fuer `Aktiv` und `Rolle` erscheinen kontrollierte Alt-/Neuwerte; bei allen
 anderen Normalisierungsfeldern nur der Feldname. Kontakt-, Adress-, Geburts-,
 Geschlechts-, sonstige Vorher-/Nachher- und freie Fachdaten werden dort nicht
 dargestellt.
+
+Das Dashboard `ePiber Platz- und Scoreverlauf` zeigt fuer das ausgewaehlte
+Deployment und optional einen einzelnen Platz die neuesten Ereignisse zuerst.
+Persistierte Scoreaenderungen werden mit ihrer platzbezogenen Folgenummer
+dargestellt. Court-Snapshots ergaenzen Zuweisung, Aktivierung, Deaktivierung,
+Prozessstart und die erste nach einem Start uebernommene externe Baseline. Die
+Loki-Projektion enthaelt ausschliesslich Platz, Score, Match-ID, Bewerb-ID und
+-bezeichnung, Anzeigenamen der Heim-/Gastpaarung, Aktivstatus und Court-Revision.
+Diese Werte bleiben JSON-Felder; Match-, Bewerbs- und Personenwerte werden keine
+Labels. Kontakt-, Adress-, Geburts-, Geschlechts- und freie Werte sind
+ausgeschlossen. Die Ansicht reicht hoechstens 14 Tage zurueck und ersetzt nicht
+die dauerhafte Scorefachhistorie in `scorelog.sqlite`.
 
 Die Uebersicht zeigt zusaetzlich den verbleibenden Google-Sheets-Read-Cooldown,
 die tatsaechlichen API-Versuche sowie logische Readrequests nach festem Zweck und

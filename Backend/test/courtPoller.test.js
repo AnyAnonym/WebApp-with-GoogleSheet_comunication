@@ -26,11 +26,11 @@ function scoreLogRecorder({ shouldFail = () => false } = {}) {
   };
 }
 
-function configure(fetch, scoreLog) {
+function configure(fetch, scoreLog, courtContext = () => ({ matchId: "m1", aktiv: 1, revision: 1 })) {
   courtPoller.setDependenciesForTests({
     fetch,
     scoreLog,
-    courtContext: () => ({ matchId: "m1", aktiv: 1, revision: 1 }),
+    courtContext,
   });
 }
 
@@ -153,7 +153,14 @@ test("Court-Poller begrenzt haengende Calls, verkraftet ungueltiges JSON und pus
 test("ScoreLog persistiert vor der Anzeige und wiederholt nach einem Insertfehler", async (t) => {
   let score = "3";
   let appendFails = false;
+  let contextActive = 1;
   const scoreLog = scoreLogRecorder({ shouldFail: () => appendFails });
+  const logEvents = [];
+  const originalLog = logger.log;
+  logger.log = (level, event, fields) => {
+    logEvents.push({ level, event, fields });
+    return true;
+  };
   const fetchStub = async () => new Response(JSON.stringify({
     courts: [{
       platz: "1",
@@ -167,12 +174,29 @@ test("ScoreLog persistiert vor der Anzeige und wiederholt nach einem Insertfehle
       punktegast: "0",
     }],
   }), { status: 200, headers: { "Content-Type": "application/json" } });
-  configure(fetchStub, scoreLog);
+  configure(fetchStub, scoreLog, () => ({
+    matchId: "m1",
+    bewerbId: "b1",
+    bewerb: "Herren Einzel",
+    homePlayer: "Max Muster",
+    guestPlayer: "Paul Beispiel",
+    aktiv: contextActive,
+    revision: 7,
+    email: "nicht-loggen@example.test",
+    phone: "00123 456",
+  }));
+  courtPoller.resetCourtScore("1", { reason: "assignment" });
+  courtPoller.logCourtSnapshot("1", "startup");
   t.after(async () => {
+    logger.log = originalLog;
     courtPoller.setCourtActive({ "1": false, "2": false });
     await courtPoller.stop();
   });
   courtPoller.setCourtActive({ "1": true, "2": false });
+  const startupEvent = logEvents.find(({ event, fields }) => event === "court_state_snapshot" && fields.reason === "startup");
+  assert.equal(startupEvent.fields.score, "0-0/0-0/0-0/0-0");
+  const activatedEvent = logEvents.find(({ event, fields }) => event === "court_state_snapshot" && fields.reason === "activated");
+  assert.equal(activatedEvent.fields.active, true);
   const baselinePollCount = courtPoller.getStatus().pollCount;
   await waitFor(() => courtPoller.getStatus().pollCount > baselinePollCount, 1200, "Initialer Score wurde nicht als Baseline gelesen");
   assert.equal(scoreLog.events.length, 0);
@@ -181,22 +205,53 @@ test("ScoreLog persistiert vor der Anzeige und wiederholt nach einem Insertfehle
   assert.equal(scoreLog.events[0].court, "1");
   assert.equal(scoreLog.events[0].score, "4-4/0-0/0-0/15-0");
   assert.equal(scoreLog.events[0].matchId, "m1");
+  const firstScoreEvent = logEvents.find(({ event }) => event === "score_logged");
+  assert.deepEqual(firstScoreEvent.fields, {
+    eventId: scoreLog.events[0].eventId,
+    occurredAt: scoreLog.events[0].occurredAt,
+    sequence: 1,
+    court: "1",
+    score: "4-4/0-0/0-0/15-0",
+    matchId: "m1",
+    bewerbId: "b1",
+    bewerb: "Herren Einzel",
+    homePlayer: "Max Muster",
+    guestPlayer: "Paul Beispiel",
+    active: true,
+    courtRevision: 7,
+  });
+  const assignmentEvent = logEvents.find(({ event, fields }) => event === "court_state_snapshot" && fields.reason === "assignment");
+  assert.equal(assignmentEvent.fields.score, "0-0/0-0/0-0/0-0");
+  assert.equal(assignmentEvent.fields.homePlayer, "Max Muster");
+  assert.equal(JSON.stringify(logEvents).includes("nicht-loggen@example.test"), false);
+  assert.equal(JSON.stringify(logEvents).includes("00123 456"), false);
 
   appendFails = true;
   score = "5";
   await waitFor(() => scoreLog.attempts >= 2, 1200, "Fehlgeschlagener Insert wurde nicht versucht");
   assert.equal(scoreLog.events.length, 1);
+  assert.equal(logEvents.filter(({ event }) => event === "score_logged").length, 1);
   assert.equal(courtPoller.getLastData().courts[0].satz1home, "4");
 
   appendFails = false;
   await waitFor(() => scoreLog.events.length === 2, 1200, "Unveraenderter Quellstand wurde nach Recovery nicht erneut persistiert");
   assert.equal(scoreLog.events[1].score, "5-4/0-0/0-0/15-0");
   assert.equal(courtPoller.getLastData().courts[0].satz1home, "5");
+  contextActive = 0;
+  courtPoller.setCourtActive({ "1": false, "2": false });
+  const deactivatedEvent = logEvents.find(({ event, fields }) => event === "court_state_snapshot" && fields.reason === "deactivated");
+  assert.equal(deactivatedEvent.fields.active, false);
 });
 
 test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand ohne ScoreLog", async (t) => {
   let score = "8";
   const scoreLog = scoreLogRecorder();
+  const logEvents = [];
+  const originalLog = logger.log;
+  logger.log = (level, event, fields) => {
+    logEvents.push({ level, event, fields });
+    return true;
+  };
   const fetchStub = async () => new Response(JSON.stringify({
     courts: [{
       platz: "1",
@@ -214,6 +269,7 @@ test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand oh
   courtPoller.setCourtActive({ "1": false, "2": false });
   configure(fetchStub, scoreLog);
   t.after(async () => {
+    logger.log = originalLog;
     courtPoller.setCourtActive({ "1": false, "2": false });
     await courtPoller.stop();
   });
@@ -225,6 +281,9 @@ test("persistiert aktiver Court uebernimmt nach Prozessstart den ersten Stand oh
     "Erster Court-Stand wurde nach Prozessstart nicht uebernommen",
   );
   assert.equal(scoreLog.events.length, 0);
+  const baselineEvent = logEvents.find(({ event, fields }) => event === "court_state_snapshot" && fields.reason === "startup_baseline");
+  assert.equal(baselineEvent.fields.score, "8-5/0-0/0-0/30-15");
+  assert.equal(logEvents.some(({ event }) => event === "score_logged"), false);
 
   score = "9";
   await waitFor(() => scoreLog.events.length === 1, 1200, "Folgeaenderung wurde nicht geloggt");

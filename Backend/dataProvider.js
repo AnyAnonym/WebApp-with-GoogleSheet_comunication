@@ -543,7 +543,7 @@ const endpoints = {
         if (!request.empty) requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
         const assignment = resolveCourtAssignment(request);
         return { ...assignment.data, aktiv: current.aktiv };
-      }, () => courtPoller.resetCourtScore(court));
+      }, () => courtPoller.resetCourtScore(court, { reason: "assignment" }));
     },
   },
   courtSetActive: {

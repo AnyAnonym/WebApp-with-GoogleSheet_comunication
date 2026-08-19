@@ -166,7 +166,13 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   dem Alter des letzten Erfolgs, nicht nach einem einzelnen Folgefehler. Ausfall,
   periodische Fehlerzusammenfassung und Recovery tragen Fehlerfolge und Dauer.
   Pro-Court-Epochen sperren alte Fetchantworten nach Aktivitaetswechsel oder
-  Score-Reset aus.
+  Score-Reset aus. Bei aktiviertem Score-Journal werden erfolgreiche persistierte
+  Scoreaenderungen mit Match, Bewerb und Anzeigenamen der aktuellen Paarung als
+  kontrollierte `score_logged`-Projektion gespiegelt. `court_state_snapshot`
+  markiert Zuweisung, Aktivitaetswechsel, Prozessstart und uebernommene
+  Startbaseline. Personen- und Fachwerte bleiben JSON-Felder ohne Kontaktwerte
+  und werden keine Loki-Labels; ein fehlgeschlagener ScoreLog-Write erzeugt kein
+  Scoreereignis.
 
 `scoreboardDisplay.js`
   Erzeugt ausschliesslich fuer Scoreboard-Snapshot und `scores`-Pushes eine

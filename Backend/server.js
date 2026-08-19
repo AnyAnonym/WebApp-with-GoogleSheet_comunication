@@ -679,6 +679,7 @@ function createApplication(overrides = {}) {
         { "1": courts["1"].aktiv === 1, "2": courts["2"].aktiv === 1 },
         { initial: true },
       );
+      for (const court of ["1", "2"]) courtPoller.logCourtSnapshot(court, "startup");
       initialized = true;
       logger.log("info", "server_initialization_completed", { initialLoadSuccess: result.success, ready: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }).ready, durationMs: Date.now() - startedAt });
       cleanupTimer = setInterval(() => repository.cleanup(), 300000);

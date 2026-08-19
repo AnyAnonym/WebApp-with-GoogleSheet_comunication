@@ -79,8 +79,11 @@ Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
 Personenbezug. Nur sein ausdruecklicher Auditverlauf enthaelt den ausfuehrenden
-Adminnamen samt Admin-ID und die Ziel-Personen-ID; Kontakt-, Vorher-/Nachher- und
-freie Fachdaten werden dort nicht dargestellt.
+Adminnamen samt Admin-ID sowie Ziel-Personen-ID und resultierenden Vor-/Nachnamen.
+Fuer `Aktiv` und `Rolle` erscheinen kontrollierte Alt-/Neuwerte; bei allen
+anderen Normalisierungsfeldern nur der Feldname. Kontakt-, Adress-, Geburts-,
+Geschlechts-, sonstige Vorher-/Nachher- und freie Fachdaten werden dort nicht
+dargestellt.
 
 Anwendungsalerts erzeugen je Deployment getrennte Alarmzustaende. Host- und
 Observability-Alarme existieren einmal. SMTP ist zwingend deaktiviert. Es gibt

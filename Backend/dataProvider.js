@@ -95,12 +95,24 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
       return {
         targetType: "person",
         targetId: params.personId,
+        targetName: internal?.targetName || personDisplayName(params.personId),
         before: internal?.before || null,
         after: internal?.after || null,
       };
     default:
       return { targetType: "", targetId: "", before: null, after: null };
   }
+}
+
+function personDisplayName(personId) {
+  const values = dataStore.get("players");
+  const header = headerOf(values);
+  const idIndex = headerIndex(header, "id");
+  const firstNameIndex = headerIndex(header, "vorname");
+  const lastNameIndex = headerIndex(header, "nachname");
+  const row = values.slice(1).find((entry) => String(entry[idIndex] || "").trim() === String(personId || "").trim());
+  if (!row) return "";
+  return [row[firstNameIndex], row[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ");
 }
 
 function writeAudit({ eventId, principal, endpoint, params, result = {}, internal = null, outcome, error = null }) {
@@ -115,6 +127,7 @@ function writeAudit({ eventId, principal, endpoint, params, result = {}, interna
     action: endpoint,
     targetType: projection.targetType,
     targetId: projection.targetId,
+    targetName: projection.targetName || "",
     requestId: eventId,
     operationId: params.operationId || "",
     result: outcome,

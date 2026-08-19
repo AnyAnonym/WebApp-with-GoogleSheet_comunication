@@ -32,6 +32,7 @@ test("Auditlog aktualisiert einen begonnenen Versuch auf sein Ergebnis", () => {
     action: "courtSetActive",
     targetType: "court",
     targetId: "1",
+    targetName: "",
     requestId: "request-1",
     operationId: "op-1",
     result: "success",
@@ -48,7 +49,7 @@ test("Auditlog aktualisiert einen begonnenen Versuch auf sein Ergebnis", () => {
   repository.close();
 });
 
-test("Auditlog migriert bestehende Dateien additiv auf die personenbezogenen Loginfelder", (t) => {
+test("Auditlog migriert bestehende Dateien additiv auf neue personenbezogene Auditfelder", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epiber-audit-"));
   const filename = path.join(directory, "audit.sqlite");
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -73,6 +74,7 @@ test("Auditlog migriert bestehende Dateien additiv auf die personenbezogenen Log
   repository.init();
   const row = repository.get("legacy-1");
   assert.equal(row.actorName, "");
+  assert.equal(row.targetName, "");
   assert.equal(row.sourceIp, "");
   assert.equal(row.attemptedEmail, "");
   assert.equal(fs.statSync(filename).mode & 0o777, 0o600);
@@ -105,12 +107,14 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
       role: "admin",
       targetType: "user",
       targetId: "p1",
+      targetName: "",
       requestId: "login-1",
       operationId: "",
       result: "success",
       errorCode: null,
       sourceIpMasked: "2001:db8:1234:5678::/64",
       attemptedEmailMasked: "a***@example.test",
+      changeSummary: "",
     },
   }]);
   assert.equal(JSON.stringify(events).includes("ada@example.test"), false);
@@ -122,6 +126,45 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
   });
   assert.equal(events[1].fields.sourceIpMasked, "203.0.113.0/24");
   assert.equal(events[1].fields.attemptedEmailMasked, "p***@example.test");
+  repository.close();
+});
+
+test("Normalisierungsjournal zeigt Zielname und kontrollierte Aenderungen ohne Kontaktwerte", () => {
+  const events = [];
+  const repository = new AuditLogRepository(":memory:", {
+    instanceId: "test",
+    journal: true,
+    now: () => 1000,
+    log: (level, event, fields) => events.push({ level, event, fields }),
+  });
+  repository.init();
+  repository.record({
+    eventId: "normalize-1", actorType: "user", actorId: "admin-1", actorName: "Ada Admin", role: "admin",
+    action: "normalizePerson", targetType: "person", targetId: "p2", targetName: "Peter Player",
+    requestId: "normalize-1", operationId: "op-1", result: "started",
+  });
+  repository.record({
+    eventId: "normalize-1", actorType: "user", actorId: "admin-1", actorName: "Ada Admin", role: "admin",
+    action: "normalizePerson", targetType: "person", targetId: "p2", targetName: "Patrick Player",
+    requestId: "normalize-1", operationId: "op-1", result: "success",
+    before: { firstName: "Peter", email: "old@example.test", phone: "0043 1 234", active: "0", role: "player" },
+    after: { firstName: "Patrick", email: "new@example.test", phone: "0043 1 999", active: "", role: "player B" },
+  });
+  const stored = repository.get("normalize-1");
+  assert.equal(stored.targetName, "Patrick Player");
+  assert.equal(stored.before.email, "old@example.test");
+  assert.equal(stored.after.email, "new@example.test");
+  assert.equal(events.length, 1);
+  assert.equal(events[0].fields.targetName, "Patrick Player");
+  assert.equal(
+    events[0].fields.changeSummary,
+    "Vorname geaendert; Telefon geaendert; E-Mail geaendert; Aktiv: 0 -> leer; Rolle: player -> player B",
+  );
+  const journal = JSON.stringify(events);
+  assert.equal(journal.includes("old@example.test"), false);
+  assert.equal(journal.includes("new@example.test"), false);
+  assert.equal(journal.includes("0043 1 234"), false);
+  assert.equal(journal.includes("0043 1 999"), false);
   repository.close();
 });
 

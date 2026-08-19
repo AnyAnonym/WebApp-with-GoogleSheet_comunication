@@ -45,7 +45,7 @@ function setStatus(message = "", state = "") {
 
 function errorMessage(error) {
   const message = typeof error?.message === "string" && error.message ? error.message : "Der Vorgang ist fehlgeschlagen.";
-  return error?.supportId ? `${message} (Referenz: ${error.supportId})` : message;
+  return error?.supportId && !message.includes(error.supportId) ? `${message} (Referenz: ${error.supportId})` : message;
 }
 
 function accessMessage(user, authState) {

@@ -39,6 +39,20 @@ const ISSUE_CODES = Object.freeze([
   "ROLE_INVALID",
   "ROLE_NONCANONICAL",
 ]);
+const AUDIT_FIELD_LABELS = Object.freeze([
+  ["firstName", "Vorname"],
+  ["lastName", "Nachname"],
+  ["birthDate", "Geburtsdatum"],
+  ["gender", "Geschlecht"],
+  ["phone", "Telefon"],
+  ["email", "E-Mail"],
+  ["country", "Land"],
+  ["postalCode", "PLZ"],
+  ["city", "Ort"],
+  ["address", "Adresse"],
+  ["active", "Aktiv"],
+  ["role", "Rolle"],
+]);
 
 function fieldIndexes(header) {
   return Object.fromEntries(Object.entries(FIELD_DEFINITIONS).map(([field, definition]) => [
@@ -248,6 +262,30 @@ function summarizePeopleNormalization(table) {
   };
 }
 
+function auditStatusValue(field, value, known) {
+  if (!known) return "unbekannt";
+  const normalized = String(value ?? "").trim();
+  if (field === "active") return ["", "0", "1"].includes(normalized) ? (normalized || "leer") : "ungueltig";
+  const role = canonicalRole(normalized);
+  return role || (normalized ? "ungueltig" : "leer");
+}
+
+function normalizationAuditSummary(before, after) {
+  if (!after || Array.isArray(after) || typeof after !== "object") return "";
+  const entries = [];
+  for (const [field, label] of AUDIT_FIELD_LABELS) {
+    if (!Object.hasOwn(after, field)) continue;
+    const beforeKnown = !!before && !Array.isArray(before) && typeof before === "object" && Object.hasOwn(before, field);
+    if (beforeKnown && String(before[field] ?? "") === String(after[field] ?? "")) continue;
+    if (["active", "role"].includes(field)) {
+      entries.push(`${label}: ${auditStatusValue(field, before?.[field], beforeKnown)} -> ${auditStatusValue(field, after[field], true)}`);
+    } else {
+      entries.push(`${label} geaendert`);
+    }
+  }
+  return entries.length ? entries.join("; ") : "Keine Wertaenderung";
+}
+
 module.exports = {
   FIELD_DEFINITIONS,
   ISSUE_CODES,
@@ -257,6 +295,7 @@ module.exports = {
   personFingerprint,
   projectPeopleNormalization,
   rawPersonValues,
+  normalizationAuditSummary,
   summarizePeopleNormalization,
   validateChanges,
 };

@@ -3,6 +3,7 @@ const net = require("node:net");
 const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 const { AppError } = require("./errors.js");
+const { normalizationAuditSummary } = require("./peopleNormalization.js");
 const logger = require("./logger.js");
 
 function boundedText(value, maxLength) {
@@ -62,6 +63,7 @@ class AuditLogRepository {
         action TEXT NOT NULL,
         target_type TEXT NOT NULL,
         target_id TEXT NOT NULL,
+        target_name TEXT NOT NULL DEFAULT '',
         request_id TEXT NOT NULL,
         operation_id TEXT NOT NULL,
         result TEXT NOT NULL CHECK (result IN ('started', 'success', 'failed', 'unknown')),
@@ -80,6 +82,7 @@ class AuditLogRepository {
     const columns = new Set(this.db.prepare("PRAGMA table_info(audit_log)").all().map((column) => column.name));
     for (const [name, definition] of [
       ["actor_name", "TEXT NOT NULL DEFAULT ''"],
+      ["target_name", "TEXT NOT NULL DEFAULT ''"],
       ["source_ip", "TEXT NOT NULL DEFAULT ''"],
       ["attempted_email", "TEXT NOT NULL DEFAULT ''"],
     ]) {
@@ -105,6 +108,7 @@ class AuditLogRepository {
       action: String(event.action || "unknown"),
       targetType: String(event.targetType || ""),
       targetId: String(event.targetId || ""),
+      targetName: boundedText(event.targetName, 200),
       requestId: String(event.requestId || ""),
       operationId: String(event.operationId || ""),
       result: String(event.result || "started"),
@@ -134,10 +138,10 @@ class AuditLogRepository {
     try {
       this.db.prepare(`
         INSERT INTO audit_log(
-          event_id, occurred_at, actor_type, actor_id, actor_name, role, action, target_type, target_id,
+          event_id, occurred_at, actor_type, actor_id, actor_name, role, action, target_type, target_id, target_name,
           request_id, operation_id, result, before_json, after_json, error_code, source_ip,
           attempted_email, instance, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
           actor_type = excluded.actor_type,
           actor_id = excluded.actor_id,
@@ -145,6 +149,7 @@ class AuditLogRepository {
           role = excluded.role,
           target_type = excluded.target_type,
           target_id = excluded.target_id,
+          target_name = CASE WHEN excluded.target_name != '' THEN excluded.target_name ELSE audit_log.target_name END,
           result = excluded.result,
           before_json = COALESCE(audit_log.before_json, excluded.before_json),
           after_json = COALESCE(excluded.after_json, audit_log.after_json),
@@ -153,7 +158,7 @@ class AuditLogRepository {
           attempted_email = CASE WHEN audit_log.attempted_email != '' THEN audit_log.attempted_email ELSE excluded.attempted_email END,
           updated_at = excluded.updated_at
       `).run(
-        row.eventId, row.occurredAt, row.actorType, row.actorId, row.actorName, row.role, row.action, row.targetType, row.targetId,
+        row.eventId, row.occurredAt, row.actorType, row.actorId, row.actorName, row.role, row.action, row.targetType, row.targetId, row.targetName,
         row.requestId, row.operationId, row.result,
         row.before === null ? null : JSON.stringify(row.before),
         row.after === null ? null : JSON.stringify(row.after),
@@ -172,12 +177,16 @@ class AuditLogRepository {
           role: persisted.role,
           targetType: persisted.targetType,
           targetId: persisted.targetId,
+          targetName: persisted.targetName,
           requestId: persisted.requestId,
           operationId: persisted.operationId,
           result: persisted.result,
           errorCode: persisted.errorCode,
           sourceIpMasked: maskIp(persisted.sourceIp),
           attemptedEmailMasked: maskEmail(persisted.attemptedEmail),
+          changeSummary: persisted.action === "normalizePerson"
+            ? normalizationAuditSummary(persisted.before, persisted.after)
+            : "",
         });
       }
       return persisted;
@@ -205,6 +214,7 @@ class AuditLogRepository {
       action: row.action,
       targetType: row.target_type,
       targetId: row.target_id,
+      targetName: row.target_name,
       requestId: row.request_id,
       operationId: row.operation_id,
       result: row.result,

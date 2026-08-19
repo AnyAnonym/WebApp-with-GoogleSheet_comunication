@@ -259,6 +259,14 @@ abgeleitet. Vor Update/Delete werden Personen-, Matches1- und EntryList-Zeilen
 ueber ID und `epiberRecord`-Developer-Metadaten unmittelbar neu aufgeloest. Ein
 Write kann dadurch keine durch Sortieren/Verschieben benachbarte Zeile treffen.
 
+Erreicht ein Google-Sheets-Read vor dem Write die externe Minutenquote, projiziert
+SheetService den Rohfehler `429` als `SHEETS_RATE_LIMITED` mit einer
+verstaendlichen Warteaufforderung und kontrolliertem `retryAfterMs: 60000`. Der
+Versuch bleibt fehlgeschlagen und erzeugt kein gespeichertes Operationsresultat;
+Writes werden dadurch nicht automatisch wiederholt. Die Normalisierungsseite
+erhaelt Meldung und Support-ID ueber den regulaeren Fehlervertrag und zeigt jede
+Referenz genau einmal.
+
 SQLite bindet operationId an Actor, Endpoint und Payload. Ein bekanntes Resultat
 wird wiedergegeben. Nach verlorener Append-Antwort bestaetigt SheetService die
 stabile Record-ID. Ist der Ausgang nicht feststellbar, speichert es Status
@@ -287,13 +295,19 @@ Fachhistorien und Betriebslogs:
     Schlaegt der Auditabschluss nach Rueckkehr der Mutation fehl, wird der
     Clientausgang konservativ als `WRITE_OUTCOME_UNKNOWN` behandelt; ein
     vorhandener urspruenglicher Vorher-Zustand bleibt unveraendert.
-    Akteure erhalten zusaetzlich einen Namenssnapshot. Loginversuche speichern in
+    Akteure erhalten zusaetzlich einen Namenssnapshot. Personenziele der
+    Normalisierung erhalten einen additiv persistierten Zielnamensnapshot; nach
+    Erfolg stammt er aus dem resultierenden Personenstand, bei Ablehnung aus dem
+    noch bekannten bisherigen Stand. Loginversuche speichern in
     der geschuetzten SQLite-Historie die normalisierte gueltige Eingabe und die
     Quell-IP; ungueltiger E-Mail-Rohtext bleibt leer. `X-Forwarded-For` gilt nur
     bei einer Verbindung von `127.0.0.1` oder `::1` innerhalb der lokalen
     Proxy-Vertrauensgrenze. Andere lokale Prozesse liegen damit ebenfalls in der
     Host-Vertrauensgrenze; Caddy wird nicht kryptografisch identifiziert. Im Journalspiegel bleiben
-    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert.
+    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert. Der
+    Normalisierungsabschluss projiziert fuer `active` und `role` ausschliesslich
+    kontrollierte Alt-/Neuwerte. Fuer alle anderen erlaubten Personenfelder wird
+    nur der geaenderte Feldname, nie sein Wert, ins Journal geschrieben.
     Doppelte oder aktionsfremd wiederverwendete Audit-Event-IDs werden abgewiesen
     und koennen terminale Zeilen nicht auf `started` zuruecksetzen.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,

@@ -326,9 +326,9 @@ Rekonstruktion eines Live-Stands.
 
 Tabelle `audit_log`:
   event_id PRIMARY KEY, occurred_at, actor_type, actor_id, actor_name, role,
-  action, target_type, target_id, request_id, operation_id, result, before_json,
-  after_json, error_code, source_ip, attempted_email, instance, created_at,
-  updated_at. `result` ist
+  action, target_type, target_id, target_name, request_id, operation_id, result,
+  before_json, after_json, error_code, source_ip, attempted_email, instance,
+  created_at, updated_at. `result` ist
   `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
   derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
   Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
@@ -354,14 +354,24 @@ Rolle ergaenzt, bei einem Fehlschlag bleibt der Akteur anonym. Ein bestehendes
 Schema wird additiv migriert; alte Zeilen erhalten fuer die drei neuen Felder
 leere Werte.
 
+`target_name` ist ein auf 200 Zeichen begrenzter Anzeigenamensnapshot des Ziels
+zum Auditabschluss. Bei `normalizePerson` ist dies nach Erfolg der resultierende
+Vor-/Nachname, bei einer Ablehnung der noch bekannte bisherige Name. Ein
+terminaler nicht leerer Zielname ergaenzt den beim Start gegebenenfalls noch
+leeren Wert. Bestehende Zeilen werden additiv mit einem leeren Wert migriert.
+
 Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
 E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
 `/status` ausgegeben und werden fachlich ohne automatische Bereinigung
 aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder
 Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und muss SQLite-
-Backups einbeziehen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
-maskierte E-Mail- und IP-Werte. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken;
-Standard `*` aktiviert alle implementierten Aktionen.
+Backups einbeziehen. Der optionale JSON-Spiegel enthaelt Akteur- und Zielname,
+aber nur maskierte E-Mail- und IP-Werte. Fuer `normalizePerson` enthaelt er eine
+kontrollierte Aenderungszusammenfassung: `active` und `role` erscheinen mit
+kanonischen Alt-/Neuwerten, die anderen zehn erlaubten Felder ausschliesslich mit
+ihrem Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht
+gespiegelt. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*`
+aktiviert alle implementierten Aktionen.
 
 
 ================================================================================

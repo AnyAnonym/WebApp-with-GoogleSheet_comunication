@@ -365,6 +365,14 @@ werden keine Labels. Caddy entfernt Querystrings, Request-/Responseheader und
 Quelladressen aus den Access-Logs. Loki ist ein gemeinsamer Tenant: Jeder
 zugelassene Grafana-Admin darf bewusst Daten beider aktiver Systeme sehen.
 
+Fuenf Dashboards werden provisioniert. `ePiber Personennormalisierung` trennt
+Live und PAJ ueber die Deploymentauswahl und kombiniert aggregierte
+Prometheus-Zustaende mit kontrollierten Loki-Ereignissen. Sein Auditpanel zeigt
+Adminname/-ID, Ziel-Personen-ID und resultierenden Zielnamen. Fuer Aktiv und
+Rolle sind kontrollierte Alt-/Neuwerte erlaubt, fuer andere Felder nur der
+Feldname. Kontakt-, Adress-, Geburts-, Geschlechts- und freie Werte bleiben
+ausgeschlossen. Alte Loki-Eintraege werden nicht nachtraeglich angereichert.
+
 Grafana besitzt genau eine kanonische Origin `https://epiber.at/grafana/`. PAJ
 antwortet auf `/grafana/` mit einer permanenten Weiterleitung dorthin. Der
 PK-Caddyblock besitzt weder Grafana-Redirect noch Observability-Access-Logging.
@@ -409,6 +417,12 @@ Caddy-Reload, muss der Betreiber die gesicherte Caddydatei und die vorherigen
 Observability-Vorlagen wiederherstellen, Grafana neu starten und Caddy erneut
 validieren und laden. Der Wechsel findet deshalb ausschliesslich in einem
 dokumentierten Wartungsfenster statt.
+
+Nach einer Aenderung der Normalisierungsauditprojektion werden zuerst Backend
+und additive SQLite-Migration ausgerollt und der Dienst neu gestartet. Danach
+wird die Dashboard-JSON nach `/etc/grafana/dashboards/epiber/` installiert; der
+Provider liest sie innerhalb von hoechstens 30 Sekunden ohne Grafana-Neustart
+neu ein.
 
 Lokale Daten und Aufbewahrung:
 

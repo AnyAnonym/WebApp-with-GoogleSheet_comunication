@@ -16,6 +16,22 @@ const { assertUniquePlayerEmails, validateTableValues } = require("./tableSchema
 const logger = require("./logger.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
+const SHEETS_RATE_LIMIT_MESSAGE = "Die Google-Sheets-Schnittstelle hat ihr Zugriffslimit erreicht. Bitte etwa eine Minute warten und danach erneut versuchen.";
+
+function sheetsError(error) {
+  if (error instanceof AppError) return error;
+  const status = Number(error?.response?.status || error?.status || error?.code || 0);
+  if (status === 429) return new AppError("SHEETS_RATE_LIMITED", SHEETS_RATE_LIMIT_MESSAGE, 429, { retryAfterMs: 60000 });
+  return error;
+}
+
+async function sheetsRead(callback) {
+  try {
+    return await callback();
+  } catch (error) {
+    throw sheetsError(error);
+  }
+}
 
 function withAudit(result, audit) {
   Object.defineProperty(result, "_audit", { value: audit, enumerable: false });
@@ -232,20 +248,20 @@ class SheetService {
     const config = TABLE_CONFIG[tableName];
     if (!config) throw new AppError("TABLE_UNKNOWN", `Tabelle ${tableName} ist unbekannt`, 500);
     const sheets = await this.getClient();
-    const response = await sheets.spreadsheets.values.get({
+    const response = await sheetsRead(() => sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: config.range,
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS }));
     return validateTableValues(tableName, response.data.values || []);
   }
 
   async getSheetId(sheets, tableName) {
     if (this.sheetIds.has(tableName)) return this.sheetIds.get(tableName);
     const title = TABLE_CONFIG[tableName].range;
-    const spreadsheet = await sheets.spreadsheets.get({
+    const spreadsheet = await sheetsRead(() => sheets.spreadsheets.get({
       spreadsheetId: SHEET_ID,
       fields: "sheets.properties(sheetId,title)",
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS }));
     const sheet = spreadsheet.data.sheets.find((entry) => entry.properties.title === title);
     if (!sheet) throw new AppError("SHEET_SCHEMA", `${title}-Tab fehlt`, 503);
     this.sheetIds.set(tableName, sheet.properties.sheetId);
@@ -255,7 +271,7 @@ class SheetService {
   async findRecordMetadata(sheets, tableName, recordId) {
     const cacheKey = `${tableName}:${recordId}`;
     if (this.recordMetadata.has(cacheKey)) return this.recordMetadata.get(cacheKey);
-    const response = await sheets.spreadsheets.developerMetadata.search({
+    const response = await sheetsRead(() => sheets.spreadsheets.developerMetadata.search({
       spreadsheetId: SHEET_ID,
       requestBody: {
         dataFilters: [{ developerMetadataLookup: {
@@ -265,7 +281,7 @@ class SheetService {
           locationType: "ROW",
         } }],
       },
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS }));
     let matches = (response.data.matchedDeveloperMetadata || []).map((entry) => entry.developerMetadata).filter(Boolean);
     if (matches.length > 1) {
       const locationKey = (metadata) => {
@@ -331,7 +347,7 @@ class SheetService {
         if (status >= 400 && status < 500 && status !== 408) {
           const pending = this.repository.getState(intentKey, { status: "pending" });
           this.repository.setState(intentKey, { status: "failed", at: this.now(), statusCode: status }, pending.revision);
-          throw error;
+          throw sheetsError(error);
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Metadatenerstellung ist unklar", 503, { tableName, recordId });
       }
@@ -357,14 +373,14 @@ class SheetService {
   }
 
   async readMetadataRow(sheets, metadataId, valueRenderOption = "FORMULA") {
-    const response = await sheets.spreadsheets.values.batchGetByDataFilter({
+    const response = await sheetsRead(() => sheets.spreadsheets.values.batchGetByDataFilter({
       spreadsheetId: SHEET_ID,
       requestBody: {
         dataFilters: [{ developerMetadataLookup: { metadataId } }],
         majorDimension: "ROWS",
         valueRenderOption,
       },
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS }));
     const rows = (response.data.valueRanges || []).flatMap((entry) => entry.valueRange?.values || []);
     return rows.length === 1 ? rows[0] : null;
   }
@@ -461,6 +477,7 @@ class SheetService {
         if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
         const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
         return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "", recovered: true }, {
+          targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
           before: null,
           after: changes,
         });
@@ -477,6 +494,7 @@ class SheetService {
       }
       if (targetsMatch) {
         return withAudit({ success: true, personId: params.personId, fingerprint: currentFingerprint, repeated: true }, {
+          targetName: [beforeValues.firstName, beforeValues.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
           before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
           after: changes,
         });
@@ -545,6 +563,7 @@ class SheetService {
       if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
       const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
       return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "" }, {
+        targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
         before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
         after: changes,
       });

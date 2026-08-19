@@ -137,7 +137,8 @@ Gesamtfreigabe.
 - [ ] Bei mehreren gueltigen Admincookies verwendet der Broker deterministisch Live vor PAJ; PK-Cookies werden ignoriert und ein ausgefallenes aktives Realm blockiert eine andere gueltige Adminsession nicht.
 - [ ] Logout, Sessionablauf, Rollenentzug und Deaktivierung sperren den naechsten HTTP-Request und WebSocket-Neuaufbau. Eine bestehende Grafana-Live-Verbindung ist keine Autoritaet fuer privilegierte Entscheidungen.
 - [ ] Grafana-Assets, API und Live-WebSocket funktionieren ohne CSP-, Redirect-, Mixed-Content-, Cookie- oder Subpathfehler.
-- [ ] Vier gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht doppelt gezaehlt.
+- [ ] Fuenf gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht doppelt gezaehlt.
+- [ ] Das Normalisierungs-Auditpanel zeigt Adminname/-ID, Ziel-Personen-ID und resultierenden Zielnamen. Nur Aktiv und Rolle enthalten kontrollierte Alt-/Neuwerte; andere Personenfelder erscheinen ohne Wert als geaendert. Bestehende Loki-Zeilen bleiben unveraendert.
 - [ ] Anwendungsalerts erzeugen getrennte Alarm- und Recoveryzustaende je Deployment; Host-/Stackalarme existieren nur einmal.
 - [ ] SMTP, Benachrichtigungsversuche, oeffentliche Dashboards, lokale und externe Snapshots, Pluginverwaltung, automatische Pluginvorinstallation und automatische Pluginupdates sind deaktiviert.
 - [ ] `/var/lib/grafana/plugins` gehoert `grafana:grafana` und hat Modus 0750; ein wiederholter Installerlauf erhaelt beziehungsweise repariert diesen Zustand.

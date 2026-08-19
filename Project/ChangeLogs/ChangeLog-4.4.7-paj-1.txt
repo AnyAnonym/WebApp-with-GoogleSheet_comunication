@@ -350,3 +350,77 @@ Commit: 4.4.7-paj-1-3 | Normalisierungsdashboard bereitgestellt
     - Normalisierungsdashboard in den installierten Observability-Sollstand
       aufnehmen und den begrenzten Personenbezug auf Adminname/-ID und
       Ziel-Personen-ID im Auditpanel festhalten.
+
+[4.4.7-paj-1-4] - 2026-08-19
+Commit: 4.4.7-paj-1-4 | Normalisierungsaudit und Quotenfehler erweitert
+
+  Changed
+  - [Repository] Paket- und Root-Lockfile-Version fuer die erweiterte
+    Normalisierungsauditprojektion auf `4.4.7-paj-1-4` gesetzt.
+  - [Software] SQLite-Auditlog additiv um den begrenzten Zielnamensnapshot
+    `target_name` erweitert. Personennormalisierungen speichern nach Erfolg den
+    resultierenden Vor-/Nachnamen; Ablehnungen verwenden den noch bekannten
+    bisherigen Namen.
+  - [Software] `audit_recorded` projiziert fuer Personennormalisierungen eine
+    feste Aenderungszusammenfassung. Aktiv und Rolle zeigen ausschliesslich
+    kontrollierte Alt-/Neuwerte; bei den zehn anderen erlaubten Feldern werden
+    nur die Feldnamen als geaendert ausgegeben. Kontakt-, Adress-, Geburts-,
+    Geschlechts- und freie Werte gelangen nicht in journald oder Loki.
+  - [Infrastruktur] Auditpanel des Normalisierungsdashboards um resultierenden
+    Zielnamen und die kontrollierte Aenderungszusammenfassung erweitert. Alte
+    Loki-Eintraege bleiben erwartungsgemaess unveraendert.
+  - [Dokumentation] Auditvertrag, SQLite-Schema, Endpoints, Dashboard-Sollstand,
+    Rolloutfolge und Abnahmekriterien in den kanonischen Software- und
+    Serverdokumenten ergaenzt.
+
+  Fixed
+  - [Software] Google-Sheets-Readfehler wegen der externen Minutenquote werden
+    vor einem Write nicht mehr als roher Fehlercode `429`, sondern als
+    `SHEETS_RATE_LIMITED` mit verstaendlicher Warteaufforderung und kontrollierter
+    60-Sekunden-Wiederholungsfrist ausgegeben. Der abgelehnte Versuch speichert
+    kein Operationsresultat und startet keinen automatischen Write-Retry.
+  - [Software] Die Normalisierungsseite zeigt die vom WebSocket bereits in der
+    Fehlermeldung enthaltene Support-Referenz nicht mehr ein zweites Mal an.
+
+  Pruefungen
+  - [Repository] Additive Migration, Zielnamenpersistenz, unveraenderte
+    Vorher-/Nachher-Historie, kontrollierte Statuswerte und Ausschluss konkreter
+    Kontaktwerte aus dem Journal mit Unit- und Sheet-Service-Tests geprueft.
+  - [Repository] `npm run build` erfolgreich; statische Pruefungen und alle 166
+    Backendtests einschliesslich des vollstaendigen HTTP-/WebSocket-
+    Serverintegrationstests bestanden.
+  - [Repository] `npm run test:browser` erfolgreich; beide Browsertests
+    bestanden.
+  - [Repository] Dashboard-JSON erfolgreich geparst, 21 eindeutige Panel-IDs und
+    die neuen Auditfelder geprueft. Die erweiterte LogQL-Abfrage wurde direkt
+    gegen den laufenden Loki-Dienst erfolgreich ausgefuehrt und rendert alte
+    Eintraege ohne die erst kuenftig vorhandenen Felder weiterhin lesbar.
+  - [Repository] Google-Read-Quotaablehnung mit stabilem Fehlercode,
+    Warteaufforderung, Retryfrist, ausbleibendem Write und ausbleibendem
+    Operationsresultat im Sheet-Service-Test geprueft. Der Browsertest prueft
+    die lesbare Meldung und eine genau einmal angezeigte Support-Referenz.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/ARCHITEKTUR.txt
+    - Additive Zielnamenspeicherung und kontrollierte Journalprojektion der
+      Personennormalisierung dokumentieren.
+    - Google-Sheets-Readquotenfehler vor dem Write als `SHEETS_RATE_LIMITED` mit
+      60 Sekunden Wiederholungsfrist, fehlendem Operationsresultat und ohne
+      automatischen Write-Retry dokumentieren.
+
+    Project/software/DATENBANK.txt
+    - `audit_log.target_name`, additive Migration und den Datenschutzvertrag der
+      Normalisierungszusammenfassung dokumentieren.
+
+    Project/software/ENDPOINTS.txt
+    - `adminPeopleNormalization`, `normalizePerson`, Zielnamen-Audit und den
+      sichtbaren Quotenfehlervertrag dokumentieren.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Fuenftes Dashboard, begrenzte personenbezogene Auditprojektion und
+      Rolloutfolge aus Backendneustart und Dashboardinstallation dokumentieren.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Normalisierungsdashboard und erlaubte Auditdarstellung in den
+      Observability-Sollstand aufnehmen.

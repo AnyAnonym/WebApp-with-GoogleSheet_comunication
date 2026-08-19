@@ -195,11 +195,11 @@
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "description": "Enthaelt auf ausdruecklichen Wunsch Adminname/-ID und Ziel-Personen-ID, jedoch keine Vorher-/Nachherwerte oder Kontaktdaten.",
+      "description": "Enthaelt auf ausdruecklichen Wunsch Adminname/-ID sowie Ziel-Personen-ID und resultierenden Zielnamen. Aktiv und Rolle zeigen kontrollierte Alt-/Neuwerte; bei anderen Feldern erscheint nur der Feldname, niemals der Personenwert.",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
       "id": 19,
       "options": { "dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": false, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "{deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"audit_recorded\" | action=\"normalizePerson\" | keep actorName, actorId, targetId, result, errorCode, requestId | line_format \"{{.actorName}} (Admin-ID {{.actorId}}) -> Person {{.targetId}} | {{.result}} | {{.errorCode}} | Support {{.requestId}}\"", "queryType": "range", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "{deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"audit_recorded\" | action=\"normalizePerson\" | keep actorName, actorId, targetId, targetName, result, errorCode, changeSummary, requestId | line_format \"{{.actorName}} (Admin-ID {{.actorId}}) -> Person {{.targetId}}{{if .targetName}} ({{.targetName}}){{end}} | {{.result}}{{if .errorCode}} | {{.errorCode}}{{end}}{{if .changeSummary}} | {{.changeSummary}}{{end}} | Support {{.requestId}}\"", "queryType": "range", "refId": "A" }],
       "title": "Auditverlauf der Personenupdates",
       "type": "logs"
     },

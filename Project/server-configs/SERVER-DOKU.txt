@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Letzte Aenderung: 16.08.2026
+Letzte Aenderung: 19.08.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -60,6 +60,12 @@ gruppengeschuetzten Unix-Socket `/run/epiber-observability/grafana.sock`.
 Caddy stellt Grafanas nicht vertraulichen Metrikpfad fuer Prometheus getrennt auf
 `127.0.0.1:3001` bereit. `/metrics` bleibt von allen externen Matchern
 ausgeschlossen.
+
+Der Sollstand provisioniert fuenf Dashboards, darunter `ePiber
+Personennormalisierung`. Dessen Auditpanel zeigt kontrolliert Adminname/-ID,
+Ziel-Personen-ID und resultierenden Zielnamen. Nur Aktiv und Rolle enthalten
+kanonische Alt-/Neuwerte; fuer andere Normalisierungsfelder erscheint allein der
+Feldname, nicht der Personenwert.
 
 PK bleibt als Anwendungssystem und Caddy-Origin dokumentiert, ist im aktuellen
 Observability-Stand aber deaktiviert: Port 8084 wird nicht gescraped, PK-Journale

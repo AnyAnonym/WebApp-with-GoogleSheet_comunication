@@ -34,9 +34,16 @@ let snapshot = {
   }]
 };
 window.__normalizationWrites = [];
+window.__normalizationFailure = false;
 export function createEndpoint(endpoint) {
   return async (params = {}) => {
     if (endpoint === "adminPeopleNormalization") return { data: structuredClone(snapshot) };
+    if (window.__normalizationFailure) {
+      const error = new Error("Die Google-Sheets-Schnittstelle hat ihr Zugriffslimit erreicht. Bitte etwa eine Minute warten und danach erneut versuchen. (Referenz: quota-reference)");
+      error.code = "SHEETS_RATE_LIMITED";
+      error.supportId = "quota-reference";
+      throw error;
+    }
     window.__normalizationWrites.push(structuredClone(params));
     Object.assign(snapshot.people[0].values, params.changes);
     snapshot.people[0].issues = [];
@@ -95,7 +102,7 @@ function startServer() {
   });
 }
 
-test("Normalisierungsseite funktioniert auf Desktop und Mobil mit Vorschau vor dem Write", {
+test("Normalisierungsseite funktioniert responsiv und zeigt Quotenfehler mit einer Referenz", {
   skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
   timeout: 60000,
 }, async () => {
@@ -121,12 +128,18 @@ test("Normalisierungsseite funktioniert auf Desktop und Mobil mit Vorschau vor d
       await page.locator("#normalization-preview-modal").waitFor({ state: "visible" });
       assert.equal(await page.locator(".normalization-preview-row").count(), 1);
       assert.equal(await page.locator(".normalization-preview-value").nth(1).textContent(), "Ada");
+      const expectFailure = viewport.width === 1280;
+      if (expectFailure) await page.evaluate(() => { window.__normalizationFailure = true; });
       await page.getByRole("button", { name: "Änderungen schreiben" }).click();
-      await page.locator("#normalization-status").filter({ hasText: "erfolgreich" }).waitFor();
+      await page.locator("#normalization-status").filter({ hasText: expectFailure ? "Zugriffslimit" : "erfolgreich" }).waitFor();
+      const status = await page.locator("#normalization-status").textContent();
+      if (expectFailure) assert.equal(status.match(/quota-reference/g)?.length, 1);
       const writes = await page.evaluate(() => window.__normalizationWrites);
-      assert.equal(writes.length, 1);
-      assert.deepEqual(writes[0].changes, { firstName: "Ada" });
-      assert.equal(writes[0].personId, "p1");
+      assert.equal(writes.length, expectFailure ? 0 : 1);
+      if (!expectFailure) {
+        assert.deepEqual(writes[0].changes, { firstName: "Ada" });
+        assert.equal(writes[0].personId, "p1");
+      }
       await context.close();
     }
   } finally {

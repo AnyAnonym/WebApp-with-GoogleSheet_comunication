@@ -5,6 +5,7 @@ const { setTestEnvironment } = require("./helpers.js");
 setTestEnvironment();
 const {
   canonicalPhone,
+  normalizationAuditSummary,
   projectPeopleNormalization,
   summarizePeopleNormalization,
   validateChanges,
@@ -76,4 +77,17 @@ test("Telefon- und Zielwertnormalisierung folgen dem Sheetformat", () => {
     role: "player B",
   });
   assert.throws(() => validateChanges({ phone: "+43 664 1234567" }), { code: "VALIDATION_ERROR" });
+});
+
+test("Auditprojektion zeigt nur kontrollierte Statuswerte und Feldnamen", () => {
+  assert.equal(normalizationAuditSummary(
+    { firstName: "Peter", email: "old@example.test", active: "0", role: "player" },
+    { firstName: "Patrick", email: "new@example.test", active: "", role: "player B" },
+  ), "Vorname geaendert; E-Mail geaendert; Aktiv: 0 -> leer; Rolle: player -> player B");
+  assert.equal(normalizationAuditSummary(
+    { active: "freier-geheimwert", role: "eigentuemer" },
+    { active: "1", role: "admin" },
+  ), "Aktiv: ungueltig -> 1; Rolle: ungueltig -> admin");
+  assert.equal(normalizationAuditSummary({ active: "1" }, { active: "1" }), "Keine Wertaenderung");
+  assert.equal(normalizationAuditSummary(null, { role: "operator" }), "Rolle: unbekannt -> operator");
 });

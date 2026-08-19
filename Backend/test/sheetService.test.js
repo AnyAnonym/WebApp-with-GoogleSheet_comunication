@@ -212,6 +212,9 @@ test("Personennormalisierung schreibt konfliktgeschuetzt und laesst Sicherheitsf
   });
 
   assert.equal(result.success, true);
+  assert.equal(result._audit.targetName, "Petra Player");
+  assert.deepEqual(result._audit.before, { firstName: "Peter", email: "peter@example.test" });
+  assert.deepEqual(result._audit.after, { firstName: "Petra", email: "petra@example.test" });
   assert.equal(fake.tables.Personen[2][1], "Petra");
   assert.equal(fake.tables.Personen[2][3], "petra@example.test");
   assert.equal(fake.tables.Personen[2][4], passwordBefore);
@@ -248,6 +251,41 @@ test("Personennormalisierung lehnt veraltete Fingerprints und doppelte E-Mails v
     (error) => error.code === "EMAIL_CONFLICT" && error.status === 409,
   );
   assert.equal(fake.calls.valueUpdates.length, 0);
+});
+
+test("Personennormalisierung meldet die Google-Read-Quote verstaendlich und wiederholbar", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  fake.client.spreadsheets.values.get = async () => {
+    throw Object.assign(new Error("Quota exceeded"), { code: 429, response: { status: 429 } });
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(
+    service.normalizePerson(
+      { type: "user", id: "p1", role: "admin", name: "Ada Admin" },
+      {
+        operationId: "00000000-0000-4000-8000-000000000093",
+        personId: "p2",
+        expectedFingerprint: "a".repeat(64),
+        changes: { firstName: "Petra" },
+      },
+    ),
+    (error) => (
+      error.code === "SHEETS_RATE_LIMITED"
+      && error.status === 429
+      && error.message === "Die Google-Sheets-Schnittstelle hat ihr Zugriffslimit erreicht. Bitte etwa eine Minute warten und danach erneut versuchen."
+      && error.details?.retryAfterMs === 60000
+    ),
+  );
+  assert.equal(fake.calls.valueUpdates.length, 0);
+  assert.equal(repository.getOperation("user:p1", "00000000-0000-4000-8000-000000000093", "normalizePerson", {
+    personId: "p2",
+    expectedFingerprint: "a".repeat(64),
+    changes: { firstName: "Petra" },
+  }), null);
 });
 
 test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () => {

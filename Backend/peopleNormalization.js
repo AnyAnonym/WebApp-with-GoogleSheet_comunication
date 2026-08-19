@@ -25,6 +25,20 @@ const ROLE_VALUES = new Map([
   ["player a", "player A"],
   ["player b", "player B"],
 ]);
+const ISSUE_CODES = Object.freeze([
+  "EDGE_WHITESPACE",
+  "REQUIRED_VALUE_MISSING",
+  "BIRTH_DATE_INVALID",
+  "GENDER_INVALID",
+  "PHONE_FORMAT_INVALID",
+  "EMAIL_NONCANONICAL",
+  "EMAIL_DUPLICATE",
+  "EMAIL_INVALID",
+  "POSTAL_CODE_INVALID",
+  "ACTIVE_NONCANONICAL",
+  "ROLE_INVALID",
+  "ROLE_NONCANONICAL",
+]);
 
 function fieldIndexes(header) {
   return Object.fromEntries(Object.entries(FIELD_DEFINITIONS).map(([field, definition]) => [
@@ -175,7 +189,7 @@ function analyzePerson(values, duplicateEmails) {
   return issues;
 }
 
-function projectPeopleNormalization(table) {
+function normalizationContext(table) {
   if (!Array.isArray(table) || !Array.isArray(table[0])) throw new AppError("SHEET_SCHEMA", "Personen-Tabelle besitzt keine Kopfzeile", 503);
   const header = headerOf(table);
   const idIndex = headerIndex(header, "id");
@@ -193,6 +207,11 @@ function projectPeopleNormalization(table) {
     }
   }
   const duplicateEmails = new Set([...emailCounts].filter(([, count]) => count > 1).map(([email]) => email));
+  return { header, idIndex, duplicateEmails };
+}
+
+function projectPeopleNormalization(table) {
+  const { header, idIndex, duplicateEmails } = normalizationContext(table);
   const people = table.slice(1).flatMap((row) => {
     const id = String(row[idIndex] || "").trim();
     if (!id) return [];
@@ -207,13 +226,37 @@ function projectPeopleNormalization(table) {
   };
 }
 
+function summarizePeopleNormalization(table) {
+  const { header, idIndex, duplicateEmails } = normalizationContext(table);
+  const issueCounts = Object.fromEntries(ISSUE_CODES.map((code) => [code, 0]));
+  let peopleCount = 0;
+  let affectedCount = 0;
+  let issueCount = 0;
+  for (const row of table.slice(1)) {
+    if (!String(row[idIndex] || "").trim()) continue;
+    peopleCount++;
+    const issues = analyzePerson(rawPersonValues(header, row), duplicateEmails);
+    if (issues.length) affectedCount++;
+    issueCount += issues.length;
+    for (const entry of issues) issueCounts[entry.code]++;
+  }
+  return {
+    peopleCount,
+    affectedCount,
+    issueCount,
+    issueCounts,
+  };
+}
+
 module.exports = {
   FIELD_DEFINITIONS,
+  ISSUE_CODES,
   canonicalPhone,
   canonicalRole,
   fieldIndexes,
   personFingerprint,
   projectPeopleNormalization,
   rawPersonValues,
+  summarizePeopleNormalization,
   validateChanges,
 };

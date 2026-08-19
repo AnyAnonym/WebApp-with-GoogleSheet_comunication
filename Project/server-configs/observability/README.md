@@ -73,9 +73,14 @@ Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
 
 ## Dashboards und Alerts
 
-Vier nicht personenbezogene Dashboards werden provisioniert: Uebersicht,
-Hostressourcen, Loggingpipeline sowie Fehler/Recovery. Anwendungsdashboards
-besitzen die feste Auswahl `live|paj`; Hostmetriken werden nur einmal gezeigt.
+Fuenf Dashboards werden provisioniert: Uebersicht, Hostressourcen,
+Loggingpipeline, Fehler/Recovery sowie Personennormalisierung.
+Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
+nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
+aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
+Personenbezug. Nur sein ausdruecklicher Auditverlauf enthaelt den ausfuehrenden
+Adminnamen samt Admin-ID und die Ziel-Personen-ID; Kontakt-, Vorher-/Nachher- und
+freie Fachdaten werden dort nicht dargestellt.
 
 Anwendungsalerts erzeugen je Deployment getrennte Alarmzustaende. Host- und
 Observability-Alarme existieren einmal. SMTP ist zwingend deaktiviert. Es gibt

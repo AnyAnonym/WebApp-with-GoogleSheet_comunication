@@ -1,3 +1,5 @@
+const { ISSUE_CODES } = require("./peopleNormalization.js");
+
 const HTTP_BUCKETS = Object.freeze([0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]);
 const FIXED_HTTP_METHODS = new Set(["GET", "POST", "DELETE", "OPTIONS"]);
 const FIXED_HTTP_ROUTES = new Set([
@@ -136,7 +138,7 @@ function metricType(lines, name, type) {
   lines.push(`# TYPE ${name} ${type}`);
 }
 
-function render({ appVersion, processStartedAt, activeHttpRequests, readiness, ws, sheetPoller, court, state, sheets } = {}) {
+function render({ appVersion, processStartedAt, activeHttpRequests, readiness, ws, sheetPoller, court, state, sheets, peopleNormalization } = {}) {
   const lines = [];
   for (const name of [
     "epiber_info", "epiber_process_uptime_seconds", "epiber_http_requests_active", "epiber_ready",
@@ -147,6 +149,9 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
     "epiber_court_source_age_seconds", "epiber_court_poll_consecutive_failures", "epiber_court_score_updates",
     "epiber_ws_connections", "epiber_ws_requests_active", "epiber_sqlite_open", "epiber_sqlite_ready",
     "epiber_sqlite_writes_total", "epiber_sqlite_failures_total", "epiber_audit_records", "epiber_scorelog_sequence",
+    "epiber_people_normalization_current", "epiber_people_normalization_people",
+    "epiber_people_normalization_affected_people", "epiber_people_normalization_issues",
+    "epiber_people_normalization_issue_count",
   ]) metricType(lines, name, name.endsWith("_total") ? "counter" : "gauge");
   gauge(lines, "epiber_info", 1, { version: appVersion || "unknown" });
   gauge(lines, "epiber_process_uptime_seconds", Math.max(0, Date.now() - number(processStartedAt, Date.now())) / 1000);
@@ -167,6 +172,14 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
   gauge(lines, "epiber_sheet_writes_active", Math.max(0, number(sheets?.activeWrites)));
   gauge(lines, "epiber_sheet_write_queues", Math.max(0, number(sheets?.queues)));
   gauge(lines, "epiber_sheet_metadata_intents_pending", Math.max(0, number(sheets?.pendingMetadataIntents)));
+
+  gauge(lines, "epiber_people_normalization_current", peopleNormalization?.current ? 1 : 0);
+  gauge(lines, "epiber_people_normalization_people", Math.max(0, number(peopleNormalization?.peopleCount)));
+  gauge(lines, "epiber_people_normalization_affected_people", Math.max(0, number(peopleNormalization?.affectedCount)));
+  gauge(lines, "epiber_people_normalization_issues", Math.max(0, number(peopleNormalization?.issueCount)));
+  for (const code of ISSUE_CODES) {
+    gauge(lines, "epiber_people_normalization_issue_count", Math.max(0, number(peopleNormalization?.issueCounts?.[code])), { code });
+  }
 
   gauge(lines, "epiber_court_poller_running", court?.running ? 1 : 0);
   for (const courtId of ["1", "2"]) gauge(lines, "epiber_court_active", court?.courtActive?.[courtId] ? 1 : 0, { court: courtId });

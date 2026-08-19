@@ -256,3 +256,97 @@ Commit: 4.4.7-paj-1-2 | Personennormalisierung und Grafana-Authentifizierung abg
     - Den installierten Sollvertrag ergaenzen: Der Grafana-Auth-Broker erhaelt
       ausschliesslich den queryfreien Pfad `/auth`; Grafana-API-Querystrings sind
       keine Broker-Routenbestandteile.
+
+[4.4.7-paj-1-3] - 2026-08-19
+Commit: 4.4.7-paj-1-3 | Normalisierungsdashboard bereitgestellt
+
+  Added
+  - [Software] Aggregierte Prometheus-Gauges fuer Aktualitaet des zugrunde
+    liegenden Personenbestands, Gesamtpersonen, betroffene Personen,
+    Gesamtprobleme und die aktuelle Verteilung auf alle zwoelf fest definierten
+    Normalisierungsproblemcodes ergaenzt.
+  - [Infrastruktur] Provisioniertes Dashboard `ePiber Personennormalisierung`
+    mit 21 Panels und PAJ als Startauswahl angelegt. Die feste Systemauswahl
+    `live|paj` zeigt aktuellen Problemstand, Problemverteilung und -entwicklung,
+    Tabellenalter, Writeaktivitaet, Queues, Metadatenintents, RPC-Nutzung und
+    -Latenzen, Writeergebnisse, Fehlercodes, unklare Auditabschluesse,
+    Writefehler, Browserdiagnosen und den Auditverlauf.
+  - [Infrastruktur] Audit-Logansicht zeigt auf ausdruecklichen Betreiberwunsch
+    Adminname, Admin-ID, Ziel-Personen-ID, Ergebnis, Fehlercode und
+    Request-/Support-ID. Loki-`keep`-Projektionen und deaktivierte Logdetails
+    verhindern dabei die Anzeige weiterer extrahierter Felder; Kontakt-,
+    Vorher-/Nachher-, Payload- und Quell-IP-Werte werden nicht dargestellt.
+
+  Changed
+  - [Repository] Paket- und Root-Lockfile-Version fuer das Normalisierungsdashboard
+    auf `4.4.7-paj-1-3` gesetzt.
+  - [Software] Dieselbe fachliche Analyse wie die Adminprojektion erzeugt die
+    Count-only-Metrikzusammenfassung ohne Personenprojektionen oder Fingerprints.
+    Die Zusammenfassung wird je `players`-Revision berechnet und fuer weitere
+    Scrapes wiederverwendet. Problemcodes werden als festes,
+    niedrig-kardinales Labelvokabular ausgegeben; Namen, IDs, E-Mails und andere
+    Personenwerte gelangen nicht in Prometheus-Metriken oder Labels.
+  - [Software] Bestandszahlen im Dashboard werden nur bei aktuellem
+    `players`-Stand angezeigt. Fehlende oder veraltete Daten erscheinen dadurch
+    nicht als irrefuehrende gruene Null; ereignislose Write- und
+    Auditzeitraeume werden dagegen bewusst als `0` dargestellt.
+  - [Software] Alter des Personenbestands bleibt auch bei veralteten Daten
+    sichtbar und wechselt nach 60 Sekunden auf orange sowie an der regulaeren
+    90-Sekunden-Aktualitaetsgrenze auf rot. Ein nie geladener Bestand erscheint
+    als `Unbekannt`.
+  - [Software] Erfolgreiche Writezaehler sind als RPC-Requests gekennzeichnet,
+    weil idempotente Wiederholungen, Recovery und bereits vorhandene Zielwerte
+    nicht zwingend eine neue Sheetmutation bedeuten.
+  - [Dokumentation] Observability-README auf das fuenfte provisionierte Dashboard
+    und dessen ausdruecklich begrenzten Personenbezug im Auditverlauf
+    aktualisiert.
+
+  Pruefungen
+  - [Repository] `npm run build` erfolgreich; statische Pruefungen und alle 163
+    Backendtests bestanden. Unit-, Metrik- und HTTP-Integrationstests pruefen
+    Summen, Problemcodeverteilung, Aktualitaet und den Ausschluss von Namen,
+    IDs und E-Mailwerten aus der Prometheus-Ausgabe. Ein uninitialisierter oder
+    unerwartet unbrauchbarer Personen-Cache setzt nur die Normalisierungsgauges
+    auf nicht aktuell beziehungsweise null und laesst den `/metrics`-Scrape
+    erfolgreich.
+  - [Repository] `npm run test:browser` erfolgreich; beide Browsertests
+    bestanden.
+  - [Repository] Dashboard-JSON erfolgreich geparst und auf 21 eindeutige
+    Panel-IDs, vorhandene Datasources und vollstaendige Targets geprueft.
+  - [Repository] Alle 22 PromQL- und LogQL-Abfragen automatisiert mit ersetzten
+    Grafana-Makros direkt gegen den laufenden Prometheus- beziehungsweise
+    Loki-Dienst validiert. Audit-, Writefehler- und Browserprojektionen
+    akzeptieren ihre begrenzten `keep`-Felder.
+
+  Betrieb und bekannte Einschraenkungen
+  - [Infrastruktur] Das Dashboard wird nach Installation unter
+    `/etc/grafana/dashboards/epiber/` durch den vorhandenen Provider innerhalb
+    von hoechstens 30 Sekunden eingelesen; ein Grafana-Neustart ist nicht
+    erforderlich. Die neuen Bestandsgauges benoetigen einen Backendneustart.
+  - [Infrastruktur] Live-Panels bleiben fuer die neuen Gauges leer, bis dieselbe
+    Backendversion auch dort ausgerollt ist. Historische Loki-/Prometheus-Signale
+    werden systemabhaengig bereits angezeigt.
+  - [Infrastruktur] Das Dashboard erzeugt keine neuen Alerts oder
+    Benachrichtigungswege; Schwellwertfarben dienen ausschliesslich der visuellen
+    Einordnung.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/ARCHITEKTUR.txt
+    - Aggregierte Normalisierungsmetriken aus dem letzten bekannten
+      Personenbestand, den separaten Aktualitaetsindikator und das feste
+      Problemcode-Labelvokabular ohne Personenwerte dokumentieren.
+    - Abgrenzung zwischen erfolgreichen `normalizePerson`-Requests und
+      tatsaechlichen neuen Sheetmutationen festhalten.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Das fuenfte provisionierte Dashboard mit Live/PAJ-Auswahl, seinen
+      Prometheus-/Loki-Datenquellen und der maximal 30-sekuendigen
+      Provider-Aktualisierung aufnehmen.
+    - Rolloutfolge aus Backendinstallation und -neustart sowie Installation der
+      Dashboard-JSON ohne erforderlichen Grafana-Neustart dokumentieren.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Normalisierungsdashboard in den installierten Observability-Sollstand
+      aufnehmen und den begrenzten Personenbezug auf Adminname/-ID und
+      Ziel-Personen-ID im Auditpanel festhalten.

@@ -33,6 +33,13 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
     court: { running: false, courtActive: { "1": false, "2": false }, consecutiveFailures: 0, pushCount: 0 },
     state: { open: true, ready: true },
     sheets: { activeWrites: 0, queues: 0, pendingMetadataIntents: 0 },
+    peopleNormalization: {
+      current: true,
+      peopleCount: 42,
+      affectedCount: 7,
+      issueCount: 9,
+      issueCounts: { EMAIL_DUPLICATE: 2, PHONE_FORMAT_INVALID: 3 },
+    },
   });
 
   assert.match(output, /epiber_http_requests_total\{method="GET",result="success",route="\/api\/session"\} 1/);
@@ -43,7 +50,15 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   assert.match(output, /epiber_ws_requests_total\{endpoint="unknown",result="rejected"\} 1/);
   assert.match(output, /epiber_sheet_polls_total\{result="failed",table="unknown"\} 1/);
   assert.match(output, /epiber_http_request_duration_seconds_bucket\{le="\+Inf",method="GET",route="\/api\/session"\} 1/);
+  assert.match(output, /epiber_people_normalization_current 1/);
+  assert.match(output, /epiber_people_normalization_people 42/);
+  assert.match(output, /epiber_people_normalization_affected_people 7/);
+  assert.match(output, /epiber_people_normalization_issues 9/);
+  assert.match(output, /epiber_people_normalization_issue_count\{code="EMAIL_DUPLICATE"\} 2/);
+  assert.match(output, /epiber_people_normalization_issue_count\{code="ROLE_INVALID"\} 0/);
   assert.equal(output.includes("person-p1"), false);
+  assert.equal(output.includes("Ada"), false);
+  assert.equal(output.includes("ada@example.test"), false);
   assert.equal(output.endsWith("\n"), true);
   assert.equal(output.endsWith("\n\n"), false);
 });
@@ -55,4 +70,8 @@ test("Prometheusmetriken ignorieren ungueltige Beobachtungen", () => {
   const output = metrics.render({});
   assert.equal(output.includes("epiber_frontend_events_total"), false);
   assert.match(output, /epiber_http_response_bytes_total\{route="\/version"\} 0/);
+  assert.match(output, /epiber_people_normalization_current 0/);
+  assert.match(output, /epiber_people_normalization_people 0/);
+  assert.match(output, /epiber_people_normalization_affected_people 0/);
+  assert.match(output, /epiber_people_normalization_issues 0/);
 });

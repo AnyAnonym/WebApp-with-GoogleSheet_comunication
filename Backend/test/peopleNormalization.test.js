@@ -6,6 +6,7 @@ setTestEnvironment();
 const {
   canonicalPhone,
   projectPeopleNormalization,
+  summarizePeopleNormalization,
   validateChanges,
 } = require("../peopleNormalization.js");
 
@@ -39,6 +40,27 @@ test("Normalisierungsprojektion zeigt nur freigegebene Werte und konkrete Proble
     "ROLE_INVALID",
   ]);
   assert.match(result.people[0].fingerprint, /^[0-9a-f]{64}$/);
+
+  const summary = summarizePeopleNormalization(table);
+  assert.deepEqual(summary, {
+    peopleCount: 2,
+    affectedCount: 2,
+    issueCount: 11,
+    issueCounts: {
+      EDGE_WHITESPACE: 2,
+      REQUIRED_VALUE_MISSING: 0,
+      BIRTH_DATE_INVALID: 1,
+      GENDER_INVALID: 1,
+      PHONE_FORMAT_INVALID: 1,
+      EMAIL_NONCANONICAL: 1,
+      EMAIL_DUPLICATE: 0,
+      EMAIL_INVALID: 1,
+      POSTAL_CODE_INVALID: 1,
+      ACTIVE_NONCANONICAL: 1,
+      ROLE_INVALID: 1,
+      ROLE_NONCANONICAL: 1,
+    },
+  });
 });
 
 test("Telefon- und Zielwertnormalisierung folgen dem Sheetformat", () => {

@@ -107,12 +107,13 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   abgelaufene beziehungsweise alte Eintraege.
 
 `dataPoller.js`
-  Laedt beim Start alle acht Tabellen parallel. Danach Basis-Tick 5 Sekunden,
-  Fast-Kategorie standardmaessig alle 10 Sekunden und Slow-Kategorie alle
-  30 Sekunden. Pro Tick gibt es keinen Overlap; Google-Requests besitzen
-  Timeouts und jede Antwort wird gegen `tableSchemas.js` validiert. Ergebnisse
-  unterscheiden `applied`, `ignored_stale`, `failed` und `recovered`; identische
-  Fehlerfolgen werden nach dem ersten Ereignis nur periodisch zusammengefasst.
+  Laedt beim Start alle acht Tabellen mit einem gemeinsamen `values.batchGet`.
+  Danach Basis-Tick 5 Sekunden, Fast-Kategorie standardmaessig alle 10 Sekunden
+  und Slow-Kategorie alle 30 Sekunden. Alle zu einem Tick faelligen Bereiche
+  werden in einem Request gelesen; ein erfolgreicher Initialload wird nicht nach
+  fuenf Sekunden wiederholt. Fehlgeschlagene Bereiche bleiben nach fuenf Sekunden
+  faellig. Pro Tick gibt es keinen Overlap; jede Tabelle besitzt weiterhin ein
+  eigenes Read-Fence, Schemaergebnis und Fehler-/Recovery-Ergebnis.
 
 `tableSchemas.js`, `tableUtils.js`
   Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs und E-Mails und
@@ -121,15 +122,30 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 
 `dataStore.js`
   Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Alter, Pollfehler,
-  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler. Ein Poll,
-  der vor einem neueren Write startete, darf weder dessen Daten noch dessen
-  Fehlerzustand ueberholen. Listener publizieren nur Aenderung/Recovery.
+  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler.
+  Autoritative Vollreads bestimmen Tabellenalter und Current-/Readinessstatus;
+  lokale Projektionen eines bestaetigten Writes aktualisieren Werte und
+  `lastMutation`, verlaengern aber nie die autoritative Frische und verdecken
+  keinen Pollfehler. Ein Poll, der vor einem neueren Write startete, darf weder
+  dessen Daten noch dessen Fehlerzustand ueberholen.
 
 `sheetService.js`
   Zentralisiert Google-Reads und alle fachlichen Writes. Queues serialisieren pro
   Tabelle beziehungsweise Operation; Stop nimmt keine neue Arbeit an und wartet
   auf aktive Sheetarbeit. Fachwrites verwenden stabile IDs, operationId-
   Deduplizierung, Cache-Refresh/Fallback, Compare-and-set und Developer-Metadaten.
+  Der erste Metadatenscan und die erste Sheet-Eigenschaftsabfrage fuellen jeweils
+  den Cache fuer alle bekannten Datensaetze beziehungsweise Tabs. Eine stabile
+  Personenzeile wird direkt im benoetigten formatierten Modus gelesen. Bestaetigte
+  Writes werden sofort lokal projiziert; aufeinanderfolgende Writes derselben
+  Tabelle teilen einen um eine Sekunde verzoegerten autoritativen Abschlussread.
+
+`sheetsReadCoordinator.js`
+  Kapselt alle Google-Sheets-Reads von Poller und SheetService, erfasst logische
+  Requests und tatsaechliche Initial-/Retry-Versuche mit festen Metriklabels und
+  koordiniert aktive Tabellenarbeit. Google-429 wird nicht automatisch erneut
+  gesendet, sondern sperrt weitere Reads prozessweit fuer 60 Sekunden. Andere
+  retryfaehige Transport-/Serverfehler behalten begrenzte Bibliotheks-Retries.
 
 `stateStore.js`
   Fachliche Sicht auf persistente Court- und Monitorzielwerte. Court 1/2 werden
@@ -266,6 +282,13 @@ Versuch bleibt fehlgeschlagen und erzeugt kein gespeichertes Operationsresultat;
 Writes werden dadurch nicht automatisch wiederholt. Die Normalisierungsseite
 erhaelt Meldung und Support-ID ueber den regulaeren Fehlervertrag und zeigt jede
 Referenz genau einmal.
+
+Ein erfolgreicher Vollread verschiebt den naechsten Tabellenpoll relativ zu
+seinem tatsaechlichen Zeitpunkt. Solange eine serialisierte Tabellenoperation
+aktiv ist, wird ein gleichzeitig faelliger Poll ohne API-Zugriff auf den naechsten
+Basistick verschoben. Personennormalisierungen bleiben bewusst personweise:
+Teilerfolge, Einzel-Audit und Wiederaufnahme bleiben erhalten; es gibt keinen
+alles-oder-nichts-Gesamtbatch.
 
 SQLite bindet operationId an Actor, Endpoint und Payload. Ein bekanntes Resultat
 wird wiedergegeben. Nach verlorener Append-Antwort bestaetigt SheetService die

@@ -85,6 +85,14 @@ anderen Normalisierungsfeldern nur der Feldname. Kontakt-, Adress-, Geburts-,
 Geschlechts-, sonstige Vorher-/Nachher- und freie Fachdaten werden dort nicht
 dargestellt.
 
+Die Uebersicht zeigt zusaetzlich den verbleibenden Google-Sheets-Read-Cooldown,
+die tatsaechlichen API-Versuche sowie logische Readrequests nach festem Zweck und
+Ergebnis. Methoden, Zwecke, Ergebnisse und `initial|retry` sind kontrollierte
+niedrig-kardinale Labels; Tabellenbereiche, Personen-, Record-, Request- und
+Operation-IDs bleiben ausgeschlossen. Ein Google-429 startet einen gemeinsamen
+60-Sekunden-Cooldown und wird dadurch nicht mit weiteren Poll- oder Fachreads
+verstaerkt.
+
 Anwendungsalerts erzeugen je Deployment getrennte Alarmzustaende. Host- und
 Observability-Alarme existieren einmal. SMTP ist zwingend deaktiviert. Es gibt
 keine E-Mail, keinen aktiven Benachrichtigungsweg und keine garantierte Reaktion;

@@ -524,10 +524,19 @@ Admin-Session oder mit einem kontrolliert bereitgestellten Sessioncookie zu
 pruefen; ein anonymer Curl muss 401 liefern. Der Detailstatus muss Readiness,
 Poller, Tabellenalter/-fehler, Courtquelle, WebSocketprovider, Monitore,
 Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
-zeigen. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
+zeigen. Der Sheets-Status enthaelt ausserdem geplante Abschlussrefreshes und den
+verbleibenden Read-Cooldown. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
 Schreibzaehler liefern; Ereigniszeilen werden ueber `/status` nicht ausgegeben.
 Die Antwort darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
 akteursbezogen ueber den RPC `operationStatus` abgefragt.
+
+Prometheus muss `epiber_sheet_api_requests_total`,
+`epiber_sheet_api_attempts_total`, `epiber_sheet_read_cooldown_seconds` und
+`epiber_sheet_refreshes_scheduled` liefern. Die Uebersicht trennt Requests nach
+kontrolliertem Zweck/Ergebnis und Versuche nach Methode sowie `initial|retry`.
+Nach einem kontrolliert ausgeloesten 429 darf waehrend des 60-Sekunden-Cooldowns
+kein weiterer Google-Readversuch gezaehlt werden; Tabellen koennen dabei gemaess
+ihrer normalen Altersgrenzen voruebergehend nicht current werden.
 
 Die `/status`-Antwort ist trotz fehlender Secrets eine geschuetzte Sammlung
 personenbezogener Betriebsdiagnosen. Sie kann insbesondere IP-Adressen,

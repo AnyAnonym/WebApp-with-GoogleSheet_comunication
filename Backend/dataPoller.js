@@ -1,6 +1,5 @@
 const { google } = require("googleapis");
 const {
-  GOOGLE_REQUEST_TIMEOUT_MS,
   POLL_BASE_INTERVAL,
   POLL_FAST_MULTIPLIER,
   POLL_SLOW_MULTIPLIER,
@@ -10,6 +9,7 @@ const {
 const dataStore = require("./dataStore.js");
 const logger = require("./logger.js");
 const metrics = require("./metrics.js");
+const { executeSheetRead, isSheetTableActive, resetSheetReadCoordinatorForTests } = require("./sheetsReadCoordinator.js");
 const { validateTableValues } = require("./tableSchemas.js");
 
 let sheetsClient = null;
@@ -20,6 +20,7 @@ let activePoll = null;
 let stopping = false;
 const FAILURE_SUMMARY_EVERY = 10;
 const failureLogs = new Map();
+const nextDueAt = new Map();
 
 async function getSheetsClient() {
   if (sheetsClient) return sheetsClient;
@@ -34,15 +35,9 @@ async function getSheetsClient() {
   return sheetsClient;
 }
 
-async function pollTable(sheets, tableName, range, source = "poll") {
-  const startedAt = Date.now();
-  const readToken = dataStore.beginRead(tableName);
+function pollCompleted(tableName, range, source, startedAt, readToken, rawValues) {
   try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range,
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-    const values = validateTableValues(tableName, response.data.values || []);
+    const values = validateTableValues(tableName, rawValues || []);
     const stored = dataStore.set(tableName, values, { source, readToken });
     const result = stored?.result || (stored?.ignored ? "ignored_stale" : "applied");
     const durationMs = Date.now() - startedAt;
@@ -76,6 +71,11 @@ async function pollTable(sheets, tableName, range, source = "poll") {
       outageDurationMs: stored?.outageDurationMs || 0,
     };
   } catch (error) {
+    return pollFailed(tableName, range, source, startedAt, readToken, error);
+  }
+}
+
+function pollFailed(tableName, range, source, startedAt, readToken, error) {
     const stored = dataStore.markError(tableName, error, readToken);
     const durationMs = Date.now() - startedAt;
     if (stored?.ignored) {
@@ -131,7 +131,59 @@ async function pollTable(sheets, tableName, range, source = "poll") {
       outageDurationMs: stored?.outageDurationMs || 0,
       error: error.message,
     };
+}
+
+function purposeFor(source) {
+  if (source === "initial") return "initial";
+  if (source === "refresh") return "refresh";
+  return "poll";
+}
+
+function statusOf(error) {
+  return Number(error?.response?.status || error?.status || 0);
+}
+
+async function pollTables(sheets, tableNames, source = "poll") {
+  if (!tableNames.length) return [];
+  const startedAt = Date.now();
+  const entries = tableNames.map((tableName) => ({
+    tableName,
+    range: TABLE_CONFIG[tableName].range,
+    readToken: dataStore.beginRead(tableName),
+  }));
+  let response;
+  try {
+    response = await executeSheetRead({
+      method: "values_batch_get",
+      purpose: purposeFor(source),
+      call: (options) => sheets.spreadsheets.values.batchGet({
+        spreadsheetId: SHEET_ID,
+        ranges: entries.map(({ range }) => range),
+      }, options),
+    });
+  } catch (error) {
+    if (entries.length > 1 && statusOf(error) === 400) {
+      const middle = Math.ceil(tableNames.length / 2);
+      const groups = await Promise.all([
+        pollTables(sheets, tableNames.slice(0, middle), source),
+        pollTables(sheets, tableNames.slice(middle), source),
+      ]);
+      return groups.flat();
+    }
+    return entries.map(({ tableName, range, readToken }) => pollFailed(tableName, range, source, startedAt, readToken, error));
   }
+  const valueRanges = response.data.valueRanges || [];
+  return entries.map(({ tableName, range, readToken }, index) => {
+    const valueRange = valueRanges[index];
+    if (!valueRange) {
+      return pollFailed(tableName, range, source, startedAt, readToken, new Error(`Batchantwort fuer ${tableName} fehlt`));
+    }
+    return pollCompleted(tableName, range, source, startedAt, readToken, valueRange.values || []);
+  });
+}
+
+async function pollTable(sheets, tableName, _range, source = "poll") {
+  return (await pollTables(sheets, [tableName], source))[0];
 }
 
 async function refresh(tableName, source = "refresh") {
@@ -143,9 +195,23 @@ async function refresh(tableName, source = "refresh") {
   return dataStore.get(tableName);
 }
 
-async function pollCategory(sheets, category) {
-  const tables = Object.entries(TABLE_CONFIG).filter(([, config]) => config.category === category);
-  return Promise.all(tables.map(([name, config]) => pollTable(sheets, name, config.range)));
+function pollInterval(tableName) {
+  return POLL_BASE_INTERVAL * (TABLE_CONFIG[tableName].category === "fast" ? POLL_FAST_MULTIPLIER : POLL_SLOW_MULTIPLIER);
+}
+
+function scheduleNext(results, completedAt = Date.now()) {
+  for (const result of results) {
+    nextDueAt.set(result.table, completedAt + (result.success ? pollInterval(result.table) : POLL_BASE_INTERVAL));
+  }
+}
+
+function synchronizeDueWithAuthoritativeReads() {
+  for (const tableName of Object.keys(TABLE_CONFIG)) {
+    const lastUpdate = dataStore.getMeta(tableName)?.lastUpdate || 0;
+    if (!lastUpdate) continue;
+    const dueFromRead = lastUpdate + pollInterval(tableName);
+    if (!nextDueAt.has(tableName) || dueFromRead > nextDueAt.get(tableName)) nextDueAt.set(tableName, dueFromRead);
+  }
 }
 
 async function runTick() {
@@ -154,15 +220,13 @@ async function runTick() {
   let tickResult = "completed";
   activePoll = (async () => {
     const sheets = await getSheetsClient();
-    const fast = tickCount === 1 || tickCount % POLL_FAST_MULTIPLIER === 0;
-    const slow = tickCount === 1 || tickCount % POLL_SLOW_MULTIPLIER === 0;
-    let results = [];
-    if (slow) {
-      const groups = await Promise.all([pollCategory(sheets, "fast"), pollCategory(sheets, "slow")]);
-      results = groups.flat();
-    } else if (fast) {
-      results = await pollCategory(sheets, "fast");
-    }
+    const currentTime = Date.now();
+    synchronizeDueWithAuthoritativeReads();
+    const dueTables = Object.keys(TABLE_CONFIG).filter((tableName) => (
+      (!nextDueAt.has(tableName) || currentTime >= nextDueAt.get(tableName)) && !isSheetTableActive(tableName)
+    ));
+    const results = await pollTables(sheets, dueTables);
+    scheduleNext(results);
     if (results.length) {
       const failed = results.filter((result) => result.result === "failed").length;
       logger.log("debug", "sheets_poll_tick_completed", {
@@ -220,9 +284,8 @@ async function initialLoad() {
     });
     return { success: false, results };
   }
-  const results = await Promise.all(Object.entries(TABLE_CONFIG).map(
-    ([name, config]) => pollTable(sheets, name, config.range, "initial"),
-  ));
+  const results = await pollTables(sheets, Object.keys(TABLE_CONFIG), "initial");
+  scheduleNext(results);
   const failed = results.filter((result) => !result.success);
   logger.log(failed.length ? "warn" : "info", "sheets_initial_load_completed", {
     total: results.length,
@@ -263,6 +326,8 @@ function setSheetsClientFactoryForTests(factory) {
   sheetsClientFactory = factory;
   sheetsClient = null;
   failureLogs.clear();
+  nextDueAt.clear();
+  resetSheetReadCoordinatorForTests();
 }
 
 module.exports = { getStatus, initialLoad, refresh, runTick, setSheetsClientFactoryForTests, start, stop };

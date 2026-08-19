@@ -14,6 +14,9 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   metrics.recordWsRequest({ endpoint: "person-p1", knownEndpoint: false, result: "rejected", durationMs: 20 });
   metrics.recordSheetPoll({ table: "players", result: "recovered", durationMs: 30 });
   metrics.recordSheetPoll({ table: "person-p1", result: "failed", durationMs: 40 });
+  metrics.recordSheetApiAttempt({ method: "values_batch_get", purpose: "poll", kind: "initial" });
+  metrics.recordSheetApiAttempt({ method: "values_batch_get", purpose: "poll", kind: "retry" });
+  metrics.recordSheetApiRequest({ method: "values_batch_get", purpose: "poll", result: "success", durationMs: 50 });
   metrics.recordFrontendEvents("accepted", 2);
 
   const output = metrics.render({
@@ -32,7 +35,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
     sheetPoller: { running: true, isPolling: false },
     court: { running: false, courtActive: { "1": false, "2": false }, consecutiveFailures: 0, pushCount: 0 },
     state: { open: true, ready: true },
-    sheets: { activeWrites: 0, queues: 0, pendingMetadataIntents: 0 },
+    sheets: { activeWrites: 0, queues: 0, pendingMetadataIntents: 0, scheduledRefreshes: 1, readCoordinator: { retryAfterMs: 2500 } },
     peopleNormalization: {
       current: true,
       peopleCount: 42,
@@ -49,6 +52,11 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   assert.match(output, /epiber_http_requests_total\{method="OTHER",result="failed",route="not_found"\} 1/);
   assert.match(output, /epiber_ws_requests_total\{endpoint="unknown",result="rejected"\} 1/);
   assert.match(output, /epiber_sheet_polls_total\{result="failed",table="unknown"\} 1/);
+  assert.match(output, /epiber_sheet_api_attempts_total\{kind="initial",method="values_batch_get",purpose="poll"\} 1/);
+  assert.match(output, /epiber_sheet_api_attempts_total\{kind="retry",method="values_batch_get",purpose="poll"\} 1/);
+  assert.match(output, /epiber_sheet_api_requests_total\{method="values_batch_get",purpose="poll",result="success"\} 1/);
+  assert.match(output, /epiber_sheet_read_cooldown_seconds 2.5/);
+  assert.match(output, /epiber_sheet_refreshes_scheduled 1/);
   assert.match(output, /epiber_http_request_duration_seconds_bucket\{le="\+Inf",method="GET",route="\/api\/session"\} 1/);
   assert.match(output, /epiber_people_normalization_current 1/);
   assert.match(output, /epiber_people_normalization_people 42/);

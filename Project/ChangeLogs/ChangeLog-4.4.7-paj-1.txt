@@ -424,3 +424,94 @@ Commit: 4.4.7-paj-1-4 | Normalisierungsaudit und Quotenfehler erweitert
     Project/server-configs/SERVER-DOKU.txt
     - Normalisierungsdashboard und erlaubte Auditdarstellung in den
       Observability-Sollstand aufnehmen.
+
+[4.4.7-paj-1-5] - 2026-08-19
+Commit: 4.4.7-paj-1-5 | Google-Sheets-Lesezugriffe optimiert
+
+  Changed
+  - [Repository] Paket- und Root-Lockfile-Version fuer die Optimierung der
+    Google-Sheets-Lesezugriffe auf `4.4.7-paj-1-5` gesetzt.
+  - [Software] Alle zu einem Polltick faelligen Tabellenbereiche werden mit
+    einem gemeinsamen `values.batchGet` gelesen. Der erfolgreiche Initialload
+    wird nicht mehr nach fuenf Sekunden vollstaendig wiederholt; fehlgeschlagene
+    Bereiche bleiben fuer den naechsten Basistick faellig.
+  - [Software] Gemeinsamen Sheets-Read-Koordinator fuer Poller und Fachwrites
+    eingefuehrt. Er misst logische Requests und tatsaechliche Initial-/Retry-
+    Versuche, verhindert automatische 429-Retries und blockiert weitere Reads
+    waehrend eines prozessweiten 60-Sekunden-Cooldowns.
+  - [Software] Aktive Tabellenwrites und Polling koordiniert. Ein waehrend eines
+    Writes faelliger Poll wartet bis zum naechsten Basistick; erfolgreiche
+    autoritative Vollreads verschieben die naechste Faelligkeit relativ zu ihrem
+    tatsaechlichen Abschluss.
+  - [Software] Cachefrische in autoritative Vollreads und lokale
+    Write-Projektionen getrennt. Lokale Projektionen aktualisieren bekannte
+    Werte und `lastMutation`, verlaengern aber keine Tabellenfrische und
+    verdecken keinen Pollfehler.
+  - [Software] Sheet-IDs und bestehende `epiberRecord`-Metadaten werden beim
+    ersten Bedarf gesammelt gecacht. Die Personennormalisierung liest die stabile
+    Zielzeile nur einmal im formatierten Modus.
+  - [Software] Erfolgreiche Fachwrites werden unmittelbar lokal projiziert und
+    erhalten einen um eine Sekunde verzoegerten, pro Tabellenserie
+    zusammengefassten autoritativen Abschlussrefresh. Unknown-Write-
+    Bestaetigungen und stabile Zeilenpruefungen bleiben unveraendert.
+  - [Software] Personennormalisierung bleibt nach ausdruecklicher Entscheidung
+    personweise; Teilerfolge, Einzel-Audit und kontrollierte Wiederaufnahme werden
+    nicht durch einen alles-oder-nichts-Gesamtbatch ersetzt.
+  - [Infrastruktur] Uebersichts-Dashboard um Sheets-Read-Cooldown, API-Versuchsrate
+    und Aufschluesselung der Requests beziehungsweise Retries erweitert. Die
+    neuen Prometheuslabels verwenden ausschliesslich feste technische Werte.
+  - [Dokumentation] Batchpolling, Read-Koordination, Frischeprovenienz,
+    Abschlussrefresh, Quota-Cooldown, Metriken und personweise Semantik in
+    Architektur-, Observability- und Serverdokumentation aufgenommen.
+
+  Fixed
+  - [Software] Bereichslokale HTTP-400-Fehler eines Batchpolls werden rekursiv
+    von gesunden Tabellen isoliert; ein globaler Spreadsheet-404 wird nicht
+    durch Batchaufteilung und zusaetzliche Requests vervielfacht.
+  - [Software] Autoritative Sicherheits- und Abschlussreads zaeunen aeltere
+    Pollergebnisse ein, ohne selbst `lastMutation` zu veraendern. Fehlgeschlagene
+    Abschlussrefreshes, echte EntryList-No-ops und vor der Validierung abgelehnte
+    Selbstforderungen erzeugen dadurch keine vorgetaeuschte Mutation und
+    verlieren keinen bereits geplanten Refresh.
+
+  Pruefungen
+  - [Repository] Batchanzahl und Faelligkeiten fuer Initial-, Fast- und
+    Gesamtticks, per-Tabellen-Schemafehler sowie unveraendertes Read-Fencing mit
+    Poller- und DataStore-Tests geprueft.
+  - [Repository] Einen Metadatenscan, einen stabilen Zeilenread je Person und
+    einen gemeinsamen Abschlussrefresh fuer eine Personenserie im
+    Sheet-Service-Test nachgewiesen.
+  - [Repository] 429-Cooldown ohne weiteren API-Aufruf, feste Metriklabels,
+    autoritative Frische und unveraenderte Unknown-/Idempotenzpfade getestet.
+  - [Repository] `npm run build` erfolgreich; statische Pruefungen und alle 177
+    Backendtests bestanden. `npm run test:browser` erfolgreich; beide
+    Browsertests bestanden.
+  - [Repository] Bereichslokale Batchfehler, globale Spreadsheet-404 ohne
+    Requestvervielfachung, Single-flight-Cachefuellung, doppelte Metadaten,
+    fehlgeschlagene Abschlussrefreshes und abgelehnte Writes mit erhaltenem
+    Refreshplan durch zusaetzliche Regressionstests abgesichert.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/ARCHITEKTUR.txt
+    - Gemeinsames Batchpolling faelliger Tabellen, Poll-/Write-Koordination,
+      autoritative Frische gegenueber lokalen Projektionen und den gemeinsamen
+      Sheets-Read-Koordinator mit 60-Sekunden-429-Cooldown dokumentieren.
+    - Gesammelte Sheet-ID- und `epiberRecord`-Metadatencaches, stabile
+      Einzelzeilenreads und zusammengefasste Abschlussrefreshes dokumentieren;
+      die Personennormalisierung bleibt personweise mit Teilerfolg und
+      Einzel-Audit.
+
+    Project/server-configs/observability/README.md
+    - Sheets-API-Requests, tatsaechliche Versuche und Retrygruende mit festen,
+      personenbezugsfreien Labels sowie Cooldown- und Abschlussrefresh-Gauges in
+      den Metrik- und Datenschutzvertrag aufnehmen.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Sheets-Statusfelder, neue Prometheusmetriken und betriebliche Pruefungen
+      fuer Cooldown, Requests, Retries und geplante Abschlussrefreshes
+      dokumentieren.
+
+    Project/server-configs/observability/grafana/dashboards/epiber-overview.json
+    - Uebersichts-Dashboard um Sheets-Read-Cooldown, API-Versuchsrate und die
+      Aufschluesselung logischer Requests beziehungsweise Retries erweitern.

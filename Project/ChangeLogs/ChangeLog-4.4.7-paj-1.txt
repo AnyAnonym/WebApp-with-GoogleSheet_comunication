@@ -604,3 +604,71 @@ Commit: 4.4.7-paj-1-6 | Platz- und Scoreverlauf in Grafana bereitgestellt
       provisionieren.
     - Nur die kontrollierten Court-/Scorefelder formatieren; Namen, Match- und
       Bewerbskennungen nicht zu Labels erheben.
+
+[4.4.7-paj-1-7] - 2026-08-19
+Commit: 4.4.7-paj-1-7 | Mobile Scoreboard-Darstellung verdichtet
+
+  Changed
+  - [Software] Namensfelder werden bei verbleibendem vertikalem Court-Ueberlauf
+    auf mobilen Breiten in einer zweiten strikten Suche gemeinsam bis zur
+    groessten passenden Schrift reduziert. Nur in diesem Notfall entfaellt ihre
+    von den Scorezellen abgeleitete Mindesthoehe; normale Viewports behalten das
+    bisherige Layout und die normale Mindestschrift.
+  - [Software] Die generische Namensgroessensuche unterstuetzt zusaetzlich eine
+    feste Ueberlaufgrenze. Der bestehende Modus toleriert weiterhin unvermeidbare
+    feste Ueberhoehe relativ zu seiner kleinsten regulaeren Schrift.
+  - [Software] Kurze Smartphone-Hochformate bis 700 px Hoehe reduzieren den
+    oberen Court-Innenabstand von 16 auf 4 CSS-Pixel und entfernen die
+    zusaetzliche obere Polsterung sowie normale Zeilenueberhoehe des Platzlabels.
+    Einschliesslich Rahmen verbleiben etwa 5 CSS-Pixel bis zum oberen Courtrand.
+  - [Software] Kurze Hochformate unterscheiden die Scoregroesse je Court: Zwei
+    einzeilige Einzelnamen verwenden 2,2 rem beziehungsweise 35,2 CSS-Pixel;
+    sobald mindestens eine Seite zweizeilige Doppelnamen traegt, verwendet der
+    Court 1,8 rem beziehungsweise 28,8 CSS-Pixel. Der Abstand zwischen Name und
+    Score sowie unter dem Scoreblock sinkt in beiden Varianten von 8 auf 3
+    CSS-Pixel.
+  - [Repository] Scoreboard-Layouttests um 320x568, 375x667 und 390x664 sowie
+    vertikale Courtgrenzen fuer Namen, Scores und synthetische Doppelnamen
+    erweitert. 375x667 und 390x664 behalten fuer regulaere Namen mindestens 20
+    CSS-Pixel; nur 320x568 darf bis zur positiven Notfallschrift verkleinern. Die
+    regulaere Mindestschrift verwendet einen festen Einzelnamen statt des
+    wechselnden Live-Matches; Doppelnamen werden getrennt geprueft.
+  - [Dokumentation] Responsive Notfallskalierung, technisches Minimum und
+    erweiterte Testmatrix in der Scoreboard-Seitendokumentation festgehalten.
+  - [Repository] Paket- und Root-Lockfile-Version auf den Zielcommitstand
+    `4.4.7-paj-1-7` gesetzt.
+
+  Pruefungen
+  - [Repository] `npm run build` erfolgreich; statische Pruefungen und alle 179
+    Backendtests einschliesslich des neuen Sizing-Unit-Tests fuer die feste
+    Ueberlaufgrenze bestanden.
+  - [Repository] Erweiterter Scoreboard-Browsertest fuer alle elf Viewports,
+    kurze Einzel-/Doppelnamen-Notfaelle, Scores und leere Namensfelder
+    erfolgreich. Bei 320x568 liegen feste Einzelnamen je nach Court bei etwa 19,9
+    bis 23,8 CSS-Pixeln und verwenden 35,2 CSS-Pixel grosse Scores; synthetische
+    Doppelnamen liegen bei etwa 15,2 bis 20,1 CSS-Pixeln und verwenden 28,8
+    CSS-Pixel grosse Scores. Beide Scoreabstaende bleiben bei je 3 CSS-Pixeln und
+    der Court-Ueberlauf bei hoechstens 1 CSS-Pixel.
+  - [Repository] `npm run test:browser` erfolgreich; alle drei Browsertests
+    bestanden. Eine echte Viewport-Aenderung von 390x844 auf 320x568 und zurueck
+    weist Verkleinerung, ueberlauffreie Courtgrenzen und Wiederherstellung der
+    groesseren Namensschrift nach.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/scoreboard.txt
+    - Zweistufige mobile Namensskalierung dokumentieren: regulaere gemeinsame
+      Groesse mit scoreabgeleiteter Mindesthoehe und nur bei verbleibendem
+      Court-Ueberlauf eine strikte zweite Suche ohne diese Mindesthoehe.
+    - Technisches Minimum von 1 CSS-Pixel, unveraendertes Verhalten normaler
+      Viewports sowie die erweiterten kurzen Hochformat-, Vertikalgrenzen- und
+      Doppelzeilentests aufnehmen. Die echte Viewport-Verkleinerung und
+      anschliessende Wiederherstellung ebenfalls dokumentieren.
+    - Fuer kurze Hochformate bis 700 px den oberen Court-Innenabstand von 4
+      CSS-Pixeln, den kompakten Platzlabel-Zeilenraum und die getestete Obergrenze
+      von 6 CSS-Pixeln bis zum oberen Courtrand aufnehmen.
+    - Courtbezogene Scoreziffern mit 2,2 rem beziehungsweise 35,2 CSS-Pixeln fuer
+      zwei Einzelnamen und 1,8 rem beziehungsweise 28,8 CSS-Pixeln ab mindestens
+      einer zweizeiligen Doppelpaarung dokumentieren. Die auf je 3 CSS-Pixel
+      reduzierten Abstaende zwischen Name, Score und unterem Folgeinhalt ebenfalls
+      aufnehmen.

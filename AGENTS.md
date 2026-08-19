@@ -35,6 +35,15 @@ moeglichst wenigen Datei- und Suchzugriffen.
    ohne das aktuell benoetigte Kontextfenster zu unterschreiten. Leichtgewichtigere
    Modelle sind fuer regelgetriebene Vorbereitungs- und Abschlussroutinen
    bevorzugt, staerkere Modelle fuer Analyse und Umsetzung.
+10. Jede neue oder geaenderte Funktion ist im selben Auftrag auf vollstaendige
+    Observability zu pruefen. Browserdiagnosen benoetigen einen benannten Eintrag
+    in der serverseitigen Event-Allowlist, einen bekannten Seitentyp und Tests;
+    Backendoperationen benoetigen strukturierte Abschlusslogs, Fachwrites
+    zusaetzlich einen Auditvertrag fuer Start, Erfolg, Ablehnung und unklaren
+    Ausgang. Diagnose- und Auditprojektionen duerfen nur kontrollierte Felder und
+    keine Passwoerter, Tokens, freien Payloads oder unnoetigen Personendaten
+    enthalten. Eine Implementierung ist erst vollstaendig, wenn Logging-, Audit-,
+    Datenschutz- und Fehlerpfade gemeinsam geprueft sind.
 
 ## Projekt
 

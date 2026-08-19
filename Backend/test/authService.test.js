@@ -73,6 +73,21 @@ test("ungueltige E-Mail einer anderen Person blockiert weder Login noch Personen
   repository.close();
 });
 
+test("doppelte kanonische E-Mail bleibt fuer beide Personen als Login gesperrt", async () => {
+  const people = peopleFixture();
+  people[2][3] = "ADA@example.test";
+  dataStore.set("players", people, { source: "test-duplicate-email" });
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  await assert.rejects(
+    auth.login({ email: "ada@example.test", passwordHash: "a".repeat(64), ip: "127.0.0.9" }),
+    { code: "LOGIN_FAILED" },
+  );
+  repository.close();
+});
+
 test("Login-Limiter blockiert wiederholte Fehler", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();

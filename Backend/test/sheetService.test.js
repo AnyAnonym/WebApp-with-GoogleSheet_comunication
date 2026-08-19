@@ -6,6 +6,7 @@ setTestEnvironment();
 const dataStore = require("../dataStore.js");
 const { SheetService } = require("../sheetService.js");
 const { StateRepository } = require("../stateRepository.js");
+const { projectPeopleNormalization } = require("../peopleNormalization.js");
 
 function fakeSheets(initialTables) {
   const tables = structuredClone(initialTables);
@@ -49,7 +50,12 @@ function fakeSheets(initialTables) {
           for (const filter of requestBody.dataFilters || []) {
             for (const entry of metadataForFilter(filter)) {
               if (!tables[entry.title].includes(entry.rowRef)) continue;
-              valueRanges.push({ valueRange: { values: [structuredClone(entry.rowRef)] } });
+              const row = structuredClone(entry.rowRef);
+              if (requestBody.valueRenderOption === "FORMULA" && entry.title === "Personen") {
+                const birthDateIndex = tables.Personen[0].indexOf("GeburtsDatum");
+                if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(row[birthDateIndex] || ""))) row[birthDateIndex] = "32875";
+              }
+              valueRanges.push({ valueRange: { values: [row] } });
             }
           }
           return { data: { valueRanges } };
@@ -185,6 +191,64 @@ function seedStore(tables) {
   dataStore.set("rlPlatzierung", structuredClone(tables.Rangliste), { source: "test" });
   dataStore.set("entryList", structuredClone(tables.EntryList), { source: "test" });
 }
+
+test("Personennormalisierung schreibt konfliktgeschuetzt und laesst Sicherheitsfelder unveraendert", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.tables.Personen[2][10] = "04.03.1985";
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const person = projectPeopleNormalization(fake.tables.Personen).people.find((entry) => entry.id === "p2");
+  const passwordBefore = fake.tables.Personen[2][4];
+  const resetBefore = fake.tables.Personen[2][5];
+
+  const result = await service.normalizePerson(principal, {
+    operationId: "00000000-0000-4000-8000-000000000090",
+    personId: "p2",
+    expectedFingerprint: person.fingerprint,
+    changes: { firstName: "Petra", email: "petra@example.test" },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(fake.tables.Personen[2][1], "Petra");
+  assert.equal(fake.tables.Personen[2][3], "petra@example.test");
+  assert.equal(fake.tables.Personen[2][4], passwordBefore);
+  assert.equal(fake.tables.Personen[2][5], resetBefore);
+  assert.equal(fake.calls.valueUpdates.some((entry) => entry.index === 4 || entry.index === 5), false);
+  assert.equal(dataStore.get("players")[2][1], "Petra");
+});
+
+test("Personennormalisierung lehnt veraltete Fingerprints und doppelte E-Mails vor dem Write ab", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const person = projectPeopleNormalization(fake.tables.Personen).people.find((entry) => entry.id === "p2");
+
+  await assert.rejects(
+    service.normalizePerson(principal, {
+      operationId: "00000000-0000-4000-8000-000000000091",
+      personId: "p2",
+      expectedFingerprint: "0".repeat(64),
+      changes: { firstName: "Petra" },
+    }),
+    (error) => error.code === "PERSON_CONFLICT" && error.status === 409,
+  );
+  await assert.rejects(
+    service.normalizePerson(principal, {
+      operationId: "00000000-0000-4000-8000-000000000092",
+      personId: "p2",
+      expectedFingerprint: person.fingerprint,
+      changes: { email: "ada@example.test" },
+    }),
+    (error) => error.code === "EMAIL_CONFLICT" && error.status === 409,
+  );
+  assert.equal(fake.calls.valueUpdates.length, 0);
+});
 
 test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () => {
   const repository = new StateRepository(":memory:");

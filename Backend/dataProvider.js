@@ -25,6 +25,7 @@ const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules } = require("./matchRules.js");
+const { projectPeopleNormalization } = require("./peopleNormalization.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
@@ -90,6 +91,13 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
     case "monitorRotate":
     case "monitorRevoke":
       return { targetType: "monitor", targetId: params.monitorId, after: { monitorId: params.monitorId } };
+    case "normalizePerson":
+      return {
+        targetType: "person",
+        targetId: params.personId,
+        before: internal?.before || null,
+        after: internal?.after || null,
+      };
     default:
       return { targetType: "", targetId: "", before: null, after: null };
   }
@@ -420,6 +428,13 @@ const endpoints = {
     access: "authenticated",
     handler: () => ({ success: true, values: dependencies.authService.memberDirectoryTable() }),
   },
+  adminPeopleNormalization: {
+    access: ["admin"],
+    handler: () => {
+      requireCurrentTables("players");
+      return { success: true, ...projectPeopleNormalization(dataStore.get("players")) };
+    },
+  },
   myProfile: {
     access: "authenticated",
     handler: (_params, context) => ({ success: true, profile: context.auth.user }),
@@ -433,6 +448,12 @@ const endpoints = {
         params.operationId,
       ),
     }),
+  },
+  normalizePerson: {
+    access: ["admin"],
+    write: true,
+    writeCost: 0.1,
+    handler: (params, context) => dependencies.sheetService.normalizePerson(context.principal, params),
   },
   addMatch: {
     access: "authenticated",
@@ -717,7 +738,8 @@ async function handleRequest(info, message, supportId) {
   if (endpoint.write) {
     const principalKey = `principal:${authContext.principal.type}:${authContext.principal.id}`;
     const ipKey = `ip:${info.ip}`;
-    if (!writeLimiter.take(principalKey) || !writeLimiter.take(ipKey)) {
+    const writeCost = endpoint.writeCost || 1;
+    if (!writeLimiter.take(principalKey, writeCost) || !writeLimiter.take(ipKey, writeCost)) {
       throw new AppError("WRITE_RATE_LIMIT", "Zu viele Schreiboperationen", 429);
     }
   }

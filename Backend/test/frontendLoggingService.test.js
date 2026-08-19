@@ -141,6 +141,57 @@ test("Collector reichert erlaubte Events serverseitig an und nimmt keine freien 
   }), { code: "VALIDATION_ERROR" });
 });
 
+test("Personennormalisierungsfehler werden mit kontrollierten Feldern angenommen", () => {
+  const now = { value: 2500000 };
+  const { logs, service } = fixture(now);
+  service.updateSettings(settings(0));
+
+  const result = service.recordBatch({
+    sourceIp: "203.0.113.8",
+    identity: { id: "p1", name: "Ada Admin", role: "admin" },
+    body: {
+      appVersion: "4.3.0-test",
+      clientSessionId: "00000000-0000-4000-8000-000000000010",
+      pageType: "personenNormalisieren",
+      events: [
+        {
+          event: "people_normalization_write_failed",
+          level: "error",
+          timestamp: "2026-08-19T02:43:10.000Z",
+          code: "PERSON_CONFLICT",
+          supportId: "support-normalization-1",
+          count: 0,
+        },
+        {
+          event: "people_normalization_load_failed",
+          level: "error",
+          timestamp: "2026-08-19T02:43:11.000Z",
+          code: "DATA_NOT_READY",
+        },
+        {
+          event: "people_normalization_auth_failed",
+          level: "error",
+          timestamp: "2026-08-19T02:43:12.000Z",
+          code: "AUTH_REQUIRED",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(result, { success: true, accepted: 3, dropped: 0 });
+  assert.equal(logs[0].fields.pageType, "personenNormalisieren");
+  assert.equal(logs[0].fields.frontendEvent, "people_normalization_write_failed");
+  assert.equal(logs[0].fields.code, "PERSON_CONFLICT");
+  assert.equal(logs[0].fields.supportId, "support-normalization-1");
+  assert.equal(logs[0].fields.count, 0);
+  assert.deepEqual(logs.map((entry) => entry.fields.frontendEvent), [
+    "people_normalization_write_failed",
+    "people_normalization_load_failed",
+    "people_normalization_auth_failed",
+  ]);
+  assert.equal(JSON.stringify(logs[0]).includes("Adresse"), false);
+});
+
 test("Anonyme Events benoetigen die explizite globale Freigabe", () => {
   const now = { value: 3000000 };
   const { logs, service } = fixture(now);

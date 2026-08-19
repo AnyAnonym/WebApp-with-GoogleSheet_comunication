@@ -1,6 +1,6 @@
 {
   "name": "epiber-backend",
-  "version": "4.4.7-paj-1-1",
+  "version": "4.4.7-paj-1-2",
   "description": "ePiber Tennis Dashboard — Backend (WebSocket + Google Sheets)",
   "main": "server.js",
   "scripts": {

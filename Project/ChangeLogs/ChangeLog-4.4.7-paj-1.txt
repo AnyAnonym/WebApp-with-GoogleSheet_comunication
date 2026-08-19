@@ -6,3 +6,253 @@ Commit: 4.4.7-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.4.7-paj-1-1` gesetzt.
+
+[4.4.7-paj-1-2] - 2026-08-19
+Commit: 4.4.7-paj-1-2 | Personennormalisierung und Grafana-Authentifizierung abgesichert
+
+  Added
+  - [Software] Responsive Adminseite `personenNormalisieren.html` fuer die kontrollierte
+    Bereinigung vorhandener Personen angelegt. Die Seite unterscheidet Laden,
+    fehlende Sitzung, fehlende Adminrolle und erfolgreichen Adminzugang, zeigt
+    Gesamtpersonen, betroffene Personen, Probleme und vorgemerkte Feldwerte und
+    bietet Suche sowie Aktiv-, Problem- und Aenderungsfilter.
+  - [Software] Personen werden als aufklappbare Karten mit ID, Name,
+    Problemkennzeichen, Problemcode, Erklaerung, Originalwert und bearbeitbarem
+    Zielwert dargestellt. Sichere Vorschlaege koennen einzeln uebernommen werden;
+    geaenderte Felder und Personen werden sichtbar markiert.
+  - [Software] Bearbeitbar sind ausschliesslich Vorname, Nachname, Geburtsdatum,
+    Geschlecht, Mobiltelefon, E-Mail/Login, Land, PLZ, Ort, Adresse, Aktivstatus
+    und Rolle. Passwort-Hash und Passwort-Reset-Felder werden weder projiziert
+    noch in Fingerprints aufgenommen oder geschrieben.
+  - [Software] Vor jedem Write ist eine Gesamtvorschau mit Person, Feld, Altwert
+    und Zielwert verpflichtend. Bestaetigte Aenderungen werden mit stabilen
+    Operation-IDs personweise sequenziell geschrieben; Fortschritt und
+    Support-Referenzen werden angezeigt, beim ersten Fehler wird gestoppt und
+    der verbleibende Entwurf nach dem Reload erhalten.
+  - [Software] Automatisches Nachladen nach `players`-Invalidierungen und
+    manuelles Neuladen ergaenzt. Ein automatischer Reload erfolgt nur ohne
+    offenen Entwurf und ohne laufenden Write.
+  - [Software] Backendmodul `peopleNormalization.js` mit geschlossener
+    Feldprojektion, Headeraufloesung, SHA-256-Fingerprints, Zielwertpruefung,
+    Problemklassifikation, sicheren Korrekturvorschlaegen und aggregierten
+    Problemzaehlern eingefuehrt.
+  - [Software] Admin-only RPC `adminPeopleNormalization` ergaenzt. Der leere
+    Request liefert nur die freigegebenen Personenfelder, Problemcodes,
+    Vorschlaege, Fingerprints und Summen aus einem aktuellen `players`-Stand.
+  - [Software] Admin-only Write-RPC `normalizePerson` mit UUID-Operation,
+    Personen-ID, 64-stelligem erwarteten Fingerprint und einem geschlossenen,
+    nicht leeren Aenderungsobjekt aus hoechstens zwoelf erlaubten Stringfeldern
+    ergaenzt. Unbekannte Felder und ungueltige Werte werden serverseitig
+    abgewiesen.
+  - [Software] Problemcodes fuer Rand-Leerzeichen, fehlende Pflichtwerte,
+    ungueltige Geburtsdaten, Geschlechter, Telefonnummern, E-Mails, PLZ,
+    Aktivwerte und Rollen sowie fuer doppelte und nicht kanonische E-Mails und
+    Rollen eingefuehrt.
+  - [Software] Adminlink `Datenpflege` fuer Desktop- und Mobilnavigation
+    aufgenommen und bis zur bestaetigten Adminrolle verborgen.
+  - [Software] Seitentyp `personenNormalisieren` und die kontrollierten
+    Browserdiagnosen `people_normalization_auth_failed`,
+    `people_normalization_load_failed` und `people_normalization_write_failed`
+    in die serverseitige Logging-Allowlist aufgenommen. Die Diagnoseprojektion
+    erlaubt Fehlercode, Support-ID und Fortschrittszaehler, aber keine
+    Personenwerte, freien Meldungen oder Payloads.
+  - [Software] Unit-, Vertrags-, Authentifizierungs-, Diagnose-,
+    Sheet-Service-, Serverintegrations- und Browsertests fuer Projektion,
+    Validierung, Berechtigungen, Konfliktschutz, Datenschutz und responsive
+    Bedienung angelegt beziehungsweise erweitert.
+  - [Dokumentation] Verifizierte Korrespondenz- und Regelmatrix fuer den
+    vorhandenen PAJ-Personenbestand und den exemplarischen ClubDesk-Export als
+    nicht-kanonische Arbeitsgrundlage in
+    `Project/2do/MITGLIEDERABGLEICH-DATENMATRIX.md` angelegt.
+
+  Changed
+  - [Software] Personenrollen um `player A` und `player B` erweitert. Beide
+    Klassifikationen besitzen technisch dieselbe Berechtigungsstufe wie
+    `player`; `operator` und `admin` bleiben unveraendert hoeher berechtigt.
+  - [Software] Personenparser bevorzugen den bestehenden Sheetheader
+    `GeschlechtID` und verwenden `Geschlecht` nur noch als Legacy-Fallback.
+  - [Software] Doppelte kanonische Personen-E-Mails blockieren nicht mehr den
+    vollstaendigen Tabellenload und werden als Datenqualitaetsprobleme
+    protokolliert. Login ist nur bei exakt einem kanonischen Treffer moeglich;
+    alle Personen mit derselben kanonischen E-Mail bleiben daher bis zur
+    Reparatur gesperrt. Writes erzwingen weiterhin Eindeutigkeit und antworten
+    bei Konflikten mit `EMAIL_CONFLICT`.
+  - [Software] Die neue Normalisierungspruefung verlangt Telefonnummern im
+    Format `00<Laendercode> <Netzvorwahl> <Rest>` mit Ziffern und Leerzeichen.
+    Die beiden ersten Trenner sind verpflichtend; weitere Leerzeichen im
+    Teilnehmerteil sind erlaubt. Diese Regel wurde nicht pauschal auf andere
+    bestehende Writepfade ausgeweitet.
+  - [Software] Normalisierungswerte werden serverseitig kanonisiert: Nachname ist
+    Pflicht, `TT.MM.JJJJ` muss ein reales Datum sein, Geschlecht ist leer oder
+    `1`, `2`, `3`, PLZ besteht leer oder aus vier Ziffern, Aktiv ist leer oder
+    `1`, und Rollen werden auf die fuenf erlaubten Werte abgebildet. E-Mails
+    werden getrimmt, validiert und kanonisiert.
+  - [Software] `normalizePerson` liest vor jedem Write die aktuelle Volltabelle,
+    loest die Zeile ueber Personen-ID und Google Developer Metadata stabil auf,
+    liest die Metadatenzeile erneut und vergleicht den Fingerprint. Fehlende,
+    verschobene oder parallel geaenderte Personen werden mit
+    `PERSON_NOT_FOUND`, `WRITE_CONFLICT` oder `PERSON_CONFLICT` abgewiesen.
+  - [Software] Die vollstaendige Kandidatentabelle und die E-Mail-Eindeutigkeit
+    werden vor dem Schreiben validiert. Geschrieben werden nur explizit
+    geaenderte Spalten; der Metadatenwrite muss genau eine Zeile treffen.
+  - [Software] Bereits vorhandene Zielwerte gelten als erfolgreicher
+    wiederholter No-op. Nach unklarem Google-Ergebnis wird der Zielzustand
+    bestaetigt; bleibt er unklar, liefert die Operation
+    `WRITE_OUTCOME_UNKNOWN`. Persistente Idempotenz verhindert blinde
+    Wiederholungswrites und erkennt abweichende Payloads.
+  - [Software] Die eigene aktive Adminrolle kann weder entfernt noch deaktiviert
+    werden; mindestens ein aktiver Admin muss erhalten bleiben. Aenderungen an
+    E-Mail, Aktivstatus oder Rolle widerrufen alle Sitzungen der betroffenen
+    Person.
+  - [Software] Personenwrites werden sowohl ueber die Operationsverarbeitung als
+    auch ueber die `players`-Writequeue serialisiert. Nach Erfolg oder
+    bestaetigter Wiederholung wird der Cache frisch geladen oder kontrolliert
+    fortgeschrieben und die normale `players`-Invalidierung ausgeloest.
+  - [Software] Der generische Write-Limiter unterstuetzt endpointbezogene Kosten;
+    `normalizePerson` verwendet wegen der kontrollierten personweisen
+    Stapelverarbeitung Kosten von `0.1` statt des Standardwerts `1`.
+  - [Software] `adminPeopleNormalization` im Frontend als Read-RPC klassifiziert;
+    `normalizePerson` bleibt ein nicht automatisch wiederholter Write.
+  - [Software] Der Write nutzt die bestehende strukturierte
+    `ws_request_completed`-Beobachtbarkeit und den bestehenden Auditablauf fuer
+    Start, Erfolg, Ablehnung und unklaren Ausgang. Auditdaten begrenzen sich auf
+    Zieltyp `person`, Personen-ID und die kontrollierten Vorher-/Nachherwerte der
+    tatsaechlich geaenderten Felder.
+  - [Dokumentation] `Project/2do/MITGLIEDERABGLEICH.md` auf `CD-ID`, den
+    fortbestehenden Header `GeschlechtID`, Geschlecht `3` fuer divers, `player`
+    als Zwischenzustand und die berechtigungsgleichen Zielrollen `player A` und
+    `player B` abgestimmt. `A-Mitglieder` und `B-Mitglieder` sind als spaetere
+    ClubDesk-Gruppenzuordnung festgehalten.
+  - [Dokumentation] Telefonvergleiche fuer den spaeteren Import in reine
+    Formatabweichung, verschiedene Ziffernfolge und unklaren Vergleich getrennt.
+    Externer ClubDesk-Status steuert `Aktiv` nicht direkt; CSV-Auswahl, Import,
+    `CD-ID`-Writes, Personenneuanlage und exportgesteuerte Deaktivierung bleiben
+    ausserhalb dieser ersten Phase.
+  - [Dokumentation] Projektweite Arbeitsregel ergaenzt, nach der neue oder
+    geaenderte Funktionen Browserdiagnosen, Backendabschlusslogs, Write-Audits,
+    kontrollierte Datenschutzprojektionen und Fehlerpfade gemeinsam pruefen
+    muessen.
+  - [Repository] Paket- und Root-Lockfile-Version auf den Zielcommitstand
+    `4.4.7-paj-1-2` gesetzt; Abhaengigkeitsversionen wurden dabei nicht geaendert.
+
+  Fixed
+  - [Software] Fingerprintvergleich der Metadatenzeile auf `FORMATTED_VALUE`
+    ausgerichtet, damit formatierte Google-Datumszellen denselben Wert wie die
+    Adminprojektion liefern und keinen falschen `PERSON_CONFLICT` ausloesen.
+  - [Software] Zugangskarte der Normalisierungsseite nach erfolgreicher
+    Adminpruefung trotz ihrer Grid-Darstellung verlaesslich ausgeblendet.
+  - [Infrastruktur] Grafana-Forward-Auth verwirft mit `uri /auth?` den
+    Querystring des urspruenglichen Grafana-Requests vor dem Brokeraufruf.
+    Querybehaftete Grafana-APIs erreichen den strikt auf `/auth` begrenzten
+    Broker damit nicht mehr als `/auth?<query>` und erhalten nicht mehr dessen
+    17 Byte grosse `404 {"success":false}`-Antwort.
+  - [Infrastruktur] Dauerhaften Ladekreis des Grafana-13.1.3-Getting-Started-
+    Panels ursachenseitig behoben. Das Panel wartet ohne Fehlerbehandlung auf
+    Dashboard-Suche und `/api/plugins`; deren Querystrings wurden zuvor durch
+    Caddys Pfad-Rewrite erhalten und vom Auth-Broker abgewiesen. Der separate
+    `404` fuer einen noch nicht angelegten User-Storage-Datensatz ist vorgesehen
+    und wird von Grafana als leerer Zustand behandelt.
+
+  Pruefungen
+  - [Repository] `npm run build` erfolgreich: statische Pruefungen und alle 163
+    Backendtests bestanden.
+  - [Repository] `npm run test:browser` erfolgreich: beide Browsertests fuer die
+    responsive Personennormalisierung und das bestehende Scoreboard bestanden.
+  - [Repository] `caddy adapt` mit Caddy 2.11.4 erfolgreich; die adaptierte
+    Forward-Auth-Konfiguration enthaelt explizit `"uri": "/auth?"`.
+  - [Repository] Vollstaendiges `caddy validate` konnte als Benutzer `paj` nicht
+    abgeschlossen werden, weil Caddy beim Provisionieren den geschuetzten
+    Access-Logpfad `/var/log/caddy/epiber-live-access.json` oeffnen will. Die
+    Konfigurationsadaption selbst war fehlerfrei.
+
+  Betrieb, Migration und bekannte Einschraenkungen
+  - [Infrastruktur] Die versionierte Caddy-Vorlage ist korrigiert; die installierte
+    Caddy-Konfiguration wurde mangels Rootrechten nicht ersetzt oder neu geladen.
+    Bis zum privilegierten Rollout kann die laufende Grafana-Instanz
+    querybehaftete API-Aufrufe weiterhin am Auth-Broker verlieren.
+  - [Infrastruktur] Nach dem Rollout sind ein privilegiertes `caddy validate`, ein
+    Caddy-Reload sowie ein authentifizierter Aufruf von Grafana zu pruefen.
+    `/grafana/api/plugins?embedded=0&core=0` und die Dashboard-Suche duerfen dann
+    keinen Broker-404 mehr liefern; das Getting-Started-Panel muss den
+    Ladezustand verlassen. Die Caddy-/Loki-Access-Logs duerfen fuer diese APIs
+    keine 17-Byte-404-Antworten mehr zeigen.
+  - [Software] Die Personennormalisierung ist Phase 1 und weder ausgerollt noch
+    fachlich abgenommen. Sie importiert keine CSV-Datei, legt keine Personen an,
+    schreibt keine `CD-ID`, deaktiviert niemanden anhand eines Exports und nimmt
+    keine automatische A-/B-Mitgliederzuordnung vor.
+  - [Datenbank] Es ist keine Sheetheader- oder Datenmigration erforderlich.
+    `CD-ID` und `GeschlechtID` bleiben vorhandene Spalten; bestehende
+    Passwort-/Resetwerte bleiben unveraendert.
+  - [Software] Die neuen Tests decken Projektion, Vertrag, Berechtigung,
+    Fingerprintkonflikt, doppelte E-Mail, Datenschutz und Browservorschau ab.
+    Fuer Selbst-/Letzter-Admin-Schutz, Sitzungswiderruf, unklaren Writeausgang,
+    Cache-Fallback und personenspezifische Auditphasen bestehen noch keine neuen
+    isolierten Regressionstests; diese Pfade bleiben vor der Main-Integration
+    gezielt nachzupruefen.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/FACHKONZEPT.txt
+    - Zweck und Adminzielgruppe der manuellen Personennormalisierung als erste
+      Phase vor einem ClubDesk-Import aufnehmen.
+    - `player`, `player A` und `player B` als berechtigungsgleiche fachliche
+      Klassifikationen sowie die Auswirkungen von Aktivstatus, Rolle und
+      E-Mail/Login auf Anmeldung und Sitzungen beschreiben.
+    - CSV-Import, Neuanlage, `CD-ID`-Zuordnung und exportgesteuerte Deaktivierung
+      ausdruecklich von Phase 1 abgrenzen.
+
+    Project/software/SOFTWARE-DOKU.txt
+    - `personenNormalisieren.html` als responsive Adminseite fuer Suche,
+      Problemanzeige, Entwurf, Gesamtvorschau und personweise Korrektur aufnehmen
+      und auf die neue Seitendokumentation verweisen.
+
+    Project/software/seiten/personenNormalisieren.txt
+    - Neue Seitendokumentation mit Zugangszustaenden, Summen, Filtern,
+      Personenkarten, allen zwoelf Feldern, Problemcodes, Vorschlaegen,
+      Pflichtvorschau, sequenzieller Writefolge, Fortschritt, Fehlerabbruch,
+      Draft-Erhalt, Reload-/Invalidierungsregeln und responsivem Verhalten
+      anlegen.
+    - Erlaubte Rollen-, Geschlechts-, Aktiv-, Datums-, PLZ-, Telefon- und
+      E-Mailwerte sowie Datenschutzgrenzen der Projektion exakt auffuehren.
+
+    Project/software/ENDPOINTS.txt
+    - `adminPeopleNormalization` mit leerem Request, Adminberechtigung,
+      Projektionsantwort, Problemen, Vorschlaegen, Fingerprints und Summen
+      dokumentieren.
+    - `normalizePerson` mit Operation-ID, Personen-ID, erwartetem Fingerprint,
+      geschlossenem Aenderungsobjekt, Writekosten, Idempotenz, Wiederholung,
+      Auditprojektion und Fehlern `PERSON_NOT_FOUND`, `PERSON_CONFLICT`,
+      `WRITE_CONFLICT`, `EMAIL_CONFLICT`, `ADMIN_SELF_PROTECTION`,
+      `LAST_ADMIN_PROTECTION`, `SHEET_SCHEMA` und `WRITE_OUTCOME_UNKNOWN`
+      dokumentieren.
+
+    Project/software/DATENBANK.txt
+    - Vorhandene Spalten `CD-ID` und `GeschlechtID`, Geschlechtswerte `1`, `2`,
+      `3`, Rollenwerte `player`, `player A`, `player B`, `operator`, `admin` und
+      die Berechtigungsgleichheit der drei Playerrollen festhalten.
+    - Kanonische Formate fuer Datum, Telefon, PLZ, Aktivwert und E-Mail sowie das
+      Verhalten bei doppelten E-Mails zwischen lesbarem Reparaturstand,
+      gesperrtem Login und write-seitigem Eindeutigkeitszwang beschreiben.
+    - Passwort- und Resetspalten als von Projektion, Fingerprint und
+      Normalisierungswrite ausgeschlossene Sicherheitsfelder kennzeichnen.
+
+    Project/software/ARCHITEKTUR.txt
+    - Datenfluss von Adminprojektion ueber Feldfingerprint, aktuelle Volltabelle,
+      Personen-ID, Developer Metadata, Kandidatentabellenpruefung und partiellen
+      Metadatenwrite bis Cacheinvalidierung beschreiben.
+    - Operationsidempotenz, `players`-Queue, Wiederholungs-No-op,
+      Unsicherheitsbestaetigung, Adminschutz und Sitzungswiderruf dokumentieren.
+    - Strukturierte Abschlusslogs, Auditphasen und kontrollierte Frontenddiagnosen
+      der Personennormalisierung mit ihren Datenschutzgrenzen aufnehmen.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Im Grafana-Forward-Auth-Ablauf festhalten, dass Caddy den urspruenglichen
+      Querystring vor dem internen `/auth`-Request explizit verwirft, waehrend
+      Grafanas eigener Request unveraendert zum Unix-Socket weiterlaeuft.
+    - Rolloutpruefung fuer querybehaftete Grafana-APIs, Getting-Started-Panel und
+      fehlende 17-Byte-Broker-404-Antworten ergaenzen.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Den installierten Sollvertrag ergaenzen: Der Grafana-Auth-Broker erhaelt
+      ausschliesslich den queryfreien Pfad `/auth`; Grafana-API-Querystrings sind
+      keine Broker-Routenbestandteile.

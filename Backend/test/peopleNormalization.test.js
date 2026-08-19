@@ -1,0 +1,57 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { setTestEnvironment } = require("./helpers.js");
+
+setTestEnvironment();
+const {
+  canonicalPhone,
+  projectPeopleNormalization,
+  validateChanges,
+} = require("../peopleNormalization.js");
+
+test("Normalisierungsprojektion zeigt nur freigegebene Werte und konkrete Probleme", () => {
+  const table = [
+    ["ID", "Vorname", "Nachname", "GeburtsDatum", "GeschlechtID", "TelefonMobil", "E-Mail", "Land", "PLZ", "Ort", "Adresse", "Aktiv", "Role", "passwdHash", "kennwortVergessen"],
+    ["p1", " Ada ", "Admin", "02.01.1990", "2", "0043 664 123 45 67", "ADA@EXAMPLE.TEST", "Österreich", "4060", "Piberbach ", "Dorf 1", "1", "Admin", "secret", "x"],
+    ["p2", "Pat", "Player", "19900102", "4", "unbekannt", "invalid", "", "A-4060", "Ort", "", "0", "", "secret-2", ""],
+  ];
+
+  const result = projectPeopleNormalization(table);
+  assert.equal(result.people.length, 2);
+  assert.equal(Object.hasOwn(result.people[0].values, "passwdHash"), false);
+  assert.equal(Object.hasOwn(result.people[0].values, "kennwortVergessen"), false);
+  assert.deepEqual(
+    result.people[0].issues.map((entry) => [entry.code, entry.proposedValue]),
+    [
+      ["EDGE_WHITESPACE", "Ada"],
+      ["EDGE_WHITESPACE", "Piberbach"],
+      ["EMAIL_NONCANONICAL", "ada@example.test"],
+      ["ROLE_NONCANONICAL", "admin"],
+    ],
+  );
+  assert.deepEqual(result.people[1].issues.map((entry) => entry.code), [
+    "BIRTH_DATE_INVALID",
+    "GENDER_INVALID",
+    "PHONE_FORMAT_INVALID",
+    "EMAIL_INVALID",
+    "POSTAL_CODE_INVALID",
+    "ACTIVE_NONCANONICAL",
+    "ROLE_INVALID",
+  ]);
+  assert.match(result.people[0].fingerprint, /^[0-9a-f]{64}$/);
+});
+
+test("Telefon- und Zielwertnormalisierung folgen dem Sheetformat", () => {
+  assert.equal(canonicalPhone("0043 664 123 45 67"), "0043 664 123 45 67");
+  assert.equal(canonicalPhone("0043 664 1234567"), "0043 664 1234567");
+  assert.equal(canonicalPhone("0049 151 123 45 67"), "0049 151 123 45 67");
+  assert.equal(canonicalPhone("+43 664 1234567"), null);
+  assert.equal(canonicalPhone("0043 664/1234567"), null);
+  assert.equal(canonicalPhone("0664 1234567"), null);
+  assert.equal(canonicalPhone("123"), null);
+  assert.deepEqual(validateChanges({ phone: "0043 664 123 45 67", role: "PLAYER B" }), {
+    phone: "0043 664 123 45 67",
+    role: "player B",
+  });
+  assert.throws(() => validateChanges({ phone: "+43 664 1234567" }), { code: "VALIDATION_ERROR" });
+});

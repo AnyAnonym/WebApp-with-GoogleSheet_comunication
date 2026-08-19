@@ -597,7 +597,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminPeopleNormalization", "normalizePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -615,6 +615,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
 
   assert.equal((await adminClient.request("myProfile")).data.profile.email, "ada@example.test");
+  const normalization = await adminClient.request("adminPeopleNormalization");
+  assert.equal(normalization.data.success, true);
+  assert.equal(normalization.data.people.length >= 2, true);
+  assert.equal(Object.hasOwn(normalization.data.people[0].values, "storedPasswordHash"), false);
+  assert.equal(Object.hasOwn(normalization.data.people[0].values, "passwordSetupAllowed"), false);
   assert.equal((await adminClient.request("navigator", { profil: "1" })).data.items[0].action.path, "/scoreboard.html");
   adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitors"] }));
   const monitorSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "monitors");

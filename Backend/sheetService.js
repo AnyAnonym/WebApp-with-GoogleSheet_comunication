@@ -4,8 +4,15 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const { AppError } = require("./errors.js");
 const { analyzeMatchRules } = require("./matchRules.js");
+const {
+  fieldIndexes,
+  personFingerprint,
+  projectPeopleNormalization,
+  rawPersonValues,
+  validateChanges,
+} = require("./peopleNormalization.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
-const { validateTableValues } = require("./tableSchemas.js");
+const { assertUniquePlayerEmails, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
@@ -349,13 +356,13 @@ class SheetService {
     this.repository.setState(intentKey, { status: "deleted", at: this.now() }, intent.revision);
   }
 
-  async readMetadataRow(sheets, metadataId) {
+  async readMetadataRow(sheets, metadataId, valueRenderOption = "FORMULA") {
     const response = await sheets.spreadsheets.values.batchGetByDataFilter({
       spreadsheetId: SHEET_ID,
       requestBody: {
         dataFilters: [{ developerMetadataLookup: { metadataId } }],
         majorDimension: "ROWS",
-        valueRenderOption: "FORMULA",
+        valueRenderOption,
       },
     }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
     const rows = (response.data.valueRanges || []).flatMap((entry) => entry.valueRange?.values || []);
@@ -417,6 +424,131 @@ class SheetService {
         throw error;
       }
     });
+  }
+
+  async normalizePerson(principal, params) {
+    const changes = validateChanges(params.changes);
+    const payload = {
+      personId: params.personId,
+      expectedFingerprint: params.expectedFingerprint,
+      changes,
+    };
+    return this.runIdempotent(principal, "normalizePerson", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("players", async () => {
+      const values = await this.readTable("players");
+      let stable;
+      try {
+        stable = await this.resolveStableRow("players", params.personId, values);
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+        throw error;
+      }
+      const { header, metadata, sheets } = stable;
+      const idIndex = headerIndex(header, "id");
+      const row = await this.readMetadataRow(sheets, metadata.metadataId, "FORMATTED_VALUE");
+      if (!row || String(row[idIndex] || "").trim() !== params.personId) {
+        throw new AppError("WRITE_CONFLICT", "Person wurde waehrend der Aktualisierung verschoben", 409);
+      }
+      const indexes = fieldIndexes(header);
+      const beforeValues = rawPersonValues(header, row);
+      const currentFingerprint = personFingerprint(beforeValues);
+      const targetsMatch = Object.entries(changes).every(([field, value]) => indexes[field] >= 0 && String(row[indexes[field]] ?? "") === value);
+
+      if (recoveryOnly) {
+        if (!targetsMatch) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist weiterhin unklar", 503, { personId: params.personId });
+        }
+        const refreshed = await this.refreshCache("players", (cached) => cached);
+        if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+        const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
+        return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "", recovered: true }, {
+          before: null,
+          after: changes,
+        });
+      }
+
+      if (currentFingerprint !== params.expectedFingerprint) {
+        throw new AppError("PERSON_CONFLICT", "Personendaten wurden zwischenzeitlich geaendert", 409, {
+          personId: params.personId,
+          currentFingerprint,
+        });
+      }
+      for (const field of Object.keys(changes)) {
+        if (indexes[field] < 0) throw new AppError("SHEET_SCHEMA", `Personen-Spalte fuer ${field} fehlt`, 503);
+      }
+      if (targetsMatch) {
+        return withAudit({ success: true, personId: params.personId, fingerprint: currentFingerprint, repeated: true }, {
+          before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
+          after: changes,
+        });
+      }
+
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[idIndex] || "").trim() === params.personId);
+      if (!candidateRow) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+      for (const [field, value] of Object.entries(changes)) candidateRow[indexes[field]] = value;
+
+      const roleIndex = headerIndex(header, "role");
+      const activeIndex = headerIndex(header, "aktiv");
+      const currentRole = String(row[roleIndex] || "").trim().toLowerCase();
+      const targetRole = String(candidateRow[roleIndex] || "").trim().toLowerCase();
+      const targetActive = String(candidateRow[activeIndex] || "").trim();
+      if (params.personId === principal.id && currentRole === "admin" && (targetRole !== "admin" || targetActive !== "1")) {
+        throw new AppError("ADMIN_SELF_PROTECTION", "Die eigene aktive Adminrolle darf nicht entfernt werden", 409);
+      }
+      const activeAdminCount = candidate.slice(1).filter((entry) => (
+        String(entry[roleIndex] || "").trim().toLowerCase() === "admin"
+        && String(entry[activeIndex] || "").trim() === "1"
+      )).length;
+      if (!activeAdminCount) throw new AppError("LAST_ADMIN_PROTECTION", "Mindestens ein aktiver Admin muss erhalten bleiben", 409);
+
+      try {
+        validateTableValues("players", candidate);
+        assertUniquePlayerEmails(candidate);
+      } catch (error) {
+        throw error;
+      }
+
+      const maxIndex = Math.max(...Object.keys(changes).map((field) => indexes[field]));
+      const updates = Array(maxIndex + 1).fill(null);
+      for (const [field, value] of Object.entries(changes)) updates[indexes[field]] = value;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{
+              dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } },
+              majorDimension: "ROWS",
+              values: [updates],
+            }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        try {
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId);
+          const confirmed = confirmationRow && Object.entries(changes).every(([field, value]) => String(confirmationRow[indexes[field]] ?? "") === value);
+          if (!confirmed) throw error;
+        } catch {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist unklar", 503, { personId: params.personId });
+        }
+      }
+
+      const refreshed = await this.refreshCache("players", (cached) => {
+        const cachedHeader = headerOf(cached);
+        const cachedIdIndex = headerIndex(cachedHeader, "id");
+        const cachedIndexes = fieldIndexes(cachedHeader);
+        const cachedRow = cached.slice(1).find((entry) => String(entry[cachedIdIndex] || "").trim() === params.personId);
+        if (cachedRow) for (const [field, value] of Object.entries(changes)) cachedRow[cachedIndexes[field]] = value;
+        return cached;
+      });
+      if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+      const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
+      return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "" }, {
+        before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
+        after: changes,
+      });
+    }));
   }
 
   async setPasswordHash(personId, storedHash, { expectedHash, requirePasswordSetupAllowed = false } = {}) {

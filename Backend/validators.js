@@ -70,6 +70,7 @@ function passwordHashValue(value, name = "passwordHash") {
 
 function roleValue(value) {
   const role = String(value || "player").trim().toLowerCase();
+  if (["player a", "player b"].includes(role)) return "player";
   if (!["player", "operator", "admin"].includes(role)) return "player";
   return role;
 }

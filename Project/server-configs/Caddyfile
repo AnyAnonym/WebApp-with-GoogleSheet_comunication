@@ -51,7 +51,7 @@ epiber.at {
 	redir /grafana /grafana/ 308
 	handle /grafana/* {
 		forward_auth 127.0.0.1:8085 {
-			uri /auth
+			uri /auth?
 			copy_headers X-WEBAUTH-USER X-WEBAUTH-ROLE
 		}
 		reverse_proxy unix//run/epiber-observability/grafana.sock

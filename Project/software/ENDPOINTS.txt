@@ -545,6 +545,42 @@ OPERATOR ODER ADMIN:
       direction `up|down`; adressierter, geordneter, ablaufender Command.
 
 ADMIN:
+  `adminPeopleNormalization {}`
+      Liefert die geschlossene Projektion der zwoelf erlaubten Personenfelder,
+      Probleme, sichere Vorschlaege, Fingerprints und Summen aus einem aktuellen
+      Personenbestand; Passwort- und Resetfelder sind ausgeschlossen.
+      Antwort:
+      `{ success, people:[{ id, values:{ firstName, lastName, birthDate, gender,
+      phone, email, country, postalCode, city, address, active, role },
+      issues:[{ field, code, message, proposedValue? }], fingerprint }],
+      issueCount, affectedCount }`. `fingerprint` ist ein 64-stelliger SHA-256-
+      Vergleichswert ueber genau die zwoelf projizierten Felder.
+
+  `normalizePerson { operationId, personId, expectedFingerprint, changes }`
+      `changes` enthaelt ein bis zwoelf erlaubte Stringfelder. Der Fingerprint
+      schuetzt gegen zwischenzeitliche Aenderungen; der Write ist idempotent,
+      verwendet eine stabile Personenzeile und prueft Adminschutz, Tabellenwerte
+      und E-Mail-Konflikte. Bestehende Dublettengruppen duerfen personweise
+      verkleinert, aber weder neu erzeugt noch vergroessert werden. Der Auditabschluss speichert den resultierenden
+      Zielnamen. Im Journal erscheinen fuer Aktiv und Rolle kontrollierte
+      Alt-/Neuwerte, fuer alle anderen Felder nur deren Namen. Erreicht ein
+      erforderlicher Google-Sheets-Read vor dem Write die externe Minutenquote,
+      liefert der Endpoint `SHEETS_RATE_LIMITED` mit der Aufforderung, etwa eine
+      Minute zu warten, sowie `details.retryAfterMs: 60000`. Es wird dabei kein
+      Write begonnen und kein Operationsresultat gespeichert; ein erneuter
+      kontrollierter Versuch bleibt nach Ablauf der Wartezeit moeglich.
+      Der Endpoint kostet im gemeinsamen WS-Write-Limiter `0.1` statt des
+      Standardwerts `1`, damit die bewusst personweise Vorschaufolge moeglich
+      bleibt. Erfolgsantwort: `{ success:true, personId, fingerprint,
+      repeated?:true, recovered?:true }`. Bereits vorhandene Zielwerte sind ein
+      erfolgreicher No-op; eine bekannte Operation-ID liefert ihr Resultat ohne
+      neuen Sheetwrite. Der Browser sendet Writes bei Timeout oder
+      Transportverlust nicht automatisch erneut.
+      Relevante Fehler: `VALIDATION_ERROR`, `PERSON_NOT_FOUND`,
+      `PERSON_CONFLICT`, `WRITE_CONFLICT`, `EMAIL_CONFLICT`,
+      `ADMIN_SELF_PROTECTION`, `LAST_ADMIN_PROTECTION`, `SHEET_SCHEMA`,
+      `SHEETS_RATE_LIMITED` und `WRITE_OUTCOME_UNKNOWN`.
+
   `monitorProvision { operationId, label }`
       Erzeugt Monitor-ID und einmalig sichtbaren Enrollmenttoken. Bei
       idempotenter Wiederholung ist der Token nicht erneut verfuegbar.
@@ -627,8 +663,10 @@ SQLite-Fachhistorien:
     Kann der Auditabschluss nach Rueckkehr der Mutation nicht sicher persistiert
     werden, erhaelt der Client `WRITE_OUTCOME_UNKNOWN` statt eines falschen
     Fehlschlag- oder Erfolgsnachweises.
-    Namen, Login-E-Mail und Quell-IP sind personenbezogene Auditfelder in SQLite;
-    sie erscheinen weder in `/status` noch vollstaendig im Journalspiegel.
+    Akteur- und Zielnamen, Login-E-Mail und Quell-IP sind personenbezogene
+    Auditfelder in SQLite; sie erscheinen weder in `/status` noch unkontrolliert
+    im Journalspiegel. Der Zielname einer Personennormalisierung darf dort
+    erscheinen; Kontakt- und sonstige Personenwerte bleiben ausgeschlossen.
     Eine Event-ID darf nur dieselbe Aktion/Request-/Operation-Korrelation von
     `started` auf einen terminalen Zustand aktualisieren; Wiederverwendung ergibt
     `AUDIT_LOG_EVENT_CONFLICT`.

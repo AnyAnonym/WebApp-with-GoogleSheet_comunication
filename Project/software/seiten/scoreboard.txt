@@ -97,7 +97,13 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   2.6rem), Scores sowie Metadaten und `100dvh` gegen Browserleisten. Fuer jeden
   Court wird aus realer Glyphenbreite aller Namenszeilen und verfuegbarer Hoehe die
   groesstmoegliche gemeinsame Schriftgroesse berechnet; Heim/Gast erhalten gleiche
-  Feldhoehe. Dieselbe adaptive Obergrenze gilt fuer Einzel und Doppel.
+  Feldhoehe. Dieselbe adaptive Obergrenze gilt fuer Einzel und Doppel. Bleibt bei
+  hoechstens 1000 px Breite trotz der normalen Skalierung ein vertikaler
+  Court-Ueberlauf, startet eine zweite strikte Notfallsuche: Die von den
+  Scorezellen abgeleitete Mindesthoehe der beiden Namensfelder entfaellt und ihre
+  gemeinsame Schrift wird bis zur groessten ueberlauffreien Groesse, notfalls bis
+  zum technischen Minimum von 1 CSS-Pixel, reduziert. Normale Viewports behalten
+  Mindesthoehe und bisherige Lesbarkeitsgrenzen.
   Ab 1001 px wird Satz 3 fuer Heim und Gast gemeinsam erst bei einem mindestens
   zweistelligen Wert verbreitert; die Punktespalte zeigt Werte wie 40 vollstaendig.
   Mobil bleiben die Scorebreiten unveraendert und ein Safe-Area-faehiger,
@@ -108,11 +114,31 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   beiden Schaltflaechen ausgeblendet. Bei hoechstens 1000 px Breite und 500 px
   Hoehe ordnet das Smartphone-Querformat Namen und Scores kompakt nebeneinander an
   und reduziert Schriften sowie Abstaende, damit beide Courts ohne Ueberlauf in
-  `100dvh` bleiben.
+  `100dvh` bleiben. Im kurzen Smartphone-Hochformat bis 700 px Hoehe sinkt der
+  obere Court-Innenabstand auf 4 CSS-Pixel; das Platzlabel verwendet dort keine
+  zusaetzliche obere Polsterung und einfache Zeilenhoehe. Dadurch bleiben
+  einschliesslich Court-Rahmen etwa 5 CSS-Pixel bis zum oberen Rand und mehr Hoehe
+  fuer Namen und Scores. Bei zwei einzeiligen Einzelnamen verwenden Satz- und
+  Punktziffern dort 2,2 rem beziehungsweise 35,2 CSS-Pixel. Sobald mindestens eine
+  Court-Seite als zweizeilige Doppelpaarung dargestellt wird, erhaelt der gesamte
+  Court die kompaktere Scoregroesse 1,8 rem beziehungsweise 28,8 CSS-Pixel. Der
+  Abstand vom Namensfeld zu den Ziffern und der untere Abstand der Ziffern sinken
+  in beiden Varianten jeweils von 8 auf 3 CSS-Pixel.
 
 -- Browser-Layouttest --
   `Backend/test/scoreboardLayout.browser.js` steuert ueber das als Dev-Abhaengigkeit
   installierte `playwright-core` 1.62.1 das systemweite Chromium headless gegen die
   PAJ-Scoreboard-Origin. `npm run test:browser` prueft Namensbreite, Mindestschrift,
-  Court-Ueberlauf und die Mindesthoehe leerer Namensfelder bei 360x800, 390x844,
-  844x390, 1000x768, 1001x768, 1280x720, 1366x768 und 1920x1080 CSS-Pixeln.
+  Court-Ueberlauf, vertikale Grenzen von Namen und Scores, Doppelzeilen sowie die
+  Mindesthoehe leerer Namensfelder bei 320x568, 375x667, 390x664, 360x800,
+  390x844, 844x390, 1000x768, 1001x768, 1280x720, 1366x768 und 1920x1080
+  CSS-Pixeln. Nur die drei kurzen Hochformate duerfen die normale
+  Mindestschrift- und Namensfeldhoehe ueber den Notfallmodus unterschreiten. Ein
+  weiterer Browsertest verkleinert ein bereits geladenes Scoreboard real von
+  390x844 auf 320x568 und vergroessert es danach wieder; Courtgrenzen und die
+  erneute Vergroesserung der Namen muessen in beiden Richtungen erhalten bleiben.
+  Fuer die drei kurzen Hochformate darf der gemessene Abstand des Platzlabels zum
+  oberen Courtrand hoechstens 6 CSS-Pixel betragen. Zusaetzlich werden fuer
+  Einzelnamen 35 bis 36 CSS-Pixel und fuer Doppelnamen hoechstens 29 CSS-Pixel
+  Scoregroesse sowie maximal 3 CSS-Pixel Abstand vor und nach dem Scoreblock
+  erzwungen.

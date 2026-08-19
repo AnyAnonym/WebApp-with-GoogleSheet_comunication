@@ -35,6 +35,15 @@ moeglichst wenigen Datei- und Suchzugriffen.
    ohne das aktuell benoetigte Kontextfenster zu unterschreiten. Leichtgewichtigere
    Modelle sind fuer regelgetriebene Vorbereitungs- und Abschlussroutinen
    bevorzugt, staerkere Modelle fuer Analyse und Umsetzung.
+10. Jede neue oder geaenderte Funktion ist im selben Auftrag auf vollstaendige
+    Observability zu pruefen. Browserdiagnosen benoetigen einen benannten Eintrag
+    in der serverseitigen Event-Allowlist, einen bekannten Seitentyp und Tests;
+    Backendoperationen benoetigen strukturierte Abschlusslogs, Fachwrites
+    zusaetzlich einen Auditvertrag fuer Start, Erfolg, Ablehnung und unklaren
+    Ausgang. Diagnose- und Auditprojektionen duerfen nur kontrollierte Felder und
+    keine Passwoerter, Tokens, freien Payloads oder unnoetigen Personendaten
+    enthalten. Eine Implementierung ist erst vollstaendig, wenn Logging-, Audit-,
+    Datenschutz- und Fehlerpfade gemeinsam geprueft sind.
 
 ## Projekt
 
@@ -50,8 +59,8 @@ Turnieren, Matches, Live-Scoreboard und Platzsteuerung.
   `/ready`, `/health`, `/status` und `/version`
 - Prozessmanagement: systemd auf Arch Linux
 - Authentifizierung: serverseitige Secure-/HttpOnly-Sitzungscookies, scrypt-
-  Passwortspeicherung und Rollen `player`, `operator`, `admin`; Monitorgeraete
-  verwenden eigene Secure-Cookies
+  Passwortspeicherung und Rollen `player`, `player A`, `player B`, `operator`,
+  `admin`; Monitorgeraete verwenden eigene Secure-Cookies
 
 ## Aktuelle Version
 
@@ -138,6 +147,7 @@ Vorlage existieren nicht mehr.
 | `entryList.html` | Eintragungsliste | `?id=<bewerbId>` erforderlich |
 | `rangliste.html` | Ranglisten-Pyramide | `?id=<bewerbId>`, Standard `2` |
 | `RoundRobin.html` | Gruppenphase | `?id=<bewerbId>&paarungslayout=<0-5>`; `id` erforderlich |
+| `personenNormalisieren.html` | Admin-Personendaten normalisieren | keine |
 
 `matches.html` und `preMatches.html` existieren laut aktueller Dokumentation
 nicht mehr. `matches` und `preMatches` bestehen nur als WebSocket-Aliase fort.

@@ -25,6 +25,7 @@ const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules } = require("./matchRules.js");
+const { projectPeopleNormalization } = require("./peopleNormalization.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
@@ -90,9 +91,28 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
     case "monitorRotate":
     case "monitorRevoke":
       return { targetType: "monitor", targetId: params.monitorId, after: { monitorId: params.monitorId } };
+    case "normalizePerson":
+      return {
+        targetType: "person",
+        targetId: params.personId,
+        targetName: internal?.targetName || personDisplayName(params.personId),
+        before: internal?.before || null,
+        after: internal?.after || null,
+      };
     default:
       return { targetType: "", targetId: "", before: null, after: null };
   }
+}
+
+function personDisplayName(personId) {
+  const values = dataStore.get("players");
+  const header = headerOf(values);
+  const idIndex = headerIndex(header, "id");
+  const firstNameIndex = headerIndex(header, "vorname");
+  const lastNameIndex = headerIndex(header, "nachname");
+  const row = values.slice(1).find((entry) => String(entry[idIndex] || "").trim() === String(personId || "").trim());
+  if (!row) return "";
+  return [row[firstNameIndex], row[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ");
 }
 
 function writeAudit({ eventId, principal, endpoint, params, result = {}, internal = null, outcome, error = null }) {
@@ -107,6 +127,7 @@ function writeAudit({ eventId, principal, endpoint, params, result = {}, interna
     action: endpoint,
     targetType: projection.targetType,
     targetId: projection.targetId,
+    targetName: projection.targetName || "",
     requestId: eventId,
     operationId: params.operationId || "",
     result: outcome,
@@ -420,6 +441,13 @@ const endpoints = {
     access: "authenticated",
     handler: () => ({ success: true, values: dependencies.authService.memberDirectoryTable() }),
   },
+  adminPeopleNormalization: {
+    access: ["admin"],
+    handler: () => {
+      requireCurrentTables("players");
+      return { success: true, ...projectPeopleNormalization(dataStore.get("players")) };
+    },
+  },
   myProfile: {
     access: "authenticated",
     handler: (_params, context) => ({ success: true, profile: context.auth.user }),
@@ -433,6 +461,12 @@ const endpoints = {
         params.operationId,
       ),
     }),
+  },
+  normalizePerson: {
+    access: ["admin"],
+    write: true,
+    writeCost: 0.1,
+    handler: (params, context) => dependencies.sheetService.normalizePerson(context.principal, params),
   },
   addMatch: {
     access: "authenticated",
@@ -509,7 +543,7 @@ const endpoints = {
         if (!request.empty) requireCurrentTables("players", "bewerbe", "matchtyp", "matches1");
         const assignment = resolveCourtAssignment(request);
         return { ...assignment.data, aktiv: current.aktiv };
-      }, () => courtPoller.resetCourtScore(court));
+      }, () => courtPoller.resetCourtScore(court, { reason: "assignment" }));
     },
   },
   courtSetActive: {
@@ -717,7 +751,8 @@ async function handleRequest(info, message, supportId) {
   if (endpoint.write) {
     const principalKey = `principal:${authContext.principal.type}:${authContext.principal.id}`;
     const ipKey = `ip:${info.ip}`;
-    if (!writeLimiter.take(principalKey) || !writeLimiter.take(ipKey)) {
+    const writeCost = endpoint.writeCost || 1;
+    if (!writeLimiter.take(principalKey, writeCost) || !writeLimiter.take(ipKey, writeCost)) {
       throw new AppError("WRITE_RATE_LIMIT", "Zu viele Schreiboperationen", 429);
     }
   }

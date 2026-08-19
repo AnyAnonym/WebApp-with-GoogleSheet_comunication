@@ -3,7 +3,7 @@ const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
 const { emailValue } = require("./validators.js");
 
-const VALID_ROLES = new Set(["player", "operator", "admin"]);
+const VALID_ROLES = new Set(["player", "player a", "player b", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
 const PLAYER_EMAIL_SUMMARY_EVERY = 10;
 let playerEmailIssueState = { signature: "", validations: 0, affectedCount: 0 };
@@ -50,6 +50,42 @@ function reportPlayerEmailIssues(issues) {
   }
 }
 
+function playerEmailEntries(values) {
+  const header = headerOf(values);
+  const idIndex = headerIndex(header, "id");
+  const emailIndex = headerIndex(header, "e-mail");
+  const entries = new Map();
+  for (const [offset, row] of values.slice(1).entries()) {
+    const email = String(row[emailIndex] || "").trim();
+    if (!email) continue;
+    let normalizedEmail;
+    try {
+      normalizedEmail = emailValue(email);
+    } catch {
+      continue;
+    }
+    if (!entries.has(normalizedEmail)) entries.set(normalizedEmail, []);
+    entries.get(normalizedEmail).push({ rowNumber: offset + 2, personId: String(row[idIndex] || "").trim() });
+  }
+  return entries;
+}
+
+function assertUniquePlayerEmails(values) {
+  if ([...playerEmailEntries(values).values()].some((entries) => entries.length > 1)) {
+    throw new AppError("EMAIL_CONFLICT", "Personen-E-Mail ist nicht eindeutig", 409);
+  }
+}
+
+function assertPlayerEmailConflictsNotWorsened(beforeValues, candidateValues) {
+  const before = playerEmailEntries(beforeValues);
+  for (const [email, entries] of playerEmailEntries(candidateValues)) {
+    const previousCount = before.get(email)?.length || 0;
+    if (entries.length > Math.max(1, previousCount)) {
+      throw new AppError("EMAIL_CONFLICT", "Personen-E-Mail ist nicht eindeutig", 409);
+    }
+  }
+}
+
 function validateTableValues(tableName, values) {
   if (!Array.isArray(values) || !Array.isArray(values[0])) {
     throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName} besitzt keine Kopfzeile`, 503);
@@ -78,7 +114,6 @@ function validateTableValues(tableName, values) {
     if (values.length < 2) throw new AppError("SHEET_SCHEMA", "Personen-Tabelle ist leer", 503);
     const roleIndex = headerIndex(header, "role");
     const emailIndex = headerIndex(header, "e-mail");
-    const emails = new Set();
     const emailIssues = [];
     for (const [offset, row] of values.slice(1).entries()) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
@@ -88,9 +123,8 @@ function validateTableValues(tableName, values) {
       }
       const email = String(row[emailIndex] || "").trim().toLowerCase();
       if (!email) continue;
-      let normalizedEmail;
       try {
-        normalizedEmail = emailValue(email);
+        emailValue(email);
       } catch {
         emailIssues.push({
           rowNumber: offset + 2,
@@ -99,12 +133,14 @@ function validateTableValues(tableName, values) {
         });
         continue;
       }
-      if (emails.has(normalizedEmail)) throw new AppError("SHEET_SCHEMA", "Personen-E-Mail ist nicht eindeutig", 503);
-      emails.add(normalizedEmail);
+    }
+    for (const entries of playerEmailEntries(values).values()) {
+      if (entries.length < 2) continue;
+      for (const entry of entries) emailIssues.push({ ...entry, reason: "DUPLICATE_EMAIL" });
     }
     reportPlayerEmailIssues(emailIssues);
   }
   return values;
 }
 
-module.exports = { REQUIRED_HEADERS, validateTableValues };
+module.exports = { REQUIRED_HEADERS, assertPlayerEmailConflictsNotWorsened, assertUniquePlayerEmails, validateTableValues };

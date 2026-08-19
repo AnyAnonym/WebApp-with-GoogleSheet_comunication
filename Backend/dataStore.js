@@ -12,6 +12,7 @@ for (const key of Object.keys(TABLE_CONFIG)) {
     revision: 0,
     lastAttempt: 0,
     lastUpdate: 0,
+    lastMutation: 0,
     lastError: null,
     pollCount: 0,
     readSequence: 0,
@@ -31,7 +32,13 @@ function errorCodeOf(error) {
   return error?.name === "AbortError" ? "ABORTED" : "SHEETS_POLL_FAILED";
 }
 
-function set(tableName, values, { source = "poll", readToken = null } = {}) {
+function set(tableName, values, {
+  source = "poll",
+  readToken = null,
+  authoritative = true,
+  fence = source.startsWith("write"),
+  mutation = source === "write" || source === "write-local",
+} = {}) {
   const entry = store[tableName];
   if (!entry) return null;
   if (readToken && (
@@ -42,11 +49,11 @@ function set(tableName, values, { source = "poll", readToken = null } = {}) {
     return { ...getMeta(tableName), result: "ignored_stale", ignored: true };
   }
   if (readToken) entry.appliedReadSequence = readToken.sequence;
-  if (source === "write") entry.mutationVersion++;
+  if (fence) entry.mutationVersion++;
   const nextValues = Array.isArray(values) ? values : [];
   const fingerprint = hashPayload(nextValues);
   const changed = fingerprint !== entry.fingerprint;
-  const recovered = entry.consecutiveErrors > 0;
+  const recovered = authoritative && entry.consecutiveErrors > 0;
   const recoveredErrorCode = entry.lastError?.code || null;
   const recoveredErrorSequence = entry.consecutiveErrors;
   const now = Date.now();
@@ -54,11 +61,14 @@ function set(tableName, values, { source = "poll", readToken = null } = {}) {
   entry.values = nextValues;
   entry.fingerprint = fingerprint;
   entry.lastAttempt = now;
-  entry.lastUpdate = entry.lastAttempt;
-  entry.lastError = null;
-  entry.consecutiveErrors = 0;
-  entry.failureStartedAt = 0;
-  entry.pollCount++;
+  if (mutation) entry.lastMutation = now;
+  if (authoritative) {
+    entry.lastUpdate = entry.lastAttempt;
+    entry.lastError = null;
+    entry.consecutiveErrors = 0;
+    entry.failureStartedAt = 0;
+    entry.pollCount++;
+  }
   if (changed) entry.revision++;
   const snapshot = {
     ...getMeta(tableName),
@@ -70,7 +80,7 @@ function set(tableName, values, { source = "poll", readToken = null } = {}) {
   if (changed || recovered) {
     for (const listener of listeners) {
       try {
-        listener({ table: tableName, source, changed, recovered, current: true, ...snapshot });
+        listener({ table: tableName, source, changed, recovered, current: isTableCurrent(tableName), ...snapshot });
       } catch (error) {
         logger.log("error", "data_change_listener_failed", { table: tableName, source, error });
       }
@@ -127,6 +137,7 @@ function getMeta(tableName) {
   return {
     lastAttempt: entry.lastAttempt,
     lastUpdate: entry.lastUpdate,
+    lastMutation: entry.lastMutation,
     lastError: entry.lastError,
     pollCount: entry.pollCount,
     revision: entry.revision,
@@ -181,6 +192,7 @@ function resetForTests() {
       revision: 0,
       lastAttempt: 0,
       lastUpdate: 0,
+      lastMutation: 0,
       lastError: null,
       pollCount: 0,
       readSequence: 0,

@@ -187,7 +187,20 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const metricsBody = await metricsResponse.text();
   assert.match(metricsBody, /epiber_ready 0/);
   assert.match(metricsBody, /epiber_sqlite_open\{database="state"\} 1/);
+  assert.match(metricsBody, /epiber_people_normalization_current 1/);
+  assert.match(metricsBody, /epiber_people_normalization_people 3/);
+  assert.match(metricsBody, /epiber_people_normalization_affected_people 3/);
+  assert.match(metricsBody, /epiber_people_normalization_issues 5/);
+  assert.match(metricsBody, /epiber_people_normalization_issue_count\{code="BIRTH_DATE_INVALID"\} 2/);
+  assert.match(metricsBody, /epiber_people_normalization_issue_count\{code="PHONE_FORMAT_INVALID"\} 3/);
   assert.equal(metricsBody.includes("p1"), false);
+  assert.equal(metricsBody.includes("Ada"), false);
+  assert.equal(metricsBody.includes("ada@example.test"), false);
+  dataStore.set("players", [["Vorname"], ["Ada"]], { source: "test" });
+  const invalidPeopleMetrics = await (await fetch(`${httpBase}/metrics`)).text();
+  assert.match(invalidPeopleMetrics, /epiber_people_normalization_current 0/);
+  assert.match(invalidPeopleMetrics, /epiber_people_normalization_people 0/);
+  dataStore.set("players", people, { source: "test" });
   const metricsMethodResponse = await fetch(`${httpBase}/metrics`, { method: "POST" });
   assert.equal(metricsMethodResponse.status, 405);
   const unauthenticatedStatus = await fetch(`${httpBase}/status`);
@@ -597,7 +610,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminPeopleNormalization", "normalizePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -615,6 +628,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
 
   assert.equal((await adminClient.request("myProfile")).data.profile.email, "ada@example.test");
+  const normalization = await adminClient.request("adminPeopleNormalization");
+  assert.equal(normalization.data.success, true);
+  assert.equal(normalization.data.people.length >= 2, true);
+  assert.equal(Object.hasOwn(normalization.data.people[0].values, "storedPasswordHash"), false);
+  assert.equal(Object.hasOwn(normalization.data.people[0].values, "passwordSetupAllowed"), false);
   assert.equal((await adminClient.request("navigator", { profil: "1" })).data.items[0].action.path, "/scoreboard.html");
   adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitors"] }));
   const monitorSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "monitors");

@@ -1,3 +1,5 @@
+const { ISSUE_CODES } = require("./peopleNormalization.js");
+
 const HTTP_BUCKETS = Object.freeze([0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]);
 const FIXED_HTTP_METHODS = new Set(["GET", "POST", "DELETE", "OPTIONS"]);
 const FIXED_HTTP_ROUTES = new Set([
@@ -15,6 +17,10 @@ const FIXED_FRONTEND_REJECTIONS = new Set(["validation_error"]);
 const FIXED_LOG_OUTCOMES = new Set(["written", "serialization_failed", "write_failed", "backpressure"]);
 const FIXED_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const FIXED_TABLES = new Set(["players", "bewerbe", "bewerbsart", "matchtyp", "matches1", "rlPlatzierung", "navigator", "entryList"]);
+const FIXED_SHEET_METHODS = new Set(["values_get", "values_batch_get", "spreadsheet_get", "metadata_search", "metadata_row"]);
+const FIXED_SHEET_PURPOSES = new Set(["poll", "initial", "refresh", "write_precondition", "write_refresh", "confirmation", "metadata_search", "sheet_properties", "metadata_row"]);
+const FIXED_SHEET_REQUEST_RESULTS = new Set(["success", "failed", "rate_limited"]);
+const FIXED_SHEET_ATTEMPT_KINDS = new Set(["initial", "retry"]);
 
 let counters = new Map();
 let histograms = new Map();
@@ -93,6 +99,29 @@ function recordSheetTick(result) {
   increment("epiber_sheet_poller_ticks_total", { result: result === "failed" ? "failed" : "completed" });
 }
 
+function sheetApiLabels(method, purpose) {
+  return {
+    method: safeLabel(method, FIXED_SHEET_METHODS),
+    purpose: safeLabel(purpose, FIXED_SHEET_PURPOSES),
+  };
+}
+
+function recordSheetApiAttempt({ method, purpose, kind }) {
+  increment("epiber_sheet_api_attempts_total", {
+    ...sheetApiLabels(method, purpose),
+    kind: safeLabel(kind, FIXED_SHEET_ATTEMPT_KINDS),
+  });
+}
+
+function recordSheetApiRequest({ method, purpose, result, durationMs }) {
+  const labels = sheetApiLabels(method, purpose);
+  increment("epiber_sheet_api_requests_total", {
+    ...labels,
+    result: safeLabel(result, FIXED_SHEET_REQUEST_RESULTS, "failed"),
+  });
+  observe("epiber_sheet_api_request_duration_seconds", labels, Math.max(0, Number(durationMs) || 0) / 1000);
+}
+
 function recordCourtPoll({ result, durationMs }) {
   const safeResult = safeLabel(result, FIXED_COURT_RESULTS, "failed");
   increment("epiber_court_polls_total", { result: safeResult });
@@ -136,17 +165,21 @@ function metricType(lines, name, type) {
   lines.push(`# TYPE ${name} ${type}`);
 }
 
-function render({ appVersion, processStartedAt, activeHttpRequests, readiness, ws, sheetPoller, court, state, sheets } = {}) {
+function render({ appVersion, processStartedAt, activeHttpRequests, readiness, ws, sheetPoller, court, state, sheets, peopleNormalization } = {}) {
   const lines = [];
   for (const name of [
     "epiber_info", "epiber_process_uptime_seconds", "epiber_http_requests_active", "epiber_ready",
     "epiber_readiness_component_ready", "epiber_sheet_table_current", "epiber_sheet_table_age_seconds",
     "epiber_sheet_table_consecutive_errors", "epiber_sheet_poller_running", "epiber_sheet_poll_in_progress",
     "epiber_sheet_writes_active", "epiber_sheet_write_queues", "epiber_sheet_metadata_intents_pending",
+    "epiber_sheet_read_cooldown_seconds", "epiber_sheet_refreshes_scheduled",
     "epiber_court_poller_running", "epiber_court_active", "epiber_court_source_stale",
     "epiber_court_source_age_seconds", "epiber_court_poll_consecutive_failures", "epiber_court_score_updates",
     "epiber_ws_connections", "epiber_ws_requests_active", "epiber_sqlite_open", "epiber_sqlite_ready",
     "epiber_sqlite_writes_total", "epiber_sqlite_failures_total", "epiber_audit_records", "epiber_scorelog_sequence",
+    "epiber_people_normalization_current", "epiber_people_normalization_people",
+    "epiber_people_normalization_affected_people", "epiber_people_normalization_issues",
+    "epiber_people_normalization_issue_count",
   ]) metricType(lines, name, name.endsWith("_total") ? "counter" : "gauge");
   gauge(lines, "epiber_info", 1, { version: appVersion || "unknown" });
   gauge(lines, "epiber_process_uptime_seconds", Math.max(0, Date.now() - number(processStartedAt, Date.now())) / 1000);
@@ -167,6 +200,16 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
   gauge(lines, "epiber_sheet_writes_active", Math.max(0, number(sheets?.activeWrites)));
   gauge(lines, "epiber_sheet_write_queues", Math.max(0, number(sheets?.queues)));
   gauge(lines, "epiber_sheet_metadata_intents_pending", Math.max(0, number(sheets?.pendingMetadataIntents)));
+  gauge(lines, "epiber_sheet_read_cooldown_seconds", Math.max(0, number(sheets?.readCoordinator?.retryAfterMs)) / 1000);
+  gauge(lines, "epiber_sheet_refreshes_scheduled", Math.max(0, number(sheets?.scheduledRefreshes)));
+
+  gauge(lines, "epiber_people_normalization_current", peopleNormalization?.current ? 1 : 0);
+  gauge(lines, "epiber_people_normalization_people", Math.max(0, number(peopleNormalization?.peopleCount)));
+  gauge(lines, "epiber_people_normalization_affected_people", Math.max(0, number(peopleNormalization?.affectedCount)));
+  gauge(lines, "epiber_people_normalization_issues", Math.max(0, number(peopleNormalization?.issueCount)));
+  for (const code of ISSUE_CODES) {
+    gauge(lines, "epiber_people_normalization_issue_count", Math.max(0, number(peopleNormalization?.issueCounts?.[code])), { code });
+  }
 
   gauge(lines, "epiber_court_poller_running", court?.running ? 1 : 0);
   for (const courtId of ["1", "2"]) gauge(lines, "epiber_court_active", court?.courtActive?.[courtId] ? 1 : 0, { court: courtId });
@@ -222,6 +265,8 @@ module.exports = {
   recordFrontendEvents,
   recordHttpRequest,
   recordLog,
+  recordSheetApiAttempt,
+  recordSheetApiRequest,
   recordSheetPoll,
   recordSheetTick,
   recordWsRequest,

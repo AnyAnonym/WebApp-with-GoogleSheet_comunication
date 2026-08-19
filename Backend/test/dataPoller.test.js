@@ -7,6 +7,7 @@ const { TABLE_CONFIG } = require("../config.js");
 const dataPoller = require("../dataPoller.js");
 const dataStore = require("../dataStore.js");
 const logger = require("../logger.js");
+const { beginSheetTableActivity } = require("../sheetsReadCoordinator.js");
 const { REQUIRED_HEADERS } = require("../tableSchemas.js");
 
 function tableForRange(range) {
@@ -33,9 +34,8 @@ test("Initialload meldet Clientfehler ohne den Prozessstart zu blockieren und ka
   dataPoller.setSheetsClientFactoryForTests(async () => ({
     spreadsheets: {
       values: {
-        async get({ range }) {
-          const tableName = tableForRange(range);
-          return { data: { values: valuesFor(tableName, `${range}-1`) } };
+        async batchGet({ ranges }) {
+          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), `${range}-1`) })) } };
         },
       },
     },
@@ -58,16 +58,14 @@ test("ueberlappende Sheet-Loads melden ein gezaeuntes Ergebnis als ignored_stale
   dataPoller.setSheetsClientFactoryForTests(async () => ({
     spreadsheets: {
       values: {
-        async get({ range }) {
-          const tableName = tableForRange(range);
-          if (tableName !== "entryList") return { data: { values: valuesFor(tableName) } };
+        async batchGet({ ranges }) {
           entryListCalls++;
           if (entryListCalls === 1) {
             firstStarted();
             await gate;
-            return { data: { values: valuesFor(tableName, "older") } };
+            return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), "older") })) } };
           }
-          return { data: { values: valuesFor(tableName, "newer") } };
+          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), "newer") })) } };
         },
       },
     },
@@ -100,12 +98,12 @@ test("identische Sheet-Fehler werden unterdrueckt, zusammengefasst und einmalig 
   dataPoller.setSheetsClientFactoryForTests(async () => ({
     spreadsheets: {
       values: {
-        async get({ range }) {
-          const tableName = tableForRange(range);
-          if (tableName === "entryList" && failing) {
-            throw Object.assign(new Error("temporarily unavailable"), { code: "ETIMEDOUT" });
-          }
-          return { data: { values: valuesFor(tableName) } };
+        async batchGet({ ranges }) {
+          return { data: { valueRanges: ranges.map((range) => {
+            const tableName = tableForRange(range);
+            if (tableName === "entryList" && failing) return { values: [] };
+            return { values: valuesFor(tableName) };
+          }) } };
         },
       },
     },
@@ -117,7 +115,7 @@ test("identische Sheet-Fehler werden unterdrueckt, zusammengefasst und einmalig 
     failedResult = load.results.find(({ table }) => table === "entryList");
   }
   assert.equal(failedResult.result, "failed");
-  assert.equal(failedResult.errorCode, "ETIMEDOUT");
+  assert.equal(failedResult.errorCode, "SHEET_SCHEMA");
   assert.equal(failedResult.errorSequence, 10);
 
   failing = false;
@@ -128,4 +126,79 @@ test("identische Sheet-Fehler werden unterdrueckt, zusammengefasst und einmalig 
   assert.equal(events.filter(({ event }) => event === "sheets_table_poll_failed").length, 1);
   assert.equal(events.filter(({ event }) => event === "sheets_table_poll_failure_summary").length, 1);
   assert.equal(events.filter(({ event }) => event === "sheets_table_poll_recovered").length, 1);
+});
+
+test("Initialload und Faelligkeiten verwenden je einen Batch ohne Sofortwiederholung", async (t) => {
+  dataStore.resetForTests();
+  let now = 100000;
+  t.mock.method(Date, "now", () => now);
+  const batches = [];
+  dataPoller.setSheetsClientFactoryForTests(async () => ({
+    spreadsheets: {
+      values: {
+        async batchGet({ ranges }) {
+          batches.push([...ranges]);
+          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
+        },
+      },
+    },
+  }));
+  assert.equal((await dataPoller.initialLoad()).success, true);
+  dataPoller.start();
+  t.after(() => dataPoller.stop());
+
+  now += 5000;
+  assert.deepEqual(await dataPoller.runTick(), []);
+  now += 5000;
+  const release = beginSheetTableActivity("matches1");
+  assert.equal((await dataPoller.runTick()).length, 2);
+  release();
+  now += 5000;
+  assert.equal((await dataPoller.runTick()).length, 1);
+  now += 15000;
+  assert.equal((await dataPoller.runTick()).length, 8);
+
+  assert.equal(batches.length, 4);
+  assert.equal(batches[0].length, 8);
+  assert.equal(batches[1].length, 2);
+  assert.equal(batches[2].length, 1);
+  assert.equal(batches[3].length, 8);
+});
+
+test("ungueltiger Batchbereich wird von gesunden Tabellen isoliert", async () => {
+  dataStore.resetForTests();
+  let calls = 0;
+  dataPoller.setSheetsClientFactoryForTests(async () => ({
+    spreadsheets: {
+      values: {
+        async batchGet({ ranges }) {
+          calls++;
+          if (ranges.includes("Navigator")) throw Object.assign(new Error("range missing"), { response: { status: 400 } });
+          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
+        },
+      },
+    },
+  }));
+
+  const result = await dataPoller.initialLoad();
+  assert.equal(result.success, false);
+  assert.equal(result.results.filter(({ success }) => success).length, 7);
+  assert.equal(result.results.find(({ table }) => table === "navigator").errorCode, "HTTP_400");
+  assert.equal(calls > 1, true);
+  assert.equal(dataStore.getReadiness().tables.players.current, true);
+});
+
+test("globaler Spreadsheet-404 wird nicht durch Batchaufteilung vervielfacht", async () => {
+  dataStore.resetForTests();
+  let calls = 0;
+  dataPoller.setSheetsClientFactoryForTests(async () => ({
+    spreadsheets: { values: { async batchGet() {
+      calls++;
+      throw Object.assign(new Error("spreadsheet missing"), { response: { status: 404 } });
+    } } },
+  }));
+
+  const result = await dataPoller.initialLoad();
+  assert.equal(result.results.every(({ errorCode }) => errorCode === "HTTP_404"), true);
+  assert.equal(calls, 1);
 });

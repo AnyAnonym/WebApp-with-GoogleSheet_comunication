@@ -88,7 +88,8 @@ vom Auftraggeber bestaetigt.
 
   Administratoren und Turnierleitung [Arbeitsannahme]
       Organisieren den Spielbetrieb und verwalten die dafuer erforderlichen
-      fachlichen Einstellungen und Daten.
+      fachlichen Einstellungen und Daten. Administratoren pruefen und
+      normalisieren zusaetzlich vorhandene Personendaten kontrolliert.
 
   Monitorgeraete [Arbeitsannahme]
       Sind keine menschliche Benutzergruppe, bilden aber einen eigenen
@@ -152,6 +153,21 @@ Blinken und behandelt den Eintrag wieder als normalen Spieler. `PRE` bezeichnet
 weder eine Person noch ein Freilos und darf fachlich nicht mit `BYE` gleichgesetzt
 werden. Fuer `PRE` gibt es deshalb kein Spielerprofil.
 
+5.7 Vorhandene Personendaten normalisieren [Bestaetigt]
+
+Administratoren koennen bestehende Personen auf bekannte Format- und
+Datenqualitaetsprobleme pruefen, sichere Vorschlaege uebernehmen, Zielwerte
+bearbeiten und die ausgewaehlten Aenderungen nach einer Gesamtvorschau personweise
+schreiben. Diese Funktion ist die erste kontrollierte Phase vor einem spaeteren
+ClubDesk-Abgleich. Teilweise erfolgreiche Stapel bleiben nachvollziehbar; beim
+ersten Fehler stoppt der Ablauf und erhaelt den noch offenen Entwurf.
+
+Die Rollen `player`, `player A` und `player B` besitzen dieselbe technische
+Berechtigungsstufe. `player A` und `player B` dienen der fachlichen
+Mitgliederklassifikation. Eine inaktive Person kann sich nicht anmelden;
+Aenderungen an E-Mail/Login, Aktivstatus oder Rolle widerrufen bestehende
+Sitzungen der betroffenen Person.
+
 
 ================================================================================
 6. FACHLICHE ANFORDERUNGEN
@@ -211,6 +227,27 @@ werden. Fuer `PRE` gibt es deshalb kein Spielerprofil.
   LF-22 Monitore sollen fuer unterschiedliche Informationsansichten zentral
         gesteuert werden koennen. [Arbeitsannahme]
 
+  LF-23 Nur Administratoren duerfen die Personennormalisierung verwenden. Vor
+        jedem Write muessen Person, Feld, bisheriger Wert und Zielwert in einer
+        Gesamtvorschau sichtbar sein. [Bestaetigt]
+
+  LF-24 Die Normalisierung darf ausschliesslich die freigegebenen Stammfelder
+        bearbeiten. Passwort-, Reset- und interne Sicherheitsfelder duerfen weder
+        angezeigt noch veraendert werden. [Bestaetigt]
+
+  LF-25 Eigene aktive Adminrechte und der letzte aktive Administrator muessen vor
+        Deaktivierung oder Rollenverlust geschuetzt bleiben. [Bestaetigt]
+
+  LF-26 Doppelte E-Mail-Adressen muessen zur Reparatur sichtbar bleiben, duerfen
+        aber bis zur eindeutigen Korrektur keinen Login erlauben. Neue Zielwerte
+        duerfen keinen E-Mail-Konflikt neu erzeugen oder vergroessern; vorhandene
+        Dublettengruppen muessen personweise verkleinert werden koennen.
+        [Bestaetigt]
+
+  LF-27 Die Rollen `player`, `player A` und `player B` verleihen dieselben
+        Benutzerrechte; die A-/B-Auszeichnung ist eine fachliche
+        Mitgliederklassifikation. [Bestaetigt]
+
 6.4 Gebrauchstauglichkeit
 
   LF-30 Oeffentliche Informationen sollen ohne Fachwissen ueber die technische
@@ -248,6 +285,11 @@ technischen Dokumentation beschrieben.
 Noch offen ist insbesondere, welche Aufgaben ausdruecklich nicht durch ePiber
 abgebildet werden sollen und welche externen Systeme oder manuellen Ablaeufe
 bewusst bestehen bleiben.
+
+Die aktuelle Personennormalisierung importiert keine CSV-Dateien, legt keine
+Personen neu an, schreibt keine `CD-ID`, deaktiviert niemanden anhand eines
+externen Exports und ordnet keine A-/B-Mitgliedschaft automatisch zu. Diese
+spaeteren ClubDesk-Schritte sind nicht Bestandteil der ersten Phase.
 
 
 ================================================================================

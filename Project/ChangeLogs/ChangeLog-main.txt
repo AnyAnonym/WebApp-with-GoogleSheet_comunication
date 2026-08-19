@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.4.7
+Stand: 4.5.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,114 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.5.0] - 2026-08-19
+Commit: 4.5.0 | Personennormalisierung und Betriebsdiagnostik erweitert
+Quelle: 4.4.7-paj-1
+
+  Added
+  - [Software] Responsive Adminseite zur kontrollierten Normalisierung vorhandener
+    Personen eingefuehrt. Sie bietet Problemklassifikation, sichere Vorschlaege,
+    Suche und Filter, einen erhaltenen Aenderungsentwurf, verpflichtende
+    Gesamtvorschau sowie sequenzielle personweise Writes mit Fortschritt und
+    Support-Referenzen.
+  - [Software] Admin-only RPCs fuer die geschlossene Personenprojektion und
+    Normalisierung von zwoelf erlaubten Feldern ergaenzt. Fingerprints, Developer
+    Metadata, aktuelle Volltabellenpruefung, Idempotenz und Konflikterkennung
+    schuetzen vor parallelen oder wiederholten Writes.
+  - [Software] Kontrollierte Browserdiagnosen, aggregierte Prometheus-Metriken und
+    strukturierte Auditereignisse fuer Laden, Writes, Ablehnungen und unklare
+    Ausgaenge der Personennormalisierung aufgenommen.
+  - [Infrastruktur] Provisioniertes Grafana-Dashboard zur Personennormalisierung
+    mit Problemstand und -entwicklung, Datenalter, RPC-/Writeverhalten,
+    Diagnosen und datensparsamem Auditverlauf angelegt.
+  - [Infrastruktur] Provisioniertes Grafana-Dashboard fuer den chronologischen
+    Platz- und Scoreverlauf von Live und PAJ mit optionalem Platzfilter
+    bereitgestellt. Kontrollierte Court-Snapshots und erfolgreiche
+    Scoreereignisse enthalten Match, Bewerb und Anzeigenamen der Paarung.
+
+  Changed
+  - [Software] Personenrollen um die berechtigungsgleichen Klassifikationen
+    `player A` und `player B` erweitert. Doppelte kanonische E-Mails bleiben als
+    reparierbarer Datenqualitaetsfehler lesbar und sperren den Login.
+    Normalisierungswrites koennen bestehende Gruppen personweise reduzieren,
+    duerfen sie aber weder neu erzeugen noch vergroessern.
+  - [Software] Personennormalisierungen validieren und kanonisieren die
+    freigegebenen Felder serverseitig, schuetzen den eigenen sowie den letzten
+    aktiven Admin und widerrufen bei Aenderungen an E-Mail, Aktivstatus oder Rolle
+    alle Sitzungen der betroffenen Person.
+  - [Software] Normalisierungsaudits speichern additiv einen Zielnamensnapshot.
+    Im Journal erscheinen nur kontrollierte Statusaenderungen beziehungsweise die
+    Namen anderer geaenderter Felder; konkrete Kontakt-, Adress-, Geburts- und
+    sonstige freie Werte werden nicht projiziert.
+  - [Software] Faellige Tabellenbereiche werden gemeinsam per `values.batchGet`
+    gelesen. Polling und Fachwrites verwenden einen gemeinsamen Read-Koordinator
+    mit Single-Flight-Caches, Write-Abstimmung, autoritativer Frische,
+    zusammengefassten Abschlussrefreshes und prozessweitem 60-Sekunden-Cooldown
+    nach Google-429-Antworten.
+  - [Infrastruktur] Das Grafana-Uebersichtsdashboard zeigt zusaetzlich
+    Sheets-Read-Cooldown, API-Versuchsrate sowie logische Requests und Retries.
+  - [Software] Das Scoreboard verdichtet kurze Smartphone-Hochformate bis 700
+    CSS-Pixel Hoehe. Eine zweite strikte Namensskalierung verhindert verbleibenden
+    Court-Ueberlauf; Abstaende und Scoregroessen werden fuer Einzel- und
+    zweizeilige Doppelnamen courtbezogen angepasst, ohne normale Viewports zu
+    veraendern.
+  - [Dokumentation] Fachkonzept, Softwareindex, neue Seitendokumentation sowie
+    Endpoint-, Datenbank-, Architektur-, Scoreboard- und Serverdokumentation auf
+    Normalisierung, Sheets-Koordination, Observability und mobile Darstellung
+    abgeglichen.
+
+  Fixed
+  - [Infrastruktur] Grafana-Forward-Auth verwirft vor dem internen `/auth`-Aufruf
+    den Querystring. Querybehaftete Grafana-APIs werden dadurch nicht mehr vom
+    strikt begrenzten Auth-Broker mit `404` abgewiesen und das
+    Getting-Started-Panel bleibt nicht mehr im Ladestatus.
+  - [Software] Formatierte Google-Datumszellen erzeugen beim
+    Fingerprintvergleich keine falschen Personenkonflikte mehr.
+  - [Software] Google-Sheets-Quotenfehler werden als `SHEETS_RATE_LIMITED` mit
+    kontrollierter 60-Sekunden-Wartefrist gemeldet, ohne automatischen Write-Retry
+    oder gespeichertes Operationsresultat; Support-Referenzen erscheinen nur
+    einmal.
+  - [Software] Bereichslokale HTTP-400-Fehler eines Batchpolls werden von gesunden
+    Tabellen isoliert, waehrend globale Spreadsheet-404 keine zusaetzlichen
+    Aufteilungsrequests ausloesen. Autoritative Reads koennen zudem keine neueren
+    Cache- oder Refreshzustaende mehr ueberschreiben.
+
+  Tests
+  - `npm run build`: statische Projektpruefung und alle 181 automatisierten
+    Backendtests erfolgreich.
+  - `npm run test:browser`: Personennormalisierung und erweitertes
+    Scoreboard-Layout mit elf Viewports, Einzel-/Doppelnamen, Resize und
+    vertikalen Courtgrenzen erfolgreich.
+  - Dashboard-JSON, PromQL-/LogQL-Abfragen, Datenschutzprojektionen,
+    `grafana-alloy validate`, Loki-Konfiguration und `caddy adapt` erfolgreich
+    geprueft; `git diff --check` ohne Fehler.
+  - Batchpolling, 429-Cooldown, Read-Fencing, Idempotenz, Auditmigration,
+    Konfliktschutz, Berechtigungen, Diagnose-Allowlist und unterdrueckte
+    Scoreereignisse nach fehlgeschlagenem SQLite-Write durch Regressionstests
+    abgesichert.
+
+  Sicherheit, Betrieb und bekannte Einschraenkungen
+  - Passwort-Hashes und Resetfelder sind von Projektion, Fingerprints, Writes,
+    Diagnosen und Metriken ausgeschlossen. Prometheus verwendet nur feste,
+    niedrig-kardinale Labels; personenbezogene Auditansichten bleiben auf
+    kontrollierte Identitaets- und Aenderungsfelder begrenzt.
+  - Die Personennormalisierung ist Phase 1 und noch nicht ausgerollt oder fachlich
+    abgenommen. CSV-Import, Personenneuanlage, `CD-ID`-Writes,
+    exportgesteuerte Deaktivierung und automatische A-/B-Zuordnung sind nicht
+    enthalten.
+  - Fuer die Personennormalisierung ist keine Sheetmigration erforderlich; die
+    additive SQLite-Spalte `audit_log.target_name` wird automatisch migriert.
+  - Backendmetriken und neue Journalereignisse benoetigen einen Backendneustart.
+    Die Dashboarddateien werden ueber den bestehenden Grafana-Provider
+    eingelesen; neue Alerts oder Benachrichtigungswege entstehen nicht.
+  - Der Grafana-Auth-Fix liegt nur in der versionierten Caddy-Vorlage. Bis zum
+    privilegierten `caddy validate`, Reload und authentifizierten Funktionstest
+    kann die laufende Installation querybehaftete Grafana-Aufrufe weiterhin
+    verlieren.
+  - Der Grafana-Platz- und Scoreverlauf beginnt vollstaendig erst mit dem
+    Backendrollout und wird in Loki hoechstens 14 Tage aufbewahrt; die dauerhafte
+    `scorelog.sqlite`-Historie bleibt unveraendert.
 
 [4.4.7] - 2026-08-18
 Commit: 4.4.7 | Mitgliederabgleich geplant und Kommunikationsanalyse archiviert

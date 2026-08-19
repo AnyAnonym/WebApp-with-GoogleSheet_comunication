@@ -2,7 +2,7 @@
 
 Stand: 18.08.2026
 Analysierter Anwendungsstand: ePiber v4.4.6
-Status: Arbeitsplan; noch nicht implementiert
+Status: Phase 1 im Seitenbranch implementiert; noch nicht ausgerollt oder abgenommen
 Gegenstand: Normalisierung des ePiber-Personenbestands und spaeterer CSV-Abgleich
 
 Diese Datei dokumentiert die im Planungsgespraech erarbeiteten Anforderungen,
@@ -87,8 +87,8 @@ Die bestehende Spalte `Personen.ID` bleibt die interne ePiber-Primar-ID und die
 serverseitige Principal-ID. Vorhandene IDs werden nicht durch IDs des externen
 Systems ersetzt.
 
-Stattdessen wird spaeter eine neue Spalte `ExternalID` im Tab `Personen`
-eingefuehrt. Sie nimmt die externe Datensatz-ID aus Spalte 57 `[Id]` auf.
+Stattdessen wird die bereits vorhandene Spalte `CD-ID` im Tab `Personen`
+verwendet. Sie nimmt die externe Datensatz-ID aus Spalte 57 `[Id]` auf.
 
 Gruende gegen eine Umschreibung bestehender ePiber-IDs:
 
@@ -113,7 +113,7 @@ folgende Google-Sheets-Bestaende betroffen:
 | `RL-Platzierung` | 66 | `PersonID` |
 | `EntryList` | 181 | `PersonenID` |
 
-Die separate `ExternalID` vermeidet diese riskante Gesamtmigration und schafft
+Die separate `CD-ID` vermeidet diese riskante Gesamtmigration und schafft
 trotzdem einen stabilen Schluessel fuer spaetere Exporte.
 
 ### 2.4 Vergabe neuer interner ePiber-IDs
@@ -133,7 +133,7 @@ erfolgen. Das Backend muss die aktuelle Tabelle innerhalb der serialisierten
 `players`-Write-Queue erneut lesen und die ID dort vergeben. Dadurch koennen zwei
 parallele Adminvorgaenge nicht dieselbe ID erhalten.
 
-Neue Personen erhalten zusaetzlich die aus dem Import stammende `ExternalID`.
+Neue Personen erhalten zusaetzlich die aus dem Import stammende `CD-ID`.
 
 ### 2.5 Technische Personen bleiben erhalten
 
@@ -145,6 +145,37 @@ Die Oberflaechen erhalten Filter, damit aktive, inaktive und technische Personen
 gezielt ein- oder ausgeblendet werden koennen. Eine technische Person darf nicht
 allein deshalb automatisch deaktiviert oder veraendert werden, weil sie in der
 externen Mitgliederverwaltung fehlt.
+
+### 2.6 Rollen und ClubDesk-Gruppen
+
+Die Rolle `player` bleibt als sicherer Zwischenzustand bestehen und kann im
+ersten Normalisierungsschritt unveraendert bleiben oder als allgemeiner
+Spielerstatus gesetzt werden. Spaeter wird sie anhand der ClubDesk-Daten nach A
+oder B spezifiziert. Zulaessige Rollenwerte sind:
+
+- `admin`
+- `operator`
+- `player`
+- `player A`
+- `player B`
+
+`player`, `player A` und `player B` besitzen exakt dieselben Zugriffsrechte. Die
+Unterscheidung A/B ist eine fachliche Spezialisierung und keine zusaetzliche
+Berechtigungsstufe.
+
+Fuer Spielerrollen wird die ClubDesk-Spalte `[Gruppen]` ausgewertet:
+
+- `A-Mitglieder` korrespondiert mit `player A`.
+- `B-Mitglieder` korrespondiert mit `player B`.
+- Andere Gruppenwerte werden ignoriert.
+- Fehlt eine A-/B-Gruppe oder sind beide vorhanden, bleibt die Rolle `player`
+  erhalten und wird als noch zu spezifizieren ausgewiesen.
+- Bestehende Rollen `admin` und `operator` werden durch den Gruppenabgleich nicht
+  ueberschrieben.
+
+Im exemplarischen Export enthalten 141 Datensaetze `A-Mitglieder`, 10
+`B-Mitglieder` und 20 keinen der beiden relevanten Werte. Kein Datensatz enthaelt
+beide Werte.
 
 
 ## 3. Analysierter ePiber-Personenbestand
@@ -200,10 +231,9 @@ Fuer ePiber gilt als Zielregel weiterhin:
 
 ### 3.4 Geschlecht
 
-Das Sheet verwendet derzeit den Header `GeschlechtID`, waehrend Code und
-Dokumentation den Header `Geschlecht` erwarten. Dadurch wird das Geschlecht von
-der aktuellen Anwendung nicht ueber den vorgesehenen Parser gelesen und in
-Profilprojektionen faktisch leer behandelt.
+Das Sheet verwendet verbindlich den Header `GeschlechtID`. Code und kanonische
+Dokumentation muessen auf diesen Header angepasst werden; eine Umbenennung der
+Sheetspalte auf `Geschlecht` ist nicht vorgesehen.
 
 Gefundene Werte unter `GeschlechtID`:
 
@@ -211,15 +241,16 @@ Gefundene Werte unter `GeschlechtID`:
 |---|---:|---|
 | `1` | 104 | maennlich |
 | `2` | 38 | weiblich |
-| `3` | 1 | Sonderwert bei der technischen Person `Der Piber` |
+| `3` | 1 | divers |
 | leer | 34 | nicht gesetzt beziehungsweise technische Zeilen |
 
-Vorgesehene, aber vor Implementierung nochmals zu bestaetigende Richtung:
+Festgelegte Richtung:
 
-- Header kontrolliert von `GeschlechtID` auf `Geschlecht` umstellen,
-- `1` und `2` als bestehende Fachwerte erhalten,
-- `3` nicht automatisch umdeuten,
-- leere Werte nicht ohne sichere fachliche Grundlage ergaenzen.
+- Header `GeschlechtID` beibehalten,
+- `1` als maennlich und `2` als weiblich erhalten,
+- `3` als divers behandeln,
+- externe Strings `männlich` und `weiblich` auf `1` und `2` abbilden,
+- leere oder unbekannte Werte nicht ohne sichere fachliche Grundlage ergaenzen.
 
 ### 3.5 Geburtsdatum
 
@@ -308,9 +339,10 @@ Der erste fachliche Feldumfang wurde wie folgt festgelegt:
 - E-Mail
 - Ort
 - Adresse
-- Postleitzahl
+- PLZ
 - Geburtsdatum
 - Geschlecht
+- [Gruppen], ausschliesslich fuer die Rollenabbildung `A-Mitglieder`/`B-Mitglieder`
 
 `Telefon Privat` wird vorerst nicht uebernommen. ePiber verwendet weiterhin
 `TelefonMobil` als einziges Telefonnummernfeld.
@@ -344,7 +376,7 @@ dieselbe `[Id]` behaelt. Vor der verbindlichen Verwendung als alleiniger
 Abgleichsschluessel muss die Stabilitaet anhand eines spaeteren zweiten Exports
 oder einer verbindlichen Aussage des externen Systems bestaetigt werden.
 
-Wenn die Stabilitaet bestaetigt ist, wird `[Id]` als `ExternalID` in ePiber
+Wenn die Stabilitaet bestaetigt ist, wird `[Id]` als `CD-ID` in ePiber
 gespeichert. Die externe ID ersetzt nicht `Personen.ID`.
 
 ### 4.4 Statuswerte
@@ -356,10 +388,10 @@ Im Export wurden gefunden:
 | Aktivmitglied | 159 |
 | Passivmitglied | 12 |
 
-Noch offen ist, ob und wie dieser externe Status auf `Personen.Aktiv` wirkt.
-Bis zur fachlichen Entscheidung wird der Status nur analysiert und angezeigt.
-Insbesondere darf `Passivmitglied` nicht automatisch als aktiv oder inaktiv in
-ePiber interpretiert werden.
+Die Werte `Aktivmitglied` und `Passivmitglied` haben keine direkte Wirkung auf
+`Personen.Aktiv`. Jeder Datensatz des vollstaendigen Exports gilt fuer ePiber als
+aktiv. Eine zugeordnete ePiber-Person, die im Export fehlt, kann nach
+ausdruecklicher Adminauswahl durch Leeren von `Aktiv` deaktiviert werden.
 
 ### 4.5 Qualitaetsbefunde im Export
 
@@ -432,8 +464,9 @@ Schraegstrichen und anderen Trennzeichen aber inhaltlich identisch. Daraus folgt
 
 - Darstellung und Vergleich muessen getrennt behandelt werden.
 - Eine reine Formatabweichung darf nicht als fachliche Datenaenderung erscheinen.
-- Ob die gespeicherten Nummern selbst umgeschrieben werden, ist noch nicht
-  entschieden.
+- Der aktuelle Sheet-Bestand erfuellt die spaeter festgelegte Speicherregel und
+  wird deshalb nicht allein wegen der Gruppierung im restlichen Nummernteil
+  umgeschrieben.
 
 
 ## 6. Verpflichtende Klaerung der Normalisierungsrichtlinien
@@ -470,20 +503,30 @@ Zu klaeren:
 
 ### 6.2 Telefonnummern
 
-Zu klaeren:
+Festgelegt:
 
-- kanonisches Speicherformat, zum Beispiel E.164-artig mit `+43`,
-- Umgang mit `0043`, `+43` und nationalem fuehrendem `0`,
-- Leerzeichen, Bindestriche, Klammern und Schraegstriche,
-- Nebenstellen,
-- Plausibilitaetspruefung der Laenge,
-- auslaendische Nummern,
-- gemeinsame Familiennummern,
-- Vergleichsnormalisierung ohne Speicherumschreibung,
-- gewuenschtes Anzeigeformat im Frontend.
+- Speicherformat ist `00<Ländercode> <Netzvorwahl> <Rest>`.
+- Erlaubt sind nur Ziffern und Leerzeichen.
+- Nach Laendercode und Netzvorwahl steht jeweils genau ein Leerzeichen.
+- Im restlichen Nummernteil sind weitere Leerzeichen beliebig erlaubt.
+- Plus, Schraegstrich, Bindestrich, Punkt, Klammern und andere Sonderzeichen sind
+  im Speicherwert unzulaessig.
+- Eine nationale Nummer ohne internationalen Laendercode wird nicht automatisch
+  um ein Land ergaenzt.
+- `Telefon Privat` wird nicht importiert; `Telefon Mobil` wird dem ePiber-Feld
+  `TelefonMobil` gegenuebergestellt.
 
-Bis zur Entscheidung gilt nur: `Telefon Privat` wird nicht importiert;
-`Telefon Mobil` wird dem ePiber-Feld `TelefonMobil` gegenuebergestellt.
+Beim spaeteren Import werden Format und Inhalt getrennt verglichen:
+
+- `PHONE_FORMAT_DIFFERENCE`: Nach gedanklicher Umstellung eines fuehrenden `+`
+  auf `00` und Entfernung reiner Formatzeichen sind die Ziffernfolgen identisch.
+- `PHONE_CONTENT_DIFFERENCE`: Die bereinigten Ziffernfolgen unterscheiden sich;
+  dieser schwerwiegende Fall verlangt eine manuelle Entscheidung.
+- `PHONE_COMPARISON_UNCLEAR`: Laendercode oder Zeichenfolge erlauben keinen
+  sicheren Vergleich; es wird nichts automatisch geraten.
+
+Der Vergleich kann nur Gleichheit oder Verschiedenheit der Ziffern feststellen,
+nicht welche der beiden Nummern objektiv richtig ist.
 
 ### 6.3 E-Mail-Adressen
 
@@ -566,31 +609,29 @@ Zu klaeren:
 
 ### 6.9 Geschlecht
 
-Zu klaeren:
+Festgelegt:
 
-- verbindliche Fachwerte in ePiber,
-- Abbildung von extern `maennlich` und `weiblich` auf bestehend `1` und `2`,
-- Bedeutung und Erhalt des technischen Sonderwerts `3`,
-- Umgang mit leeren oder kuenftig weiteren Werten,
-- Headerkorrektur `GeschlechtID` zu `Geschlecht`,
-- keine automatische Umdeutung unbekannter Werte.
+- Header und Zielfeld bleiben `GeschlechtID`.
+- `1` bedeutet maennlich, `2` weiblich und `3` divers.
+- Extern `männlich` wird auf `1`, extern `weiblich` auf `2` abgebildet.
+- Leere oder unbekannte Werte werden nicht automatisch umgedeutet.
 
 ### 6.10 Aktivstatus und externer Mitgliedsstatus
 
-Zu klaeren:
+Festgelegt:
 
 - ePiber: `1` aktiv, leer inaktiv,
 - Normalisierung des aktuellen Werts `0` auf leer,
-- Wirkung von `Aktivmitglied` und `Passivmitglied`,
-- ob allein das Vorkommen im Export als vorhanden gilt,
-- ob eine nur in ePiber vorhandene Person standardmaessig als
-  Deaktivierungskandidat erscheint,
+- `Aktivmitglied` und `Passivmitglied` haben keine direkte Wirkung auf
+  `Personen.Aktiv`,
+- jeder Datensatz im vollstaendigen ClubDesk-Export gilt als aktiv,
+- eine zugeordnete, nur in ePiber vorhandene Person erscheint als
+  Deaktivierungskandidat und wird erst nach ausdruecklicher Auswahl durch Leeren
+  von `Aktiv` deaktiviert,
 - Schutz technischer Personen,
 - Schutz des letzten aktiven Admins,
 - Schutz vor Selbstdeaktivierung des ausfuehrenden Admins,
 - Sessionwiderruf nach bestaetigter Deaktivierung.
-
-Bis zur Entscheidung hat der externe Status keine automatische Wirkung.
 
 ### 6.11 Leere Werte
 
@@ -615,6 +656,8 @@ Erst die freigegebene Regelmatrix ist Grundlage fuer Implementierung und Tests.
 
 
 ## 7. Seite 1: Daten normalisieren
+
+Implementierter Seitenpfad: `Frontend/personenNormalisieren.html`.
 
 ### 7.1 Zugriff
 
@@ -642,11 +685,16 @@ Beispiel:
 - Adresse
 - PLZ
 - GeburtsDatum
-- Geschlecht
+- GeschlechtID
 - Aktiv
 - Role, nur soweit fuer Schutzpruefungen und Anzeige erforderlich
-- spaeter ExternalID
+- CD-ID
 - Tabellenrevision beziehungsweise ein geeigneter Konfliktnachweis
+
+Implementiert ist der WebSocket-RPC `adminPeopleNormalization`. Er liefert die
+freigegebenen Rohwerte, Problemcodes, sichere Korrekturvorschlaege und einen nur
+ueber die editierbaren Felder gebildeten Fingerprint je Person. Passwort- und
+Resetfelder sind nicht Bestandteil der Projektion.
 
 Nie projiziert werden:
 
@@ -722,21 +770,19 @@ Eigenschaften:
 - Auditierung mit Adminprincipal, Zielperson, Vorher/Nachher und Ergebnis,
 - keine Passwoerter, CSV-Rohdaten oder freien sensiblen Payloads im Auditlog.
 
-### 7.6 Schemaaenderung Geschlecht
+Implementiert ist der admin-only WebSocket-RPC `normalizePerson` mit
+`operationId`, `personId`, `expectedFingerprint` und einem geschlossenen
+`changes`-Objekt. Der Write liest die aktuelle Tabelle in der serialisierten
+`players`-Queue, adressiert die Zeile ueber ID und Developer Metadata, prueft den
+Vorher-Fingerprint und den gesamten Zielbestand und aktualisiert danach Cache,
+Invalidierung, Sitzungen und Auditstatus.
 
-Die Headeraenderung `GeschlechtID` zu `Geschlecht` ist eine tabellenweite
-Schemaaenderung und muss getrennt von normalen Zellkorrekturen behandelt werden.
+### 7.6 Schemavertrag Geschlecht
 
-Vor Ausfuehrung sind zu pruefen:
-
-- Zielheader `Geschlecht` existiert noch nicht,
-- Quellheader `GeschlechtID` existiert genau einmal,
-- alle Zeilen bleiben spaltenstabil,
-- Passwort- und sonstige Nachbarspalten werden nicht verschoben,
-- Backend kann die Tabelle nach der Aenderung validieren und laden,
-- Cache wird erst nach bestaetigtem Write aktualisiert,
-- unklarer Writeausgang wird durch erneuten Read aufgeloest,
-- Rollback ist aus dem vorherigen Sheet-Backup moeglich.
+Es erfolgt keine Headeraenderung. Backend, Projektionen, Validierung und
+kanonische Dokumentation werden auf den vorhandenen Header `GeschlechtID` und
+die Fachwerte `1`, `2` und `3` ausgerichtet. Dadurch werden keine Nachbarspalten
+verschoben und es ist kein tabellenweiter Schemawrite erforderlich.
 
 
 ## 8. Testanforderungen fuer die Normalisierung
@@ -746,7 +792,7 @@ Vor Ausfuehrung sind zu pruefen:
 Mindestens zu testen:
 
 - anonyme Benutzer werden abgewiesen,
-- player und operator werden abgewiesen,
+- `player`, `player A`, `player B` und `operator` werden abgewiesen,
 - admin darf lesen und schreiben,
 - Projektion enthaelt keine Passwort- oder Resetfelder,
 - unbekannte Requestfelder werden abgewiesen,
@@ -843,7 +889,7 @@ Insbesondere werden zu diesem Zeitpunkt noch nicht umgesetzt:
 
 - CSV-Dateiauswahl,
 - CSV-Parser in der Anwendung,
-- ExternalID-Zuordnung,
+- CD-ID-Zuordnung,
 - Anlage neuer Personen aus dem Export,
 - Deaktivierung weggefallener Personen aus einem Exportvergleich,
 - zellenweiser Bestands-/Importentscheid,
@@ -875,7 +921,9 @@ ordnet mindestens zu:
 
 | Export | ePiber |
 |---|---|
-| `[Id]` | `ExternalID` |
+| `[Id]` | `CD-ID` |
+| `[Gruppen]` mit `A-Mitglieder` | `Role` = `player A` |
+| `[Gruppen]` mit `B-Mitglieder` | `Role` = `player B` |
 | `Nachname` | `Nachname` |
 | `Vorname` | `Vorname` |
 | `Telefon Mobil` | `TelefonMobil` |
@@ -884,19 +932,21 @@ ordnet mindestens zu:
 | `Adresse` | `Adresse` |
 | `PLZ` | `PLZ` |
 | `Geburtsdatum` | `GeburtsDatum` |
-| `Geschlecht` | `Geschlecht` nach freigegebener Abbildung |
+| `Geschlecht` | `GeschlechtID` nach freigegebener Abbildung |
+| `Land` | `Land` |
 
-Ob `Land` spaeter hinzukommt, wird in der Normalisierungsdiskussion entschieden.
+Andere Werte aus `[Gruppen]` werden ignoriert. Bestehende Rollen `admin` und
+`operator` bleiben unveraendert.
 
 ### 10.3 Zuordnungsreihenfolge
 
 Nach bestaetigter Stabilitaet der externen ID:
 
-1. Primaere Zuordnung ueber eindeutige `ExternalID`.
-2. Fuer bestehende ePiber-Zeilen ohne `ExternalID` einmaliger Vorschlag ueber
+1. Primaere Zuordnung ueber eindeutige `CD-ID`.
+2. Fuer bestehende ePiber-Zeilen ohne `CD-ID` einmaliger Vorschlag ueber
    normalisierten Vorname, Nachname und Geburtsdatum.
 3. Unsichere oder mehrdeutige Vorschlaege nur manuell verbinden.
-4. Nach bestaetigter Erstzuordnung `ExternalID` an der bestehenden ePiber-Person
+4. Nach bestaetigter Erstzuordnung `CD-ID` an der bestehenden ePiber-Person
    speichern.
 5. Kuenftige Namens- oder Geburtsdatumsunterschiede werden danach als
    Feldabweichung derselben Person erkannt.
@@ -907,7 +957,7 @@ automatischen Write, wenn:
 - mehrere Kandidaten existieren,
 - ein Schluesselfeld fehlt,
 - Name oder Geburtsdatum abweicht,
-- eine ExternalID bereits einer anderen Person zugeordnet ist.
+- eine `CD-ID` bereits einer anderen Person zugeordnet ist.
 
 ### 10.4 Differenzkategorien
 
@@ -951,14 +1001,16 @@ Bedienregeln:
 Bei einer bestaetigten Neuanlage:
 
 - interne ID serverseitig als `max(ID)+1` vergeben,
-- `ExternalID` eindeutig speichern,
+- `CD-ID` eindeutig speichern,
 - nur freigegebene Stammdaten uebernehmen,
-- `Role` standardmaessig `player`, sofern nicht separat anders entschieden,
+- `Role` aus `A-Mitglieder` als `player A` oder aus `B-Mitglieder` als
+  `player B` setzen; bei fehlender oder widerspruechlicher Zuordnung vorlaeufig
+  `player` setzen und als noch zu spezifizieren ausweisen,
 - Passwortfelder nicht aus dem Import befuellen,
 - Passwortvergabe ueber den bestehenden sicheren Admin-/Erstvergabeprozess,
-- Aktivstatus erst nach geklaerter Statusregel setzen,
+- `Aktiv` auf `1` setzen, weil jeder enthaltene Exportdatensatz als aktiv gilt,
 - Google Developer Metadata fuer die neue Personenzeile anlegen,
-- unklaren Append-Ausgang ueber ID und ExternalID bestaetigen,
+- unklaren Append-Ausgang ueber ID und `CD-ID` bestaetigen,
 - keine blinde Wiederholung eines unklaren Appends.
 
 ### 10.7 Weggefallene Personen
@@ -981,7 +1033,8 @@ werden:
 - `PasswdHash`
 - `KennwortVergessen`
 - Passwort- und Resetdaten
-- `Role`, solange keine gesonderte fachliche Rollenregel beschlossen ist
+- bestehende Rollen `admin` und `operator`; Spielerrollen duerfen nur nach der
+  freigegebenen A-/B-Gruppenregel geaendert werden
 - Google Developer Metadata als Browserwert
 - interne Audit-, Session- oder Operationsdaten
 
@@ -997,7 +1050,7 @@ Jeder Write muss:
 - den aktuellen Admin serverseitig pruefen,
 - die aktuelle Personenzeile neu lesen,
 - den im Vergleich verwendeten Vorher-Zustand pruefen,
-- ExternalID- und E-Mail-Eindeutigkeit gegen den Gesamtbestand pruefen,
+- `CD-ID`- und E-Mail-Eindeutigkeit gegen den Gesamtbestand pruefen,
 - alle unbekannten Felder ablehnen,
 - nur explizit ausgewaehlte Feldwerte schreiben,
 - den Ausgang bestaetigen,
@@ -1045,7 +1098,9 @@ mindestens folgende Dokumentationsziele zu pflegen:
   - neue Admin-Lese- und Schreibvertraege.
 - `Project/software/DATENBANK.txt`
   - normalisierte Personenfelder,
-  - `ExternalID` und Eindeutigkeitsvertrag,
+  - `CD-ID` und Eindeutigkeitsvertrag,
+  - fuenf Rollenwerte, identische Rechte der drei Spielerwerte und Abbildung der
+    relevanten ClubDesk-Gruppen,
   - ID-Vergaberegel.
 - `Project/software/ARCHITEKTUR.txt`
   - Browser-CSV-Verarbeitung,
@@ -1064,10 +1119,7 @@ Auftraggeber abzustimmen.
 Vor Implementierung der Normalisierung:
 
 - vollstaendige Regelmatrix aus Abschnitt 6,
-- kanonisches Telefonnummernformat,
 - PLZ-, Ort-, Adress- und Laenderregeln,
-- kanonisches Geburtsdatumsformat,
-- Geschlechtswerte und Sonderwert `3`,
 - erlaubte Leerwerte je Feld,
 - Umfang sicherer Sammelkorrekturen,
 - genaue Behandlung technischer Personen in Warnungen und Filtern.
@@ -1075,15 +1127,14 @@ Vor Implementierung der Normalisierung:
 Vor Implementierung des Imports:
 
 - Stabilitaet von `[Id]` ueber mehrere Exporte,
-- genaue Wirkung von Aktivmitglied/Passivmitglied,
 - Umgang mit mehrfach verwendeten E-Mail-Adressen,
 - Verhalten bei leerem Importwert je Feld,
-- Aufnahme eines Landfelds,
-- Rollenzuweisung neuer Personen,
+- spaetere Aufloesung der als `player` verbliebenen, noch nicht nach A/B
+  spezifizierten Personen,
 - genaue Darstellung und Bedienung der Zellenauswahl,
 - maximale Dateigroesse und Datensatzanzahl,
 - Wiederaufnahme nach unterbrochenem oder unklarem Write,
-- fachliche Abnahme der ersten ExternalID-Zuordnung.
+- fachliche Abnahme der ersten `CD-ID`-Zuordnung.
 
 
 ## 14. Zusammenfassung der Umsetzungsreihenfolge
@@ -1100,7 +1151,7 @@ Normalisierungsregeln eroertern
   -> VERBINDLICHER STOPP
 
 Spaeterer neuer Auftrag:
-  ExternalID-Stabilitaet bestaetigen
+  CD-ID-Stabilitaet bestaetigen
   -> Importregeln finalisieren
   -> Importseite implementieren
   -> PAJ testen

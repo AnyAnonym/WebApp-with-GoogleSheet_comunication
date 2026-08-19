@@ -142,7 +142,7 @@ const READ_ENDPOINTS = new Set([
   "players", "publicProfile", "bewerbe", "bewerbsart", "matches1", "preMatches", "matches",
   "rlPlatzierung", "entryList", "readMatchRestrictions", "getScoreboardCourts", "courtScores",
   "scoreboardSnapshot", "memberDirectory", "myProfile", "operationStatus", "navigator", "monitorList",
-  "monitorTarget",
+  "monitorTarget", "adminPeopleNormalization",
 ]);
 const ALLOWED_TRANSITIONS = {
   idle: new Set(["connecting", "offline", "stopped"]),

@@ -4,13 +4,39 @@ const { requestContracts, validateEndpointRequest, validateEndpointResponse } = 
 
 test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
   assert.deepEqual(Object.keys(requestContracts).sort(), [
-    "addEntryList", "addMatch", "bewerbe", "bewerbsart", "courtAssign", "courtScores",
+    "addEntryList", "addMatch", "adminPeopleNormalization", "bewerbe", "bewerbsart", "courtAssign", "courtScores",
     "courtSetActive", "entryList", "getScoreboardCourts", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
-    "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myProfile", "navigator", "operationStatus",
+    "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myProfile", "navigator", "normalizePerson", "operationStatus",
     "players", "preMatches", "publicProfile", "readMatchRestrictions", "removeEntryList", "rlPlatzierung",
     "scoreboardSnapshot", "withdrawFromRanking",
   ]);
+});
+
+test("Personennormalisierung besitzt einen geschlossenen Aenderungsvertrag", () => {
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000009",
+    personId: "p1",
+    expectedFingerprint: "a".repeat(64),
+    changes: { firstName: " Ada ", email: "ADA@example.test", role: "player a" },
+  };
+  assert.deepEqual(validateEndpointRequest("normalizePerson", params), {
+    ...params,
+    expectedFingerprint: "a".repeat(64),
+    changes: { firstName: "Ada", email: "ada@example.test", role: "player A" },
+  });
+  for (const changes of [
+    {},
+    { passwdHash: "x" },
+    { active: "0" },
+    { gender: "4" },
+    { birthDate: "2020-01-01" },
+  ]) {
+    assert.throws(
+      () => validateEndpointRequest("normalizePerson", { ...params, changes }),
+      (error) => error.code === "VALIDATION_ERROR",
+    );
+  }
 });
 
 test("Endpointvertraege normalisieren Parameter und lehnen unbekannte Felder ab", () => {

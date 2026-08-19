@@ -4,12 +4,17 @@ const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const dataStore = require("../dataStore.js");
+const { TABLE_CONFIG } = require("../config.js");
 const { SheetService } = require("../sheetService.js");
 const { StateRepository } = require("../stateRepository.js");
+const { projectPeopleNormalization } = require("../peopleNormalization.js");
+const { resetSheetReadCoordinatorForTests } = require("../sheetsReadCoordinator.js");
+
+test.beforeEach(() => resetSheetReadCoordinatorForTests());
 
 function fakeSheets(initialTables) {
   const tables = structuredClone(initialTables);
-  const calls = { append: [], delete: [], valueUpdates: [] };
+  const calls = { append: [], delete: [], valueUpdates: [], valueGets: 0, metadataRows: 0, metadataSearches: 0, spreadsheetGets: 0, metadataCreates: 0 };
   const metadata = new Map();
   let nextMetadataId = 1;
   const tableNames = () => Object.keys(tables);
@@ -25,6 +30,7 @@ function fakeSheets(initialTables) {
     spreadsheets: {
       values: {
         async get({ range }) {
+          calls.valueGets++;
           return { data: { values: structuredClone(tables[range] || []) } };
         },
         async append({ range, requestBody, valueInputOption }) {
@@ -45,11 +51,17 @@ function fakeSheets(initialTables) {
           return { data: {} };
         },
         async batchGetByDataFilter({ requestBody }) {
+          calls.metadataRows++;
           const valueRanges = [];
           for (const filter of requestBody.dataFilters || []) {
             for (const entry of metadataForFilter(filter)) {
               if (!tables[entry.title].includes(entry.rowRef)) continue;
-              valueRanges.push({ valueRange: { values: [structuredClone(entry.rowRef)] } });
+              const row = structuredClone(entry.rowRef);
+              if (requestBody.valueRenderOption === "FORMULA" && entry.title === "Personen") {
+                const birthDateIndex = tables.Personen[0].indexOf("GeburtsDatum");
+                if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(row[birthDateIndex] || ""))) row[birthDateIndex] = "32875";
+              }
+              valueRanges.push({ valueRange: { values: [row] } });
             }
           }
           return { data: { valueRanges } };
@@ -86,6 +98,7 @@ function fakeSheets(initialTables) {
         },
       },
       async get() {
+        calls.spreadsheetGets++;
         return {
           data: {
             sheets: Object.keys(tables).map((title, index) => ({ properties: { title, sheetId: index + 1 } })),
@@ -94,6 +107,7 @@ function fakeSheets(initialTables) {
       },
       developerMetadata: {
         async search({ requestBody }) {
+          calls.metadataSearches++;
           const matches = [];
           for (const filter of requestBody.dataFilters || []) {
             for (const entry of metadataForFilter(filter)) {
@@ -112,6 +126,7 @@ function fakeSheets(initialTables) {
         const replies = [];
         for (const request of requestBody.requests || []) {
           if (request.createDeveloperMetadata) {
+            calls.metadataCreates++;
             const value = request.createDeveloperMetadata.developerMetadata;
             const range = value.location.dimensionRange;
             const title = tableNames()[range.sheetId - 1];
@@ -151,7 +166,19 @@ function fakeSheets(initialTables) {
       },
     },
   };
-  return { calls, client, tables };
+  function seedRecordMetadata(title, rowIndex, recordId) {
+    const tableName = Object.entries(TABLE_CONFIG).find(([, config]) => config.range === title)?.[0];
+    const entry = {
+      metadataId: nextMetadataId++,
+      metadataKey: "epiberRecord",
+      metadataValue: `${tableName}:${recordId}`,
+      visibility: "DOCUMENT",
+      title,
+      rowRef: tables[title][rowIndex],
+    };
+    metadata.set(entry.metadataId, entry);
+  }
+  return { calls, client, seedRecordMetadata, tables };
 }
 
 function fixtures() {
@@ -185,6 +212,228 @@ function seedStore(tables) {
   dataStore.set("rlPlatzierung", structuredClone(tables.Rangliste), { source: "test" });
   dataStore.set("entryList", structuredClone(tables.EntryList), { source: "test" });
 }
+
+test("Personennormalisierung schreibt konfliktgeschuetzt und laesst Sicherheitsfelder unveraendert", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.tables.Personen[2][10] = "04.03.1985";
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const person = projectPeopleNormalization(fake.tables.Personen).people.find((entry) => entry.id === "p2");
+  const passwordBefore = fake.tables.Personen[2][4];
+  const resetBefore = fake.tables.Personen[2][5];
+
+  const result = await service.normalizePerson(principal, {
+    operationId: "00000000-0000-4000-8000-000000000090",
+    personId: "p2",
+    expectedFingerprint: person.fingerprint,
+    changes: { firstName: "Petra", email: "petra@example.test" },
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result._audit.targetName, "Petra Player");
+  assert.deepEqual(result._audit.before, { firstName: "Peter", email: "peter@example.test" });
+  assert.deepEqual(result._audit.after, { firstName: "Petra", email: "petra@example.test" });
+  assert.equal(fake.tables.Personen[2][1], "Petra");
+  assert.equal(fake.tables.Personen[2][3], "petra@example.test");
+  assert.equal(fake.tables.Personen[2][4], passwordBefore);
+  assert.equal(fake.tables.Personen[2][5], resetBefore);
+  assert.equal(fake.calls.valueUpdates.some((entry) => entry.index === 4 || entry.index === 5), false);
+  assert.equal(dataStore.get("players")[2][1], "Petra");
+  assert.equal(fake.calls.valueGets, 1);
+  assert.equal(fake.calls.metadataRows, 1);
+});
+
+test("Personenserie nutzt einen Metadatenscan und fasst den Abschlussrefresh zusammen", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.seedRecordMetadata("Personen", 2, "p2");
+  fake.seedRecordMetadata("Personen", 3, "p3");
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, refreshDelayMs: 10 });
+  t.after(() => service.stop());
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const projection = projectPeopleNormalization(fake.tables.Personen);
+
+  await service.normalizePerson(principal, {
+    operationId: "00000000-0000-4000-8000-000000000094",
+    personId: "p2",
+    expectedFingerprint: projection.people.find((person) => person.id === "p2").fingerprint,
+    changes: { firstName: "Petra" },
+  });
+  await service.normalizePerson(principal, {
+    operationId: "00000000-0000-4000-8000-000000000095",
+    personId: "p3",
+    expectedFingerprint: projection.people.find((person) => person.id === "p3").fingerprint,
+    changes: { firstName: "Christian" },
+  });
+
+  assert.equal(fake.calls.metadataSearches, 1);
+  assert.equal(fake.calls.metadataRows, 2);
+  assert.equal(fake.calls.valueGets, 2);
+  assert.equal(service.status().scheduledRefreshes, 1);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(fake.calls.valueGets, 3);
+  assert.equal(service.status().scheduledRefreshes, 0);
+});
+
+test("Sheet-IDs und bestehende Record-Metadaten werden single-flight gesammelt", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.seedRecordMetadata("Personen", 2, "p2");
+  fake.seedRecordMetadata("Personen", 3, "p3");
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  const [playersSheet, entriesSheet] = await Promise.all([
+    service.getSheetId(fake.client, "players"),
+    service.getSheetId(fake.client, "entryList"),
+  ]);
+  assert.notEqual(playersSheet, entriesSheet);
+  assert.equal(fake.calls.spreadsheetGets, 1);
+
+  const [player2, player3] = await Promise.all([
+    service.findRecordMetadata(fake.client, "players", "p2"),
+    service.findRecordMetadata(fake.client, "players", "p3"),
+  ]);
+  assert.ok(player2.metadataId);
+  assert.ok(player3.metadataId);
+  assert.equal(fake.calls.metadataSearches, 1);
+});
+
+test("doppelte Metadaten aus dem Gesamtscan bleiben ein Schemakonflikt", async () => {
+  const initial = fixtures();
+  initial.EntryList.push(["e-own", "cup-1", "p1", ""], ["e-other", "cup-1", "p2", ""]);
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(initial);
+  fake.seedRecordMetadata("EntryList", 1, "e-own");
+  fake.seedRecordMetadata("EntryList", 2, "e-own");
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(service.removeEntry(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000096", bewerbId: "cup-1" },
+  ), { code: "SHEET_SCHEMA" });
+  assert.equal(fake.calls.metadataCreates, 0);
+  assert.equal(fake.tables.EntryList.some((row) => row[0] === "e-own"), true);
+});
+
+test("fehlgeschlagener Abschlussrefresh erzeugt keine Scheingegenmutation", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const staleRead = dataStore.beginRead("players");
+  const mutationBefore = dataStore.getMeta("players").lastMutation;
+  fake.client.spreadsheets.values.get = async () => { throw new Error("refresh unavailable"); };
+
+  await service.refreshCache("players", (cached) => cached);
+  const applied = dataStore.set("players", structuredClone(fake.tables.Personen), { source: "poll", readToken: staleRead });
+  assert.equal(applied.ignored, undefined);
+  assert.equal(dataStore.getMeta("players").lastMutation, mutationBefore);
+});
+
+test("Personennormalisierung lehnt veraltete Fingerprints und doppelte E-Mails vor dem Write ab", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const person = projectPeopleNormalization(fake.tables.Personen).people.find((entry) => entry.id === "p2");
+
+  await assert.rejects(
+    service.normalizePerson(principal, {
+      operationId: "00000000-0000-4000-8000-000000000091",
+      personId: "p2",
+      expectedFingerprint: "0".repeat(64),
+      changes: { firstName: "Petra" },
+    }),
+    (error) => error.code === "PERSON_CONFLICT" && error.status === 409,
+  );
+  await assert.rejects(
+    service.normalizePerson(principal, {
+      operationId: "00000000-0000-4000-8000-000000000092",
+      personId: "p2",
+      expectedFingerprint: person.fingerprint,
+      changes: { email: "ada@example.test" },
+    }),
+    (error) => error.code === "EMAIL_CONFLICT" && error.status === 409,
+  );
+  assert.equal(fake.calls.valueUpdates.length, 0);
+});
+
+test("Personennormalisierung reduziert bestehende E-Mail-Dubletten personweise", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.tables.Personen[1][3] = "shared@example.test";
+  fake.tables.Personen[2][3] = "shared@example.test";
+  fake.tables.Personen[3][3] = "other@example.test";
+  fake.tables.Personen[4][3] = "other@example.test";
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleNormalization(fake.tables.Personen).people.find((entry) => entry.id === "p2");
+
+  const result = await service.normalizePerson(
+    { type: "user", id: "p1", role: "admin", name: "Ada Admin" },
+    {
+      operationId: "00000000-0000-4000-8000-000000000094",
+      personId: "p2",
+      expectedFingerprint: person.fingerprint,
+      changes: { email: "peter@example.test" },
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(fake.calls.valueUpdates.length, 1);
+  assert.equal(fake.tables.Personen[2][3], "peter@example.test");
+  assert.equal(fake.tables.Personen[3][3], "other@example.test");
+  assert.equal(fake.tables.Personen[4][3], "other@example.test");
+});
+
+test("Personennormalisierung meldet die Google-Read-Quote verstaendlich und wiederholbar", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  fake.client.spreadsheets.values.get = async () => {
+    throw Object.assign(new Error("Quota exceeded"), { code: 429, response: { status: 429 } });
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(
+    service.normalizePerson(
+      { type: "user", id: "p1", role: "admin", name: "Ada Admin" },
+      {
+        operationId: "00000000-0000-4000-8000-000000000093",
+        personId: "p2",
+        expectedFingerprint: "a".repeat(64),
+        changes: { firstName: "Petra" },
+      },
+    ),
+    (error) => (
+      error.code === "SHEETS_RATE_LIMITED"
+      && error.status === 429
+      && error.message === "Die Google-Sheets-Schnittstelle hat ihr Zugriffslimit erreicht. Bitte etwa eine Minute warten und danach erneut versuchen."
+      && error.details?.retryAfterMs === 60000
+    ),
+  );
+  assert.equal(fake.calls.valueUpdates.length, 0);
+  assert.equal(repository.getOperation("user:p1", "00000000-0000-4000-8000-000000000093", "normalizePerson", {
+    personId: "p2",
+    expectedFingerprint: "a".repeat(64),
+    changes: { firstName: "Petra" },
+  }), null);
+});
 
 test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () => {
   const repository = new StateRepository(":memory:");
@@ -595,6 +844,7 @@ test("erfolgreiche EntryList-No-ops synchronisieren einen veralteten Cache", asy
   });
   assert.equal(present.alreadyPresent, true);
   assert.equal(dataStore.get("entryList").some((row) => row[0] === "existing"), true);
+  assert.equal(dataStore.getMeta("entryList").lastMutation, 0);
 
   fake.tables.EntryList.splice(1);
   const absent = await service.removeEntry(principal, {
@@ -603,6 +853,7 @@ test("erfolgreiche EntryList-No-ops synchronisieren einen veralteten Cache", asy
   });
   assert.equal(absent.removed, false);
   assert.equal(dataStore.get("entryList").length, 1);
+  assert.equal(dataStore.getMeta("entryList").lastMutation, 0);
 
   await service.stop();
   repository.close();
@@ -625,6 +876,24 @@ test("Matchregeln verwenden die unmittelbar zuvor gelesene Tabelle", async () =>
 
   await service.stop();
   repository.close();
+});
+
+test("abgelehnte Selbstforderung behaelt einen geplanten Matchrefresh", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  service.scheduleRefresh("matches1");
+
+  await assert.rejects(service.addMatch(principal, {
+    operationId: "00000000-0000-4000-8000-000000000097",
+    bewerbId: "cup-1",
+    opponentId: "p1",
+  }), { code: "MATCH_SELF" });
+  assert.equal(service.status().scheduledRefreshes, 1);
+  await service.stop();
 });
 
 test("Shutdown fuehrt bereits angenommene Queue-Eintraege noch aus", async () => {

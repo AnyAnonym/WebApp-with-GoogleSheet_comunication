@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASKÖ Piberbach - Personendaten normalisieren</title>
+  <link rel="stylesheet" href="./CSS/styles.css" />
+  <link rel="stylesheet" href="./CSS/personenNormalisieren.css" />
+</head>
+<body>
+  <div id="header-container"></div>
+  <div id="mobile-nav-container"></div>
+
+  <main class="normalization-main">
+    <section id="normalization-access" class="normalization-access" aria-live="polite">
+      <div class="normalization-access-card">
+        <p class="normalization-eyebrow">Geschützter Bereich</p>
+        <h1>Personendaten normalisieren</h1>
+        <p id="normalization-access-message">Sitzung wird geprüft...</p>
+        <a href="index.html" class="normalization-primary-link">Zur Anmeldung</a>
+      </div>
+    </section>
+
+    <div id="normalization-app" class="normalization-app" hidden>
+      <header class="normalization-heading">
+        <div>
+          <p class="normalization-eyebrow">Administration / Datenqualität</p>
+          <h1>Personendaten normalisieren</h1>
+          <p>Probleme prüfen, Zielwerte bearbeiten und ausgewählte Änderungen kontrolliert in das Personen-Sheet schreiben.</p>
+        </div>
+        <button id="normalization-reload" class="normalization-secondary-button" type="button">Neu laden</button>
+      </header>
+
+      <div id="normalization-status" class="normalization-status" role="status" aria-live="polite"></div>
+
+      <section class="normalization-summary" aria-label="Zusammenfassung">
+        <div><strong id="normalization-person-count">0</strong><span>Personen</span></div>
+        <div><strong id="normalization-affected-count">0</strong><span>mit Problemen</span></div>
+        <div><strong id="normalization-issue-count">0</strong><span>Hinweise</span></div>
+        <div data-accent><strong id="normalization-change-count">0</strong><span>Änderungen</span></div>
+      </section>
+
+      <section class="normalization-toolbar" aria-label="Filter und Aktionen">
+        <label>
+          <span>Suche</span>
+          <input id="normalization-search" type="search" placeholder="Name oder ID" autocomplete="off" />
+        </label>
+        <label>
+          <span>Status</span>
+          <select id="normalization-active-filter">
+            <option value="all">Alle</option>
+            <option value="active">Aktiv</option>
+            <option value="inactive">Inaktiv</option>
+          </select>
+        </label>
+        <label>
+          <span>Anzeige</span>
+          <select id="normalization-issue-filter">
+            <option value="issues">Nur mit Problemen</option>
+            <option value="all">Alle Personen</option>
+            <option value="clean">Ohne Probleme</option>
+            <option value="changed">Nur bearbeitet</option>
+          </select>
+        </label>
+        <button id="normalization-preview" class="normalization-primary-button" type="button" disabled>Änderungen prüfen</button>
+      </section>
+
+      <p id="normalization-empty" class="normalization-empty" hidden>Für diesen Filter wurden keine Personen gefunden.</p>
+      <div id="normalization-list" class="normalization-list"></div>
+    </div>
+  </main>
+
+  <div id="normalization-preview-modal" class="normalization-modal" role="dialog" aria-modal="true" aria-labelledby="normalization-preview-title" hidden>
+    <div class="normalization-modal-card">
+      <div class="normalization-modal-heading">
+        <div>
+          <p class="normalization-eyebrow">Letzte Kontrolle</p>
+          <h2 id="normalization-preview-title">Ausgewählte Änderungen</h2>
+        </div>
+        <button id="normalization-preview-close" class="normalization-icon-button" type="button" aria-label="Vorschau schließen">×</button>
+      </div>
+      <p>Nur die folgenden Werte werden geschrieben. Sicherheitsfelder und interne IDs bleiben unverändert.</p>
+      <div id="normalization-preview-list" class="normalization-preview-list"></div>
+      <div class="normalization-modal-actions">
+        <button id="normalization-preview-cancel" class="normalization-secondary-button" type="button">Weiter bearbeiten</button>
+        <button id="normalization-submit" class="normalization-primary-button" type="button">Änderungen schreiben</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-container"></div>
+
+  <script type="module" src="JS/navbar.js"></script>
+  <script type="module" src="JS/modals.js"></script>
+  <script type="module" src="JS/personenNormalisieren.js"></script>
+  <script src="JS/global.js"></script>
+  <script src="JS/footer.js"></script>
+</body>
+</html>

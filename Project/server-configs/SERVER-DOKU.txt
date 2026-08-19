@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Letzte Aenderung: 16.08.2026
+Letzte Aenderung: 19.08.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -57,9 +57,24 @@ besitzt weder Grafana-Redirect noch Access-Logging fuer Observability. Caddy pru
 jeden zentralen Grafana-Request ueber den Auth-Broker auf Port 8085 gegen die
 aktuellen Adminsessions von Live und PAJ und proxyt danach ueber den
 gruppengeschuetzten Unix-Socket `/run/epiber-observability/grafana.sock`.
+Der interne Forward-Auth-Request wird mit `uri /auth?` auf den queryfreien Pfad
+`/auth` begrenzt. Querystrings von Grafana-Assets und -APIs sind dadurch keine
+Broker-Routenbestandteile; der eigentliche Grafana-Request erreicht den
+Unix-Socket weiterhin mit seinem unveraenderten Querystring.
 Caddy stellt Grafanas nicht vertraulichen Metrikpfad fuer Prometheus getrennt auf
 `127.0.0.1:3001` bereit. `/metrics` bleibt von allen externen Matchern
 ausgeschlossen.
+
+Der Sollstand provisioniert sechs Dashboards, darunter `ePiber
+Personennormalisierung`. Dessen Auditpanel zeigt kontrolliert Adminname/-ID,
+Ziel-Personen-ID und resultierenden Zielnamen. Nur Aktiv und Rolle enthalten
+kanonische Alt-/Neuwerte; fuer andere Normalisierungsfelder erscheint allein der
+Feldname, nicht der Personenwert.
+`ePiber Platz- und Scoreverlauf` zeigt fuer Live oder PAJ und optional einen
+einzelnen Platz die hoechstens 14 Tage zurueckreichenden Scoreaenderungen und
+Court-Snapshots. Match-ID, Bewerb und Anzeigenamen der Paarung bleiben
+kontrollierte JSON-Felder und werden weder Loki-Labels noch Teil einer
+zusaetzlichen dauerhaften Historie.
 
 PK bleibt als Anwendungssystem und Caddy-Origin dokumentiert, ist im aktuellen
 Observability-Stand aber deaktiviert: Port 8084 wird nicht gescraped, PK-Journale

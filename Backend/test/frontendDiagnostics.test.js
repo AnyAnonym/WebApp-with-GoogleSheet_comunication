@@ -48,6 +48,19 @@ test("Scoreboard-Namensgroesse bleibt durch die reale Textbreite begrenzt", () =
   assert.equal(fontSize <= 37, true);
 });
 
+test("Scoreboard-Namensgroesse kann im Notfall strikten Ueberlauf beseitigen", () => {
+  const { largestPlayerNameSize } = loadFrontendModule("scoreboardSizing.js", ["largestPlayerNameSize"]);
+  const fontSize = largestPlayerNameSize({
+    minimum: 1,
+    maximum: 40,
+    overflowLimit: 1,
+    measure: (candidate) => ({ widthFits: true, overflow: Math.max(0, candidate - 12) }),
+  });
+
+  assert.equal(fontSize > 12, true);
+  assert.equal(fontSize <= 13, true);
+});
+
 test("Ranglistenmatches erkennen nur exakte [wo]- und [ret]-Abschluesse", () => {
   const { isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } = loadFrontendModule(
     "rankingMatchState.js",
@@ -230,6 +243,53 @@ test("Frontenddiagnose uebertraegt nur die kontrollierte Projektion gebuendelt",
   assert.equal(requests[0].options.body.includes("private free text"), false);
   assert.equal(requests[0].options.body.includes("personId"), false);
   assert.equal(requests[0].options.body.includes("secret"), false);
+});
+
+test("Personennormalisierungsfehler transportiert Code und Zaehler ohne Fachdaten", async () => {
+  const requests = [];
+  const fetch = async (url, options) => {
+    requests.push({ url, options });
+    return { ok: true, status: 200 };
+  };
+  const { applyDiagnosticPolicy, diagnostic } = loadFrontendModule(
+    "diagnostics.js",
+    ["applyDiagnosticPolicy", "diagnostic"],
+    {
+      APP_VERSION: "4.4.7-test",
+      console: { debug() {}, error() {}, info() {}, log() {}, warn() {} },
+      crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000011" },
+      fetch,
+      location: { pathname: "/personenNormalisieren.html" },
+    },
+  );
+  applyDiagnosticPolicy({
+    enabled: true,
+    level: "warn",
+    targeted: false,
+    sampleRatePercent: 10,
+    batchSize: 1,
+    flushIntervalMs: 5000,
+  });
+  const error = Object.assign(new Error("Adresse und E-Mail duerfen nicht transportiert werden"), {
+    code: "PERSON_CONFLICT",
+    supportId: "support-normalization-1",
+  });
+  diagnostic.error("people_normalization_write_failed", error, { count: 0, address: "Dorf 1" });
+  await Promise.resolve();
+
+  const body = JSON.parse(requests[0].options.body);
+  assert.equal(body.pageType, "personenNormalisieren");
+  assert.deepEqual(body.events[0], {
+    event: "people_normalization_write_failed",
+    level: "error",
+    timestamp: body.events[0].timestamp,
+    count: 0,
+    code: "PERSON_CONFLICT",
+    category: "application",
+    supportId: "support-normalization-1",
+  });
+  assert.equal(requests[0].options.body.includes("Dorf 1"), false);
+  assert.equal(requests[0].options.body.includes("E-Mail"), false);
 });
 
 test("Gezielte Diagnose zeigt der betroffenen Person einen Hinweis bis zum Ablauf", () => {

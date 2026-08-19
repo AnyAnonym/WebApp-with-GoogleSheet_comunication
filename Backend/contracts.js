@@ -7,6 +7,7 @@ const {
   requireObject,
   stringValue,
 } = require("./validators.js");
+const { validateChanges } = require("./peopleNormalization.js");
 
 function objectShape(raw, fields) {
   const value = requireObject(raw);
@@ -58,6 +59,7 @@ function courtAssignment(params) {
 
 const requestContracts = {
   players: empty,
+  adminPeopleNormalization: empty,
   publicProfile: (params) => objectShape(params, { id: id("id") }),
   bewerbe: empty,
   bewerbsart: empty,
@@ -73,6 +75,12 @@ const requestContracts = {
   memberDirectory: empty,
   myProfile: empty,
   operationStatus: (params) => objectShape(params, { operationId: operation }),
+  normalizePerson: (params) => objectShape(params, {
+    operationId: operation,
+    personId: id("personId"),
+    expectedFingerprint: text("expectedFingerprint", { min: 64, max: 64, pattern: /^[0-9a-f]{64}$/i }),
+    changes: validateChanges,
+  }),
   addMatch: (params) => objectShape(params, {
     operationId: operation,
     bewerbId: id("bewerbId"),

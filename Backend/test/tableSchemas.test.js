@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
-const { validateTableValues } = require("../tableSchemas.js");
+const { assertUniquePlayerEmails, validateTableValues } = require("../tableSchemas.js");
 const logger = require("../logger.js");
 const { roleValue } = require("../validators.js");
 
@@ -18,7 +18,7 @@ test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
   assert.equal(validateTableValues("matchtyp", matchtyp), matchtyp);
 });
 
-test("Personen-IDs und kanonische E-Mail-Duplikate bleiben strukturell fatal", () => {
+test("Personen-IDs bleiben fatal und doppelte E-Mails fuer Reparaturen lesbar", () => {
   const duplicate = peopleFixture();
   duplicate.push(["p1", "Duplicate", "ID", "ada@example.test", "c".repeat(64), "", "", "", "1", "admin"]);
   assert.throws(() => validateTableValues("players", duplicate), { code: "SHEET_SCHEMA" });
@@ -29,7 +29,8 @@ test("Personen-IDs und kanonische E-Mail-Duplikate bleiben strukturell fatal", (
   const idnDuplicate = peopleFixture();
   idnDuplicate[1][3] = "üser@münchen.example";
   idnDuplicate[2][3] = "üser@xn--mnchen-3ya.example";
-  assert.throws(() => validateTableValues("players", idnDuplicate), { code: "SHEET_SCHEMA" });
+  assert.equal(validateTableValues("players", idnDuplicate), idnDuplicate);
+  assert.throws(() => assertUniquePlayerEmails(idnDuplicate), { code: "EMAIL_CONFLICT" });
 });
 
 test("ungueltige Personen-E-Mails werden identifizierbar geloggt und blockieren den Load nicht", (t) => {

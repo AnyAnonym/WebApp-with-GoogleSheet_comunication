@@ -1,0 +1,253 @@
+{
+  "annotations": { "list": [] },
+  "description": "Aktueller Datenqualitaetsstand, Nutzung, Writes, Audit und Fehler der ePiber-Personennormalisierung.",
+  "editable": false,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "1 bedeutet, dass der zugrunde liegende Personenbestand innerhalb des erlaubten Alters liegt.",
+      "fieldConfig": { "defaults": { "mappings": [{ "options": { "0": { "color": "red", "text": "Veraltet" }, "1": { "color": "green", "text": "Aktuell" } }, "type": "value" }], "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_people_normalization_current{deployment=\"$deployment\"}", "instant": true, "legendFormat": "Aktualitaet", "range": false, "refId": "A" }],
+      "title": "Personendaten",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_people_normalization_people{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "instant": true, "legendFormat": "Personen", "range": false, "refId": "A" }],
+      "title": "Personen gesamt",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_people_normalization_affected_people{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "instant": true, "legendFormat": "Betroffen", "range": false, "refId": "A" }],
+      "title": "Personen mit Problemen",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_people_normalization_issues{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "instant": true, "legendFormat": "Probleme", "range": false, "refId": "A" }],
+      "title": "Offene Probleme",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Erfolgreiche normalizePerson-Requests im ausgewaehlten Zeitraum. Idempotente Wiederholungen oder bereits vorhandene Zielwerte koennen enthalten sein.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "sum(increase(epiber_ws_requests_total{deployment=\"$deployment\",endpoint=\"normalizePerson\",result=\"success\"}[$__range])) or vector(0)", "instant": true, "legendFormat": "Erfolgreich", "range": false, "refId": "A" }],
+      "title": "Erfolgreiche Write-Requests",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Fachlich abgelehnte und technisch fehlgeschlagene normalizePerson-Writes im ausgewaehlten Zeitraum.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "sum(increase(epiber_ws_requests_total{deployment=\"$deployment\",endpoint=\"normalizePerson\",result=~\"rejected|failed\"}[$__range])) or vector(0)", "instant": true, "legendFormat": "Problematisch", "range": false, "refId": "A" }],
+      "title": "Abgelehnt / fehlgeschlagen",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Aktuelle aggregierte Verteilung. Problemcodes sind ein fest begrenztes Vokabular und enthalten keinen Personenbezug.",
+      "fieldConfig": { "defaults": { "color": { "mode": "continuous-GrYlRd" }, "decimals": 0, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "id": 7,
+      "options": { "displayMode": "gradient", "maxVizHeight": 300, "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true, "sizing": "auto", "valueMode": "color" },
+      "targets": [{ "editorMode": "code", "expr": "epiber_people_normalization_issue_count{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "instant": true, "legendFormat": "{{code}}", "range": false, "refId": "A" }],
+      "title": "Probleme nach Code",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "id": 8,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "editorMode": "code", "expr": "epiber_people_normalization_affected_people{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "legendFormat": "Betroffene Personen", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "epiber_people_normalization_issues{deployment=\"$deployment\"} and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "legendFormat": "Offene Probleme", "range": true, "refId": "B" }
+      ],
+      "title": "Entwicklung des Datenbestands",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 25 }] }, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 14 },
+      "id": 9,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "(100 * epiber_people_normalization_affected_people{deployment=\"$deployment\"} / clamp_min(epiber_people_normalization_people{deployment=\"$deployment\"}, 1)) and on(deployment) (epiber_people_normalization_current{deployment=\"$deployment\"} == 1)", "instant": true, "legendFormat": "Anteil", "range": false, "refId": "A" }],
+      "title": "Anteil betroffen",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "-1": { "color": "red", "text": "Unbekannt" } }, "type": "value" }], "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }, { "color": "orange", "value": 60 }, { "color": "red", "value": 90 }] }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 14 },
+      "id": 10,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_sheet_table_age_seconds{deployment=\"$deployment\",table=\"players\"}", "instant": true, "legendFormat": "Alter", "range": false, "refId": "A" }],
+      "title": "Alter Personenbestand",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 14 },
+      "id": 11,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_sheet_writes_active{deployment=\"$deployment\"}", "instant": true, "legendFormat": "Aktiv", "range": false, "refId": "A" }],
+      "title": "Aktive Sheet-Writes",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 14 },
+      "id": 12,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_sheet_write_queues{deployment=\"$deployment\"}", "instant": true, "legendFormat": "Queues", "range": false, "refId": "A" }],
+      "title": "Write-Warteschlangen",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 14 },
+      "id": 13,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "editorMode": "code", "expr": "epiber_sheet_metadata_intents_pending{deployment=\"$deployment\"}", "instant": true, "legendFormat": "Pending", "range": false, "refId": "A" }],
+      "title": "Pending Metadata",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Auditabschluesse mit unklarem Ausgang im ausgewaehlten Zeitraum.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 14 },
+      "id": 14,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto", "wideLayout": true },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "sum(count_over_time({deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"audit_recorded\" | action=\"normalizePerson\" | result=\"unknown\" [$__range])) or vector(0)", "queryType": "instant", "refId": "A" }],
+      "title": "Unklare Writeausgaenge",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "Requests/s", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 15, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 15,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "sum by (result) (rate(epiber_ws_requests_total{deployment=\"$deployment\",endpoint=\"normalizePerson\"}[$__rate_interval]))", "legendFormat": "{{result}}", "range": true, "refId": "A" }],
+      "title": "Normalisierungswrites nach Ergebnis",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "min": 0, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 16,
+      "options": { "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(epiber_ws_request_duration_seconds_bucket{deployment=\"$deployment\",endpoint=~\"adminPeopleNormalization|normalizePerson\"}[$__rate_interval])))", "legendFormat": "{{endpoint}}", "range": true, "refId": "A" }],
+      "title": "RPC-Latenz p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "Requests/s", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 12, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "id": 17,
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" } },
+      "targets": [{ "editorMode": "code", "expr": "sum by (endpoint, result) (rate(epiber_ws_requests_total{deployment=\"$deployment\",endpoint=~\"adminPeopleNormalization|normalizePerson\"}[$__rate_interval]))", "legendFormat": "{{endpoint}} {{result}}", "range": true, "refId": "A" }],
+      "title": "Lesen und Schreiben",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "Fehler", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "bars", "fillOpacity": 70, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "normal" }, "thresholdsStyle": { "mode": "off" } }, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "id": 18,
+      "options": { "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "sum by (errorCode) (count_over_time({deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"ws_request_completed\" | endpoint=\"normalizePerson\" | result!=\"success\" | errorCode!=\"\" [$__auto]))", "queryType": "range", "refId": "A" }],
+      "title": "Writefehler nach Code",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Enthaelt auf ausdruecklichen Wunsch Adminname/-ID sowie Ziel-Personen-ID und resultierenden Zielnamen. Aktiv und Rolle zeigen kontrollierte Alt-/Neuwerte; bei anderen Feldern erscheint nur der Feldname, niemals der Personenwert.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+      "id": 19,
+      "options": { "dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": false, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "{deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"audit_recorded\" | action=\"normalizePerson\" | keep actorName, actorId, targetId, targetName, result, errorCode, changeSummary, requestId | line_format \"{{.actorName}} (Admin-ID {{.actorId}}) -> Person {{.targetId}}{{if .targetName}} ({{.targetName}}){{end}} | {{.result}}{{if .errorCode}} | {{.errorCode}}{{end}}{{if .changeSummary}} | {{.changeSummary}}{{end}} | Support {{.requestId}}\"", "queryType": "range", "refId": "A" }],
+      "title": "Auditverlauf der Personenupdates",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 45 },
+      "id": 20,
+      "options": { "dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": false, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "{deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"ws_request_completed\" | endpoint=\"normalizePerson\" | result!=\"success\" | keep result, errorCode, durationMs, supportId | line_format \"{{.result}} | {{.errorCode}} | {{.durationMs}} ms | Support {{.supportId}}\"", "queryType": "range", "refId": "A" }],
+      "title": "Abgelehnte und fehlgeschlagene Writes",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 45 },
+      "id": 21,
+      "options": { "dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": false, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "editorMode": "code", "expr": "{deployment=\"$deployment\",service=\"epiber-backend\"} | json | event=\"frontend_client_event\" | frontendEvent=~\"people_normalization_.*\" | keep frontendEvent, code, supportId | line_format \"{{.frontendEvent}} | {{.code}} | Support {{.supportId}}\"", "queryType": "range", "refId": "A" }],
+      "title": "Browserdiagnosen der Normalisierungsseite",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["epiber", "people", "normalization", "audit"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "PAJ", "value": "paj" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "System",
+        "multi": false,
+        "name": "deployment",
+        "options": [
+          { "selected": false, "text": "Live", "value": "live" },
+          { "selected": true, "text": "PAJ", "value": "paj" }
+        ],
+        "query": "live,paj",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "ePiber Personennormalisierung",
+  "uid": "epiber-people-normalization",
+  "version": 1
+}

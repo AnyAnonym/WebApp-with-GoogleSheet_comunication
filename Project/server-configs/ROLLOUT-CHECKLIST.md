@@ -27,7 +27,7 @@ Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -
 - [ ] `Bewerb`: `ID`, `Bezeichnung`, `BewerbsartID`; `Bewerbsart`: `ID`, `Bezeichnung`.
 - [ ] `Matches1`: `ID`, `Matchdate`, `Forderungdate`, `BewerbID`, `BewerbRunde`, `Spieler1ID`, `Spieler3ID`, `Ergebnis`.
 - [ ] `RL-Platzierung`: `BewerbID`, `PersonID`, `Rang`; `Navigator`: `Name`, `Ziel`.
-- [ ] Jede relevante Personenzeile besitzt explizit `player`, `operator` oder `admin` in `Role`; Gross-/Kleinschreibung wurde vereinheitlicht.
+- [ ] Jede relevante Personenzeile besitzt explizit `player`, `player A`, `player B`, `operator` oder `admin` in `Role`; Gross-/Kleinschreibung wurde vereinheitlicht.
 - [ ] Mindestens eine aktive, praktisch getestete Adminperson vorhanden.
 - [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
@@ -137,7 +137,8 @@ Gesamtfreigabe.
 - [ ] Bei mehreren gueltigen Admincookies verwendet der Broker deterministisch Live vor PAJ; PK-Cookies werden ignoriert und ein ausgefallenes aktives Realm blockiert eine andere gueltige Adminsession nicht.
 - [ ] Logout, Sessionablauf, Rollenentzug und Deaktivierung sperren den naechsten HTTP-Request und WebSocket-Neuaufbau. Eine bestehende Grafana-Live-Verbindung ist keine Autoritaet fuer privilegierte Entscheidungen.
 - [ ] Grafana-Assets, API und Live-WebSocket funktionieren ohne CSP-, Redirect-, Mixed-Content-, Cookie- oder Subpathfehler.
-- [ ] Vier gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht doppelt gezaehlt.
+- [ ] Fuenf gemeinsame Dashboards sind vorhanden; die Deploymentauswahl `live|paj` trennt Anwendungswerte eindeutig, Hostressourcen werden nicht doppelt gezaehlt.
+- [ ] Das Normalisierungs-Auditpanel zeigt Adminname/-ID, Ziel-Personen-ID und resultierenden Zielnamen. Nur Aktiv und Rolle enthalten kontrollierte Alt-/Neuwerte; andere Personenfelder erscheinen ohne Wert als geaendert. Bestehende Loki-Zeilen bleiben unveraendert.
 - [ ] Anwendungsalerts erzeugen getrennte Alarm- und Recoveryzustaende je Deployment; Host-/Stackalarme existieren nur einmal.
 - [ ] SMTP, Benachrichtigungsversuche, oeffentliche Dashboards, lokale und externe Snapshots, Pluginverwaltung, automatische Pluginvorinstallation und automatische Pluginupdates sind deaktiviert.
 - [ ] `/var/lib/grafana/plugins` gehoert `grafana:grafana` und hat Modus 0750; ein wiederholter Installerlauf erhaelt beziehungsweise repariert diesen Zustand.

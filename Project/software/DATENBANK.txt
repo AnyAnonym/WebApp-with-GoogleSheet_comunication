@@ -38,8 +38,10 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
                   |                 |           | Entrydate
 
 Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
-Format `[A-Za-z0-9_.:-]{1,64}`. Gueltige Personen-E-Mail-Adressen muessen, soweit
-gesetzt, nach der Kanonisierung eindeutig sein. Eine ungueltige E-Mail-Adresse
+Format `[A-Za-z0-9_.:-]{1,64}`. Doppelte kanonische Personen-E-Mails bleiben fuer
+die Adminreparatur lesbar, sperren aber alle betroffenen Logins; Personenwrites
+duerfen keinen Konflikt neu erzeugen oder vergroessern. Normalisierungswrites
+koennen bestehende Gruppen dadurch personweise reduzieren. Eine ungueltige E-Mail-Adresse
 blockiert den Tabellenload nicht, sondern wird fuer Authentifizierung und
 Projektionen wie eine leere E-Mail behandelt und mit Personen-ID, Sheetzeile und
 Fehlergrund strukturiert geloggt. Personen darf nicht leer sein.
@@ -108,10 +110,14 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
                      | separate Resetcode-Ablauf verwendet es nicht.
   TelefonMobil       | Telefonnummer.
   GeburtsDatum       | Geburtsdatum.
-  Geschlecht         | Fachwert, historisch 1/2.
+  GeschlechtID       | Bevorzugter Fachwert: leer, 1, 2 oder 3.
+  Geschlecht         | Legacy-Fallback, falls GeschlechtID fehlt.
+  CD-ID              | Optionale externe ClubDesk-Kennung; in der aktuellen
+                     | Normalisierungsphase weder projiziert noch geschrieben.
   Aktiv              | "1" = aktiv. Inaktive Personen koennen sich nicht
                      | anmelden und erscheinen nicht im Mitgliederverzeichnis.
-  Role               | Pflichtspalte: player, operator oder admin.
+  Role               | Pflichtspalte: player, player A, player B, operator oder
+                     | admin.
 
 `KennwortVergessen` ist keine allgemeine Poller-Pflichtspalte. Fuer die
 Passwort-Erstvergabe muss sie jedoch vorhanden und fuer den Service-Account
@@ -119,12 +125,31 @@ beschreibbar sein; andernfalls lehnt der betreffende Write die Funktion mit
 `SHEET_SCHEMA` ab.
 
 Role-Vertrag:
-  - Die erlaubten normalisierten Werte sind `player`, `operator` und `admin`.
+  - Die erlaubten normalisierten Werte sind `player`, `player A`, `player B`,
+    `operator` und `admin`. Die drei Playerrollen besitzen dieselbe technische
+    Berechtigungsstufe; A/B ist eine fachliche Mitgliederklassifikation.
   - Ein leerer Wert wird technisch als `player` behandelt. Beim Rollout muss
     dennoch jede Zeile explizit migriert werden; mindestens ein aktiver Admin
     ist erforderlich.
   - Ein nichtleerer ungueltiger Wert erhaelt ebenfalls nur `player`-Rechte. Pro
     normalisiertem ungueltigem Wert wird pro Backendprozess einmal gewarnt.
+
+Normalisierungsvertrag:
+  - Zielwerte werden getrimmt. Nachname ist Pflicht; GeburtsDatum ist leer oder
+    ein reales `TT.MM.JJJJ`; GeschlechtID ist leer/1/2/3; PLZ ist leer oder genau
+    vierstellig; Aktiv ist leer oder `1`.
+  - TelefonMobil ist leer oder folgt
+    `00<Laendercode> <Netzvorwahl> <Rest>` mit Ziffern und Leerzeichen. Die beiden
+    ersten Trenner sind verpflichtend; weitere Leerzeichen im Rest sind erlaubt.
+  - E-Mails werden validiert und kanonisiert. Doppelte kanonische Werte bleiben im
+    Readmodell als Problem sichtbar und sperren den Login. Ein
+    Normalisierungswrite validiert die gesamte Kandidatentabelle und darf die
+    Anzahl einer kanonischen Dublettengruppe nur beibehalten oder reduzieren;
+    neue oder vergroesserte Konflikte ergeben `EMAIL_CONFLICT`.
+  - Projiziert, fingerprinted und geschrieben werden ausschliesslich Vorname,
+    Nachname, GeburtsDatum, GeschlechtID/Geschlecht, TelefonMobil, E-Mail, Land,
+    PLZ, Ort, Adresse, Aktiv und Role. `PasswdHash`, `KennwortVergessen`,
+    Resetdaten, `CD-ID` und andere Spalten sind ausgeschlossen.
 
 Passwort-Vertrag:
   - Der Browser uebertraegt nur den 64-stelligen SHA-256-Credential, niemals das
@@ -326,9 +351,9 @@ Rekonstruktion eines Live-Stands.
 
 Tabelle `audit_log`:
   event_id PRIMARY KEY, occurred_at, actor_type, actor_id, actor_name, role,
-  action, target_type, target_id, request_id, operation_id, result, before_json,
-  after_json, error_code, source_ip, attempted_email, instance, created_at,
-  updated_at. `result` ist
+  action, target_type, target_id, target_name, request_id, operation_id, result,
+  before_json, after_json, error_code, source_ip, attempted_email, instance,
+  created_at, updated_at. `result` ist
   `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
   derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
   Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
@@ -354,14 +379,24 @@ Rolle ergaenzt, bei einem Fehlschlag bleibt der Akteur anonym. Ein bestehendes
 Schema wird additiv migriert; alte Zeilen erhalten fuer die drei neuen Felder
 leere Werte.
 
+`target_name` ist ein auf 200 Zeichen begrenzter Anzeigenamensnapshot des Ziels
+zum Auditabschluss. Bei `normalizePerson` ist dies nach Erfolg der resultierende
+Vor-/Nachname, bei einer Ablehnung der noch bekannte bisherige Name. Ein
+terminaler nicht leerer Zielname ergaenzt den beim Start gegebenenfalls noch
+leeren Wert. Bestehende Zeilen werden additiv mit einem leeren Wert migriert.
+
 Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
 E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
 `/status` ausgegeben und werden fachlich ohne automatische Bereinigung
 aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder
 Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und muss SQLite-
-Backups einbeziehen. Der optionale JSON-Spiegel enthaelt den Namen, aber nur
-maskierte E-Mail- und IP-Werte. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken;
-Standard `*` aktiviert alle implementierten Aktionen.
+Backups einbeziehen. Der optionale JSON-Spiegel enthaelt Akteur- und Zielname,
+aber nur maskierte E-Mail- und IP-Werte. Fuer `normalizePerson` enthaelt er eine
+kontrollierte Aenderungszusammenfassung: `active` und `role` erscheinen mit
+kanonischen Alt-/Neuwerten, die anderen zehn erlaubten Felder ausschliesslich mit
+ihrem Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht
+gespiegelt. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*`
+aktiviert alle implementierten Aktionen.
 
 
 ================================================================================

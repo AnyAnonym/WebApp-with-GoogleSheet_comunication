@@ -365,11 +365,30 @@ werden keine Labels. Caddy entfernt Querystrings, Request-/Responseheader und
 Quelladressen aus den Access-Logs. Loki ist ein gemeinsamer Tenant: Jeder
 zugelassene Grafana-Admin darf bewusst Daten beider aktiver Systeme sehen.
 
+Sechs Dashboards werden provisioniert. `ePiber Personennormalisierung` trennt
+Live und PAJ ueber die Deploymentauswahl und kombiniert aggregierte
+Prometheus-Zustaende mit kontrollierten Loki-Ereignissen. Sein Auditpanel zeigt
+Adminname/-ID, Ziel-Personen-ID und resultierenden Zielnamen. Fuer Aktiv und
+Rolle sind kontrollierte Alt-/Neuwerte erlaubt, fuer andere Felder nur der
+Feldname. Kontakt-, Adress-, Geburts-, Geschlechts- und freie Werte bleiben
+ausgeschlossen. Alte Loki-Eintraege werden nicht nachtraeglich angereichert.
+`ePiber Platz- und Scoreverlauf` zeigt neueste Court-Ereignisse zuerst und kann
+nach Deployment und Platz filtern. Erfolgreich persistierte Scoreaenderungen
+tragen ihre platzbezogene Sequenz; kontrollierte Snapshots markieren Zuweisung,
+Aktivitaetswechsel, Prozessstart und die erste uebernommene Startbaseline. Als
+JSON-Felder sind nur Platz, Score, Match-/Bewerbskennung, Bewerbsbezeichnung,
+Anzeigenamen der Paarung, Aktivstatus und Court-Revision erlaubt. Diese Werte
+werden keine Loki-Labels. Die Ansicht unterliegt der normalen 14-Tage-Retention;
+alte Eintraege ohne diesen Kontext werden nicht nachtraeglich angereichert.
+
 Grafana besitzt genau eine kanonische Origin `https://epiber.at/grafana/`. PAJ
 antwortet auf `/grafana/` mit einer permanenten Weiterleitung dorthin. Der
 PK-Caddyblock besitzt weder Grafana-Redirect noch Observability-Access-Logging.
 Vor jedem Asset-, API- oder Grafana-Live-WebSocket-Request fragt Caddy den
-Loopback-Broker auf Port 8085. Dieser sendet jedes vorhandene Sessioncookie nur
+Loopback-Broker auf Port 8085. `uri /auth?` verwirft dabei ausdruecklich den
+Querystring des urspruenglichen Grafana-Requests; der anschliessende Request an
+Grafanas Unix-Socket behaelt Pfad und Query unveraendert. Der Broker erhaelt damit
+ausschliesslich den queryfreien Pfad `/auth` und sendet jedes vorhandene Sessioncookie nur
 an sein eigenes Backend. Eine aktuelle aktive Adminsession aus Live oder PAJ
 genuegt; PK-Cookies werden ignoriert. Player, Operator, anonyme, stale,
 abgelaufene, widerrufene und inaktive Sessions werden abgewiesen. Bei mehreren
@@ -409,6 +428,18 @@ Caddy-Reload, muss der Betreiber die gesicherte Caddydatei und die vorherigen
 Observability-Vorlagen wiederherstellen, Grafana neu starten und Caddy erneut
 validieren und laden. Der Wechsel findet deshalb ausschliesslich in einem
 dokumentierten Wartungsfenster statt.
+
+Nach einer Aenderung der Normalisierungsauditprojektion werden zuerst Backend
+und additive SQLite-Migration ausgerollt und der Dienst neu gestartet. Danach
+wird die Dashboard-JSON nach `/etc/grafana/dashboards/epiber/` installiert; der
+Provider liest sie innerhalb von hoechstens 30 Sekunden ohne Grafana-Neustart
+neu ein.
+
+Nach einer Aenderung des Forward-Auth-Rewrites muessen insbesondere
+`/grafana/api/plugins?embedded=0&core=0`, Dashboard-Suche und das
+Getting-Started-Panel authentifiziert geprueft werden. Der Broker darf fuer diese
+Grafana-APIs keine 17 Byte grosse `404 {"success":false}`-Antwort mehr liefern;
+der Grafana-Request selbst muss seinen Querystring weiterhin erhalten.
 
 Lokale Daten und Aufbewahrung:
 
@@ -510,10 +541,19 @@ Admin-Session oder mit einem kontrolliert bereitgestellten Sessioncookie zu
 pruefen; ein anonymer Curl muss 401 liefern. Der Detailstatus muss Readiness,
 Poller, Tabellenalter/-fehler, Courtquelle, WebSocketprovider, Monitore,
 Court-State, aktive Sheets-Writes/Queues und `pendingMetadataIntents` plausibel
-zeigen. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
+zeigen. Der Sheets-Status enthaelt ausserdem geplante Abschlussrefreshes und den
+verbleibenden Read-Cooldown. `scoreLog` und `auditLog` muessen offen/ready sein und plausible
 Schreibzaehler liefern; Ereigniszeilen werden ueber `/status` nicht ausgegeben.
 Die Antwort darf keine Secrets enthalten. Unbekannte Fachwrite-Ausgaenge werden
 akteursbezogen ueber den RPC `operationStatus` abgefragt.
+
+Prometheus muss `epiber_sheet_api_requests_total`,
+`epiber_sheet_api_attempts_total`, `epiber_sheet_read_cooldown_seconds` und
+`epiber_sheet_refreshes_scheduled` liefern. Die Uebersicht trennt Requests nach
+kontrolliertem Zweck/Ergebnis und Versuche nach Methode sowie `initial|retry`.
+Nach einem kontrolliert ausgeloesten 429 darf waehrend des 60-Sekunden-Cooldowns
+kein weiterer Google-Readversuch gezaehlt werden; Tabellen koennen dabei gemaess
+ihrer normalen Altersgrenzen voruebergehend nicht current werden.
 
 Die `/status`-Antwort ist trotz fehlender Secrets eine geschuetzte Sammlung
 personenbezogener Betriebsdiagnosen. Sie kann insbesondere IP-Adressen,
@@ -544,6 +584,12 @@ Insertfehler bleibt der bisherige sichtbare Score erhalten und der Folgepoll
 versucht die Aenderung erneut. Bei Prozessstart
 uebernimmt ein in SQLite bereits aktiver Platz den ersten externen Stand sofort in
 die Anzeige, ohne diesen Wiederanlaufstand zu protokollieren.
+Bei aktiviertem `SCORE_LOG_JOURNAL` spiegelt das Backend erfolgreiche
+ScoreLog-Writes zusaetzlich als `score_logged` und Zustandsuebergaenge als
+`court_state_snapshot` nach journald/Loki. Der Spiegel ist eine kontrollierte,
+auf 14 Tage begrenzte Grafana-Projektion und erweitert weder Schema noch
+Aufbewahrung von `scorelog.sqlite`. Schlaegt der SQLite-Write fehl, wird kein
+`score_logged` erzeugt und der bisherige Score bleibt sichtbar.
 
 Zusaetzliche Betriebschecks:
 

@@ -1,0 +1,72 @@
+{
+  "annotations": { "list": [] },
+  "description": "Chronologischer Verlauf der Platzbelegung und akzeptierten Scoreaenderungen aus den letzten maximal 14 Tagen.",
+  "editable": false,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Neueste Ereignisse zuerst. Scorefolgen sind je System und Platz geordnet. Zuweisungen, Aktivitaetswechsel und Startbaselines ergaenzen die persistierten Scoreaenderungen.",
+      "gridPos": { "h": 24, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "dedupStrategy": "none", "enableInfiniteScrolling": true, "enableLogDetails": false, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{deployment=\"$deployment\",service=\"epiber-backend\",event=~\"score_logged|court_state_snapshot\"} | json | __error__=\"\" | court=~\"$court\" | keep event, reason, court, active, score, matchId, bewerbId, bewerb, homePlayer, guestPlayer, sequence, courtRevision | line_format \"Platz {{.court}} | {{if .active}}aktiv{{else}}inaktiv{{end}} | {{if .bewerb}}{{.bewerb}}{{else}}kein Bewerb{{end}} | {{if .homePlayer}}{{.homePlayer}} - {{.guestPlayer}}{{else}}keine Paarung{{end}} | {{.score}}{{if .matchId}} | Match {{.matchId}}{{end}}{{if .sequence}} | Folge {{.sequence}}{{end}}{{if .reason}} | {{.reason}}{{end}}\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Platz- und Scoreverlauf",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 41,
+  "tags": ["epiber", "court", "score", "history"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "Live", "value": "live" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "System",
+        "multi": false,
+        "name": "deployment",
+        "options": [
+          { "selected": true, "text": "Live", "value": "live" },
+          { "selected": false, "text": "PAJ", "value": "paj" }
+        ],
+        "query": "live,paj",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "allValue": "1|2",
+        "current": { "selected": true, "text": "Alle", "value": "$__all" },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Platz",
+        "multi": false,
+        "name": "court",
+        "options": [
+          { "selected": true, "text": "Alle", "value": "$__all" },
+          { "selected": false, "text": "Platz 1", "value": "1" },
+          { "selected": false, "text": "Platz 2", "value": "2" }
+        ],
+        "query": "1,2",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "ePiber Platz- und Scoreverlauf",
+  "uid": "epiber-score-history",
+  "version": 1
+}

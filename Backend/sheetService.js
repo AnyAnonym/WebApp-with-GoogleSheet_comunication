@@ -4,11 +4,20 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const { AppError } = require("./errors.js");
 const { analyzeMatchRules } = require("./matchRules.js");
+const {
+  fieldIndexes,
+  personFingerprint,
+  projectPeopleNormalization,
+  rawPersonValues,
+  validateChanges,
+} = require("./peopleNormalization.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
-const { validateTableValues } = require("./tableSchemas.js");
+const { assertPlayerEmailConflictsNotWorsened, assertUniquePlayerEmails, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
+const { beginSheetTableActivity, executeSheetRead, getSheetReadStatus, rateLimitError } = require("./sheetsReadCoordinator.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
+const WRITE_REFRESH_DELAY_MS = 1000;
 
 function withAudit(result, audit) {
   Object.defineProperty(result, "_audit", { value: audit, enumerable: false });
@@ -77,7 +86,7 @@ function parseCompetitionDate(raw, endOfDay) {
 }
 
 class SheetService {
-  constructor({ repository, clientFactory = null, now = Date.now } = {}) {
+  constructor({ repository, clientFactory = null, now = Date.now, refreshDelayMs = process.env.NODE_ENV === "test" ? 60000 : WRITE_REFRESH_DELAY_MS } = {}) {
     this.repository = repository;
     this.clientFactory = clientFactory;
     this.client = null;
@@ -85,8 +94,14 @@ class SheetService {
     this.active = new Set();
     this.stopping = false;
     this.now = now;
+    this.refreshDelayMs = refreshDelayMs;
     this.sheetIds = new Map();
+    this.sheetIdsLoad = null;
     this.recordMetadata = new Map();
+    this.recordMetadataScanned = false;
+    this.recordMetadataLoad = null;
+    this.recordMetadataUnresolved = new Set();
+    this.refreshTimers = new Map();
   }
 
   competition(competitionId) {
@@ -211,7 +226,14 @@ class SheetService {
     if (this.stopping) return Promise.reject(new AppError("SHUTTING_DOWN", "Server wird beendet", 503));
     if (this.active.size >= 1000) return Promise.reject(new AppError("WRITE_QUEUE_FULL", "Schreibwarteschlange ist voll", 503));
     const previous = this.queues.get(key) || Promise.resolve();
-    const operation = previous.catch(() => {}).then(callback);
+    const operation = previous.catch(() => {}).then(async () => {
+      const release = Object.hasOwn(TABLE_CONFIG, key) ? beginSheetTableActivity(key) : null;
+      try {
+        return await callback();
+      } finally {
+        release?.();
+      }
+    });
     this.queues.set(key, operation);
     this.active.add(operation);
     operation.finally(() => {
@@ -221,44 +243,100 @@ class SheetService {
     return operation;
   }
 
-  async readTable(tableName) {
+  async readTable(tableName, purpose = "write_precondition") {
     const config = TABLE_CONFIG[tableName];
     if (!config) throw new AppError("TABLE_UNKNOWN", `Tabelle ${tableName} ist unbekannt`, 500);
     const sheets = await this.getClient();
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: config.range,
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    const response = await executeSheetRead({
+      method: "values_get",
+      purpose,
+      call: (options) => sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: config.range }, options),
+    });
     return validateTableValues(tableName, response.data.values || []);
   }
 
   async getSheetId(sheets, tableName) {
     if (this.sheetIds.has(tableName)) return this.sheetIds.get(tableName);
     const title = TABLE_CONFIG[tableName].range;
-    const spreadsheet = await sheets.spreadsheets.get({
-      spreadsheetId: SHEET_ID,
-      fields: "sheets.properties(sheetId,title)",
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
-    const sheet = spreadsheet.data.sheets.find((entry) => entry.properties.title === title);
-    if (!sheet) throw new AppError("SHEET_SCHEMA", `${title}-Tab fehlt`, 503);
-    this.sheetIds.set(tableName, sheet.properties.sheetId);
-    return sheet.properties.sheetId;
+    if (!this.sheetIdsLoad) {
+      this.sheetIdsLoad = (async () => {
+        const spreadsheet = await executeSheetRead({
+          method: "spreadsheet_get",
+          purpose: "sheet_properties",
+          call: (options) => sheets.spreadsheets.get({
+            spreadsheetId: SHEET_ID,
+            fields: "sheets.properties(sheetId,title)",
+          }, options),
+        });
+        const tableByTitle = new Map(Object.entries(TABLE_CONFIG).map(([name, config]) => [config.range, name]));
+        for (const sheet of spreadsheet.data.sheets || []) {
+          const knownTable = tableByTitle.get(sheet.properties?.title);
+          if (knownTable) this.sheetIds.set(knownTable, sheet.properties.sheetId);
+        }
+      })().finally(() => { this.sheetIdsLoad = null; });
+    }
+    await this.sheetIdsLoad;
+    if (!this.sheetIds.has(tableName)) throw new AppError("SHEET_SCHEMA", `${title}-Tab fehlt`, 503);
+    return this.sheetIds.get(tableName);
+  }
+
+  async loadRecordMetadata(sheets) {
+    if (this.recordMetadataScanned) return;
+    if (!this.recordMetadataLoad) {
+      this.recordMetadataLoad = (async () => {
+        const response = await executeSheetRead({
+          method: "metadata_search",
+          purpose: "metadata_search",
+          call: (options) => sheets.spreadsheets.developerMetadata.search({
+            spreadsheetId: SHEET_ID,
+            requestBody: {
+              dataFilters: [{ developerMetadataLookup: {
+                metadataKey: RECORD_METADATA_KEY,
+                visibility: "DOCUMENT",
+                locationType: "ROW",
+              } }],
+            },
+          }, options),
+        });
+        const grouped = new Map();
+        for (const match of response.data.matchedDeveloperMetadata || []) {
+          const metadata = match.developerMetadata;
+          const cacheKey = String(metadata?.metadataValue || "");
+          if (!metadata || !Object.keys(TABLE_CONFIG).some((name) => cacheKey.startsWith(`${name}:`))) continue;
+          if (!grouped.has(cacheKey)) grouped.set(cacheKey, []);
+          grouped.get(cacheKey).push(metadata);
+        }
+        for (const [cacheKey, matches] of grouped) {
+          if (matches.length === 1) this.recordMetadata.set(cacheKey, matches[0]);
+          else this.recordMetadataUnresolved.add(cacheKey);
+        }
+        this.recordMetadataScanned = true;
+      })().finally(() => { this.recordMetadataLoad = null; });
+    }
+    await this.recordMetadataLoad;
   }
 
   async findRecordMetadata(sheets, tableName, recordId) {
     const cacheKey = `${tableName}:${recordId}`;
+    const previouslyScanned = this.recordMetadataScanned;
+    await this.loadRecordMetadata(sheets);
     if (this.recordMetadata.has(cacheKey)) return this.recordMetadata.get(cacheKey);
-    const response = await sheets.spreadsheets.developerMetadata.search({
-      spreadsheetId: SHEET_ID,
-      requestBody: {
-        dataFilters: [{ developerMetadataLookup: {
-          metadataKey: RECORD_METADATA_KEY,
-          metadataValue: cacheKey,
-          visibility: "DOCUMENT",
-          locationType: "ROW",
-        } }],
-      },
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+    if (!previouslyScanned && !this.recordMetadataUnresolved.has(cacheKey)) return null;
+    const response = await executeSheetRead({
+      method: "metadata_search",
+      purpose: "metadata_search",
+      call: (options) => sheets.spreadsheets.developerMetadata.search({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          dataFilters: [{ developerMetadataLookup: {
+            metadataKey: RECORD_METADATA_KEY,
+            metadataValue: cacheKey,
+            visibility: "DOCUMENT",
+            locationType: "ROW",
+          } }],
+        },
+      }, options),
+    });
     let matches = (response.data.matchedDeveloperMetadata || []).map((entry) => entry.developerMetadata).filter(Boolean);
     if (matches.length > 1) {
       const locationKey = (metadata) => {
@@ -286,7 +364,10 @@ class SheetService {
       matches = [keep];
     }
     const metadata = matches[0] || null;
-    if (metadata) this.recordMetadata.set(cacheKey, metadata);
+    if (metadata) {
+      this.recordMetadata.set(cacheKey, metadata);
+      this.recordMetadataUnresolved.delete(cacheKey);
+    }
     return metadata;
   }
 
@@ -324,6 +405,7 @@ class SheetService {
         if (status >= 400 && status < 500 && status !== 408) {
           const pending = this.repository.getState(intentKey, { status: "pending" });
           this.repository.setState(intentKey, { status: "failed", at: this.now(), statusCode: status }, pending.revision);
+          if (status === 429) throw rateLimitError();
           throw error;
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Metadatenerstellung ist unklar", 503, { tableName, recordId });
@@ -349,20 +431,24 @@ class SheetService {
     this.repository.setState(intentKey, { status: "deleted", at: this.now() }, intent.revision);
   }
 
-  async readMetadataRow(sheets, metadataId) {
-    const response = await sheets.spreadsheets.values.batchGetByDataFilter({
-      spreadsheetId: SHEET_ID,
-      requestBody: {
-        dataFilters: [{ developerMetadataLookup: { metadataId } }],
-        majorDimension: "ROWS",
-        valueRenderOption: "FORMULA",
-      },
-    }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+  async readMetadataRow(sheets, metadataId, valueRenderOption = "FORMULA", purpose = "metadata_row") {
+    const response = await executeSheetRead({
+      method: "metadata_row",
+      purpose,
+      call: (options) => sheets.spreadsheets.values.batchGetByDataFilter({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          dataFilters: [{ developerMetadataLookup: { metadataId } }],
+          majorDimension: "ROWS",
+          valueRenderOption,
+        },
+      }, options),
+    });
     const rows = (response.data.valueRanges || []).flatMap((entry) => entry.valueRange?.values || []);
     return rows.length === 1 ? rows[0] : null;
   }
 
-  async resolveStableRow(tableName, recordId, initialValues = null) {
+  async resolveStableRow(tableName, recordId, initialValues = null, valueRenderOption = "FORMULA") {
     const sheets = await this.getClient();
     let values = initialValues || await this.readTable(tableName);
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -372,7 +458,7 @@ class SheetService {
       if (offset < 0) throw new AppError("RECORD_NOT_FOUND", "Datensatz wurde nicht gefunden", 404);
       let metadata = await this.findRecordMetadata(sheets, tableName, recordId);
       if (!metadata) metadata = await this.createRecordMetadata(sheets, tableName, recordId, offset + 1);
-      const row = await this.readMetadataRow(sheets, metadata.metadataId);
+      const row = await this.readMetadataRow(sheets, metadata.metadataId, valueRenderOption);
       if (row && String(row[idIndex] || "").trim() === recordId) return { sheets, metadata, row, header };
       await this.deleteRecordMetadata(sheets, tableName, recordId, metadata.metadataId);
       values = await this.readTable(tableName);
@@ -382,15 +468,31 @@ class SheetService {
 
   async refreshCache(tableName, fallback) {
     try {
-      const fresh = await this.readTable(tableName);
-      dataStore.set(tableName, fresh, { source: "write" });
+      const fresh = await this.readTable(tableName, "write_refresh");
+      dataStore.set(tableName, fresh, { source: "write-refresh" });
       return fresh;
     } catch (error) {
       logger.log("error", "sheet_cache_refresh_failed", { table: tableName, error });
-      const merged = fallback(structuredClone(dataStore.get(tableName)));
-      dataStore.set(tableName, merged, { source: "write" });
-      return merged;
+      return fallback(structuredClone(dataStore.get(tableName)));
     }
+  }
+
+  cancelScheduledRefresh(tableName) {
+    const timer = this.refreshTimers.get(tableName);
+    if (timer) clearTimeout(timer);
+    this.refreshTimers.delete(tableName);
+  }
+
+  scheduleRefresh(tableName) {
+    this.cancelScheduledRefresh(tableName);
+    const timer = setTimeout(() => {
+      this.refreshTimers.delete(tableName);
+      this.enqueue(tableName, () => this.refreshCache(tableName, (cached) => cached)).catch((error) => {
+        if (error.code !== "SHUTTING_DOWN") logger.log("error", "sheet_scheduled_refresh_failed", { table: tableName, error });
+      });
+    }, this.refreshDelayMs);
+    timer.unref?.();
+    this.refreshTimers.set(tableName, timer);
   }
 
   async runIdempotent(principal, endpoint, operationId, payload, callback) {
@@ -419,9 +521,135 @@ class SheetService {
     });
   }
 
+  async normalizePerson(principal, params) {
+    const changes = validateChanges(params.changes);
+    const payload = {
+      personId: params.personId,
+      expectedFingerprint: params.expectedFingerprint,
+      changes,
+    };
+    return this.runIdempotent(principal, "normalizePerson", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("players", async () => {
+      this.cancelScheduledRefresh("players");
+      const values = await this.readTable("players");
+      dataStore.set("players", values, { source: "write-read" });
+      let stable;
+      try {
+        stable = await this.resolveStableRow("players", params.personId, values, "FORMATTED_VALUE");
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+        throw error;
+      }
+      const { header, metadata, row, sheets } = stable;
+      const idIndex = headerIndex(header, "id");
+      if (!row || String(row[idIndex] || "").trim() !== params.personId) {
+        throw new AppError("WRITE_CONFLICT", "Person wurde waehrend der Aktualisierung verschoben", 409);
+      }
+      const indexes = fieldIndexes(header);
+      const beforeValues = rawPersonValues(header, row);
+      const currentFingerprint = personFingerprint(beforeValues);
+      const targetsMatch = Object.entries(changes).every(([field, value]) => indexes[field] >= 0 && String(row[indexes[field]] ?? "") === value);
+
+      if (recoveryOnly) {
+        if (!targetsMatch) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist weiterhin unklar", 503, { personId: params.personId });
+        }
+        const refreshed = values;
+        if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+        const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
+        return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "", recovered: true }, {
+          targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
+          before: null,
+          after: changes,
+        });
+      }
+
+      if (currentFingerprint !== params.expectedFingerprint) {
+        throw new AppError("PERSON_CONFLICT", "Personendaten wurden zwischenzeitlich geaendert", 409, {
+          personId: params.personId,
+          currentFingerprint,
+        });
+      }
+      for (const field of Object.keys(changes)) {
+        if (indexes[field] < 0) throw new AppError("SHEET_SCHEMA", `Personen-Spalte fuer ${field} fehlt`, 503);
+      }
+      if (targetsMatch) {
+        return withAudit({ success: true, personId: params.personId, fingerprint: currentFingerprint, repeated: true }, {
+          targetName: [beforeValues.firstName, beforeValues.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
+          before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
+          after: changes,
+        });
+      }
+
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[idIndex] || "").trim() === params.personId);
+      if (!candidateRow) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+      for (const [field, value] of Object.entries(changes)) candidateRow[indexes[field]] = value;
+
+      const roleIndex = headerIndex(header, "role");
+      const activeIndex = headerIndex(header, "aktiv");
+      const currentRole = String(row[roleIndex] || "").trim().toLowerCase();
+      const targetRole = String(candidateRow[roleIndex] || "").trim().toLowerCase();
+      const targetActive = String(candidateRow[activeIndex] || "").trim();
+      if (params.personId === principal.id && currentRole === "admin" && (targetRole !== "admin" || targetActive !== "1")) {
+        throw new AppError("ADMIN_SELF_PROTECTION", "Die eigene aktive Adminrolle darf nicht entfernt werden", 409);
+      }
+      const activeAdminCount = candidate.slice(1).filter((entry) => (
+        String(entry[roleIndex] || "").trim().toLowerCase() === "admin"
+        && String(entry[activeIndex] || "").trim() === "1"
+      )).length;
+      if (!activeAdminCount) throw new AppError("LAST_ADMIN_PROTECTION", "Mindestens ein aktiver Admin muss erhalten bleiben", 409);
+
+      try {
+        validateTableValues("players", candidate);
+        assertPlayerEmailConflictsNotWorsened(values, candidate);
+      } catch (error) {
+        throw error;
+      }
+
+      const maxIndex = Math.max(...Object.keys(changes).map((field) => indexes[field]));
+      const updates = Array(maxIndex + 1).fill(null);
+      for (const [field, value] of Object.entries(changes)) updates[indexes[field]] = value;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{
+              dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } },
+              majorDimension: "ROWS",
+              values: [updates],
+            }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        try {
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMATTED_VALUE", "confirmation");
+          const confirmed = confirmationRow && Object.entries(changes).every(([field, value]) => String(confirmationRow[indexes[field]] ?? "") === value);
+          if (!confirmed) throw error;
+        } catch {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist unklar", 503, { personId: params.personId });
+        }
+      }
+
+      const refreshed = candidate;
+      dataStore.set("players", refreshed, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("players");
+      if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+      const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
+      return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "" }, {
+        targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
+        before: Object.fromEntries(Object.keys(changes).map((field) => [field, beforeValues[field]])),
+        after: changes,
+      });
+    }));
+  }
+
   async setPasswordHash(personId, storedHash, { expectedHash, requirePasswordSetupAllowed = false } = {}) {
     return this.enqueue("players", async () => {
+      this.cancelScheduledRefresh("players");
       const values = await this.readTable("players");
+      dataStore.set("players", values, { source: "write-read" });
       let stable;
       try {
         stable = await this.resolveStableRow("players", personId, values);
@@ -443,8 +671,6 @@ class SheetService {
         throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
       }
       if (String(row[passwordIndex] || "").trim() === storedHash) {
-        const confirmation = await this.readTable("players");
-        dataStore.set("players", confirmation, { source: "write" });
         return { success: true, recovered: true };
       }
       if (expectedHash !== undefined && String(row[passwordIndex] || "").trim() !== expectedHash) {
@@ -468,10 +694,16 @@ class SheetService {
         if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
       } catch (error) {
         try {
-          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId);
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMULA", "confirmation");
           if (confirmationRow && String(confirmationRow[passwordIndex] || "").trim() === storedHash) {
-            const confirmation = await this.readTable("players");
-            dataStore.set("players", confirmation, { source: "write" });
+            const candidate = structuredClone(values);
+            const candidateRow = candidate.slice(1).find((entry) => String(entry[headerIndex(headerOf(candidate), "id")] || "").trim() === personId);
+            if (candidateRow) {
+              candidateRow[passwordIndex] = storedHash;
+              if (resetIndex >= 0) candidateRow[resetIndex] = "";
+            }
+            dataStore.set("players", candidate, { source: "write-local", authoritative: false });
+            this.scheduleRefresh("players");
             return { success: true, recovered: true };
           }
         } catch (confirmationError) {
@@ -479,23 +711,23 @@ class SheetService {
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Passwortaenderung ist unklar", 503, { personId });
       }
-      await this.refreshCache("players", (cached) => {
-        const cachedHeader = headerOf(cached);
-        const cachedIdIndex = headerIndex(cachedHeader, "id");
-        const cachedPasswordIndex = headerIndex(cachedHeader, "passwdhash");
-        const cachedResetIndex = headerIndex(cachedHeader, "kennwortvergessen");
-        const cachedRow = cached.slice(1).find((row) => String(row[cachedIdIndex] || "").trim() === personId);
-        if (cachedRow && cachedPasswordIndex >= 0) cachedRow[cachedPasswordIndex] = storedHash;
-        if (cachedRow && cachedResetIndex >= 0) cachedRow[cachedResetIndex] = "";
-        return cached;
-      });
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[headerIndex(headerOf(candidate), "id")] || "").trim() === personId);
+      if (candidateRow) {
+        candidateRow[passwordIndex] = storedHash;
+        if (resetIndex >= 0) candidateRow[resetIndex] = "";
+      }
+      dataStore.set("players", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("players");
       return { success: true };
     });
   }
 
   async setPasswordSetupAllowed(personId, allowed) {
     return this.enqueue("players", async () => {
+      this.cancelScheduledRefresh("players");
       const values = await this.readTable("players");
+      dataStore.set("players", values, { source: "write-read" });
       let stable;
       try {
         stable = await this.resolveStableRow("players", personId, values);
@@ -525,20 +757,17 @@ class SheetService {
         if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
       } catch (error) {
         try {
-          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId);
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMULA", "confirmation");
           if (!confirmationRow || String(confirmationRow[setupIndex] || "").trim().toLowerCase() !== marker) throw error;
         } catch {
           throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Passwortfreigabe ist unklar", 503, { personId });
         }
       }
-      await this.refreshCache("players", (cached) => {
-        const cachedHeader = headerOf(cached);
-        const cachedIdIndex = headerIndex(cachedHeader, "id");
-        const cachedSetupIndex = headerIndex(cachedHeader, "kennwortvergessen");
-        const cachedRow = cached.slice(1).find((entry) => String(entry[cachedIdIndex] || "").trim() === personId);
-        if (cachedRow && cachedSetupIndex >= 0) cachedRow[cachedSetupIndex] = marker;
-        return cached;
-      });
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[headerIndex(headerOf(candidate), "id")] || "").trim() === personId);
+      if (candidateRow) candidateRow[setupIndex] = marker;
+      dataStore.set("players", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("players");
       return { success: true };
     });
   }
@@ -547,7 +776,9 @@ class SheetService {
     const payload = { bewerbId: params.bewerbId, opponentId: params.opponentId };
     return this.runIdempotent(principal, "addMatch", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("matches1", async () => {
       if (params.opponentId === principal.id) throw new AppError("MATCH_SELF", "Ein Spieler kann sich nicht selbst fordern");
+      this.cancelScheduledRefresh("matches1");
       const values = await this.readTable("matches1");
+      dataStore.set("matches1", values, { source: "write-read" });
       const header = headerOf(values);
       const idIndex = headerIndex(header, "id");
       const newId = stableRecordId("m", principal, params.operationId);
@@ -576,7 +807,7 @@ class SheetService {
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
         try {
-          const confirmation = await this.readTable("matches1");
+          const confirmation = await this.readTable("matches1", "confirmation");
           if (confirmation.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
             dataStore.set("matches1", confirmation, { source: "write" });
             return { success: true, newMatchId: newId, recovered: true };
@@ -586,11 +817,10 @@ class SheetService {
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
-      await this.refreshCache("matches1", (cached) => {
-        const cachedIdIndex = headerIndex(headerOf(cached), "id");
-        if (!cached.slice(1).some((row) => String(row[cachedIdIndex] || "").trim() === newId)) cached.push(newRow);
-        return cached;
-      });
+      const candidate = structuredClone(values);
+      candidate.push(newRow);
+      dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("matches1");
       return { success: true, newMatchId: newId };
     }));
   }
@@ -598,7 +828,9 @@ class SheetService {
   async addEntry(principal, params) {
     const payload = { bewerbId: params.bewerbId };
     return this.runIdempotent(principal, "addEntryList", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("entryList", async () => {
+      this.cancelScheduledRefresh("entryList");
       const values = await this.readTable("entryList");
+      dataStore.set("entryList", values, { source: "write-read" });
       const header = headerOf(values);
       const idIndex = headerIndex(header, "id");
       const competitionIndex = headerIndex(header, "bewerbid", "bewerb id");
@@ -617,7 +849,6 @@ class SheetService {
         String(row[competitionIndex] || "").trim() === params.bewerbId &&
         String(row[personIndex] || "").trim() === principal.id);
       if (exists) {
-        dataStore.set("entryList", values, { source: "write" });
         return { success: true, alreadyPresent: true };
       }
       const newRow = rowForHeader(header, { id: newId, bewerbid: params.bewerbId, personenid: principal.id, entrydate: viennaTimestamp() });
@@ -631,7 +862,7 @@ class SheetService {
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
         try {
-          const confirmation = await this.readTable("entryList");
+          const confirmation = await this.readTable("entryList", "confirmation");
           if (confirmation.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
             dataStore.set("entryList", confirmation, { source: "write" });
             return { success: true, entryId: newId, recovered: true };
@@ -641,11 +872,10 @@ class SheetService {
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Anmeldung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
-      await this.refreshCache("entryList", (cached) => {
-        const cachedIdIndex = headerIndex(headerOf(cached), "id");
-        if (!cached.slice(1).some((row) => String(row[cachedIdIndex] || "").trim() === newId)) cached.push(newRow);
-        return cached;
-      });
+      const candidate = structuredClone(values);
+      candidate.push(newRow);
+      dataStore.set("entryList", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("entryList");
       return { success: true, entryId: newId };
     }));
   }
@@ -653,7 +883,9 @@ class SheetService {
   async removeEntry(principal, params) {
     const payload = { bewerbId: params.bewerbId };
     return this.runIdempotent(principal, "removeEntryList", params.operationId, payload, ({ recoveryOnly, recoveryDetails }) => this.enqueue("entryList", async () => {
+      this.cancelScheduledRefresh("entryList");
       const values = await this.readTable("entryList");
+      dataStore.set("entryList", values, { source: "write-read" });
       const header = headerOf(values);
       const idIndex = headerIndex(header, "id");
       const competitionIndex = headerIndex(header, "bewerbid", "bewerb id");
@@ -676,7 +908,6 @@ class SheetService {
         String(row[competitionIndex] || "").trim() === params.bewerbId &&
         String(row[personIndex] || "").trim() === principal.id);
       if (!targetRow) {
-        dataStore.set("entryList", values, { source: "write" });
         return withAudit({ success: true, removed: false }, { before: null, after: null });
       }
       const recordId = String(targetRow[idIndex] || "").trim();
@@ -708,14 +939,14 @@ class SheetService {
         }
       } catch (error) {
         try {
-          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId);
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMULA", "confirmation");
           if (!confirmationRow || !confirmationRow.some((value) => String(value || "").trim())) {
             try {
               await this.deleteRecordMetadata(sheets, "entryList", recordId, metadata.metadataId);
             } catch {
               this.recordMetadata.delete(`entryList:${recordId}`);
             }
-            const confirmation = await this.readTable("entryList");
+            const confirmation = await this.readTable("entryList", "confirmation");
             const confirmationHeader = headerOf(confirmation);
             const confirmationIdIndex = headerIndex(confirmationHeader, "id");
             const stillPresent = confirmation.slice(1).some((entry) => String(entry[confirmationIdIndex] || "").trim() === recordId);
@@ -734,11 +965,9 @@ class SheetService {
           tombstone,
         });
       }
-      await this.refreshCache("entryList", (cached) => {
-        const cachedHeader = headerOf(cached);
-        const cachedIdIndex = headerIndex(cachedHeader, "id");
-        return [cached[0], ...cached.slice(1).filter((entry) => String(entry[cachedIdIndex] || "").trim() !== recordId)];
-      });
+      const candidate = [values[0], ...values.slice(1).filter((entry) => String(entry[idIndex] || "").trim() !== recordId)];
+      dataStore.set("entryList", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("entryList");
       return withAudit({ success: true, removed: true }, { before: tombstone, after: null });
     }));
   }
@@ -759,6 +988,8 @@ class SheetService {
 
   async stop() {
     this.stopping = true;
+    for (const timer of this.refreshTimers.values()) clearTimeout(timer);
+    this.refreshTimers.clear();
     await Promise.allSettled([...this.active]);
   }
 
@@ -768,6 +999,8 @@ class SheetService {
       activeWrites: this.active.size,
       queues: this.queues.size,
       pendingMetadataIntents: this.repository.countPendingMetadataIntents(),
+      scheduledRefreshes: this.refreshTimers.size,
+      readCoordinator: getSheetReadStatus(),
     };
   }
 }

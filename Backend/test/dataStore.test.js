@@ -84,3 +84,49 @@ test("Fehlerfolge und Ausfalldauer enden mit einem eindeutigen Recovery-Ergebnis
     Date.now = originalNow;
   }
 });
+
+test("lokale Write-Projektion verlaengert keine autoritative Tabellenfrische", () => {
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  try {
+    dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll" });
+    const authoritativeAt = dataStore.getMeta("entryList").lastUpdate;
+    now = 35000;
+    dataStore.markError("entryList", Object.assign(new Error("quota"), { code: "SHEETS_RATE_LIMITED" }));
+    now = 36000;
+    dataStore.set("entryList", [["ID"], ["e1"], ["e2"]], { source: "write-local", authoritative: false });
+
+    const meta = dataStore.getMeta("entryList");
+    assert.equal(meta.lastUpdate, authoritativeAt);
+    assert.equal(meta.lastMutation, 36000);
+    assert.equal(meta.lastError.code, "SHEETS_RATE_LIMITED");
+    assert.equal(meta.consecutiveErrors, 1);
+    assert.equal(dataStore.isTableCurrent("entryList", now), false);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("Write-Reads zaeunen Polls ohne eine Fachmutation vorzutaeuschen", () => {
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  try {
+    dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll" });
+    now = 2000;
+    dataStore.set("entryList", [["ID"], ["e1"], ["e2"]], { source: "write-local", authoritative: false });
+    const staleRead = dataStore.beginRead("entryList");
+
+    now = 3000;
+    dataStore.set("entryList", [["ID"], ["e1"], ["e2"]], { source: "write-read" });
+    assert.equal(dataStore.getMeta("entryList").lastMutation, 2000);
+    assert.equal(dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll", readToken: staleRead }).ignored, true);
+
+    now = 4000;
+    dataStore.set("entryList", [["ID"], ["e1"], ["e2"]], { source: "write-refresh" });
+    assert.equal(dataStore.getMeta("entryList").lastMutation, 2000);
+  } finally {
+    Date.now = originalNow;
+  }
+});

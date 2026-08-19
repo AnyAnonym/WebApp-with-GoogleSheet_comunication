@@ -1,0 +1,140 @@
+================================================================================
+Personendaten normalisieren - kontrollierte Admin-Datenpflege
+================================================================================
+
+-- Funktion und Dateien --
+  HTML: Frontend/personenNormalisieren.html
+  JS:   Frontend/JS/personenNormalisieren.js
+  CSS:  Frontend/CSS/personenNormalisieren.css
+
+  Die Seite ist die erste kontrollierte Phase vor einem spaeteren
+  ClubDesk-Mitgliederabgleich. Sie analysiert ausschliesslich bereits vorhandene
+  Personen, zeigt bekannte Datenqualitaetsprobleme und schreibt bestaetigte
+  Korrekturen personweise. CSV-Import, Personenneuanlage, `CD-ID`-Writes,
+  exportgesteuerte Deaktivierung und automatische A-/B-Zuordnung sind nicht
+  enthalten.
+
+-- Zugang und Ladezustaende --
+  Nur eine aktuelle aktive Adminsession darf die Seite verwenden. Bis zur
+  Authentifizierungsentscheidung erscheint ein geschuetzter Zugangszustand.
+  Nicht angemeldete Benutzer erhalten einen Anmeldelink; andere Rollen sehen die
+  fehlende Berechtigung, und eine nicht erreichbare Sitzungspruefung bleibt als
+  eigener Fehlerzustand erkennbar. Erst nach bestaetigter Adminrolle wird die
+  Anwendung eingeblendet und `adminPeopleNormalization {}` geladen.
+
+  Die Antwort wird auf Erfolg, Personenarray, Summen, Person-ID, Feldwerte,
+  Problemarray und 64-stelligen Fingerprint geprueft. Unvollstaendige Antworten
+  werden nicht dargestellt. Die Summenkarten zeigen Personen, betroffene
+  Personen, Hinweise und aktuell entworfene Feldveraenderungen.
+
+-- Suche, Filter und Personenkarten --
+  Die Suche beruecksichtigt Name und Personen-ID. Der Aktivfilter unterscheidet
+  alle, aktive und inaktive Personen. Der Anzeigefilter zeigt wahlweise Personen
+  mit Problemen, alle, problemfreie oder nur bearbeitete Personen.
+
+  Jede Person erscheint als aufklappbare Karte mit ID, Anzeigename,
+  Problemkennzeichen und hoechstens vier direkten Feldbadges samt Restzaehler.
+  Der geoeffnete Bereich zeigt Problembeschreibung, Problemcode, gegebenenfalls
+  einen sicheren uebernehmbaren Vorschlag sowie Original- und Zielwerte aller
+  freigegebenen Felder. Bearbeitete Felder und Personen werden sichtbar markiert.
+
+-- Freigegebene Felder und Zielwerte --
+  Genau folgende zwoelf Stringfelder werden projiziert, in den Fingerprint
+  aufgenommen und als Aenderungen akzeptiert:
+
+    firstName   Vorname, getrimmt, maximal 100 Zeichen
+    lastName    Nachname, getrimmt, Pflicht, maximal 100 Zeichen
+    birthDate   leer oder reales Datum `TT.MM.JJJJ`
+    gender      leer, `1`, `2` oder `3`
+    phone       leer oder `00<Laendercode> <Netzvorwahl> <Rest>`; nur Ziffern
+                und Leerzeichen, die ersten beiden Trenner sind verpflichtend
+    email       leer oder validierte kanonische E-Mail-Adresse; bestehende
+                Dublettengruppen duerfen nur verkleinert werden
+    country     Land, getrimmt, maximal 100 Zeichen
+    postalCode  leer oder genau vier Ziffern
+    city        Ort, getrimmt, maximal 100 Zeichen
+    address     Adresse, getrimmt, maximal 200 Zeichen
+    active      leer fuer inaktiv oder `1` fuer aktiv
+    role        `player`, `player A`, `player B`, `operator` oder `admin`
+
+  `player`, `player A` und `player B` besitzen dieselbe Berechtigungsstufe.
+  `GeschlechtID` ist der bevorzugte Sheetheader; `Geschlecht` bleibt
+  Legacy-Fallback. Passwort-Hash, Passwortfreigabe, Resetdaten, `CD-ID`, interne
+  Zusatzkennungen und alle nicht genannten Spalten werden weder projiziert noch
+  geschrieben. Die Personen-ID selbst ist notwendiger Bestandteil von
+  Projektion, Anzeige und Writeadressierung, aber kein bearbeitbares Feld.
+
+-- Problemcodes und Vorschlaege --
+  Die Analyse verwendet das feste Problemvokabular:
+
+    EDGE_WHITESPACE          Rand-Leerzeichen in einem erlaubten Feld
+    REQUIRED_VALUE_MISSING  fehlender Nachname
+    BIRTH_DATE_INVALID      Geburtsdatum nicht als reales `TT.MM.JJJJ`
+    GENDER_INVALID          Geschlecht nicht leer/1/2/3
+    PHONE_FORMAT_INVALID    Telefonnummer ausserhalb des Zielformats
+    EMAIL_NONCANONICAL      gueltige, aber nicht kanonische E-Mail
+    EMAIL_DUPLICATE         kanonische E-Mail mehrfach vorhanden
+    EMAIL_INVALID           syntaktisch ungueltige E-Mail
+    POSTAL_CODE_INVALID     PLZ nicht leer und nicht vierstellig
+    ACTIVE_NONCANONICAL     Aktivwert nicht leer/1
+    ROLE_INVALID            unbekannte Rolle
+    ROLE_NONCANONICAL       bekannte Rolle in nicht kanonischer Schreibweise
+
+  Nur sichere, eindeutig bestimmbare Zielwerte erhalten die Aktion `Vorschlag
+  uebernehmen`. Doppelte oder syntaktisch ungueltige E-Mails werden nicht geraten.
+
+-- Vorschau und Schreibfolge --
+  Der Browser fuehrt einen lokalen Entwurf je Person. Ohne Aenderungen bleibt die
+  Vorschau deaktiviert. Die verpflichtende Gesamtvorschau listet fuer jede
+  betroffene Person und jedes Feld Original- und Zielwert. Erst ihre Bestaetigung
+  startet `normalizePerson` personweise und sequenziell. Jede Person verwendet
+  eine stabile Operation-ID, ihre ID, den beim Laden erhaltenen Fingerprint und
+  nur die geaenderten Felder. Der Fortschritt zeigt abgeschlossene Personen.
+
+  Nach jedem Erfolg wird der Entwurf dieser Person entfernt. Beim ersten Fehler
+  stoppt die Folge; erfolgreiche Teilschritte bleiben bestehen, die Daten werden
+  neu geladen und noch offene Entwuerfe bleiben erhalten. Ein manueller Reload
+  verwirft dagegen alle Entwuerfe. Eine `players`-Invalidierung laedt nur dann
+  automatisch neu, wenn kein Write laeuft und kein offener Entwurf vorhanden ist.
+
+-- Konflikt-, Sicherheits- und Wiederholungsvertrag --
+  Das Backend liest vor jedem Write die aktuelle Personentabelle, loest die Zeile
+  ueber ID und Google Developer Metadata stabil auf und vergleicht den
+  Feldfingerprint. Es prueft die vollstaendige Kandidatentabelle und kanonische
+  E-Mail-Konflikte. Bereits vorhandene Zielwerte sind ein erfolgreicher
+  wiederholter No-op. Unklare Google-Ergebnisse werden gegen die stabile Zeile
+  bestaetigt; bleibt der Ausgang unklar, wird kein blinder zweiter Write gestartet.
+
+  Die eigene aktive Adminrolle darf weder entfernt noch deaktiviert werden; der
+  letzte aktive Admin muss erhalten bleiben. Aenderungen an E-Mail, Aktivstatus
+  oder Rolle widerrufen alle Sitzungen der Zielperson. Doppelte E-Mails bleiben
+  zur Reparatur sichtbar und sperren den Login. Ein Write darf keine
+  Dublettengruppe neu erzeugen oder vergroessern; unveraenderte Gruppen duerfen
+  bestehen bleiben, damit mehrere Gruppen und Dreifachdubletten personweise
+  reduziert werden koennen.
+
+-- Observability und Datenschutz --
+  Jeder Write verwendet die normalen Abschlusslogs und Auditphasen `started`,
+  `success`, `failed` oder `unknown`. SQLite darf Adminidentitaet, Zielperson und
+  Zielnamensnapshot enthalten. Der Journalspiegel zeigt fuer Aktiv und Rolle nur
+  kontrollierte Alt-/Neuwerte, fuer andere Felder ausschliesslich den Feldnamen.
+  Kontakt-, Adress-, Geburts-, Geschlechts- und freie Werte bleiben ausgeschlossen.
+
+  Die benannten Browserdiagnosen `people_normalization_auth_failed`,
+  `people_normalization_load_failed` und `people_normalization_write_failed`
+  uebertragen neben dem technischen Diagnoseumschlag aus Eventname, Level,
+  Fehlerkategorie, Zeitstempel, Version, Seitentyp und ephemerer Seitensitzung nur
+  Fehlercode, Support-ID und kontrollierte Fortschrittszaehler. Personenwerte,
+  freie Meldungen und Payloads bleiben ausgeschlossen.
+
+-- Responsive Darstellung --
+  Desktop verwendet eine breite Verwaltungsansicht mit Summenkarten, Filtern,
+  aufklappbaren Personenkarten und mehrspaltigen Feldern. Auf schmalen Displays
+  werden Kopf, Toolbar, Felder, Problemzeilen und Vorschau einspaltig und
+  touch-tauglich angeordnet; die vier Summenkarten stehen in zwei Spalten. Das
+  Vorschau-Modal begrenzt seine Hoehe am Viewport und scrollt hohen Inhalt
+  innerhalb der Karte. Der Browsertest prueft mobile und
+  Desktopansicht, Vorschau, einen erfolgreichen Einzelwrite sowie einen Fehler
+  vor dem ersten Write mit genau einmal sichtbarer Support-Referenz. Sequenzieller
+  Abbruch nach einem Teilerfolg und Draft-Erhalt sind durch den implementierten
+  Ablauf, aber noch nicht als eigener Browsertest abgedeckt.

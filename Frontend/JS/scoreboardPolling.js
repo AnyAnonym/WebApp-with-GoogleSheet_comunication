@@ -409,6 +409,22 @@ function sizeCourtPlayerNames(courtKey) {
     },
   });
   applyCourtPlayerNameSize(elements, fontSize, minimumHeight);
+  const mobileOverflow = window.innerWidth <= 1000 && court.scrollHeight - court.clientHeight > 1;
+  if (!mobileOverflow) return;
+
+  const emergencyFontSize = largestPlayerNameSize({
+    minimum: 1,
+    maximum,
+    overflowLimit: 1,
+    measure(candidate) {
+      applyCourtPlayerNameSize(elements, candidate);
+      return {
+        widthFits: playerNamesFit(elements),
+        overflow: Math.max(0, court.scrollHeight - court.clientHeight),
+      };
+    },
+  });
+  applyCourtPlayerNameSize(elements, emergencyFontSize);
 }
 
 function schedulePlayerNameSizing() {
@@ -574,6 +590,9 @@ function updateScoreboardCourt(courtKey, value) {
   const prefix = `p${courtKey}`;
   setPlayerName(`${prefix}-name-h`, courtData.homePlayer);
   setPlayerName(`${prefix}-name-g`, courtData.guestPlayer);
+  const courtElement = document.getElementById(`platz${courtKey}`);
+  const hasDoubleNames = ["h", "g"].some((side) => document.getElementById(`${prefix}-name-${side}`)?.classList.contains("platz-cell-double"));
+  courtElement?.classList.toggle("court-has-double", hasDoubleNames);
   setText(`${prefix}-datetime`, parseSheetDate(courtData.dateTime));
 
   const rawRunde = String(courtData.runde || "").trim();

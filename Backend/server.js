@@ -31,6 +31,7 @@ const { AuthService } = require("./authService.js");
 const { AppError, errorData } = require("./errors.js");
 const { FrontendLoggingService } = require("./frontendLoggingService.js");
 const { MonitorBroker } = require("./monitorBroker.js");
+const { summarizePeopleNormalization } = require("./peopleNormalization.js");
 const {
   assertAllowedOrigin,
   clearCookie,
@@ -160,6 +161,7 @@ function createApplication(overrides = {}) {
   let activeRequests = 0;
   let cleanupTimer = null;
   let initializePromise = null;
+  let normalizationMetricsCache = { revision: null, summary: null };
   const httpWriteLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 6, idleMs: 900000 });
   const frontendLoggingAdminLimiter = new TokenBucketLimiter({ rate: 1, burst: 20, idleMs: 900000 });
   const deviceLoginLimiter = new TokenBucketLimiter({ rate: 0.2, burst: 10, idleMs: 900000 });
@@ -169,6 +171,23 @@ function createApplication(overrides = {}) {
     if (!httpWriteLimiter.take(`principal:${principalId}`) || !httpWriteLimiter.take(`ip:${getRequestIp(request)}`)) {
       throw new AppError("WRITE_RATE_LIMIT", "Zu viele Schreiboperationen", 429);
     }
+  }
+
+  function peopleNormalizationMetrics() {
+    const meta = dataStore.getMeta("players");
+    const players = dataStore.get("players");
+    if (!players.length) return { current: false };
+    if (normalizationMetricsCache.revision !== meta?.revision) {
+      try {
+        normalizationMetricsCache = { revision: meta?.revision, summary: summarizePeopleNormalization(players) };
+      } catch {
+        normalizationMetricsCache = { revision: meta?.revision, summary: null };
+      }
+    }
+    return {
+      current: dataStore.isTableCurrent("players") && normalizationMetricsCache.summary !== null,
+      ...(normalizationMetricsCache.summary || {}),
+    };
   }
 
   function limitFrontendLoggingAdmin(request, principalId) {
@@ -280,6 +299,7 @@ function createApplication(overrides = {}) {
           court: courtPoller.getStatus(),
           state: status.state,
           sheets: status.sheets,
+          peopleNormalization: peopleNormalizationMetrics(),
         }), "text/plain; version=0.0.4; charset=utf-8");
       }
 
@@ -659,6 +679,7 @@ function createApplication(overrides = {}) {
         { "1": courts["1"].aktiv === 1, "2": courts["2"].aktiv === 1 },
         { initial: true },
       );
+      for (const court of ["1", "2"]) courtPoller.logCourtSnapshot(court, "startup");
       initialized = true;
       logger.log("info", "server_initialization_completed", { initialLoadSuccess: result.success, ready: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }).ready, durationMs: Date.now() - startedAt });
       cleanupTimer = setInterval(() => repository.cleanup(), 300000);

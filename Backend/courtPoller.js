@@ -57,6 +57,36 @@ function scoreString(court) {
   return `${court.satz1home}-${court.satz1gast}/${court.satz2home}-${court.satz2gast}/${court.satz3home}-${court.satz3gast}/${court.punktehome}-${court.punktegast}`;
 }
 
+function timelineFields(court, score, context = getCourtContext(court)) {
+  return {
+    court,
+    score,
+    matchId: String(context?.matchId || ""),
+    bewerbId: String(context?.bewerbId || ""),
+    bewerb: String(context?.bewerb || ""),
+    homePlayer: String(context?.homePlayer || ""),
+    guestPlayer: String(context?.guestPlayer || ""),
+    active: context?.aktiv === 1 || context?.aktiv === true,
+    courtRevision: Math.max(0, Number(context?.revision) || 0),
+  };
+}
+
+function logCourtSnapshot(court, reason, score = null) {
+  if (!SCORE_LOG_JOURNAL) return false;
+  const courtKey = String(court);
+  const current = lastCourts.find((entry) => entry.platz === courtKey);
+  if (!current) return false;
+  try {
+    return logger.log("info", "court_state_snapshot", {
+      reason,
+      ...timelineFields(courtKey, score === null ? scoreString(current) : score),
+    });
+  } catch (error) {
+    logger.log("error", "court_snapshot_log_failed", { court: courtKey, error });
+    return false;
+  }
+}
+
 function cleanScore(value) {
   const result = String(value ?? "0").trim();
   if (!result) return "0";
@@ -159,17 +189,17 @@ function acceptCourtScores(courts, activeAtStart, epochAtStart) {
         if (SCORE_LOG_JOURNAL) {
           logger.log("info", "score_logged", {
             eventId: event.eventId,
-            court: event.court,
+            occurredAt: event.occurredAt,
             sequence: event.sequence,
-            score: event.score,
-            matchId: event.matchId,
-            courtRevision: event.courtRevision,
+            ...timelineFields(event.court, event.score, context),
           });
         }
       } catch (error) {
         logger.log("error", "score_log_write_failed", { court: court.platz, error });
         continue;
       }
+    } else {
+      logCourtSnapshot(court.platz, "startup_baseline", current);
     }
     byCourt.set(court.platz, court);
     lastCourtScores[court.platz] = current;
@@ -347,10 +377,12 @@ function updatePollingState() {
 }
 
 function setCourtActive(courts, { initial = false } = {}) {
+  const changedCourts = [];
   for (const court of ["1", "2"]) {
     if (courts[court] === undefined) continue;
     const active = courts[court] === true || courts[court] === 1;
     if (active !== courtActive[court]) {
+      changedCourts.push({ court, active });
       courtEpoch[court]++;
       externalBaseline[court] = null;
       waitForExternalChange[court] = active && !initial;
@@ -359,9 +391,12 @@ function setCourtActive(courts, { initial = false } = {}) {
     courtActive[court] = active;
   }
   updatePollingState();
+  if (!initial) {
+    for (const entry of changedCourts) logCourtSnapshot(entry.court, entry.active ? "activated" : "deactivated");
+  }
 }
 
-function resetCourtScore(court) {
+function resetCourtScore(court, { reason = "reset" } = {}) {
   const courtKey = String(court);
   if (courtKey !== "1" && courtKey !== "2") throw new Error("Court muss 1 oder 2 sein");
   courtEpoch[courtKey]++;
@@ -374,6 +409,7 @@ function resetCourtScore(court) {
   revision++;
   pushCount++;
   notify(true);
+  logCourtSnapshot(courtKey, reason);
   return structuredClone(reset);
 }
 
@@ -426,6 +462,7 @@ module.exports = {
   configure,
   getLastData,
   getStatus,
+  logCourtSnapshot,
   poll,
   resetCourtScore,
   setCourtActive,

@@ -81,7 +81,7 @@ class AuthService {
       passwordHash: headerIndex(header, "passwdhash"),
       phone: headerIndex(header, "telefonmobil"),
       birthDate: headerIndex(header, "geburtsdatum"),
-      gender: headerIndex(header, "geschlecht"),
+      gender: headerIndex(header, "geschlechtid", "geschlecht"),
       active: headerIndex(header, "aktiv"),
       role: headerIndex(header, "role"),
       passwordSetup: headerIndex(header, "kennwortvergessen"),
@@ -107,7 +107,8 @@ class AuthService {
 
   findByEmail(email) {
     const normalized = emailValue(email);
-    return this.parsePeople().find((person) => person.email === normalized) || null;
+    const matches = this.parsePeople().filter((person) => person.email === normalized);
+    return matches.length === 1 ? matches[0] : null;
   }
 
   findById(id) {

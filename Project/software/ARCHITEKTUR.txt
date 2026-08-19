@@ -107,29 +107,46 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   abgelaufene beziehungsweise alte Eintraege.
 
 `dataPoller.js`
-  Laedt beim Start alle acht Tabellen parallel. Danach Basis-Tick 5 Sekunden,
-  Fast-Kategorie standardmaessig alle 10 Sekunden und Slow-Kategorie alle
-  30 Sekunden. Pro Tick gibt es keinen Overlap; Google-Requests besitzen
-  Timeouts und jede Antwort wird gegen `tableSchemas.js` validiert. Ergebnisse
-  unterscheiden `applied`, `ignored_stale`, `failed` und `recovered`; identische
-  Fehlerfolgen werden nach dem ersten Ereignis nur periodisch zusammengefasst.
+  Laedt beim Start alle acht Tabellen mit einem gemeinsamen `values.batchGet`.
+  Danach Basis-Tick 5 Sekunden, Fast-Kategorie standardmaessig alle 10 Sekunden
+  und Slow-Kategorie alle 30 Sekunden. Alle zu einem Tick faelligen Bereiche
+  werden in einem Request gelesen; ein erfolgreicher Initialload wird nicht nach
+  fuenf Sekunden wiederholt. Fehlgeschlagene Bereiche bleiben nach fuenf Sekunden
+  faellig. Pro Tick gibt es keinen Overlap; jede Tabelle besitzt weiterhin ein
+  eigenes Read-Fence, Schemaergebnis und Fehler-/Recovery-Ergebnis.
 
 `tableSchemas.js`, `tableUtils.js`
-  Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs und E-Mails und
+  Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs, erfassen
+  ungueltige oder doppelte E-Mails als reparierbare Datenqualitaetsprobleme und
   normalisieren Rollen. Leere oder ungueltige Rollen werden als player behandelt;
   jeder nichtleere ungueltige normalisierte Wert wird pro Prozess einmal gewarnt.
 
 `dataStore.js`
   Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Alter, Pollfehler,
-  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler. Ein Poll,
-  der vor einem neueren Write startete, darf weder dessen Daten noch dessen
-  Fehlerzustand ueberholen. Listener publizieren nur Aenderung/Recovery.
+  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler.
+  Autoritative Vollreads bestimmen Tabellenalter und Current-/Readinessstatus;
+  lokale Projektionen eines bestaetigten Writes aktualisieren Werte und
+  `lastMutation`, verlaengern aber nie die autoritative Frische und verdecken
+  keinen Pollfehler. Ein Poll, der vor einem neueren Write startete, darf weder
+  dessen Daten noch dessen Fehlerzustand ueberholen.
 
 `sheetService.js`
   Zentralisiert Google-Reads und alle fachlichen Writes. Queues serialisieren pro
   Tabelle beziehungsweise Operation; Stop nimmt keine neue Arbeit an und wartet
   auf aktive Sheetarbeit. Fachwrites verwenden stabile IDs, operationId-
   Deduplizierung, Cache-Refresh/Fallback, Compare-and-set und Developer-Metadaten.
+  Der erste Metadatenscan und die erste Sheet-Eigenschaftsabfrage fuellen jeweils
+  den Cache fuer alle bekannten Datensaetze beziehungsweise Tabs. Eine stabile
+  Personenzeile wird direkt im benoetigten formatierten Modus gelesen. Bestaetigte
+  Writes werden sofort lokal projiziert; aufeinanderfolgende Writes derselben
+  Tabelle teilen einen um eine Sekunde verzoegerten autoritativen Abschlussread.
+
+`sheetsReadCoordinator.js`
+  Kapselt alle Google-Sheets-Reads von Poller und SheetService, erfasst logische
+  Requests und tatsaechliche Initial-/Retry-Versuche mit festen Metriklabels und
+  koordiniert aktive Tabellenarbeit. Google-429 wird nicht automatisch erneut
+  gesendet, sondern sperrt weitere Reads prozessweit fuer 60 Sekunden. Andere
+  retryfaehige Transport-/Serverfehler behalten begrenzte Bibliotheks-Retries.
 
 `stateStore.js`
   Fachliche Sicht auf persistente Court- und Monitorzielwerte. Court 1/2 werden
@@ -150,7 +167,13 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   dem Alter des letzten Erfolgs, nicht nach einem einzelnen Folgefehler. Ausfall,
   periodische Fehlerzusammenfassung und Recovery tragen Fehlerfolge und Dauer.
   Pro-Court-Epochen sperren alte Fetchantworten nach Aktivitaetswechsel oder
-  Score-Reset aus.
+  Score-Reset aus. Bei aktiviertem Score-Journal werden erfolgreiche persistierte
+  Scoreaenderungen mit Match, Bewerb und Anzeigenamen der aktuellen Paarung als
+  kontrollierte `score_logged`-Projektion gespiegelt. `court_state_snapshot`
+  markiert Zuweisung, Aktivitaetswechsel, Prozessstart und uebernommene
+  Startbaseline. Personen- und Fachwerte bleiben JSON-Felder ohne Kontaktwerte
+  und werden keine Loki-Labels; ein fehlgeschlagener ScoreLog-Write erzeugt kein
+  Scoreereignis.
 
 `scoreboardDisplay.js`
   Erzeugt ausschliesslich fuer Scoreboard-Snapshot und `scores`-Pushes eine
@@ -190,8 +213,10 @@ ungueltige Personen-E-Mail wird fuer Authentifizierung und Projektionen wie ein
 leerer Wert behandelt, damit sie andere Personen nicht blockiert. Der Sheetload
 protokolliert betroffene Personen-IDs und Zeilennummern beim ersten Auftreten,
 periodisch waehrend des Bestands und bei Recovery; der ungueltige E-Mail-Wert
-selbst wird nicht geloggt. Kanonisch doppelte gueltige E-Mails bleiben ein fataler
-Schemafehler.
+  selbst wird nicht geloggt. Kanonisch doppelte gueltige E-Mails bleiben fuer die
+  Adminreparatur lesbar, sperren aber alle betroffenen Logins. Der
+  Normalisierungswrite darf eine Dublettengruppe beibehalten oder verkleinern,
+  aber nie neu erzeugen oder vergroessern.
 
 Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
 Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash. Rollen werden
@@ -254,10 +279,49 @@ Schreibpfad:
   Sessionprincipal + geschlossene Parameter -> Fachregeln -> operationId-Lookup
   -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
 
+Personennormalisierung:
+  Adminprojektion -> zwoelf erlaubte Feldwerte + Problemcodes + SHA-256-
+  Feldfingerprint -> lokaler Entwurf und Pflichtvorschau -> `normalizePerson` mit
+  Personen-ID, Operation-ID und erwartetem Fingerprint -> aktuelle Volltabelle ->
+  stabile Zeilenaufloesung ueber `epiberRecord`-Developer-Metadata -> erneuter
+  Fingerprintvergleich -> Kandidatentabellen-/E-Mail-/Adminschutzpruefung ->
+  partieller Metadatenwrite -> lokale Projektion, `players`-Invalidierung und
+  zusammengefasster autoritativer Abschlussrefresh.
+
+  Normalisierungen laufen zusaetzlich in der gemeinsamen `players`-Writequeue und
+  bewusst personweise. Bereits vorhandene Zielwerte sind erfolgreiche No-ops;
+  bekannte Operationsresultate werden wiedergegeben. Nach unklarem Google-
+  Ergebnis wird die stabile Zeile bestaetigt, ohne blind zu wiederholen. Eigene
+  aktive Adminrechte und der letzte aktive Admin bleiben geschuetzt; Aenderungen
+  an E-Mail, Aktivstatus oder Rolle widerrufen alle Sitzungen der Zielperson.
+
 IDs fuer neue Matches/Anmeldungen werden stabil aus Principal und operationId
 abgeleitet. Vor Update/Delete werden Personen-, Matches1- und EntryList-Zeilen
 ueber ID und `epiberRecord`-Developer-Metadaten unmittelbar neu aufgeloest. Ein
 Write kann dadurch keine durch Sortieren/Verschieben benachbarte Zeile treffen.
+
+Erreicht ein Google-Sheets-Read vor dem Write die externe Minutenquote, projiziert
+SheetService den Rohfehler `429` als `SHEETS_RATE_LIMITED` mit einer
+verstaendlichen Warteaufforderung und kontrolliertem `retryAfterMs: 60000`. Der
+Versuch bleibt fehlgeschlagen und erzeugt kein gespeichertes Operationsresultat;
+Writes werden dadurch nicht automatisch wiederholt. Die Normalisierungsseite
+erhaelt Meldung und Support-ID ueber den regulaeren Fehlervertrag und zeigt jede
+Referenz genau einmal.
+
+Ein erfolgreicher Vollread verschiebt den naechsten Tabellenpoll relativ zu
+seinem tatsaechlichen Zeitpunkt. Solange eine serialisierte Tabellenoperation
+  aktiv ist, wird ein gleichzeitig faelliger Poll ohne API-Zugriff auf den naechsten
+  Basistick verschoben. Personennormalisierungen bleiben bewusst personweise:
+  Teilerfolge, Einzel-Audit und Wiederaufnahme bleiben erhalten; es gibt keinen
+  alles-oder-nichts-Gesamtbatch.
+
+Die Normalisierungsanalyse erzeugt daneben Count-only-Metriken aus dem letzten
+bekannten Personenbestand: separater Aktualitaetsindikator, Gesamtpersonen,
+betroffene Personen, Gesamtprobleme und die Verteilung auf das feste Vokabular
+aus zwoelf Problemcodes. Personenwerte und Fingerprints gelangen nicht in
+Prometheus oder Labels. Erfolgreiche `normalizePerson`-RPCs werden als Requests
+gezaehlt; idempotente Wiederholungen, Recovery und bereits vorhandene Zielwerte
+sind deshalb nicht gleichbedeutend mit neuen Sheetmutationen.
 
 SQLite bindet operationId an Actor, Endpoint und Payload. Ein bekanntes Resultat
 wird wiedergegeben. Nach verlorener Append-Antwort bestaetigt SheetService die
@@ -287,13 +351,19 @@ Fachhistorien und Betriebslogs:
     Schlaegt der Auditabschluss nach Rueckkehr der Mutation fehl, wird der
     Clientausgang konservativ als `WRITE_OUTCOME_UNKNOWN` behandelt; ein
     vorhandener urspruenglicher Vorher-Zustand bleibt unveraendert.
-    Akteure erhalten zusaetzlich einen Namenssnapshot. Loginversuche speichern in
+    Akteure erhalten zusaetzlich einen Namenssnapshot. Personenziele der
+    Normalisierung erhalten einen additiv persistierten Zielnamensnapshot; nach
+    Erfolg stammt er aus dem resultierenden Personenstand, bei Ablehnung aus dem
+    noch bekannten bisherigen Stand. Loginversuche speichern in
     der geschuetzten SQLite-Historie die normalisierte gueltige Eingabe und die
     Quell-IP; ungueltiger E-Mail-Rohtext bleibt leer. `X-Forwarded-For` gilt nur
     bei einer Verbindung von `127.0.0.1` oder `::1` innerhalb der lokalen
     Proxy-Vertrauensgrenze. Andere lokale Prozesse liegen damit ebenfalls in der
     Host-Vertrauensgrenze; Caddy wird nicht kryptografisch identifiziert. Im Journalspiegel bleiben
-    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert.
+    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert. Der
+    Normalisierungsabschluss projiziert fuer `active` und `role` ausschliesslich
+    kontrollierte Alt-/Neuwerte. Fuer alle anderen erlaubten Personenfelder wird
+    nur der geaenderte Feldname, nie sein Wert, ins Journal geschrieben.
     Doppelte oder aktionsfremd wiederverwendete Audit-Event-IDs werden abgewiesen
     und koennen terminale Zeilen nicht auf `started` zuruecksetzen.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
@@ -309,6 +379,14 @@ Fachhistorien und Betriebslogs:
     Loki erzwingt anhand von `retentionClass` 14 Tage fuer normale und 7 Tage fuer
     gezielte Frontenddiagnose; `retentionDays` bleibt ein kontrolliertes
     Informationsfeld.
+    Die Personennormalisierung verwendet ausschliesslich die benannten Events
+    `people_normalization_auth_failed`, `people_normalization_load_failed` und
+    `people_normalization_write_failed`; neben dem technischen Diagnoseumschlag
+    enthaelt ihre Allowlist nur Fehlercode, Support-ID und kontrollierte
+    Fortschrittszaehler, keine Personenwerte oder freien Meldungen. Ihre
+    WS-Reads/Writes erzeugen weiterhin strukturierte
+    `ws_request_completed`-Abschlusslogs. Auditphasen und Journalprojektion folgen
+    dem oben beschriebenen begrenzten Normalisierungsvertrag.
   - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
     bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
     `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale

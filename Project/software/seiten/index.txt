@@ -14,7 +14,9 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   authClient.js; localStorage ist kein Berechtigungsnachweis. Die Auth-UI
   unterscheidet Pruefung, angemeldet, anonym und nicht erreichbar. Spielerlink,
   Profil, Anmeldung und Abmeldung werden nach dem Sessionzustand dargestellt und
-  bei Aenderungen auch tabuebergreifend aktualisiert.
+  bei Aenderungen auch tabuebergreifend aktualisiert. Die gemeinsame Desktop- und
+  Mobilnavigation zeigt Datenpflege, Logging und Grafana nur einer aktuell
+  authentifizierten Person mit Rolle `admin`.
 
 -- Anmeldung und Passwort --
   Die gemeinsamen Modale fuer Anmeldung, Passwortaenderung, Reset-Code,
@@ -51,7 +53,10 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   verfuegbaren Viewport horizontal und vertikal zentriert; zu hoher Inhalt scrollt
   innerhalb des Dialogs. Die mobile Navigation liegt als fixed Modal unabhaengig
   von der Dokumentposition zentriert im sichtbaren Viewport; Oeffnen und Schliessen
-  veraendern die Scrollposition der Seite nicht.
+  veraendern die Scrollposition der Seite nicht. Authentifizierungs- und
+  rollenabhaengige Links bleiben auch bei der Blockdarstellung des mobilen Menues
+  verborgen, solange die Session nicht aufgeloest, nicht erreichbar oder fuer den
+  jeweiligen Link nicht berechtigt ist.
 
 -- Besonderheiten --
   Keine URL-Parameter. rankingSidebar.js und SDK.js werden nicht mehr verwendet;

@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.5.0
+Stand: 4.5.1
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,32 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.5.1] - 2026-08-21
+Commit: 4.5.1 | Mobile Rollenlinks ausgeblendet
+Quelle: 4.5.0-paj-1
+
+  Added
+  - [Software] Browser-Regressionstest fuer die mobile Navigation ergaenzt. Er
+    prueft die Sichtbarkeit der authentifizierungs- und rollenabhaengigen Links
+    fuer anonyme Benutzer, Spieler und Administratoren.
+
+  Changed
+  - [Dokumentation] Seitendokumentation der gemeinsamen Navigation um die
+    Adminlinks und deren verborgenes Verhalten bei nicht berechtigten oder noch
+    nicht aufgeloesten Sessionzustaenden erweitert.
+
+  Fixed
+  - [Software] Mobile Navigationslinks mit `hidden` bleiben trotz ihrer
+    allgemeinen Blockdarstellung unsichtbar. Normale Benutzer sehen Datenpflege,
+    Logging und Grafana dadurch nicht mehr; die serverseitigen Adminpruefungen
+    bleiben unveraendert.
+
+  Pruefungen
+  - `node --test test/navbar.browser.js`: mobiler Rollentest fuer anonym, Spieler
+    und Admin erfolgreich.
+  - `npm run check`: statische Pruefungen erfolgreich.
+  - `npm test`: alle 181 Backendtests erfolgreich.
 
 [4.5.0] - 2026-08-19
 Commit: 4.5.0 | Personennormalisierung und Betriebsdiagnostik erweitert

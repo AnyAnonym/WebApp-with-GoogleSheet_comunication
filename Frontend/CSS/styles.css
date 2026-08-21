@@ -595,6 +595,10 @@ nav a.active {
   text-align: center;
 }
 
+.mobile-nav-links a[hidden] {
+  display: none;
+}
+
 .mobile-nav-links a:last-child {
   border-bottom: none;
 }

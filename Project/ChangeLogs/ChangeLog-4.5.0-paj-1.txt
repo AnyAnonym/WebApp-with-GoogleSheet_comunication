@@ -6,3 +6,37 @@ Commit: 4.5.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.5.0-paj-1-1` gesetzt.
+
+[4.5.0-paj-1-2] - 2026-08-21
+Commit: 4.5.0-paj-1-2 | Mobile Rollenlinks ausgeblendet
+
+  Added
+  - [Software] Browser-Regressionstest fuer die rollenabhaengigen Links der
+    mobilen Navigation ergaenzt.
+
+  Changed
+  - [Repository] Uncommittierten Arbeitsstand `4.5.0-paj-1-1-x` vorbereitet;
+    Zielcommit ist `4.5.0-paj-1-2`.
+
+  Fixed
+  - [Software] Mobile Navigationslinks mit `hidden` bleiben trotz der allgemeinen
+    Blockdarstellung unsichtbar; normale Benutzer sehen Datenpflege, Logging und
+    Grafana nicht mehr.
+
+  Pruefungen
+  - `node --test test/navbar.browser.js`: mobiler Rollentest fuer anonym, Spieler
+    und Admin erfolgreich.
+  - `npm run check`: statische Pruefungen erfolgreich.
+  - `npm test`: alle 181 Backendtests erfolgreich.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  Project/software/seiten/index.txt
+  - Unter `Daten und Zugriff` ergaenzen, dass die gemeinsame Desktop- und
+    Mobilnavigation Datenpflege, Logging und Grafana nur fuer eine aktuell
+    authentifizierte Person mit Rolle `admin` darstellt.
+  - Unter `Layout und Bereitschaft` festhalten, dass rollen- und
+    authentifizierungsabhaengige Links im mobilen Menue auch bei dessen
+    Blockdarstellung verborgen bleiben. Bei noch nicht aufgeloestem,
+    nicht erreichbarem oder nicht berechtigtem Sessionzustand werden keine
+    privilegierten Links angezeigt.

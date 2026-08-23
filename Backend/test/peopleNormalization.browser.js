@@ -27,7 +27,7 @@ let snapshot = {
     fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     values: {
       firstName: " Ada ", lastName: "Admin", birthDate: "02.01.1990", gender: "2",
-      phone: "0043 664 1234567", email: "ada@example.test", country: "Österreich",
+      phone: "0043 664 1234567", email: "ada@example.test", login: "old.login", country: "Österreich",
       postalCode: "4060", city: "Piberbach", address: "Dorf 1", active: "1", role: "admin"
     },
     issues: [{ field: "firstName", code: "EDGE_WHITESPACE", message: "Rand-Leerraum", proposedValue: "Ada" }]
@@ -123,11 +123,16 @@ test("Normalisierungsseite funktioniert responsiv und zeigt Quotenfehler mit ein
 
       await page.locator(".normalization-person summary").click();
       await page.getByRole("button", { name: "Vorschlag übernehmen" }).click();
-      assert.equal(await page.locator("#normalization-change-count").textContent(), "1");
+      const login = page.locator('[data-field="login"]');
+      assert.equal(await login.isVisible(), true);
+      assert.equal(await login.inputValue(), "old.login");
+      await login.fill("NEW.LOGIN");
+      assert.equal(await page.locator("#normalization-change-count").textContent(), "2");
       await page.getByRole("button", { name: "Änderungen prüfen" }).click();
       await page.locator("#normalization-preview-modal").waitFor({ state: "visible" });
-      assert.equal(await page.locator(".normalization-preview-row").count(), 1);
+      assert.equal(await page.locator(".normalization-preview-row").count(), 2);
       assert.equal(await page.locator(".normalization-preview-value").nth(1).textContent(), "Ada");
+      assert.equal(await page.locator(".normalization-preview-value").nth(3).textContent(), "new.login");
       const expectFailure = viewport.width === 1280;
       if (expectFailure) await page.evaluate(() => { window.__normalizationFailure = true; });
       await page.getByRole("button", { name: "Änderungen schreiben" }).click();
@@ -137,7 +142,7 @@ test("Normalisierungsseite funktioniert responsiv und zeigt Quotenfehler mit ein
       const writes = await page.evaluate(() => window.__normalizationWrites);
       assert.equal(writes.length, expectFailure ? 0 : 1);
       if (!expectFailure) {
-        assert.deepEqual(writes[0].changes, { firstName: "Ada" });
+        assert.deepEqual(writes[0].changes, { firstName: "Ada", login: "new.login" });
         assert.equal(writes[0].personId, "p1");
       }
       await context.close();

@@ -32,7 +32,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
 
 ================================================================================
-  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 2 ADMINISTRATION)
+  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 3 ADMINISTRATION)
 ================================================================================
 
   Pfad                              | Seite
@@ -51,6 +51,8 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/seiten/adminLogging.txt  | Frontend-Logging-Administration
   software/seiten/personenNormalisieren.txt
                                      | Personendaten-Normalisierung
+  software/seiten/mitgliederAbgleichen.txt
+                                     | ClubDesk-Mitgliederabgleich
 
 Jede Seitendatei beschreibt Funktion, Dateien, Datenquellen, Layout, Bedienung,
 Subscriptions und Besonderheiten. `Frontend/court-score-test.html` ist eine

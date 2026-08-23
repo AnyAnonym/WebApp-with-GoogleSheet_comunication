@@ -26,6 +26,7 @@ const { validateEndpointRequest, validateEndpointResponse } = require("./contrac
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules } = require("./matchRules.js");
 const { projectPeopleNormalization } = require("./peopleNormalization.js");
+const { projectPeopleReconciliation } = require("./memberReconciliation.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
@@ -99,6 +100,16 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         before: internal?.before || null,
         after: internal?.after || null,
       };
+    case "reconcilePerson": {
+      const targetId = result.personId || params.personId || params.externalId;
+      return {
+        targetType: "person",
+        targetId,
+        targetName: internal?.targetName || personDisplayName(targetId),
+        before: internal?.before || null,
+        after: internal?.after || null,
+      };
+    }
     default:
       return { targetType: "", targetId: "", before: null, after: null };
   }
@@ -448,6 +459,13 @@ const endpoints = {
       return { success: true, ...projectPeopleNormalization(dataStore.get("players")) };
     },
   },
+  adminMemberReconciliation: {
+    access: ["admin"],
+    handler: () => {
+      requireCurrentTables("players");
+      return { success: true, ...projectPeopleReconciliation(dataStore.get("players")) };
+    },
+  },
   myProfile: {
     access: "authenticated",
     handler: (_params, context) => ({ success: true, profile: context.auth.user }),
@@ -467,6 +485,12 @@ const endpoints = {
     write: true,
     writeCost: 0.1,
     handler: (params, context) => dependencies.sheetService.normalizePerson(context.principal, params),
+  },
+  reconcilePerson: {
+    access: ["admin"],
+    write: true,
+    writeCost: 0.1,
+    handler: (params, context) => dependencies.sheetService.reconcilePerson(context.principal, params),
   },
   addMatch: {
     access: "authenticated",

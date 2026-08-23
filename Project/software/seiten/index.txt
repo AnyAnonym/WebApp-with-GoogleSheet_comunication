@@ -15,8 +15,8 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   unterscheidet Pruefung, angemeldet, anonym und nicht erreichbar. Spielerlink,
   Profil, Anmeldung und Abmeldung werden nach dem Sessionzustand dargestellt und
   bei Aenderungen auch tabuebergreifend aktualisiert. Die gemeinsame Desktop- und
-  Mobilnavigation zeigt Datenpflege, Logging und Grafana nur einer aktuell
-  authentifizierten Person mit Rolle `admin`.
+  Mobilnavigation zeigt Personennormalisierung, Mitgliederabgleich, Logging und
+  Grafana nur einer aktuell authentifizierten Person mit Rolle `admin`.
 
 -- Anmeldung und Passwort --
   Die gemeinsamen Modale fuer Anmeldung, Passwortaenderung, Reset-Code,
@@ -24,21 +24,24 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   oder `Abbrechen` schliessen, nicht durch Klick auf den Hintergrund oder Escape.
   Waehrend eines Requests sind alle Schaltflaechen des jeweiligen Modals gesperrt;
   dadurch kann es auch nicht geschlossen oder die Aktion doppelt ausgeloest werden.
-  Formulare und Felder besitzen Passwortmanager-Metadaten mit method/action,
+  Formulare und Felder verwenden Login statt Kontakt-E-Mail als Anmeldekennung
+  und besitzen Passwortmanager-Metadaten mit method/action,
   `username`, `current-password`, `new-password` beziehungsweise `one-time-code`;
-  die Passwortaenderung fuehrt die angemeldete E-Mail als unsichtbares
+  die Passwortaenderung fuehrt den angemeldeten Login als unsichtbares
   Username-Feld. Passwortfelder werden beim Schliessen zurueckgesetzt und wieder
   verdeckt.
 
   Im Login kann eine zuvor vom Administrator freigegebene Person ueber
-  `Erstmals Passwort vergeben` mit E-Mail und zweimaligem neuen Passwort ihr
-  erstes Passwort setzen. Danach wird das Login mit uebernommener E-Mail erneut
+  `Erstmals Passwort vergeben` mit Login und zweimaligem neuen Passwort ihr
+  erstes Passwort setzen. Danach wird die Anmeldung mit uebernommenem Login erneut
   geoeffnet. Reset-Code und direkte administrative Passwortvergabe bleiben davon
   getrennte Ablaeufe.
 
 -- Profile --
-  Eigene und fuer angemeldete Benutzer sichtbare fremde Profile zeigen E-Mail,
-  Telefon und Geburtsdatum; das Geschlecht wird im Profilmodal nicht angezeigt.
+  Das eigene Profil zeigt Login und Kontakt-E-Mail als getrennte Felder sowie
+  Telefon und Geburtsdatum. Fremde Profile zeigen den Login nur Admins; die
+  Kontakt-E-Mail bleibt fuer angemeldete Benutzer sichtbar. Das Geschlecht wird
+  im Profilmodal nicht angezeigt.
   Neben vorhandener E-Mail und Telefonnummer steht jeweils ein kleiner,
   tastaturbedienbarer Kopierbutton mit ueberlappendem Rechtecksymbol. Moderne
   Clipboard-APIs und ein Browser-Fallback liefern eine sichtbare Erfolg- oder

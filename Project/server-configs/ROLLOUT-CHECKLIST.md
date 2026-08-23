@@ -1,6 +1,6 @@
 # ePiber Rollout-Checkliste
 
-Stand: 16.08.2026
+Stand: 23.08.2026
 
 Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -> Live**. PK bleibt deaktiviert und wird erst in einem eigenen spaeteren Release aufgenommen. Jede aktive Stufe verwendet exakt denselben bestaetigten Release-Commit und dieselben versionierten Caddy-/systemd-Vorlagen. Abweichungen, offene Pflichtpunkte oder ein Branchsuffix in der Version stoppen die Promotion.
 
@@ -22,21 +22,23 @@ Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -
 - [ ] Backup-ID, Zeitpunkt und verantwortliche Person dokumentiert; Backup ist lesbar und gegen versehentliche Bearbeitung geschuetzt.
 - [ ] Service-Account hat Bearbeiterzugriff auf genau das richtige systemspezifische Spreadsheet.
 - [ ] Alle von `Backend/tableSchemas.js` verlangten Tabs und Pflichtspalten vorhanden.
-- [ ] `Personen` besitzt die Poller-Pflichtspalten `ID`, `Vorname`, `Nachname`, `E-Mail`, `PasswdHash`, `Aktiv`, `Role`.
+- [ ] `Personen` besitzt die Poller-Pflichtspalten `ID`, `Vorname`, `Nachname`, `E-Mail`, `Login`, `PasswdHash`, `Aktiv`, `Role`.
 - [ ] Die fuer die Erstvergabe benoetigte Zusatzspalte `KennwortVergessen` ist vorhanden und fuer den Service-Account beschreibbar.
 - [ ] `Bewerb`: `ID`, `Bezeichnung`, `BewerbsartID`; `Bewerbsart`: `ID`, `Bezeichnung`.
 - [ ] `Matches1`: `ID`, `Matchdate`, `Forderungdate`, `BewerbID`, `BewerbRunde`, `Spieler1ID`, `Spieler3ID`, `Ergebnis`.
 - [ ] `RL-Platzierung`: `BewerbID`, `PersonID`, `Rang`; `Navigator`: `Name`, `Ziel`.
 - [ ] Jede relevante Personenzeile besitzt explizit `player`, `player A`, `player B`, `operator` oder `admin` in `Role`; Gross-/Kleinschreibung wurde vereinheitlicht.
 - [ ] Mindestens eine aktive, praktisch getestete Adminperson vorhanden.
-- [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
+- [ ] Fuer den Erstvergabe-Test steht bei genau der vorgesehenen aktiven Person mit nichtleerem gueltigem `Login` der Wert `x` in `KennwortVergessen`; andere Werte gelten nicht als Freigabe.
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
 - [ ] `EntryList` verwendet die Spalten `ID`, `BewerbID`, `PersonenID`, `Entrydate`; neue Werte haben das Format `YYMMDD-HHMM` (Wiener Zeit).
 - [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend nicht mehr gelesen oder beschrieben. Ihre bisherigen Inhalte sind vor einer optionalen Entfernung separat gesichert archiviert; ein automatischer Import in SQLite findet nicht statt.
 - [ ] `scorelog.sqlite` und `audit.sqlite` sind als getrennte Fachhistorien angelegt und nicht mit `state.sqlite` zusammengelegt.
 - [ ] ScoreLog-Event-IDs, Court-Folgenummern sowie Audit-Request-/Operation-IDs sind eindeutig und nach Neustart fortsetzbar.
-- [ ] Eindeutige, nichtleere IDs und eindeutige Personen-E-Mail-Adressen stichprobenartig beziehungsweise automatisiert geprueft.
+- [ ] Eindeutige, nichtleere IDs und kanonisch eindeutige belegte Personen-Logins stichprobenartig beziehungsweise automatisiert geprueft; leere Logins sind fuer Personen ohne Zugang zulaessig.
+- [ ] `E-Mail` bleibt eine optionale Kontaktadresse. Leere, ungueltige oder bei Familien mehrfach verwendete Kontakt-E-Mails blockieren weder den Tabellenload noch den unabhaengigen eindeutigen Login.
 - [ ] Schreibrechte auf `Personen`, `Matches1` und `EntryList` praktisch mit dem vorgesehenen Service-Account bestaetigt; fuer `Logging` und `ScoreLog` sind keine Sheet-Schreibrechte mehr erforderlich.
+- [ ] Waehrend Personenmigration, Personennormalisierung und Mitgliederabgleich schreibt kein paralleler Sheet-Editor, Importprozess oder anderer API-Client in `Personen`; Anwendungswrites auf diesen Tab bleiben ueber die gemeinsame `players`-Queue serialisiert.
 
 ## 2. Developer Metadata
 
@@ -156,7 +158,7 @@ Gesamtfreigabe.
 - [ ] Nur `admin` sieht `adminLogging.html`, kann globale Frontend-Level/Sampling/Batch/Flushwerte und temporaere Zielpersonen setzen oder entfernen und sieht die festen Retentionwerte 14/7 Tage; alle drei Mutationstypen erscheinen im Auditlog.
 - [ ] Eine temporaere Zielperson erscheint mit ID, Klarname, Rolle, Level, Ersteller, Ablauf und plausibler Restzeit. Die Policy greift im Collector sofort, erreicht offene Standardseiten spaetestens beim Sessionrefresh, zeigt der Person einen neutralen Ablaufhinweis und faellt nach Ablauf auf die globale Policy zurueck.
 - [ ] Nur `admin` kann ueber `POST /api/admin/password-setup` die Erstvergabe freigeben oder aufheben; Profilanzeige und Sheetwert `KennwortVergessen` wechseln dabei konsistent zwischen `x` und leer.
-- [ ] `POST /api/password-setup` akzeptiert nur E-Mail plus neues Passwort einer aktiven, mit `KennwortVergessen = x` freigegebenen Person; unbekannte, inaktive, nicht freigegebene und nachtraeglich deaktivierte Personen werden ohne Passwortwrite abgewiesen.
+- [ ] `POST /api/password-setup` akzeptiert nur `Login` plus neues Passwort einer aktiven, mit `KennwortVergessen = x` freigegebenen Person; Kontakt-E-Mail ist keine Anmelde- oder Setupidentitaet. Unbekannte, inaktive, nicht freigegebene und nachtraeglich deaktivierte Personen werden ohne Passwortwrite abgewiesen.
 - [ ] Erfolgreiche Erstvergabe verbraucht die Freigabe atomar: `KennwortVergessen` ist danach leer und ein zweiter Setupversuch wird abgewiesen.
 - [ ] Aktivstatus und Freigabe werden auch bei einem konkurrierenden Aenderungsversuch unmittelbar vor dem Setup-Write erneut geprueft.
 - [ ] Erstvergabe widerruft alle bestehenden Sitzungen der Zielperson vor und nach dem Write; offene Tabs wechseln in den abgemeldeten Zustand und das alte Passwort funktioniert nicht mehr.
@@ -164,8 +166,8 @@ Gesamtfreigabe.
 - [ ] Passwortaenderung/-reset widerruft die vorgesehenen Sitzungen; Cross-Tab Login/Logout bleibt konsistent.
 - [ ] Personenprofile zeigen anonym nur ID/Name und angemeldet die vorgesehenen Kontakt-/Geburtsdaten; Adminaktionen sind nur fuer Admin sichtbar und wirksam.
 - [ ] Login, eigene Passwortaenderung und Erstvergabe funktionieren mit mindestens einem freigegebenen Browser-Passwortmanager; `username`, `current-password`, `new-password` und `one-time-code` werden passend erkannt, ohne Passwortwerte in URL, Logs oder Storage zu schreiben.
-- [ ] Erfolgreicher und fehlgeschlagener Login erzeugen je einen Auditdatensatz mit Quell-IP und normalisierter gueltiger Login-E-Mail; nur der erfolgreiche Datensatz enthaelt serverseitige Benutzer-ID, Namenssnapshot und Rolle. Ein syntaktisch ungueltiger E-Mail-Rohtext wird nicht gespeichert.
-- [ ] Der Journalspiegel zeigt fuer Login-Audits den Namen, aber nur maskierte E-Mail und IP; vollstaendige Werte sind ausschliesslich in der geschuetzten `audit.sqlite` vorhanden und werden weder ueber `/status` noch in oeffentliche Tickets oder Screenshots uebernommen.
+- [ ] Erfolgreicher und fehlgeschlagener Login erzeugen je einen Auditdatensatz mit Quell-IP und normalisiertem gueltigem Login; nur der erfolgreiche Datensatz enthaelt serverseitige Benutzer-ID, Namenssnapshot und Rolle. Ein syntaktisch ungueltiger Login-Rohtext wird nicht gespeichert.
+- [ ] Der Journalspiegel zeigt fuer Login-Audits den Namen, aber nur maskierten Login und maskierte IP; vollstaendige Werte sind ausschliesslich in der geschuetzten `audit.sqlite` vorhanden und werden weder ueber `/status` noch in oeffentliche Tickets oder Screenshots uebernommen.
 - [ ] Direkte externe Requests koennen `X-Forwarded-For` nicht zur Auditfaelschung verwenden. Forwarded-Header werden nur von `127.0.0.1`/`::1` akzeptiert; lokale Prozesse gehoeren zur Host-Vertrauensgrenze und duerfen den Loopback-Backendport nicht unkontrolliert verwenden.
 - [ ] Frontend-Events akzeptieren nur erlaubte Ereignisse und technische Felder; ID, Klarname, Rolle und IP stammen nachweislich serverseitig aus Session/Verbindung. Inaktive Personen werden nicht weiter als authentifizierte Diagnoseidentitaet behandelt, anonyme Events nur nach expliziter Freigabe.
 - [ ] journald zeigt `frontend_client_event` mit korrekter Support-ID, Diagnoseprofil und Retentionklasse, aber ohne Payloads, DOM-/Profildaten, freie Fehlermeldungen, Stacks, E-Mail, Telefon, Cookies, Tokens oder Passwortwerte. Personenbezogene Felder werden nur autorisierten Betreibern zugaenglich gemacht.
@@ -173,6 +175,14 @@ Gesamtfreigabe.
 - [ ] Login-, Passwortaenderungs-, Reset-, Erstvergabe- und Admin-Passwortmodale schliessen nicht durch Backdropklick oder Escape, sondern nur explizit ueber Abbrechen/Schliessen; waehrend eines Requests sind Schliessen und Doppel-Submit gesperrt, danach werden Formulare und sichtbare Passwoerter zurueckgesetzt.
 - [ ] Matches/Forderungen, EntryList Add/Remove und Ranglistenrestriktionen wurden mit realistischen Daten geprueft; jede Mutation erzeugt den vorgesehenen SQLite-Auditeintrag.
 - [ ] Unklare fachliche Writes werden als `unknown` behandelt und nicht automatisch erneut ausgefuehrt.
+- [ ] `mitgliederAbgleichen.html` ist nur mit einer aktuellen Adminsession erreichbar; Anonymous, Player und Operator sehen weder Bestandsprojektion noch Importdaten und koennen keine Abgleichsaktion ausfuehren.
+- [ ] Eine ClubDesk-CSV wird auf PAJ ausschliesslich lokal im Browser eingelesen und verglichen. CSV-Rohdaten werden weder an das Backend gesendet noch in Logs, Diagnoseevents, Storage oder Freigabeprotokolle uebernommen; Dateigroesse, Pflichtheader, Kodierung, Spaltenzahl, IDs und fehlerhaftes Quoting werden kontrolliert geprueft.
+- [ ] Die lokale Vorschau trennt identische, geaenderte, neue, fehlende, unklare und konfliktbehaftete Datensaetze. Kontakt-E-Mail-Dubletten sind kein Konflikt; CD-ID-, Identitaets-, Fingerprint- und belegte Login-Konflikte blockieren die betroffene Aktion.
+- [ ] Nur einzeln ausgewaehlte und in der abschliessenden Vorschau exakt dargestellte Feldaktionen werden ausgefuehrt. Bestehende Logins folgen nie einer importierten Kontakt-E-Mail; ein eindeutiger neuer Kontakt darf nur dann als Login vorgeschlagen werden, wenn dieser Login weder im Bestand noch in der aktuellen Auswahl belegt ist.
+- [ ] Familien mit derselben optionalen Kontakt-E-Mail koennen als getrennte neue Personen ohne Login angelegt werden. Leerer Login und doppelte Kontakt-E-Mail erfordern keine kuenstliche Zusatzbestaetigung und deaktivieren keine andere Person.
+- [ ] Neuladen des Personenbestands verwirft bestaetigte Zuordnungen und ueberholte Loginvorschlaege; vor jedem Write prueft das Backend Fingerprint, CD-ID und Loginbelegung erneut.
+- [ ] Die ausgewaehlten Personenaktionen laufen seriell und stoppen beim ersten Fehler oder unklaren Ausgang. Bereits erfolgreiche Aktionen bleiben als Erfolg sichtbar, die fehlgeschlagene und alle noch nicht ausgefuehrten Aktionen bleiben ausgewaehlt, und Support-ID sowie Anzahl des Teilerfolgs werden genau einmal angezeigt; es erfolgt kein automatischer Retry.
+- [ ] Create, Update, Deaktivierung und bestaetigte Zuordnung wurden auf PAJ mit kontrollierten Testdaten geprueft. Jede ausgefuehrte Personenaktion besitzt eine eigene Operation-ID und den vorgesehenen Auditabschluss; Kontakt-, Adress- und Geburtswerte erscheinen nicht im Journalspiegel.
 
 ## 9. Browser, Kiosk, Monitor und Scoreboards auf PAJ
 

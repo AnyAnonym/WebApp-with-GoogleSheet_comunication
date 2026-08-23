@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASKÖ Piberbach - Mitglieder abgleichen</title>
+  <link rel="stylesheet" href="./CSS/styles.css" />
+  <link rel="stylesheet" href="./CSS/personenNormalisieren.css" />
+  <link rel="stylesheet" href="./CSS/mitgliederAbgleichen.css" />
+</head>
+<body>
+  <div id="header-container"></div>
+  <div id="mobile-nav-container"></div>
+
+  <main class="normalization-main reconciliation-main">
+    <section id="reconciliation-access" class="normalization-access" aria-live="polite">
+      <div class="normalization-access-card">
+        <p class="normalization-eyebrow">Geschützter Bereich</p>
+        <h1>Mitglieder abgleichen</h1>
+        <p id="reconciliation-access-message">Sitzung wird geprüft...</p>
+        <a href="index.html" class="normalization-primary-link">Zur Anmeldung</a>
+      </div>
+    </section>
+
+    <div id="reconciliation-app" class="normalization-app" hidden>
+      <header class="normalization-heading">
+        <div>
+          <p class="normalization-eyebrow">Administration / ClubDesk</p>
+          <h1>Mitglieder abgleichen</h1>
+          <p>Vollständigen ClubDesk-Export lokal prüfen und ausschließlich bestätigte Änderungen personweise übernehmen.</p>
+        </div>
+        <button id="reconciliation-reload" class="normalization-secondary-button" type="button">Bestand neu laden</button>
+      </header>
+
+      <div id="reconciliation-status" class="normalization-status" role="status" aria-live="polite"></div>
+
+      <section class="reconciliation-import" aria-labelledby="reconciliation-import-title">
+        <div>
+          <p class="normalization-eyebrow">Schritt 1</p>
+          <h2 id="reconciliation-import-title">ClubDesk-Datei auswählen</h2>
+          <p>Die CSV bleibt im Browser. Erwartet werden die festgelegten Pflichtspalten, höchstens 5 MiB und 2000 Datensätze.</p>
+        </div>
+        <label class="reconciliation-file-button">
+          <span>CSV auswählen</span>
+          <input id="reconciliation-file" type="file" accept=".csv,text/csv" />
+        </label>
+        <div id="reconciliation-file-meta" class="reconciliation-file-meta">Noch keine Datei ausgewählt.</div>
+      </section>
+
+      <section id="reconciliation-results" hidden>
+        <section class="normalization-summary reconciliation-summary" aria-label="Abgleichszusammenfassung">
+          <button type="button" data-category="changed"><strong id="reconciliation-count-changed">0</strong><span>Geändert</span></button>
+          <button type="button" data-category="new"><strong id="reconciliation-count-new">0</strong><span>Neu</span></button>
+          <button type="button" data-category="missing"><strong id="reconciliation-count-missing">0</strong><span>Weggefallen</span></button>
+          <button type="button" data-category="unclear"><strong id="reconciliation-count-unclear">0</strong><span>Zu prüfen</span></button>
+          <button type="button" data-category="conflict"><strong id="reconciliation-count-conflict">0</strong><span>Konflikte</span></button>
+          <button type="button" data-category="identical"><strong id="reconciliation-count-identical">0</strong><span>Identisch</span></button>
+        </section>
+
+        <section class="normalization-toolbar reconciliation-toolbar" aria-label="Filter und Aktionen">
+          <label>
+            <span>Suche</span>
+            <input id="reconciliation-search" type="search" placeholder="Name, ID oder CD-ID" autocomplete="off" />
+          </label>
+          <label>
+            <span>Kategorie</span>
+            <select id="reconciliation-category">
+              <option value="actionable">Offene Aktionen</option>
+              <option value="changed">Geändert</option>
+              <option value="new">Neu</option>
+              <option value="missing">Weggefallen</option>
+              <option value="unclear">Zu prüfen</option>
+              <option value="conflict">Konflikte</option>
+              <option value="identical">Identisch</option>
+              <option value="all">Alle</option>
+            </select>
+          </label>
+          <div class="reconciliation-selection-count"><strong id="reconciliation-action-count">0</strong><span>bestätigte Personenaktionen</span></div>
+          <button id="reconciliation-preview" class="normalization-primary-button" type="button" disabled>Auswahl prüfen</button>
+        </section>
+
+        <p id="reconciliation-empty" class="normalization-empty" hidden>Für diesen Filter wurden keine Einträge gefunden.</p>
+        <div id="reconciliation-list" class="reconciliation-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="reconciliation-preview-modal" class="normalization-modal" role="dialog" aria-modal="true" aria-labelledby="reconciliation-preview-title" hidden>
+    <div class="normalization-modal-card reconciliation-modal-card">
+      <div class="normalization-modal-heading">
+        <div>
+          <p class="normalization-eyebrow">Letzte Kontrolle</p>
+          <h2 id="reconciliation-preview-title">Bestätigte Personenaktionen</h2>
+        </div>
+        <button id="reconciliation-preview-close" class="normalization-icon-button" type="button" aria-label="Vorschau schließen">×</button>
+      </div>
+      <p>Die angezeigten Zielwerte entsprechen exakt den serverseitig akzeptierten Werten.</p>
+      <div id="reconciliation-preview-list" class="normalization-preview-list"></div>
+      <div class="normalization-modal-actions">
+        <button id="reconciliation-preview-cancel" class="normalization-secondary-button" type="button">Weiter prüfen</button>
+        <button id="reconciliation-submit" class="normalization-primary-button" type="button">Aktionen ausführen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-container"></div>
+  <script type="module" src="JS/navbar.js"></script>
+  <script type="module" src="JS/modals.js"></script>
+  <script type="module" src="JS/mitgliederAbgleichen.js"></script>
+  <script src="JS/global.js"></script>
+  <script src="JS/footer.js"></script>
+</body>
+</html>

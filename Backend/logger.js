@@ -7,7 +7,7 @@ const LEVELS = Object.freeze({ debug: 10, info: 20, warn: 30, error: 40 });
 const REDACTED = "[REDACTED]";
 const SENSITIVE_KEYS = new Set([
   "authorization", "clientsecret", "cookie", "cookies", "credential", "credentials",
-  "currentpasswordhash", "email", "newpasswordhash", "password", "passwordhash",
+  "currentpasswordhash", "email", "login", "loginraw", "attemptedlogin", "newpasswordhash", "password", "passwordhash",
   "passwdhash", "privatekey", "resettoken", "secret", "sessionid", "sessiontoken",
   "setcookie", "sid", "token", "monitortoken",
 ]);

@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.5.1
+Stand: 4.6.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,100 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.6.0] - 2026-08-23
+Commit: 4.6.0 | Mitgliederabgleich und getrennten Login bereitgestellt
+Quelle: 4.5.1-paj-1
+
+  Added
+  - [Software] Responsive Adminseite `mitgliederAbgleichen.html` fuer den lokalen
+    Vergleich eines vollstaendigen ClubDesk-CSV-Exports mit dem Personenbestand
+    eingefuehrt. Sie klassifiziert geaenderte, neue, weggefallene, unklare,
+    konfliktbehaftete und identische Datensaetze und schreibt erst nach
+    personweiser Auswahl und verpflichtender Gesamtvorschau.
+  - [Software] Windows-1252-/Semikolon-CSV-Parser mit geschlossenem Headervertrag,
+    Quote-Verarbeitung sowie Grenzen von 5 MiB und 2000 Datensaetzen aufgenommen.
+    CSV-Rohdaten bleiben im Browser und gelangen weder in Requests noch Logs.
+  - [Software] Admin-only RPCs `adminMemberReconciliation` und `reconcilePerson`
+    fuer konfliktgeschuetzte Verknuepfung/Aktualisierung, Neuanlage und
+    Deaktivierung ergaenzt. Fingerprints, stabile Google Developer Metadata,
+    serialisierte Personenwrites, Idempotenz und Unknown-Recovery sichern die
+    personweisen Aktionen ab.
+  - [Datenbank] Erforderliche Sheetspalte `Personen.Login` sowie additive
+    SQLite-Felder `sessions.login` und `audit_log.attempted_login` eingefuehrt.
+    Historische E-Mail-Spalten bleiben fuer Migration und Rueckverfolgbarkeit
+    bestehen, sind aber kein Authentifizierungsfallback.
+  - [Software] Sicherheitskern- und Browsertests fuer Importvertrag, Zuordnung,
+    ID-Vergabe, Konflikte, Teilerfolg, Authverlust, responsive Bedienung,
+    Loginmigration, Sessionbindung, Audit und Datenschutz aufgenommen.
+
+  Changed
+  - [Software] Anmeldung, Passwort-Erstvergabe, Loginlimits, Sessions und
+    Login-Audits verwenden ausschliesslich `Login`. Der temporaere HTTP-Parameter
+    `email` bleibt als Aliasname fuer Login akzeptiert, wird aber nicht als
+    Kontakt-E-Mail interpretiert und bietet keinen Fallback.
+  - [Software] Kontakt-E-Mail ist ein optionales, mehrfach verwendbares
+    Profilfeld. Login ist optional, bei Belegung 3 bis 254 erlaubte ASCII-Zeichen
+    lang und case-insensitiv eindeutig. Ungueltige oder doppelte Logins bleiben
+    administrativ reparierbar, koennen aber nicht authentifizieren.
+  - [Software] Der Mitgliederabgleich aendert bestehende Logins nie. Nur bei einer
+    Neuanlage mit im Export einmaliger und im Bestand als Login freier
+    Kontakt-E-Mail wird diese als Login vorgeschlagen; sonst bleibt Login leer.
+  - [Software] Die Personennormalisierung umfasst dreizehn sichtbare kontrollierte
+    Felder. Admins koennen Login getrennt von Kontakt-E-Mail reparieren; Browser
+    und Backend kanonisieren Vorschau und Write, Loginprobleme ersetzen
+    E-Mail-Dublettenprobleme.
+  - [Software] Login-, Aktiv- und Rollenaenderungen widerrufen Sitzungen auch bei
+    unklarem Ausgang oder bestaetigter Recovery. Reine Kontakt-E-Mail-Aenderungen
+    lassen Sitzungen bestehen; jeder Sessionzugriff vergleicht den gespeicherten
+    Login mit dem aktuellen kanonischen Personenlogin.
+  - [Software] ClubDesk-Gruppen `A-Mitglieder` beziehungsweise `B-Mitglieder`
+    einschliesslich Funktionszusatz werden auf `player A` beziehungsweise
+    `player B` abgebildet; A hat Vorrang, andere Funktionen keine Rollenwirkung.
+  - [Dokumentation] Fachkonzept, Software- und Seitenindex,
+    Mitgliederabgleichs-, Normalisierungs-, Dashboard- und Spielerseiten sowie
+    Endpoint-, Datenbank-, Architektur-, Rollout-, Setup-, Backup- und
+    Projektdokumentation auf den neuen Sollstand abgeglichen.
+
+  Fixed
+  - [Software] Importierte Personenwerte, Dateiverweise, Vorschauen und Auswahl
+    werden bei Authverlust vollstaendig aus DOM und Speicher entfernt;
+    ueberholte Bestands- und Dateiladevorgaenge sowie Loginvorschlaege werden
+    verworfen.
+  - [Software] Konfliktziele erscheinen nicht zugleich als
+    Deaktivierungskandidaten, sehr grosse Personen-IDs werden ohne
+    Number-Praezisionsverlust fortgeschrieben und unklare Append-/Metadata-
+    Ausgaenge erzeugen bei Wiederholung keine zweite Person.
+  - [Software] Nach einem zunaechst unklaren, spaeter wiedererkannten Aktiv- oder
+    Rollenwrite werden zwischenzeitlich vorhandene Sitzungen vorsorglich
+    widerrufen.
+  - [Software] Das zuvor zusammengefasste Feld `E-Mail / Login` der
+    Normalisierungsseite ist in getrennte Felder `Kontakt E-Mail` und `Login`
+    aufgeteilt; der Browsertest prueft sichtbare Bearbeitung, kanonische Vorschau
+    und exakten Loginwrite.
+
+  Pruefungen
+  - `npm run check`: statische Pruefungen erfolgreich.
+  - `npm test`: alle 227 Backendtests erfolgreich.
+  - `npm run test:browser`: alle zehn Browsertests fuer Mitgliederabgleich,
+    Navigation, Profile, Normalisierung und Scoreboard erfolgreich.
+  - Fachlicher Test des vollstaendigen Arbeitsstands im PAJ-System durch den User
+    abgeschlossen; `git diff --check` ohne Fehler.
+
+  Sicherheit, Betrieb und bekannte Einschraenkungen
+  - Browserdiagnosen verwenden nur den bekannten Seitentyp
+    `mitgliederAbgleichen`, vier benannte Allowlist-Ereignisse und kontrollierte
+    technische Felder. Reconciliation-Audits enthalten Zielidentitaet,
+    Feldmarker und nur kontrollierte Aktiv-/Rollenwerte, keine CSV-, Kontakt-,
+    Adress- oder Geburtswerte.
+  - Vor dem Backendstart muss `Personen.Login` vorhanden und fuer bestehende
+    Anmeldekonten eindeutig befuellt sein. Es gibt bewusst keinen Fallback auf
+    Kontakt-E-Mail; bestehende Login-Dubletten sind vor dem Import zu bereinigen.
+  - Google Sheets bietet kein transaktionales Gesamt-CAS ueber Zielzeile, ID,
+    `CD-ID` und Login. Ein kontrollierter Importlauf erfolgt deshalb ohne
+    parallele manuelle oder zweite Backendwrites auf `Personen`.
+  - Live-Deployment, Backups und fachliche Writes auf Live bleiben getrennt
+    freizugebende Betriebsschritte.
 
 [4.5.1] - 2026-08-21
 Commit: 4.5.1 | Mobile Rollenlinks ausgeblendet

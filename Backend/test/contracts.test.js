@@ -4,13 +4,47 @@ const { requestContracts, validateEndpointRequest, validateEndpointResponse } = 
 
 test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
   assert.deepEqual(Object.keys(requestContracts).sort(), [
-    "addEntryList", "addMatch", "adminPeopleNormalization", "bewerbe", "bewerbsart", "courtAssign", "courtScores",
+    "addEntryList", "addMatch", "adminMemberReconciliation", "adminPeopleNormalization", "bewerbe", "bewerbsart", "courtAssign", "courtScores",
     "courtSetActive", "entryList", "getScoreboardCourts", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
     "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myProfile", "navigator", "normalizePerson", "operationStatus",
-    "players", "preMatches", "publicProfile", "readMatchRestrictions", "removeEntryList", "rlPlatzierung",
+    "players", "preMatches", "publicProfile", "readMatchRestrictions", "reconcilePerson", "removeEntryList", "rlPlatzierung",
     "scoreboardSnapshot", "withdrawFromRanking",
   ]);
+});
+
+test("Mitgliederabgleich besitzt getrennte geschlossene Aktionsvertraege", () => {
+  const operationId = "00000000-0000-4000-8000-000000000019";
+  assert.deepEqual(validateEndpointRequest("reconcilePerson", {
+    operationId,
+    action: "update",
+    personId: "p1",
+    expectedFingerprint: "A".repeat(64),
+    externalId: "1000068",
+    changes: { email: " ADA@EXAMPLE.TEST ", role: "PLAYER A" },
+  }), {
+    operationId,
+    action: "update",
+    personId: "p1",
+    expectedFingerprint: "a".repeat(64),
+    externalId: "1000068",
+    changes: { email: "ada@example.test", role: "player A" },
+  });
+  assert.throws(() => validateEndpointRequest("reconcilePerson", {
+    operationId,
+    action: "update",
+    personId: "p1",
+    expectedFingerprint: "a".repeat(64),
+    externalId: "1000068",
+    changes: { login: "ada.login" },
+  }), { code: "VALIDATION_ERROR" });
+  assert.throws(() => validateEndpointRequest("reconcilePerson", {
+    operationId,
+    action: "deactivate",
+    personId: "p1",
+    expectedFingerprint: "a".repeat(64),
+    changes: { active: "" },
+  }), { code: "VALIDATION_ERROR" });
 });
 
 test("Personennormalisierung besitzt einen geschlossenen Aenderungsvertrag", () => {
@@ -18,12 +52,12 @@ test("Personennormalisierung besitzt einen geschlossenen Aenderungsvertrag", () 
     operationId: "00000000-0000-4000-8000-000000000009",
     personId: "p1",
     expectedFingerprint: "a".repeat(64),
-    changes: { firstName: " Ada ", email: "ADA@example.test", role: "player a" },
+    changes: { firstName: " Ada ", email: "ADA@example.test", login: "ADA.LOGIN", role: "player a" },
   };
   assert.deepEqual(validateEndpointRequest("normalizePerson", params), {
     ...params,
     expectedFingerprint: "a".repeat(64),
-    changes: { firstName: "Ada", email: "ada@example.test", role: "player A" },
+    changes: { firstName: "Ada", email: "ada@example.test", login: "ada.login", role: "player A" },
   });
   for (const changes of [
     {},
@@ -31,6 +65,7 @@ test("Personennormalisierung besitzt einen geschlossenen Aenderungsvertrag", () 
     { active: "0" },
     { gender: "4" },
     { birthDate: "2020-01-01" },
+    { login: "bad login" },
   ]) {
     assert.throws(
       () => validateEndpointRequest("normalizePerson", { ...params, changes }),

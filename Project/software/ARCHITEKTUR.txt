@@ -117,9 +117,18 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 
 `tableSchemas.js`, `tableUtils.js`
   Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs, erfassen
-  ungueltige oder doppelte E-Mails als reparierbare Datenqualitaetsprobleme und
-  normalisieren Rollen. Leere oder ungueltige Rollen werden als player behandelt;
-  jeder nichtleere ungueltige normalisierte Wert wird pro Prozess einmal gewarnt.
+  ungueltige oder kanonisch doppelte Logins als reparierbare
+  Datenqualitaetsprobleme und normalisieren Rollen. Kontakt-E-Mails duerfen leer
+  oder mehrfach vorhanden sein. Leere oder ungueltige Rollen werden als player
+  behandelt; jeder nichtleere ungueltige normalisierte Rollenwert wird pro
+  Prozess einmal gewarnt.
+
+`peopleNormalization.js`, `memberReconciliation.js`
+  Definieren die dreizehn kontrollierten Personenfelder und dieselben
+  Kanonisierungs-, Fingerprint-, Login-Konflikt- und Auditprojektionsregeln fuer
+  Bestandsnormalisierung und Mitgliederabgleich. Der Abgleich ergaenzt `CD-ID`,
+  geschlossene Aktionen fuer Update, Neuanlage und Deaktivierung sowie den Schutz
+  bestehender Logins und von Admin-/Operatorrollen.
 
 `dataStore.js`
   Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Alter, Pollfehler,
@@ -140,6 +149,10 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Personenzeile wird direkt im benoetigten formatierten Modus gelesen. Bestaetigte
   Writes werden sofort lokal projiziert; aufeinanderfolgende Writes derselben
   Tabelle teilen einen um eine Sekunde verzoegerten autoritativen Abschlussread.
+  `normalizePerson` und `reconcilePerson` verwenden dieselbe `players`-Queue;
+  Neuanlagen vergeben darin die Folge der hoechsten numerischen Personen-ID,
+  bestaetigen den Append per Vollread und stellen danach stabile
+  `epiberRecord`-Metadata her.
 
 `sheetsReadCoordinator.js`
   Kapselt alle Google-Sheets-Reads von Poller und SheetService, erfasst logische
@@ -206,23 +219,29 @@ Credential. HTTPS schuetzt den Transport. Das Backend speichert neue Credentials
 mit scrypt v1 (N=16384, r=8, p=1, Salt 16 Byte, Key 32 Byte). Ein erfolgreicher
 Login migriert einen alten SHA-256-Sheetwert per Compare-and-set; unbekannte oder
 inaktive Benutzer durchlaufen eine Dummy-scrypt-Pruefung und erhalten denselben
-Loginfehler. Loginlimits gelten kombiniert fuer IP/E-Mail und IP. Eine globale
+Loginfehler. Loginlimits gelten kombiniert fuer IP/Login und IP. Eine globale
 Grenze laesst hoechstens vier scrypt-Verifikationen oder -Erzeugungen gleichzeitig
-zu; das schliesst negative oeffentliche Erstvergaben ein. Eine syntaktisch
-ungueltige Personen-E-Mail wird fuer Authentifizierung und Projektionen wie ein
-leerer Wert behandelt, damit sie andere Personen nicht blockiert. Der Sheetload
-protokolliert betroffene Personen-IDs und Zeilennummern beim ersten Auftreten,
-periodisch waehrend des Bestands und bei Recovery; der ungueltige E-Mail-Wert
-  selbst wird nicht geloggt. Kanonisch doppelte gueltige E-Mails bleiben fuer die
-  Adminreparatur lesbar, sperren aber alle betroffenen Logins. Der
-  Normalisierungswrite darf eine Dublettengruppe beibehalten oder verkleinern,
-  aber nie neu erzeugen oder vergroessern.
+zu; das schliesst negative oeffentliche Erstvergaben ein.
+
+`Personen.Login` ist die optionale Anmeldekennung: belegt muss sie
+case-insensitiv eindeutig, 3 bis 254 Zeichen lang und aus den erlaubten
+E-Mail-kompatiblen ASCII-Zeichen ohne Leerraum aufgebaut sein. `Personen.E-Mail`
+ist davon getrennte optionale Kontaktinformation und darf mehrfach vorkommen.
+Ungueltige oder doppelte Logins bleiben fuer die Adminreparatur lesbar, koennen
+aber nicht zur Anmeldung verwendet werden. Der Sheetload protokolliert nur
+Personen-ID, Zeilennummer und kontrollierten Grund beim ersten Auftreten,
+periodisch waehrend des Bestands und bei Recovery; der Loginwert selbst wird
+nicht geloggt. Normalisierungs- und Abgleichswrites duerfen keine Login-
+Dublettengruppe neu erzeugen oder vergroessern.
 
 Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
-Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash. Rollen werden
-bei jedem HTTP-/RPC-Zugriff aus der aktuellen Personenzeile ermittelt. Nur
-`/status` darf bei stale Personen innerhalb einer gueltigen bestehenden Session
-den letzten erfolgreich geladenen aktiven Admin-Rollensnapshot verwenden:
+Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash und bindet die
+Session an Personen-ID und den beim Login gueltigen kanonischen Login. Bei jedem
+HTTP-/RPC-Zugriff werden Login, Aktivstatus und Rolle aus der aktuellen
+Personenzeile ermittelt; fehlt die Person, ist sie inaktiv oder stimmt der Login
+nicht mehr, wird die Session verworfen. Nur `/status` darf bei stale Personen
+innerhalb einer gueltigen bestehenden Session den letzten erfolgreich geladenen
+aktiven Admin-Rollensnapshot verwenden:
 
   Rolle/Principal | Rechte
   ----------------|-------------------------------------------------------------
@@ -238,13 +257,14 @@ keine Rollenautoritaet.
 
 Datenprojektionen:
   - Anonymes Spielerprofil: ID und Name.
-  - Angemeldetes fremdes Profil: zusaetzlich E-Mail, Telefon, Geburtsdatum.
-  - Eigenprofil: zusaetzlich Geschlecht und Rolle.
+  - Angemeldetes fremdes Profil: zusaetzlich Kontakt-E-Mail, Telefon und
+    Geburtsdatum, aber kein Login.
+  - Eigenprofil: zusaetzlich Login, Geschlecht und Rolle.
   - Das loginpflichtige Mitgliederverzeichnis enthaelt fuer aktive Personen auch
-    E-Mail und Geburtsdatum.
-  - Admin erhaelt am fremden Profil nur `passwordSetupAllowed`, keine fremden
-    Passwortdaten. Freigabe, Reset-Code-Erzeugung und direktes Setzen sind
-    separate Adminaktionen.
+    Kontakt-E-Mail und Geburtsdatum, aber keinen Login.
+  - Admin erhaelt am fremden Profil zusaetzlich Login und
+    `passwordSetupAllowed`, aber keine fremden Passwortdaten. Freigabe,
+    Reset-Code-Erzeugung und direktes Setzen sind separate Adminaktionen.
 
 Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
 Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
@@ -254,8 +274,9 @@ Eigenwechsel wird eine neue Session erstellt. Ein Resetnachweis ist gehasht,
 ablaufend, einmalig und fest an den Credential des ersten Versuchs gebunden.
 
 Die erstmalige Passwortvergabe verwendet `KennwortVergessen=x` als explizite
-Adminfreigabe. Sie verlangt eine aktive Person, fuehrt bei nicht vorhandener oder
-nicht freigegebener Identitaet Dummy-scrypt aus und prueft unter der
+Adminfreigabe. Sie verlangt eine aktive Person mit eindeutigem gueltigem Login,
+fuehrt bei nicht vorhandener oder nicht freigegebener Identitaet Dummy-scrypt aus
+und prueft unter der
 Benutzerserialisierung Freigabe und bisherigen Passwortwert erneut. Der
 Compare-and-set-Write speichert scrypt und leert den Marker atomar; damit ist die
 Freigabe einmalig verbraucht. Sessions werden vor dem externen Write und nach
@@ -280,11 +301,12 @@ Schreibpfad:
   -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
 
 Personennormalisierung:
-  Adminprojektion -> zwoelf erlaubte Feldwerte + Problemcodes + SHA-256-
-  Feldfingerprint -> lokaler Entwurf und Pflichtvorschau -> `normalizePerson` mit
+  Adminprojektion -> dreizehn erlaubte Feldwerte + Problemcodes + SHA-256-
+  Feldfingerprint -> sichtbares, bearbeitbares `Login`-Feld mit sicherem Vorschlag
+  und Einzelauswahl -> lokaler Entwurf und Pflichtvorschau -> `normalizePerson` mit
   Personen-ID, Operation-ID und erwartetem Fingerprint -> aktuelle Volltabelle ->
   stabile Zeilenaufloesung ueber `epiberRecord`-Developer-Metadata -> erneuter
-  Fingerprintvergleich -> Kandidatentabellen-/E-Mail-/Adminschutzpruefung ->
+  Fingerprintvergleich -> Kandidatentabellen-/Login-/Adminschutzpruefung ->
   partieller Metadatenwrite -> lokale Projektion, `players`-Invalidierung und
   zusammengefasster autoritativer Abschlussrefresh.
 
@@ -293,7 +315,38 @@ Personennormalisierung:
   bekannte Operationsresultate werden wiedergegeben. Nach unklarem Google-
   Ergebnis wird die stabile Zeile bestaetigt, ohne blind zu wiederholen. Eigene
   aktive Adminrechte und der letzte aktive Admin bleiben geschuetzt; Aenderungen
-  an E-Mail, Aktivstatus oder Rolle widerrufen alle Sitzungen der Zielperson.
+  an Login, Aktivstatus oder Rolle widerrufen alle Sitzungen der Zielperson,
+  reine Kontakt-E-Mail-Aenderungen dagegen nicht. Die vierzehn Problemcodes
+  umfassen insbesondere ungueltige, nicht kanonische und doppelte Logins;
+  doppelte Kontakt-E-Mails sind kein Problemcode. Kandidatenwrites duerfen
+  bestehende Login-Konflikte nur beibehalten oder verkleinern.
+
+Mitgliederabgleich:
+  Adminprojektion `adminMemberReconciliation` -> lokale Windows-1252-/Semikolon-
+  CSV-Verarbeitung in `memberImport.js` -> lokaler Vergleich und Auswahl in
+  `mitgliederAbgleichen.js` -> exakte Gesamtvorschau -> personweise geschlossene
+  `reconcilePerson`-Requests fuer Update, Create oder Deactivate. CSV-Rohdaten,
+  unbekannte Zusatzspalten und nicht bestaetigte Werte verlassen den Browser
+  nicht. Die Seite sendet die ausgewaehlten Aktionen bewusst nacheinander, stoppt
+  beim ersten Fehler, behaelt die Restauswahl und laedt den aktuellen Bestand neu;
+  es gibt weder einen parallelen Browserwrite noch einen Gesamtbatch.
+
+  Das Backend liest jede Aktion in der gemeinsamen `players`-Queue gegen den
+  aktuellen Vollbestand, prueft Fingerprint, `CD-ID`, Login und Rollen und loest
+  Bestandszeilen ueber stabile `epiberRecord`-Metadata auf. Eine Neuanlage haengt
+  genau eine vollstaendige Zeile an, bestaetigt Personen-ID, `CD-ID` und alle
+  kontrollierten Werte durch Vollread und erstellt beziehungsweise findet danach
+  die Metadata. Bleibt Append oder Metadata unklar, speichert die Operation
+  Personen-ID und Status `unknown`; Wiederholungen bestaetigen nur den Zielstand
+  und setzen den unklaren Schritt fort, statt erneut anzuhangen. Bestaetigte
+  Mutationen werden lokal in `players` projiziert, invalidieren das `players`-
+  Topic und planen den zusammengefassten autoritativen Abschlussread.
+
+  Google Sheets bietet ueber Zeile, Personen-ID, `CD-ID` und Login kein
+  transaktionales Compare-and-set. Daher duerfen waehrend eines kontrollierten
+  Importlaufs weder manuelle noch zweite Backendwrites auf `Personen` parallel
+  stattfinden. Frontendsequenz, `players`-Queue, Fingerprints, Metadata und
+  Nachkontrollen sind Schutzschichten, aber kein Ersatz fuer diese Betriebsregel.
 
 IDs fuer neue Matches/Anmeldungen werden stabil aus Principal und operationId
 abgeleitet. Vor Update/Delete werden Personen-, Matches1- und EntryList-Zeilen
@@ -318,7 +371,7 @@ seinem tatsaechlichen Zeitpunkt. Solange eine serialisierte Tabellenoperation
 Die Normalisierungsanalyse erzeugt daneben Count-only-Metriken aus dem letzten
 bekannten Personenbestand: separater Aktualitaetsindikator, Gesamtpersonen,
 betroffene Personen, Gesamtprobleme und die Verteilung auf das feste Vokabular
-aus zwoelf Problemcodes. Personenwerte und Fingerprints gelangen nicht in
+aus vierzehn Problemcodes. Personenwerte und Fingerprints gelangen nicht in
 Prometheus oder Labels. Erfolgreiche `normalizePerson`-RPCs werden als Requests
 gezaehlt; idempotente Wiederholungen, Recovery und bereits vorhandene Zielwerte
 sind deshalb nicht gleichbedeutend mit neuen Sheetmutationen.
@@ -351,16 +404,16 @@ Fachhistorien und Betriebslogs:
     Schlaegt der Auditabschluss nach Rueckkehr der Mutation fehl, wird der
     Clientausgang konservativ als `WRITE_OUTCOME_UNKNOWN` behandelt; ein
     vorhandener urspruenglicher Vorher-Zustand bleibt unveraendert.
-    Akteure erhalten zusaetzlich einen Namenssnapshot. Personenziele der
-    Normalisierung erhalten einen additiv persistierten Zielnamensnapshot; nach
-    Erfolg stammt er aus dem resultierenden Personenstand, bei Ablehnung aus dem
-    noch bekannten bisherigen Stand. Loginversuche speichern in
-    der geschuetzten SQLite-Historie die normalisierte gueltige Eingabe und die
-    Quell-IP; ungueltiger E-Mail-Rohtext bleibt leer. `X-Forwarded-For` gilt nur
+    Akteure erhalten zusaetzlich einen Namenssnapshot. Personenziele von
+    Normalisierung und Mitgliederabgleich erhalten einen additiv persistierten
+    Zielnamensnapshot; nach Erfolg stammt er aus dem resultierenden Personenstand,
+    bei Ablehnung aus dem noch bekannten bisherigen Stand. Loginversuche speichern
+    in der geschuetzten SQLite-Historie die normalisierte gueltige Eingabe und die
+    Quell-IP; ungueltiger Login-Rohtext bleibt leer. `X-Forwarded-For` gilt nur
     bei einer Verbindung von `127.0.0.1` oder `::1` innerhalb der lokalen
     Proxy-Vertrauensgrenze. Andere lokale Prozesse liegen damit ebenfalls in der
     Host-Vertrauensgrenze; Caddy wird nicht kryptografisch identifiziert. Im Journalspiegel bleiben
-    Name und stabile ID lesbar, E-Mail und IP werden dagegen maskiert. Der
+    Name und stabile ID lesbar, Login und IP werden dagegen maskiert. Der
     Normalisierungsabschluss projiziert fuer `active` und `role` ausschliesslich
     kontrollierte Alt-/Neuwerte. Fuer alle anderen erlaubten Personenfelder wird
     nur der geaenderte Feldname, nie sein Wert, ins Journal geschrieben.
@@ -387,6 +440,19 @@ Fachhistorien und Betriebslogs:
     WS-Reads/Writes erzeugen weiterhin strukturierte
     `ws_request_completed`-Abschlusslogs. Auditphasen und Journalprojektion folgen
     dem oben beschriebenen begrenzten Normalisierungsvertrag.
+  - Der Mitgliederabgleich verwendet den bekannten Seitentyp
+    `mitgliederAbgleichen` und ausschliesslich die vier allowlist-basierten Events
+    `member_reconciliation_auth_failed`, `member_reconciliation_load_failed`,
+    `member_reconciliation_parse_failed` und
+    `member_reconciliation_write_failed`. Erlaubt sind nur Fehlercode,
+    Support-ID und kontrollierte Zaehler; CSV-Inhalt, Dateiname, Login,
+    Kontakt-, Adress- und Geburtswerte bleiben ausgeschlossen. Der zentrale
+    Logger redigiert insbesondere Schluessel fuer Login, E-Mail, Credentials,
+    Sessions und Tokens sowie E-Mail-Muster in Texten.
+    `reconcilePerson` besitzt denselben Auditvertrag fuer `started`, `success`,
+    `failed` und `unknown` wie andere Fachwrites. Persistiert werden Akteur,
+    Ziel-ID/-Namenssnapshot, Aktion und geaenderte Feldmarker; nur Aktiv- und
+    Rollenwerte duerfen kontrolliert als Alt-/Neuwert erscheinen.
   - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
     bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
     `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale
@@ -620,6 +686,13 @@ Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
                       vollstaendig entfernt.
 `loadingHelper.js`    Abschlussgarantien sowie fokussierbare, schliessbare
                       Fehleranzeigen mit erhaltener Support-ID.
+`personValues.js`     Gemeinsame Browserkanonisierung der dreizehn erlaubten
+                      Personenfelder fuer Vorschau und Request.
+`memberImport.js`     Lokaler begrenzter ClubDesk-CSV-Parser, Feldabbildung,
+                      Zuordnung, Differenzbildung und Konfliktklassifikation.
+`mitgliederAbgleichen.js` Admin-Lifecycle, Authbereinigung, Auswahl,
+                      Gesamtvorschau und sequenzielle `reconcilePerson`-Writes
+                      mit Teilerfolg, Reload und `players`-Invalidierungen.
 `staticReady.js`      Bereitschaft statischer Seiten im Monitorkontext.
 `monitorReady.js`     Child-Ready-/Failed-Signalisierung.
 `global.js`/`footer.js` Version und gemeinsame Initialisierung/Darstellung.
@@ -627,8 +700,8 @@ Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
 Fachseiten abonnieren tabellenspezifische Invalidierungen statt kurzer Polltimer.
 Externe Daten werden ueber sichere DOM-Knoten oder begrenztes Escaping gerendert.
 Externe Font-/Script-Abhaengigkeiten, SDK.js und rankingSidebar.js sind entfernt.
-Die elf fachlichen Seitendokumente und die Logging-Administrationsseite sind in
-`SOFTWARE-DOKU.txt` indiziert.
+Die fachlichen Seiten- und Administrationsdokumente sind in `SOFTWARE-DOKU.txt`
+indiziert.
 
 Login-, Eigenwechsel-, Reset-, Erstvergabe- und Admin-Passwortdialoge verlangen
 eine explizite Schliessen-/Abbrechen-Aktion; Klick auf den Hintergrund und Escape
@@ -655,6 +728,15 @@ Credentials, SQLite-StateDirectory, HTTPS/WSS, Browser/Kiosk, responsive
 Scoreboards, Standby/Reconnect, Last, SIGTERM, Dauerbetrieb und Rollback praktisch
 abgenommen werden. Kanonische Liste:
 `Project/server-configs/ROLLOUT-CHECKLIST.md`.
+
+Fuer die Loginmigration ist die Reihenfolge zwingend: zuerst `Personen.Login` im
+Sheet anlegen, alle bestehenden Anmeldekonten mit gueltigen eindeutigen Logins
+befuellen und Login-Dubletten bereinigen; erst danach Backend und Frontend dieser
+Version starten. Es gibt keinen Fallback von Login auf Kontakt-E-Mail. Danach
+werden Login, Erstvergabe, Sessionbindung/-widerruf, Profilprojektionen,
+Normalisierung und Mitgliederabgleich in PAJ abgenommen. Waehrend des ersten
+kontrollierten Imports bleiben manuelle und weitere Backend-Personenwrites
+gesperrt; Live-Deployment folgt erst nach Backup- und Rollbackfreigabe.
 
 
 ================================================================================

@@ -8,6 +8,7 @@ const { TABLE_CONFIG } = require("../config.js");
 const { SheetService } = require("../sheetService.js");
 const { StateRepository } = require("../stateRepository.js");
 const { projectPeopleNormalization } = require("../peopleNormalization.js");
+const { projectPeopleReconciliation } = require("../memberReconciliation.js");
 const { resetSheetReadCoordinatorForTests } = require("../sheetsReadCoordinator.js");
 
 test.beforeEach(() => resetSheetReadCoordinatorForTests());
@@ -187,6 +188,8 @@ function fixtures() {
     ["p3", "Chris", "Challenger", "chris@example.test", "c".repeat(64), "", "+43789", "2", "1", "player"],
     ["p4", "Olivia", "Opponent", "olivia@example.test", "d".repeat(64), "", "+43000", "2", "1", "player"],
   );
+  people[0].push("Login");
+  people.slice(1).forEach((row) => row.push(`${row[1]}.${row[2]}`.toLowerCase()));
   return {
     Personen: people,
     Bewerb: [["ID", "Bezeichnung", "BewerbsartID"], ["cup-1", "Cup", "type-1"], ["cup-2", "Cup 2", "type-1"]],
@@ -212,6 +215,386 @@ function seedStore(tables) {
   dataStore.set("rlPlatzierung", structuredClone(tables.Rangliste), { source: "test" });
   dataStore.set("entryList", structuredClone(tables.EntryList), { source: "test" });
 }
+
+function reconciliationFixtures() {
+  return {
+    Personen: [
+      ["ID", "CD-ID", "Vorname", "Nachname", "E-Mail", "PasswdHash", "KennwortVergessen", "GeburtsDatum", "GeschlechtID", "TelefonMobil", "Land", "PLZ", "Ort", "Adresse", "Aktiv", "Role", "Login"],
+      ["1", "1000001", "Ada", "Admin", "ada@example.test", "a".repeat(64), "", "02.01.1990", "2", "0043 664 1111111", "Österreich", "4060", "Piberbach", "Dorf 1", "1", "admin", "ada.admin"],
+      ["1032", "", "Peter", "Player", "peter@example.test", "b".repeat(64), "x", "03.02.1991", "1", "0043 664 2222222", "Österreich", "4060", "Piberbach", "Dorf 2", "1", "player", "peter.player"],
+      ["1000", "1000999", "Olivia", "Operator", "olivia@example.test", "c".repeat(64), "", "04.03.1992", "2", "0043 664 3333333", "Österreich", "4060", "Piberbach", "Dorf 3", "1", "operator", "olivia.operator"],
+    ],
+  };
+}
+
+function seedReconciliationStore(tables) {
+  dataStore.resetForTests();
+  dataStore.set("players", structuredClone(tables.Personen), { source: "test" });
+}
+
+test("Mitgliederabgleich verknuepft und aktualisiert bestehende Personen konfliktgeschuetzt", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleReconciliation(fake.tables.Personen).people.find((entry) => entry.id === "1032");
+  const passwordBefore = fake.tables.Personen[2][5];
+  const session = repository.createSession({ userId: "1032", email: "peter@example.test", ttlMs: 60000 });
+
+  const result = await service.reconcilePerson(
+    { type: "user", id: "1", role: "admin", name: "Ada Admin" },
+    {
+      operationId: "00000000-0000-4000-8000-000000000201",
+      action: "update",
+      personId: "1032",
+      expectedFingerprint: person.fingerprint,
+      externalId: "1000068",
+      changes: { firstName: "Petra", email: "petra@example.test", role: "player A" },
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(result.action, "update");
+  assert.equal(fake.tables.Personen[2][1], "1000068");
+  assert.equal(fake.tables.Personen[2][2], "Petra");
+  assert.equal(fake.tables.Personen[2][4], "petra@example.test");
+  assert.equal(fake.tables.Personen[2][15], "player A");
+  assert.equal(fake.tables.Personen[2][16], "peter.player");
+  assert.equal(fake.tables.Personen[2][5], passwordBefore);
+  assert.deepEqual(result._audit.before, { externalId: "vorher", firstName: "vorher", email: "vorher", role: "player" });
+  assert.deepEqual(result._audit.after, { externalId: "nachher", firstName: "nachher", email: "nachher", role: "player A" });
+  assert.equal(JSON.stringify(result._audit).includes("peter@example.test"), false);
+  assert.equal(JSON.stringify(result._audit).includes("petra@example.test"), false);
+  assert.equal(JSON.stringify(result._audit).includes("peter.player"), false);
+  assert.equal(JSON.stringify(result._audit).includes("petra.player"), false);
+  assert.equal(repository.getSession(session.token), null);
+});
+
+test("Mitgliederabgleich deaktiviert nur Spieler und widerruft deren Sitzungen", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const projection = projectPeopleReconciliation(fake.tables.Personen);
+  const session = repository.createSession({ userId: "1032", email: "peter@example.test", ttlMs: 60000 });
+
+  await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000202",
+    action: "deactivate",
+    personId: "1032",
+    expectedFingerprint: projection.people.find((entry) => entry.id === "1032").fingerprint,
+  });
+  assert.equal(fake.tables.Personen[2][14], "");
+  assert.equal(repository.getSession(session.token), null);
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000203",
+    action: "deactivate",
+    personId: "1000",
+    expectedFingerprint: projection.people.find((entry) => entry.id === "1000").fingerprint,
+  }), { code: "ROLE_PROTECTED" });
+});
+
+test("Mitgliederabgleich legt neue Personen mit max ID plus eins und Metadata idempotent an", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000204",
+    action: "create",
+    externalId: "1000494",
+    values: {
+      firstName: "Neue",
+      lastName: "Person",
+      birthDate: "05.04.1993",
+      gender: "2",
+      phone: "0043 664 4444444",
+      email: "neu@example.test",
+      login: "neue.person",
+      country: "Österreich",
+      postalCode: "4060",
+      city: "Piberbach",
+      address: "Dorf 4",
+      active: "1",
+      role: "player B",
+    },
+  };
+
+  const first = await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params);
+  const repeated = await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params);
+  assert.equal(first.personId, "1033");
+  assert.equal(repeated.personId, "1033");
+  assert.equal(repeated.repeated, true);
+  assert.equal(fake.calls.append.filter((entry) => entry.range === "Personen").length, 1);
+  assert.equal(fake.calls.metadataCreates, 1);
+  const row = fake.tables.Personen.find((entry) => entry[0] === "1033");
+  assert.equal(row[1], "1000494");
+  assert.equal(row[5], "");
+  assert.equal(row[6], "");
+  assert.equal(row[15], "player B");
+  assert.equal(row[16], "neue.person");
+});
+
+test("parallele Mitgliedsneuanlagen vergeben fortlaufende eindeutige Personen-IDs", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const principal = { type: "user", id: "1", role: "admin" };
+  const create = (operationId, externalId, firstName) => service.reconcilePerson(principal, {
+    operationId,
+    action: "create",
+    externalId,
+    values: { firstName, lastName: "Neu", active: "1", role: "player" },
+  });
+
+  const [first, second] = await Promise.all([
+    create("00000000-0000-4000-8000-000000000205", "1000501", "Erste"),
+    create("00000000-0000-4000-8000-000000000206", "1000502", "Zweite"),
+  ]);
+  assert.deepEqual(new Set([first.personId, second.personId]), new Set(["1033", "1034"]));
+  assert.equal(fake.calls.append.filter((entry) => entry.range === "Personen").length, 2);
+});
+
+test("Mitgliedsneuanlage vergibt auch oberhalb der sicheren Number-Grenze die exakte Folge-ID", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fixture = reconciliationFixtures();
+  fixture.Personen[2][0] = "9007199254740993";
+  const fake = fakeSheets(fixture);
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+
+  const result = await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000214",
+    action: "create",
+    externalId: "1000503",
+    values: { firstName: "Gross", lastName: "ID", active: "1", role: "player" },
+  });
+  assert.equal(result.personId, "9007199254740994");
+});
+
+test("unklare Mitgliedsneuanlage wird nicht blind erneut angehaengt", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  let appendAttempts = 0;
+  fake.client.spreadsheets.values.append = async () => {
+    appendAttempts++;
+    throw new Error("append unavailable");
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000210",
+    action: "create",
+    externalId: "1000600",
+    values: { firstName: "Unklar", lastName: "Neu", active: "1", role: "player" },
+  };
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  assert.equal(appendAttempts, 1);
+  assert.equal(fake.tables.Personen.some((row) => row[1] === "1000600"), false);
+});
+
+test("Metadatenfehler nach Personappend bleibt wiederaufnehmbar und haengt nicht doppelt an", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const batchUpdate = fake.client.spreadsheets.batchUpdate;
+  fake.client.spreadsheets.batchUpdate = async () => {
+    throw Object.assign(new Error("metadata forbidden"), { response: { status: 403 } });
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000212",
+    action: "create",
+    externalId: "1000601",
+    values: { firstName: "Metadata", lastName: "Neu", active: "1", role: "player" },
+  };
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), (error) => (
+    error.code === "WRITE_OUTCOME_UNKNOWN" && error.details?.personId === "1033"
+  ));
+  assert.equal(fake.calls.append.filter((entry) => entry.range === "Personen").length, 1);
+  fake.client.spreadsheets.batchUpdate = batchUpdate;
+  const recovered = await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params);
+  assert.equal(recovered.personId, "1033");
+  assert.equal(recovered.recovered, true);
+  assert.equal(fake.calls.append.filter((entry) => entry.range === "Personen").length, 1);
+});
+
+test("unklare CD-ID-Verknuepfung wird bei Wiederholung nur bestaetigt", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  let writeAttempts = 0;
+  fake.client.spreadsheets.values.batchUpdateByDataFilter = async () => {
+    writeAttempts++;
+    throw new Error("update unavailable");
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleReconciliation(fake.tables.Personen).people.find((entry) => entry.id === "1032");
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000211",
+    action: "update",
+    personId: "1032",
+    expectedFingerprint: person.fingerprint,
+    externalId: "1000068",
+    changes: {},
+  };
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  assert.equal(writeAttempts, 1);
+  assert.equal(fake.tables.Personen[2][1], "");
+});
+
+test("unklare Deaktivierung widerruft Sitzungen vorsorglich", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  fake.client.spreadsheets.values.batchUpdateByDataFilter = async () => { throw new Error("update unavailable"); };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleReconciliation(fake.tables.Personen).people.find((entry) => entry.id === "1032");
+  const session = repository.createSession({ userId: "1032", email: "peter@example.test", ttlMs: 60000 });
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000213",
+    action: "deactivate",
+    personId: "1032",
+    expectedFingerprint: person.fingerprint,
+  }), { code: "WRITE_OUTCOME_UNKNOWN" });
+  assert.equal(repository.getSession(session.token), null);
+});
+
+test("Mitgliederabgleich behaelt Sitzungen bei E-Mail-only und widerruft sie bei unklarer Rolle", async (t) => {
+  for (const entry of [
+    { field: "email", value: "new@example.test", unknown: false, revoked: false },
+    { field: "role", value: "player B", unknown: true, revoked: true },
+  ]) {
+    const repository = new StateRepository(":memory:");
+    repository.init();
+    const fake = fakeSheets(reconciliationFixtures());
+    seedReconciliationStore(fake.tables);
+    if (entry.unknown) {
+      fake.client.spreadsheets.values.batchUpdateByDataFilter = async () => { throw new Error("update unavailable"); };
+    }
+    const service = new SheetService({ repository, clientFactory: async () => fake.client });
+    t.after(() => service.stop());
+    const person = projectPeopleReconciliation(fake.tables.Personen).people.find((candidate) => candidate.id === "1032");
+    const session = repository.createSession({ userId: "1032", email: "peter@example.test", ttlMs: 60000 });
+    const operation = service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+      operationId: entry.unknown ? "00000000-0000-4000-8000-000000000216" : "00000000-0000-4000-8000-000000000215",
+      action: "update",
+      personId: "1032",
+      expectedFingerprint: person.fingerprint,
+      externalId: "1000068",
+      changes: { [entry.field]: entry.value },
+    });
+    if (entry.unknown) await assert.rejects(operation, { code: "WRITE_OUTCOME_UNKNOWN" });
+    else await operation;
+    assert.equal(repository.getSession(session.token) === null, entry.revoked, entry.field);
+  }
+});
+
+test("Recovery eines angewendeten Rollen-Writes widerruft zwischenzeitlich erzeugte Sitzungen", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const applyUpdate = fake.client.spreadsheets.values.batchUpdateByDataFilter;
+  const readMetadata = fake.client.spreadsheets.values.batchGetByDataFilter;
+  let failNextConfirmation = false;
+  fake.client.spreadsheets.values.batchUpdateByDataFilter = async (request) => {
+    await applyUpdate(request);
+    failNextConfirmation = true;
+    throw new Error("update response unavailable");
+  };
+  fake.client.spreadsheets.values.batchGetByDataFilter = async (request) => {
+    if (failNextConfirmation) {
+      failNextConfirmation = false;
+      throw new Error("confirmation unavailable");
+    }
+    return readMetadata(request);
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleReconciliation(fake.tables.Personen).people.find((candidate) => candidate.id === "1032");
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000217",
+    action: "update",
+    personId: "1032",
+    expectedFingerprint: person.fingerprint,
+    externalId: "1000068",
+    changes: { role: "player B" },
+  };
+
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  const session = repository.createSession({ userId: "1032", email: "peter@example.test", login: "peter.player", ttlMs: 60000 });
+  const recovered = await service.reconcilePerson({ type: "user", id: "1", role: "admin" }, params);
+  assert.equal(recovered.repeated, true);
+  assert.equal(repository.getSession(session.token), null);
+});
+
+test("Mitgliederabgleich lehnt Fingerprint-, CD-ID- und Login-Konflikte vor Writes ab", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  seedReconciliationStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  t.after(() => service.stop());
+  const person = projectPeopleReconciliation(fake.tables.Personen).people.find((entry) => entry.id === "1032");
+  const base = {
+    action: "update",
+    personId: "1032",
+    expectedFingerprint: person.fingerprint,
+    externalId: "1000068",
+  };
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    ...base,
+    operationId: "00000000-0000-4000-8000-000000000207",
+    expectedFingerprint: "0".repeat(64),
+    changes: { city: "Linz" },
+  }), { code: "PERSON_CONFLICT" });
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    ...base,
+    operationId: "00000000-0000-4000-8000-000000000208",
+    externalId: "1000001",
+    changes: { city: "Linz" },
+  }), { code: "EXTERNAL_ID_CONFLICT" });
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    ...base,
+    operationId: "00000000-0000-4000-8000-000000000209",
+    changes: { login: "ada.admin" },
+  }), { code: "VALIDATION_ERROR" });
+  await assert.rejects(service.reconcilePerson({ type: "user", id: "1", role: "admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000217",
+    action: "create",
+    externalId: "1000602",
+    values: { lastName: "Collision", login: "ada.admin", active: "1", role: "player" },
+  }), { code: "LOGIN_CONFLICT" });
+  assert.equal(fake.calls.valueUpdates.length, 0);
+  assert.equal(fake.calls.append.length, 0);
+});
 
 test("Personennormalisierung schreibt konfliktgeschuetzt und laesst Sicherheitsfelder unveraendert", async (t) => {
   const repository = new StateRepository(":memory:");
@@ -305,6 +688,25 @@ test("Sheet-IDs und bestehende Record-Metadaten werden single-flight gesammelt",
   assert.equal(fake.calls.metadataSearches, 1);
 });
 
+test("wiedergefundene Record-Metadata bestaetigt einen persistenten pending Intent", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(reconciliationFixtures());
+  fake.seedRecordMetadata("Personen", 2, "1032");
+  const intent = repository.getState("record-metadata-intent:players:1032", { status: "none" });
+  repository.setState("record-metadata-intent:players:1032", { status: "pending", at: 1 }, intent.revision);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => 1234 });
+
+  const metadata = await service.findRecordMetadata(fake.client, "players", "1032");
+  assert.ok(metadata.metadataId);
+  assert.deepEqual(repository.getState("record-metadata-intent:players:1032", {}).value, {
+    status: "confirmed",
+    metadataId: metadata.metadataId,
+    at: 1234,
+  });
+  await service.stop();
+});
+
 test("doppelte Metadaten aus dem Gesamtscan bleiben ein Schemakonflikt", async () => {
   const initial = fixtures();
   initial.EntryList.push(["e-own", "cup-1", "p1", ""], ["e-other", "cup-1", "p2", ""]);
@@ -340,7 +742,7 @@ test("fehlgeschlagener Abschlussrefresh erzeugt keine Scheingegenmutation", asyn
   assert.equal(dataStore.getMeta("players").lastMutation, mutationBefore);
 });
 
-test("Personennormalisierung lehnt veraltete Fingerprints und doppelte E-Mails vor dem Write ab", async () => {
+test("Personennormalisierung lehnt veraltete Fingerprints und doppelte Logins vor dem Write ab", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
@@ -363,21 +765,22 @@ test("Personennormalisierung lehnt veraltete Fingerprints und doppelte E-Mails v
       operationId: "00000000-0000-4000-8000-000000000092",
       personId: "p2",
       expectedFingerprint: person.fingerprint,
-      changes: { email: "ada@example.test" },
+      changes: { login: "ada.admin" },
     }),
-    (error) => error.code === "EMAIL_CONFLICT" && error.status === 409,
+    (error) => error.code === "LOGIN_CONFLICT" && error.status === 409,
   );
   assert.equal(fake.calls.valueUpdates.length, 0);
 });
 
-test("Personennormalisierung reduziert bestehende E-Mail-Dubletten personweise", async (t) => {
+test("Personennormalisierung reduziert bestehende Login-Dubletten personweise und erlaubt doppelte E-Mails", async (t) => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
-  fake.tables.Personen[1][3] = "shared@example.test";
-  fake.tables.Personen[2][3] = "shared@example.test";
-  fake.tables.Personen[3][3] = "other@example.test";
-  fake.tables.Personen[4][3] = "other@example.test";
+  const loginIndex = fake.tables.Personen[0].indexOf("Login");
+  fake.tables.Personen[1][loginIndex] = "shared.login";
+  fake.tables.Personen[2][loginIndex] = "shared.login";
+  fake.tables.Personen[3][loginIndex] = "other.login";
+  fake.tables.Personen[4][loginIndex] = "other.login";
   seedStore(fake.tables);
   const service = new SheetService({ repository, clientFactory: async () => fake.client });
   t.after(() => service.stop());
@@ -389,15 +792,52 @@ test("Personennormalisierung reduziert bestehende E-Mail-Dubletten personweise",
       operationId: "00000000-0000-4000-8000-000000000094",
       personId: "p2",
       expectedFingerprint: person.fingerprint,
-      changes: { email: "peter@example.test" },
+      changes: { login: "peter.player", email: "ada@example.test" },
     },
   );
 
   assert.equal(result.success, true);
-  assert.equal(fake.calls.valueUpdates.length, 1);
-  assert.equal(fake.tables.Personen[2][3], "peter@example.test");
-  assert.equal(fake.tables.Personen[3][3], "other@example.test");
-  assert.equal(fake.tables.Personen[4][3], "other@example.test");
+  assert.equal(fake.calls.valueUpdates.length, 2);
+  assert.equal(fake.tables.Personen[2][loginIndex], "peter.player");
+  assert.equal(fake.tables.Personen[2][3], "ada@example.test");
+  assert.equal(fake.tables.Personen[3][loginIndex], "other.login");
+  assert.equal(fake.tables.Personen[4][loginIndex], "other.login");
+});
+
+test("Personennormalisierung widerruft Sitzungen exakt fuer Login, Aktiv und Rolle", async (t) => {
+  const cases = [
+    { field: "email", value: "new@example.test", revoked: false },
+    { field: "login", value: "new.login", revoked: true },
+    { field: "active", value: "", revoked: true },
+    { field: "role", value: "player B", revoked: true },
+  ];
+  for (const outcome of ["success", "unknown"]) {
+    for (const entry of cases) {
+      const repository = new StateRepository(":memory:");
+      repository.init();
+      const fake = fakeSheets(fixtures());
+      seedStore(fake.tables);
+      if (outcome === "unknown") {
+        fake.client.spreadsheets.values.batchUpdateByDataFilter = async () => { throw new Error("update unavailable"); };
+      }
+      const service = new SheetService({ repository, clientFactory: async () => fake.client });
+      t.after(() => service.stop());
+      const person = projectPeopleNormalization(fake.tables.Personen).people.find((candidate) => candidate.id === "p2");
+      const session = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+      const operation = service.normalizePerson(
+        { type: "user", id: "p1", role: "admin" },
+        {
+          operationId: `00000000-0000-4000-8000-${outcome === "success" ? "1" : "2"}${String(cases.indexOf(entry)).padStart(11, "0")}`,
+          personId: "p2",
+          expectedFingerprint: person.fingerprint,
+          changes: { [entry.field]: entry.value },
+        },
+      );
+      if (outcome === "unknown") await assert.rejects(operation, { code: "WRITE_OUTCOME_UNKNOWN" });
+      else await operation;
+      assert.equal(repository.getSession(session.token) === null, entry.revoked, `${outcome}:${entry.field}`);
+    }
+  }
 });
 
 test("Personennormalisierung meldet die Google-Read-Quote verstaendlich und wiederholbar", async () => {

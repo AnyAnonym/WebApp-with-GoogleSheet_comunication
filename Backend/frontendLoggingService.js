@@ -24,7 +24,7 @@ const EDITABLE_SETTINGS = Object.freeze(Object.keys(DEFAULT_SETTINGS).filter((ke
 const PAGE_TYPES = new Set([
   "Bewerbe", "Matches1", "RoundRobin", "adminLogging", "bewerbsRaster",
   "court-score-test", "entryList", "index", "monitor", "navigator", "players",
-  "personenNormalisieren", "rangliste", "scoreboard",
+  "mitgliederAbgleichen", "personenNormalisieren", "rangliste", "scoreboard",
 ]);
 
 const EVENT_LEVELS = new Map([
@@ -64,6 +64,10 @@ const EVENT_LEVELS = new Map([
   ["people_normalization_auth_failed", "error"],
   ["people_normalization_load_failed", "error"],
   ["people_normalization_write_failed", "error"],
+  ["member_reconciliation_auth_failed", "error"],
+  ["member_reconciliation_load_failed", "error"],
+  ["member_reconciliation_parse_failed", "error"],
+  ["member_reconciliation_write_failed", "error"],
   ["profile_challenge_failed", "error"],
   ["profile_load_failed", "error"],
   ["ranking_auth_refresh_failed", "error"],

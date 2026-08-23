@@ -148,6 +148,7 @@ Vorlage existieren nicht mehr.
 | `rangliste.html` | Ranglisten-Pyramide | `?id=<bewerbId>`, Standard `2` |
 | `RoundRobin.html` | Gruppenphase | `?id=<bewerbId>&paarungslayout=<0-5>`; `id` erforderlich |
 | `personenNormalisieren.html` | Admin-Personendaten normalisieren | keine |
+| `mitgliederAbgleichen.html` | Admin-ClubDesk-Mitgliederabgleich | keine |
 
 `matches.html` und `preMatches.html` existieren laut aktueller Dokumentation
 nicht mehr. `matches` und `preMatches` bestehen nur als WebSocket-Aliase fort.

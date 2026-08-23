@@ -16,6 +16,12 @@ function maskEmail(value) {
   return `${local.slice(0, 1)}***@${domain}`;
 }
 
+function maskLogin(value) {
+  const login = String(value || "");
+  if (!login) return "";
+  return login.includes("@") ? maskEmail(login) : `${login.slice(0, 1)}***`;
+}
+
 function expandIpv6(value) {
   const [head = "", tail = ""] = value.split("::");
   const left = head ? head.split(":") : [];
@@ -72,6 +78,7 @@ class AuditLogRepository {
         error_code TEXT,
         source_ip TEXT NOT NULL DEFAULT '',
         attempted_email TEXT NOT NULL DEFAULT '',
+        attempted_login TEXT NOT NULL DEFAULT '',
         instance TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
@@ -85,6 +92,7 @@ class AuditLogRepository {
       ["target_name", "TEXT NOT NULL DEFAULT ''"],
       ["source_ip", "TEXT NOT NULL DEFAULT ''"],
       ["attempted_email", "TEXT NOT NULL DEFAULT ''"],
+      ["attempted_login", "TEXT NOT NULL DEFAULT ''"],
     ]) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE audit_log ADD COLUMN ${name} ${definition}`);
     }
@@ -117,6 +125,7 @@ class AuditLogRepository {
       errorCode: event.errorCode ? String(event.errorCode) : null,
       sourceIp: boundedText(event.sourceIp, 64),
       attemptedEmail: boundedText(event.attemptedEmail, 254).toLowerCase(),
+      attemptedLogin: boundedText(event.attemptedLogin, 254).toLowerCase(),
     };
     let existing;
     try {
@@ -140,8 +149,8 @@ class AuditLogRepository {
         INSERT INTO audit_log(
           event_id, occurred_at, actor_type, actor_id, actor_name, role, action, target_type, target_id, target_name,
           request_id, operation_id, result, before_json, after_json, error_code, source_ip,
-          attempted_email, instance, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          attempted_email, attempted_login, instance, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
           actor_type = excluded.actor_type,
           actor_id = excluded.actor_id,
@@ -156,13 +165,14 @@ class AuditLogRepository {
           error_code = excluded.error_code,
           source_ip = CASE WHEN audit_log.source_ip != '' THEN audit_log.source_ip ELSE excluded.source_ip END,
           attempted_email = CASE WHEN audit_log.attempted_email != '' THEN audit_log.attempted_email ELSE excluded.attempted_email END,
+          attempted_login = CASE WHEN audit_log.attempted_login != '' THEN audit_log.attempted_login ELSE excluded.attempted_login END,
           updated_at = excluded.updated_at
       `).run(
         row.eventId, row.occurredAt, row.actorType, row.actorId, row.actorName, row.role, row.action, row.targetType, row.targetId, row.targetName,
         row.requestId, row.operationId, row.result,
         row.before === null ? null : JSON.stringify(row.before),
         row.after === null ? null : JSON.stringify(row.after),
-        row.errorCode, row.sourceIp, row.attemptedEmail, this.instanceId, now, now,
+        row.errorCode, row.sourceIp, row.attemptedEmail, row.attemptedLogin, this.instanceId, now, now,
       );
       this.writeCount++;
       this.lastError = null;
@@ -184,7 +194,8 @@ class AuditLogRepository {
           errorCode: persisted.errorCode,
           sourceIpMasked: maskIp(persisted.sourceIp),
           attemptedEmailMasked: maskEmail(persisted.attemptedEmail),
-          changeSummary: persisted.action === "normalizePerson"
+          attemptedLoginMasked: maskLogin(persisted.attemptedLogin),
+          changeSummary: ["normalizePerson", "reconcilePerson"].includes(persisted.action)
             ? normalizationAuditSummary(persisted.before, persisted.after)
             : "",
         });
@@ -223,6 +234,7 @@ class AuditLogRepository {
       errorCode: row.error_code,
       sourceIp: row.source_ip,
       attemptedEmail: row.attempted_email,
+      attemptedLogin: row.attempted_login,
       instance: row.instance,
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),

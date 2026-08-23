@@ -41,7 +41,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
       peopleCount: 42,
       affectedCount: 7,
       issueCount: 9,
-      issueCounts: { EMAIL_DUPLICATE: 2, PHONE_FORMAT_INVALID: 3 },
+      issueCounts: { LOGIN_DUPLICATE: 2, PHONE_FORMAT_INVALID: 3 },
     },
   });
 
@@ -62,7 +62,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   assert.match(output, /epiber_people_normalization_people 42/);
   assert.match(output, /epiber_people_normalization_affected_people 7/);
   assert.match(output, /epiber_people_normalization_issues 9/);
-  assert.match(output, /epiber_people_normalization_issue_count\{code="EMAIL_DUPLICATE"\} 2/);
+  assert.match(output, /epiber_people_normalization_issue_count\{code="LOGIN_DUPLICATE"\} 2/);
   assert.match(output, /epiber_people_normalization_issue_count\{code="ROLE_INVALID"\} 0/);
   assert.equal(output.includes("person-p1"), false);
   assert.equal(output.includes("Ada"), false);

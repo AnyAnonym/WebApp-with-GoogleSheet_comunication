@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Letzte Aenderung: 15.08.2026
+Letzte Aenderung: 23.08.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -68,16 +68,19 @@ HTTP-Routen:
 
 Die WebSocket-RPCs decken oeffentliche Daten/Scoreboards, authentifizierte
 Profile/Forderungen/EntryList, Operator-Court-/Navigatorsteuerung,
-Admin-Monitorverwaltung und Geraete-ACKs ab. Cookies, Rollen und Origins werden
-serverseitig geprueft; localStorage ist keine Rollen- oder Sessionautoritaet.
+Admin-Monitorverwaltung, den Admin-Mitgliederabgleich und Geraete-ACKs ab.
+Cookies, Rollen und Origins werden serverseitig geprueft; localStorage ist keine
+Rollen- oder Sessionautoritaet.
 Die verbindliche Bedeutung terminaler und temporaerer WebSocket-Schliesscodes
 steht in `Project/software/WEBSOCKET-CLOSE-CODES.txt`.
 
-Die oeffentliche Passwort-Erstvergabe verlangt eine aktive Person und den Wert
-`x` in `Personen.KennwortVergessen`. Der Admin schaltet diese Freigabe mit
-`allowed: true|false`; ein erfolgreicher Setup-Write setzt das Passwort, leert
-die Freigabe atomar und widerruft alle Sitzungen der Zielperson vor und nach dem
-Write. Aktivstatus und Freigabe werden unmittelbar vor dem Write erneut geprueft.
+Die oeffentliche Passwort-Erstvergabe verlangt den kanonischen `Personen.Login`,
+eine aktive Person und den Wert `x` in `Personen.KennwortVergessen`. Die optionale
+Kontaktspalte `E-Mail` ist keine Anmelde- oder Setupidentitaet. Der Admin schaltet
+diese Freigabe mit `allowed: true|false`; ein erfolgreicher Setup-Write setzt das
+Passwort, leert die Freigabe atomar und widerruft alle Sitzungen der Zielperson
+vor und nach dem Write. Aktivstatus, Login und Freigabe werden unmittelbar vor
+dem Write erneut geprueft.
 
 
 ================================================================================
@@ -256,6 +259,19 @@ Vor dem ersten Start muessen Tabellen und Spalten gemaess
 ROLLOUT-CHECKLIST.md migriert sein. `epiberRecord`-Developer-Metadaten stabilisieren
 Updates/Deletes von Personen-, Matches1- und EntryList-Zeilen. Sie sind keine
 zusaetzlichen Sheet-Spalten.
+
+`Personen.Login` ist eine Pflichtspalte. Jeder belegte Login muss nach der
+kanonischen Normalisierung eindeutig sein; mehrere leere Logins sind zulaessig.
+`Personen.E-Mail` bleibt eine optionale Kontaktadresse und darf leer, ungueltig
+oder fuer mehrere Familienmitglieder gleich sein, ohne Loginaufloesung und
+Tabellenload zu beeinflussen. Vor einer Migration sind bestehende belegte
+Login-Dubletten kontrolliert personweise aufzuloesen.
+
+Personenwrites duerfen nicht parallel aus manuellen Sheet-Editoren, Importjobs
+oder anderen API-Clients erfolgen. Backendseitig teilen Passwortwrites,
+Personennormalisierung und Mitgliederabgleich dieselbe serialisierte
+`players`-Writequeue und pruefen den aktuellen Zielzustand konfliktgeschuetzt vor
+dem Write.
 
 
 ================================================================================
@@ -566,11 +582,25 @@ die HTTP-Antwort bleibt `no-store`.
 
 `audit.sqlite` enthaelt zusaetzlich geschuetzte personenbezogene Historie:
 Namenssnapshots sowie bei Loginversuchen vollstaendige normalisierte gueltige
-E-Mail-Adressen und Quell-IPs. Diese Werte werden fachlich ohne automatische
-Bereinigung aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle
-Loeschung oder Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und
-muss vorhandene Backups einbeziehen. Der journald-Spiegel enthaelt E-Mail und IP
-nur maskiert.
+Logins und Quell-IPs. Kontakt-E-Mail ist nicht Teil neuer Login-Audits. Diese
+Werte werden fachlich ohne automatische Bereinigung aufbewahrt. Eine
+gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder Anonymisierung
+ist ein eigener kontrollierter Betriebsvorgang und muss vorhandene Backups
+einbeziehen. Der journald-Spiegel enthaelt Login und IP nur maskiert.
+
+Der Mitgliederabgleich unter `mitgliederAbgleichen.html` ist eine reine
+Adminfunktion. Die ClubDesk-CSV wird lokal im Browser geparst und mit der
+kontrollierten Personenprojektion verglichen; CSV-Rohdaten werden nicht an das
+Backend oder in Diagnosekanaele uebertragen. Erst einzeln ausgewaehlte und in
+einer abschliessenden Vorschau bestaetigte Create-, Update-, Deaktivierungs- oder
+Zuordnungsaktionen werden als getrennte idempotente RPC-Writes gesendet.
+Bestehende Logins werden nie aus Kontakt-E-Mail ueberschrieben; ein neuer
+eindeutiger Kontakt kann nur bei freiem Login als Login vorgeschlagen werden,
+waehrend Familien-E-Mail-Dubletten neue Personen ohne Login erzeugen duerfen.
+Fingerprint-, CD-ID-, Identitaets- und Login-Konflikte blockieren den betroffenen
+Write. Die Browserausfuehrung ist seriell, stoppt beim ersten Fehler oder
+unklaren Ausgang und behaelt nach Teilerfolg die noch offenen Aktionen ohne
+automatische Wiederholung zur kontrollierten Klaerung ausgewaehlt.
 
 Bei der Courtsteuerung friert das Deaktivieren eines Platzes den zuletzt
 akzeptierten Score ein. Ein expliziter Reset setzt nur diesen Platz sofort auf

@@ -1,0 +1,203 @@
+================================================================================
+Mitglieder abgleichen - kontrollierter ClubDesk-Import
+================================================================================
+
+-- Funktion und Dateien --
+  HTML: Frontend/mitgliederAbgleichen.html
+  JS:   Frontend/JS/mitgliederAbgleichen.js, Frontend/JS/memberImport.js und
+        Frontend/JS/personValues.js
+  CSS:  Frontend/CSS/mitgliederAbgleichen.css und
+        Frontend/CSS/personenNormalisieren.css
+
+  Die Seite ist der vom Bestandsablauf `personenNormalisieren.html` getrennte
+  Adminablauf fuer einen vollstaendigen ClubDesk-Mitgliederexport. Sie liest die
+  CSV ausschliesslich lokal, vergleicht sie mit `adminMemberReconciliation {}`
+  und sendet erst nach Einzelwahl und Gesamtvorschau geschlossene personweise
+  Aktionen an `reconcilePerson`. CSV-Rohdaten werden nicht hochgeladen.
+
+-- Zugang, Authwechsel und Bereinigung --
+  Nur eine aktuelle aktive Adminsession darf die Seite verwenden. Bis zur
+  Authentifizierungsentscheidung erscheint ein geschuetzter Zugangszustand.
+  Nicht angemeldete Benutzer erhalten einen Anmeldelink; andere Rollen sehen die
+  fehlende Berechtigung, und eine nicht erreichbare Sitzungspruefung bleibt als
+  eigener Fehlerzustand erkennbar. Erst nach bestaetigter Adminrolle werden
+  Anwendung und Bestandsabruf freigegeben.
+
+  Bei Verlust der Adminberechtigung werden Bestandsprojektion, Importdatensaetze,
+  Vergleich, Auswahl, Dateiname, Dateifeld, Ergebnisliste und Vorschau aus DOM und
+  Arbeitsspeicher entfernt. Generationen verwerfen verspaetete Bestandsantworten
+  und laufende oder ueberholte Dateilesungen. Eine spaetere erneute Autorisierung
+  laedt nur den Bestand; die lokale Datei muss neu ausgewaehlt werden.
+
+-- Lokaler CSV-Vertrag und Grenzen --
+  Akzeptiert wird eine Windows-1252-kodierte, mit Semikolon getrennte CSV. CRLF,
+  LF und CR werden als Zeilenenden verarbeitet. Doppelte Anfuehrungszeichen
+  maskieren ein Anfuehrungszeichen in einem gequoteten Feld; Semikolons und
+  Zeilenenden duerfen dort enthalten sein. Anfuehrungszeichen mitten in einem
+  ungequoteten Feld, Zeichen nach einem schliessenden Quote und nicht geschlossene
+  Quotes sind ungueltig. Jede Datenzeile muss genauso viele Spalten wie die
+  Kopfzeile besitzen.
+
+  Die Datei darf hoechstens 5 MiB und 2000 Datenzeilen enthalten. Folgende
+  Header muessen exakt einmal vorhanden sein:
+
+    [Id]  [Gruppen]  Nachname  Vorname  Geburtsdatum  Geschlecht
+    Telefon Mobil  E-Mail  Land  PLZ  Ort  Adresse
+
+  `[Id]` muss je Zeile eine positive dezimale Ganzzahl und innerhalb der Datei
+  eindeutig sein. Weitere Spalten werden nicht projiziert und sofort verworfen;
+  dies gilt insbesondere fuer Finanz-, Zahlungs- und Verwaltungsdaten. Datei und
+  kontrollierte Importprojektion verbleiben im Browser. An das Backend gelangen
+  nur die in der Vorschau bestaetigten Zielwerte einer Personenaktion.
+
+  Der Parser verwendet feste Fehlercodes:
+
+    CSV_INPUT_INVALID               Datei kann nicht gelesen werden
+    CSV_FILE_TOO_LARGE              mehr als 5 MiB
+    CSV_TOO_MANY_ROWS               mehr als 2000 Datenzeilen
+    CSV_HEADER_MISSING              Kopfzeile fehlt
+    CSV_REQUIRED_HEADER_MISSING     Pflichtheader fehlt
+    CSV_REQUIRED_HEADER_DUPLICATE   Pflichtheader ist doppelt vorhanden
+    CSV_COLUMN_COUNT_INVALID        Spaltenzahl einer Datenzeile weicht ab
+    CSV_ID_INVALID                  `[Id]` fehlt oder ist nicht positiv numerisch
+    CSV_ID_DUPLICATE                `[Id]` kommt mehrfach vor
+    CSV_MALFORMED_QUOTING           ungueltige Quote-Struktur
+
+-- Feld- und Gruppenabbildung --
+  `[Id]` wird zu `externalId`/`CD-ID`. Vorname, Nachname, Geburtsdatum,
+  `Telefon Mobil`, E-Mail, Land, PLZ, Ort und Adresse werden auf `firstName`,
+  `lastName`, `birthDate`, `phone`, `email`, `country`, `postalCode`, `city` und
+  `address` abgebildet und nach denselben Feldregeln wie im Backend kanonisiert.
+  `Geschlecht` wird fuer `männlich` zu `1`, fuer `weiblich` zu `2`
+  und sonst leer. Oesterreichische Telefonnummern werden von
+  `+43 <Vorwahl> <Rest>` nach `0043 <Vorwahl> <Rest>` ueberfuehrt; andere nicht
+  eindeutig vergleichbare Formate erhalten `PHONE_COMPARISON_UNCLEAR`.
+
+  Jede Importperson erhaelt `active = 1`. `[Gruppen]` wird an Komma, Semikolon,
+  senkrechtem Strich oder Zeilenende getrennt. `A-Mitglieder` sowie
+  `A-Mitglieder (<Funktion>)` ergeben vorrangig `player A`; danach ergeben
+  `B-Mitglieder` und `B-Mitglieder (<Funktion>)` `player B`; alle anderen
+  Gruppen ergeben `player`. Trainer-, Vorstands- und sonstige Funktionsgruppen
+  besitzen keine eigene Rollenwirkung. Bei bestehenden Admins und Operatoren
+  wird die Rolle nie aus Importgruppen geaendert. Leere Importwerte ueberschreiben
+  keine Bestandswerte. Zusammen mit dem nur fuer eindeutige Neuanlagen erzeugten
+  `login` sind genau die dreizehn kontrollierten Personenfelder der
+  Bestandsnormalisierung schreibbar; die CD-ID bleibt eine getrennte Verknuepfung.
+
+  Nicht sicher vergleichbare oder ungueltige Datensaetze verwenden:
+
+    PHONE_COMPARISON_UNCLEAR  Telefonnummer nicht sicher ueberfuehrbar
+    EXTERNAL_ID_DUPLICATE     CD-ID kommt im Import mehrfach vor
+    EXTERNAL_ID_CONFLICT      CD-ID ist im Bestand nicht eindeutig
+    IMPORT_VALUE_INVALID      Importwert verletzt das ePiber-Zielformat
+    IDENTITY_CONFLICT         Identitaet passt zu mehreren Bestandspersonen
+    IDENTITY_DUPLICATE        Identitaet kommt im Import mehrfach vor
+
+  Ein kontrolliertes Importfeld mit Feldproblem kann fuer den aktuellen Lauf
+  ausgelassen werden. Identitaets- und CD-ID-Konflikte blockieren die Aktion.
+
+-- Kategorien und Zuordnung --
+  Der lokale Vergleich ordnet jeden Eintrag einer der Kategorien `Geaendert`,
+  `Neu`, `Weggefallen`, `Zuordnung bestaetigen`, `Konflikt` oder `Identisch` zu.
+  Suche und Filter beruecksichtigen Name, interne Personen-ID und CD-ID.
+
+  Eine im Bestand eindeutig vorhandene CD-ID ist die primaere Zuordnung. Fehlt
+  sie, darf nur ein eindeutiger exakter Treffer aus NFC-normalisiertem, getrimmtem
+  und intern leerraumbereinigtem Vorname, Nachname und Geburtsdatum vorgeschlagen
+  werden. Alle drei Teile muessen belegt sein; der Vorschlag muss explizit
+  bestaetigt werden, bevor Felder oder CD-ID geschrieben werden. Mehrdeutige
+  Bestandsidentitaeten und mehrfach importierte Identitaeten sind Konflikte.
+
+  Importdatensaetze ohne Zuordnung sind `Neu`. Nicht im Export enthaltene aktive
+  Spieler sind `Weggefallen` und koennen durch Leeren von `Aktiv` deaktiviert
+  werden. Inaktive Personen sowie Admins und Operatoren werden bei Exportabwesenheit
+  nicht deaktiviert. Konfliktziele erscheinen nicht zugleich als weggefallen.
+
+-- Login-Vorschlag fuer Neuanlagen --
+  Kontakt-E-Mail und Login sind getrennte Felder. Nur bei einer Neuanlage wird
+  die kanonisierte Kontakt-E-Mail als einfacher Login vorgeschlagen, wenn sie im
+  Import genau einmal vorkommt und im gesamten aktuellen Bestand als Login frei
+  ist. Bereits vorhandene Logins werden nie geaendert. Bei mehrfach importierter
+  Kontakt-E-Mail oder bestehender Loginbelegung bleibt der Login der Neuanlage
+  leer; die Person kann trotzdem angelegt werden. Es gibt keine Inhaberauswahl,
+  keine Inhaber- oder Zusatzbestaetigung und keine Ableitung fuer Bestandsupdates.
+
+-- Auswahl, Vorschau und Schreibfolge --
+  Geaenderte Bestandsfelder werden einzeln gewaehlt. Neuanlagen und
+  Deaktivierungen werden personweise aktiviert; bei Neuanlagen sind Nachname,
+  Spielerrolle und Aktivstatus verpflichtend. Vorgeschlagene Erstzuordnungen
+  muessen vor jeder Feldwahl bestaetigt werden. Konflikte und identische Eintraege
+  erzeugen keine Aktion.
+
+  `Auswahl pruefen` oeffnet eine verpflichtende Gesamtvorschau mit jeder
+  Personenaktion, ihrem Typ und den exakten kanonischen Alt-/Zielwerten. Erst
+  `Aktionen ausfuehren` sendet `update`, `create` oder `deactivate` personweise
+  und sequenziell mit stabiler Operation-ID. Update und Deaktivierung enthalten
+  Personen-ID und Bestandsfingerprint; Update enthaelt CD-ID und nur die
+  bestaetigten Felder. Create enthaelt eindeutige CD-ID und die kontrollierten
+  Neuanlagefelder. Der Fortschritt nennt abgeschlossene Personen.
+
+  Nach jedem Erfolg wird die zugehoerige Auswahl entfernt. Beim ersten Fehler
+  stoppt die Folge; bereits erfolgreiche Writes bleiben bestehen. Der Bestand
+  wird neu geladen, weiterhin gueltige Restaktionen bleiben gewaehlt, durch neue
+  Fingerprints oder einen inzwischen belegten Login ueberholte Auswahl wird
+  verworfen. Der manuelle Bestandsreload schuetzt Auswahl nach denselben Regeln.
+  Eine `players`-Invalidierung laedt nur ohne laufenden Write und ohne Auswahl
+  automatisch neu. Nach vollstaendigem Erfolg wird ohne Auswahl neu geladen.
+
+-- Backendkonflikte, Idempotenz und unklarer Ausgang --
+  Das Backend akzeptiert nur die geschlossenen Aktionen `update`, `create` und
+  `deactivate`. Bestandsupdates duerfen Login nicht aendern, importierte Personen
+  nur aktiv halten und nur Spielerrollen setzen. Create verlangt Nachname,
+  `active = 1` und `player`, `player A` oder `player B`; Passwort-, Reset- und
+  interne Felder bleiben leer. Neue interne IDs werden in der serialisierten
+  `players`-Queue als exakte Folge der hoechsten numerischen ID vergeben.
+
+  Vor jedem Write werden aktuelle stabile Sheetzeile, Fingerprint, CD-ID- und
+  Login-Eindeutigkeit, erlaubte Rolle und der vollstaendige Kandidatenstand
+  geprueft. Die stabile Google Developer Metadata adressiert Bestandszeilen und
+  wird fuer Neuanlagen hergestellt. Bereits vorhandene Zielwerte sind ein
+  idempotenter Erfolg. Nach einem Append kann die Personen-ID eine fehlgeschlagene
+  Metadata-Anlage wiederaufnehmbar machen; gefundene Metadata schliesst den
+  Pending-Intent ab. Bei unklarem Google-Ergebnis wird nachkontrolliert und kein
+  blinder zweiter Write gestartet. Bleibt der Ausgang unbekannt, wird
+  `WRITE_OUTCOME_UNKNOWN` gemeldet und die Sequenz gestoppt; sensible moegliche
+  Writes widerrufen Sitzungen vorsorglich.
+
+  Google Sheets besitzt keine transaktionale Compare-and-set-Operation ueber
+  Zielzeile, ID-, CD-ID- und Login-Eindeutigkeit. Deshalb darf waehrend eines
+  kontrollierten Importlaufs kein paralleler manueller oder zweiter Backendwrite
+  auf `Personen` erfolgen. Fingerprints, Queue, stabile Metadata und
+  Nachkontrollen begrenzen das Risiko, ersetzen aber kein sheetweites CAS.
+
+-- Observability und Datenschutz --
+  Jeder Write erzeugt ein strukturiertes Abschlusslog und die Auditphasen
+  `started`, `success`, `failed` oder `unknown`. Audit darf Adminidentitaet,
+  Zielperson und Zielnamensnapshot enthalten. Der kontrollierte Aenderungsspiegel
+  nennt fuer Aktiv und Rolle nur Alt-/Neustatus, fuer sonstige Felder nur Marker.
+  CSV-Rohdaten, Dateiinhalte, Dateinamen, importierte Kontakt-, Adress-, Geburts-,
+  Geschlechts- und freie Werte werden weder geloggt noch auditiert.
+
+  Der bekannte Seitentyp lautet `mitgliederAbgleichen`. Die serverseitig
+  erlaubten Browserdiagnosen sind `member_reconciliation_auth_failed`,
+  `member_reconciliation_load_failed`, `member_reconciliation_parse_failed` und
+  `member_reconciliation_write_failed`. Neben dem technischen Diagnoseumschlag
+  aus Eventname, Level, Fehlerkategorie, Zeitstempel, Version, Seitentyp und
+  ephemerer Seitensitzung duerfen nur Fehlercode, Support-ID und beim Write der
+  kontrollierte Erfolgszaehler uebertragen werden. CSV-, Personen- und freie
+  Meldungswerte bleiben ausgeschlossen.
+
+-- Responsive Darstellung und Tests --
+  Desktop zeigt Importkarte, sechs anklickbare Summenkarten, Toolbar,
+  aufklappbare Personenkarten und die Gesamtvorschau breit. Auf schmalen Displays
+  werden Kopf, Import, Summen, Toolbar, Felddifferenzen und Vorschau einspaltig
+  beziehungsweise touch-tauglich angeordnet; die Seite erzeugt keinen
+  horizontalen Dokumentueberlauf, hohe Vorschauen scrollen innerhalb des Modals.
+
+  Sicherheits- und Browsertests decken Windows-1252, CSV-Grenzen und Quotes,
+  Pflichtheader, Feld-/Gruppenabbildung, eindeutige CD-ID- und Identitaetszuordnung,
+  Kategorien, Loginvorschlag und Familien-E-Mail ohne Login, Konflikte,
+  parallele ID-Vergabe, Idempotenz, Unknown-/Metadata-Recovery, Datenschutz und
+  Authverlust ab. Die Browsertests pruefen Mobil- und Desktopansicht, exakte
+  Gesamtvorschau und Aktionen, Teilerfolg mit Restwahl, Reloadschutz sowie das
+  Verwerfen laufender Dateilesungen und ueberholter Zuordnungen/Loginvorschlaege.

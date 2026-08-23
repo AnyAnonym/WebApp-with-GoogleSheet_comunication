@@ -1,15 +1,15 @@
 const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
-const { emailValue } = require("./validators.js");
+const { loginValue } = require("./validators.js");
 
 const VALID_ROLES = new Set(["player", "player a", "player b", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
-const PLAYER_EMAIL_SUMMARY_EVERY = 10;
-let playerEmailIssueState = { signature: "", validations: 0, affectedCount: 0 };
+const PLAYER_LOGIN_SUMMARY_EVERY = 10;
+let playerLoginIssueState = { signature: "", validations: 0, affectedCount: 0 };
 
 const REQUIRED_HEADERS = {
-  players: ["id", "vorname", "nachname", "e-mail", "passwdhash", "aktiv", "role"],
+  players: ["id", "vorname", "nachname", "e-mail", "login", "passwdhash", "aktiv", "role"],
   bewerbe: ["id", "bezeichnung", "bewerbsartid"],
   bewerbsart: ["id", "bezeichnung"],
   matchtyp: ["id", "satztiebreak", "entscheidender satz"],
@@ -19,15 +19,15 @@ const REQUIRED_HEADERS = {
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
 
-function reportPlayerEmailIssues(issues) {
+function reportPlayerLoginIssues(issues) {
   if (!issues.length) {
-    if (playerEmailIssueState.signature) {
-      logger.log("info", "player_email_validation_recovered", {
+    if (playerLoginIssueState.signature) {
+      logger.log("info", "player_login_validation_recovered", {
         table: "players",
-        previousAffectedCount: playerEmailIssueState.affectedCount,
+        previousAffectedCount: playerLoginIssueState.affectedCount,
       });
     }
-    playerEmailIssueState = { signature: "", validations: 0, affectedCount: 0 };
+    playerLoginIssueState = { signature: "", validations: 0, affectedCount: 0 };
     return;
   }
 
@@ -38,50 +38,50 @@ function reportPlayerEmailIssues(issues) {
     affected: issues.slice(0, 20),
     omittedCount: Math.max(0, issues.length - 20),
   };
-  if (signature !== playerEmailIssueState.signature) {
-    logger.log("warn", "player_email_validation_issues", fields);
-    playerEmailIssueState = { signature, validations: 1, affectedCount: issues.length };
+  if (signature !== playerLoginIssueState.signature) {
+    logger.log("warn", "player_login_validation_issues", fields);
+    playerLoginIssueState = { signature, validations: 1, affectedCount: issues.length };
     return;
   }
 
-  playerEmailIssueState.validations++;
-  if (playerEmailIssueState.validations % PLAYER_EMAIL_SUMMARY_EVERY === 0) {
-    logger.log("warn", "player_email_validation_summary", fields);
+  playerLoginIssueState.validations++;
+  if (playerLoginIssueState.validations % PLAYER_LOGIN_SUMMARY_EVERY === 0) {
+    logger.log("warn", "player_login_validation_summary", fields);
   }
 }
 
-function playerEmailEntries(values) {
+function playerLoginEntries(values) {
   const header = headerOf(values);
   const idIndex = headerIndex(header, "id");
-  const emailIndex = headerIndex(header, "e-mail");
+  const loginIndex = headerIndex(header, "login");
   const entries = new Map();
   for (const [offset, row] of values.slice(1).entries()) {
-    const email = String(row[emailIndex] || "").trim();
-    if (!email) continue;
-    let normalizedEmail;
+    const login = String(row[loginIndex] || "");
+    if (!login) continue;
+    let normalizedLogin;
     try {
-      normalizedEmail = emailValue(email);
+      normalizedLogin = loginValue(login);
     } catch {
       continue;
     }
-    if (!entries.has(normalizedEmail)) entries.set(normalizedEmail, []);
-    entries.get(normalizedEmail).push({ rowNumber: offset + 2, personId: String(row[idIndex] || "").trim() });
+    if (!entries.has(normalizedLogin)) entries.set(normalizedLogin, []);
+    entries.get(normalizedLogin).push({ rowNumber: offset + 2, personId: String(row[idIndex] || "").trim() });
   }
   return entries;
 }
 
-function assertUniquePlayerEmails(values) {
-  if ([...playerEmailEntries(values).values()].some((entries) => entries.length > 1)) {
-    throw new AppError("EMAIL_CONFLICT", "Personen-E-Mail ist nicht eindeutig", 409);
+function assertUniquePlayerLogins(values) {
+  if ([...playerLoginEntries(values).values()].some((entries) => entries.length > 1)) {
+    throw new AppError("LOGIN_CONFLICT", "Personen-Login ist nicht eindeutig", 409);
   }
 }
 
-function assertPlayerEmailConflictsNotWorsened(beforeValues, candidateValues) {
-  const before = playerEmailEntries(beforeValues);
-  for (const [email, entries] of playerEmailEntries(candidateValues)) {
-    const previousCount = before.get(email)?.length || 0;
+function assertPlayerLoginConflictsNotWorsened(beforeValues, candidateValues) {
+  const before = playerLoginEntries(beforeValues);
+  for (const [login, entries] of playerLoginEntries(candidateValues)) {
+    const previousCount = before.get(login)?.length || 0;
     if (entries.length > Math.max(1, previousCount)) {
-      throw new AppError("EMAIL_CONFLICT", "Personen-E-Mail ist nicht eindeutig", 409);
+      throw new AppError("LOGIN_CONFLICT", "Personen-Login ist nicht eindeutig", 409);
     }
   }
 }
@@ -113,34 +113,34 @@ function validateTableValues(tableName, values) {
   if (tableName === "players") {
     if (values.length < 2) throw new AppError("SHEET_SCHEMA", "Personen-Tabelle ist leer", 503);
     const roleIndex = headerIndex(header, "role");
-    const emailIndex = headerIndex(header, "e-mail");
-    const emailIssues = [];
+    const loginIndex = headerIndex(header, "login");
+    const loginIssues = [];
     for (const [offset, row] of values.slice(1).entries()) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
       if (role && !VALID_ROLES.has(role) && !warnedInvalidRoles.has(role)) {
         warnedInvalidRoles.add(role);
         logger.log("warn", "player_role_fallback_applied", { invalidRole: role, fallbackRole: "player" });
       }
-      const email = String(row[emailIndex] || "").trim().toLowerCase();
-      if (!email) continue;
+      const login = String(row[loginIndex] || "");
+      if (!login) continue;
       try {
-        emailValue(email);
+        loginValue(login);
       } catch {
-        emailIssues.push({
+        loginIssues.push({
           rowNumber: offset + 2,
           personId: String(row[idIndex] || "").trim(),
-          reason: "INVALID_EMAIL",
+          reason: "INVALID_LOGIN",
         });
         continue;
       }
     }
-    for (const entries of playerEmailEntries(values).values()) {
+    for (const entries of playerLoginEntries(values).values()) {
       if (entries.length < 2) continue;
-      for (const entry of entries) emailIssues.push({ ...entry, reason: "DUPLICATE_EMAIL" });
+      for (const entry of entries) loginIssues.push({ ...entry, reason: "DUPLICATE_LOGIN" });
     }
-    reportPlayerEmailIssues(emailIssues);
+    reportPlayerLoginIssues(loginIssues);
   }
   return values;
 }
 
-module.exports = { REQUIRED_HEADERS, assertPlayerEmailConflictsNotWorsened, assertUniquePlayerEmails, validateTableValues };
+module.exports = { REQUIRED_HEADERS, assertPlayerLoginConflictsNotWorsened, assertUniquePlayerLogins, validateTableValues };

@@ -23,10 +23,33 @@ test("Sessions laufen ab und werden widerrufen", () => {
   let now = 1000;
   const repository = new StateRepository(":memory:", { now: () => now });
   repository.init();
-  const session = repository.createSession({ userId: "p1", email: "a@example.test", ttlMs: 1000 });
-  assert.equal(repository.getSession(session.token).userId, "p1");
+  const session = repository.createSession({ userId: "p1", email: "contact@example.test", login: "person.login", ttlMs: 1000 });
+  assert.deepEqual(
+    { userId: repository.getSession(session.token).userId, email: repository.getSession(session.token).email, login: repository.getSession(session.token).login },
+    { userId: "p1", email: "contact@example.test", login: "person.login" },
+  );
   now = 2001;
   assert.equal(repository.getSession(session.token), null);
+  repository.close();
+});
+
+test("Sessionmigration ergaenzt Login aus E-Mail und behaelt die Rollback-Spalte", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epiber-session-migration-"));
+  const filename = path.join(directory, "state.sqlite");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const legacy = new DatabaseSync(filename);
+  legacy.exec(`
+    CREATE TABLE sessions (
+      sid_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, email TEXT NOT NULL,
+      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
+    );
+    INSERT INTO sessions VALUES ('legacy-hash', 'p1', 'legacy@example.test', 1, 999999, 1);
+  `);
+  legacy.close();
+  const repository = new StateRepository(filename, { now: () => 1000 });
+  repository.init();
+  const row = repository.db.prepare("SELECT email, login FROM sessions WHERE sid_hash = 'legacy-hash'").get();
+  assert.deepEqual({ ...row }, { email: "legacy@example.test", login: "legacy@example.test" });
   repository.close();
 });
 

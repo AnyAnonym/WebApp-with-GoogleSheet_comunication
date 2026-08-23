@@ -27,8 +27,12 @@ function notify() {
   }
 }
 
-function authFingerprint(value, expiry = expiresAt) {
-  return value ? `${value.id || ""}:${value.role || ""}:${value.email || ""}:${expiry || 0}` : "anonymous";
+function authIdentityFingerprint(value, expiry = expiresAt) {
+  return value ? `${value.id || ""}:${value.role || ""}:${value.login || ""}:${expiry || 0}` : "anonymous";
+}
+
+function userFingerprint(value, expiry = expiresAt) {
+  return value ? `${authIdentityFingerprint(value, expiry)}:${value.email || ""}` : "anonymous";
 }
 
 function updateServerClock(result) {
@@ -159,7 +163,8 @@ export async function hashPassword(password) {
 
 export async function refreshSession({ reconnect = false, forceReconnect = false } = {}) {
   const generation = ++refreshGeneration;
-  const previousFingerprint = user === undefined ? null : authFingerprint(user);
+  const previousIdentityFingerprint = user === undefined ? null : authIdentityFingerprint(user);
+  const previousUserFingerprint = user === undefined ? null : userFingerprint(user);
   let retryMs = 0;
   try {
     const result = await jsonRequest("/api/session");
@@ -177,21 +182,22 @@ export async function refreshSession({ reconnect = false, forceReconnect = false
     diagnostic.error("auth_session_refresh_failed", error);
   }
   scheduleExpiry(retryMs);
-  const changed = previousFingerprint === null || previousFingerprint !== authFingerprint(user);
-  if (reconnect && (changed || forceReconnect)) await restartConnection().catch((error) => diagnostic.error("auth_socket_reauthentication_failed", error));
-  if (changed) notify();
+  const identityChanged = previousIdentityFingerprint === null || previousIdentityFingerprint !== authIdentityFingerprint(user);
+  const userChanged = previousUserFingerprint === null || previousUserFingerprint !== userFingerprint(user);
+  if (reconnect && (identityChanged || forceReconnect)) await restartConnection().catch((error) => diagnostic.error("auth_socket_reauthentication_failed", error));
+  if (userChanged) notify();
   return user;
 }
 
 export const ready = refreshSession();
 
-export function login(email, password) {
+export function login(login, password) {
   return runAuthMutation(async () => {
   refreshGeneration++;
   const passwordHash = await hashPassword(password);
   const result = await jsonRequest("/api/session", {
     method: "POST",
-    body: JSON.stringify({ email, passwordHash }),
+    body: JSON.stringify({ login, passwordHash }),
   });
   refreshGeneration++;
   updateServerClock(result);
@@ -288,11 +294,11 @@ export async function resetPassword(resetToken, newPassword) {
   });
 }
 
-export async function setupPassword(email, newPassword) {
+export async function setupPassword(login, newPassword) {
   const newPasswordHash = await hashPassword(newPassword);
   return jsonRequest("/api/password-setup", {
     method: "POST",
-    body: JSON.stringify({ email, newPasswordHash }),
+    body: JSON.stringify({ login, newPasswordHash }),
   });
 }
 

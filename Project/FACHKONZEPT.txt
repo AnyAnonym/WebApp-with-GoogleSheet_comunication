@@ -88,8 +88,10 @@ vom Auftraggeber bestaetigt.
 
   Administratoren und Turnierleitung [Arbeitsannahme]
       Organisieren den Spielbetrieb und verwalten die dafuer erforderlichen
-      fachlichen Einstellungen und Daten. Administratoren pruefen und
-      normalisieren zusaetzlich vorhandene Personendaten kontrolliert.
+      fachlichen Einstellungen und Daten.
+      Administratoren pruefen und normalisieren vorhandene Personendaten und
+      gleichen ClubDesk-Mitglieder kontrolliert mit dem Personenbestand ab.
+      [Bestaetigt]
 
   Monitorgeraete [Arbeitsannahme]
       Sind keine menschliche Benutzergruppe, bilden aber einen eigenen
@@ -158,15 +160,30 @@ werden. Fuer `PRE` gibt es deshalb kein Spielerprofil.
 Administratoren koennen bestehende Personen auf bekannte Format- und
 Datenqualitaetsprobleme pruefen, sichere Vorschlaege uebernehmen, Zielwerte
 bearbeiten und die ausgewaehlten Aenderungen nach einer Gesamtvorschau personweise
-schreiben. Diese Funktion ist die erste kontrollierte Phase vor einem spaeteren
-ClubDesk-Abgleich. Teilweise erfolgreiche Stapel bleiben nachvollziehbar; beim
-ersten Fehler stoppt der Ablauf und erhaelt den noch offenen Entwurf.
+schreiben. Teilweise erfolgreiche Stapel bleiben nachvollziehbar; beim ersten
+Fehler stoppt der Ablauf und erhaelt den noch offenen Entwurf.
 
 Die Rollen `player`, `player A` und `player B` besitzen dieselbe technische
 Berechtigungsstufe. `player A` und `player B` dienen der fachlichen
 Mitgliederklassifikation. Eine inaktive Person kann sich nicht anmelden;
-Aenderungen an E-Mail/Login, Aktivstatus oder Rolle widerrufen bestehende
-Sitzungen der betroffenen Person.
+Aenderungen an Login, Aktivstatus oder Rolle widerrufen bestehende Sitzungen der
+betroffenen Person.
+
+5.8 ClubDesk-Mitglieder kontrolliert abgleichen [Bestaetigt]
+
+Administratoren koennen einen ClubDesk-Mitgliederexport als lokale CSV-Datei mit
+dem vorhandenen Personenbestand abgleichen. Die CSV-Datei bleibt lokal im Browser
+und wird weder als Datei noch als vollstaendiger Inhalt an den Server uebertragen
+oder dort gespeichert. Eine Zuordnung darf erst nach exakter Identitaetspruefung
+und ausdruecklicher Bestaetigung durch den Administrator uebernommen werden.
+
+Vor dem Schreiben zeigt eine Vorschau die betroffene Person, die beabsichtigte
+Aktion sowie bisherige und neue Werte. Freigegebene Aktionen werden personweise
+und unter denselben Schutzregeln fuer aktive Adminrechte und den letzten aktiven
+Administrator ausgefuehrt. Der Abgleich kann Personen anlegen, eine `CD-ID`
+zuordnen sowie Mitgliedsklassifikation und Aktivstatus pflegen. Bestehende Logins
+werden durch den Import niemals geaendert. Login und optionale Kontakt-E-Mail sind
+voneinander getrennte Angaben.
 
 
 ================================================================================
@@ -238,15 +255,31 @@ Sitzungen der betroffenen Person.
   LF-25 Eigene aktive Adminrechte und der letzte aktive Administrator muessen vor
         Deaktivierung oder Rollenverlust geschuetzt bleiben. [Bestaetigt]
 
-  LF-26 Doppelte E-Mail-Adressen muessen zur Reparatur sichtbar bleiben, duerfen
-        aber bis zur eindeutigen Korrektur keinen Login erlauben. Neue Zielwerte
-        duerfen keinen E-Mail-Konflikt neu erzeugen oder vergroessern; vorhandene
-        Dublettengruppen muessen personweise verkleinert werden koennen.
-        [Bestaetigt]
+  LF-26 Login und optionale Kontakt-E-Mail muessen als getrennte Angaben behandelt
+        werden. Doppelte Logins muessen zur Reparatur sichtbar bleiben, duerfen
+        aber bis zur eindeutigen Korrektur keinen Login erlauben. Neue Loginwerte
+        duerfen keinen Login-Konflikt neu erzeugen oder vergroessern; vorhandene
+        Dublettengruppen muessen personweise verkleinert werden koennen. Eine
+        Kontakt-E-Mail darf fehlen oder bei mehreren Personen gleich sein und
+        verleiht fuer sich allein keine Loginberechtigung. [Bestaetigt]
 
   LF-27 Die Rollen `player`, `player A` und `player B` verleihen dieselben
         Benutzerrechte; die A-/B-Auszeichnung ist eine fachliche
         Mitgliederklassifikation. [Bestaetigt]
+
+  LF-28 Nur Administratoren duerfen einen ClubDesk-Mitgliederexport importieren
+        und daraus Aenderungen freigeben. Die lokale CSV-Datei und ihr
+        vollstaendiger Inhalt duerfen den Browser nicht verlassen oder
+        serverseitig gespeichert werden. Jede Zuordnung zu einer vorhandenen
+        Person erfordert eine exakte Identitaetspruefung und die ausdrueckliche
+        Bestaetigung durch den Administrator. [Bestaetigt]
+
+  LF-29 ClubDesk-Aenderungen muessen vorab mit Aktion, Person, bisherigem Wert und
+        Zielwert sichtbar sein und danach personweise geschrieben werden.
+        Geschuetzte Adminrechte und der letzte aktive Administrator duerfen auch
+        durch Anlegen, `CD-ID`-Zuordnung, Mitgliedsklassifikation oder
+        Aktivstatuspflege nicht unkontrolliert veraendert werden. Bestehende
+        Logins duerfen durch den Import niemals geaendert werden. [Bestaetigt]
 
 6.4 Gebrauchstauglichkeit
 
@@ -286,10 +319,12 @@ Noch offen ist insbesondere, welche Aufgaben ausdruecklich nicht durch ePiber
 abgebildet werden sollen und welche externen Systeme oder manuellen Ablaeufe
 bewusst bestehen bleiben.
 
-Die aktuelle Personennormalisierung importiert keine CSV-Dateien, legt keine
-Personen neu an, schreibt keine `CD-ID`, deaktiviert niemanden anhand eines
+Die Personennormalisierung und der ClubDesk-Mitgliederabgleich sind getrennte
+Arbeitsablaeufe. Die Normalisierung selbst importiert keine CSV-Dateien, legt
+keine Personen neu an, schreibt keine `CD-ID`, deaktiviert niemanden anhand eines
 externen Exports und ordnet keine A-/B-Mitgliedschaft automatisch zu. Diese
-spaeteren ClubDesk-Schritte sind nicht Bestandteil der ersten Phase.
+Aktionen gehoeren ausschliesslich zum kontrollierten ClubDesk-Abgleich. Auch dort
+werden bestehende Logins niemals durch den Import geaendert. [Bestaetigt]
 
 
 ================================================================================

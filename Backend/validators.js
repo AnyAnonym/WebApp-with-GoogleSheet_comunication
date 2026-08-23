@@ -64,6 +64,16 @@ function emailValue(value) {
   return normalized;
 }
 
+function loginValue(value) {
+  if (typeof value !== "string" || value !== value.trim()) {
+    throw new AppError("VALIDATION_ERROR", "Login darf keinen Rand-Leerraum enthalten");
+  }
+  if (value.length < 3 || value.length > 254 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~@-]+$/.test(value)) {
+    throw new AppError("VALIDATION_ERROR", "Login muss 3 bis 254 erlaubte ASCII-Zeichen enthalten");
+  }
+  return value.toLowerCase();
+}
+
 function passwordHashValue(value, name = "passwordHash") {
   return stringValue(value, name, { min: 64, max: 64, pattern: /^[0-9a-f]{64}$/i }).toLowerCase();
 }
@@ -169,6 +179,7 @@ module.exports = {
   booleanValue,
   canonicalizeMonitorPath,
   emailValue,
+  loginValue,
   idValue,
   integerValue,
   newCommandId,

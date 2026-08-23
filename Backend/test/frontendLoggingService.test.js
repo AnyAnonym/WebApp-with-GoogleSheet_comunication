@@ -192,6 +192,37 @@ test("Personennormalisierungsfehler werden mit kontrollierten Feldern angenommen
   assert.equal(JSON.stringify(logs[0]).includes("Adresse"), false);
 });
 
+test("Mitgliederabgleich akzeptiert nur benannte Diagnoseereignisse ohne Importwerte", () => {
+  const { logs, service } = fixture({ value: 2600000 });
+  service.updateSettings(settings(0));
+  const result = service.recordBatch({
+    sourceIp: "203.0.113.8",
+    identity: { id: "p1", name: "Ada Admin", role: "admin" },
+    body: {
+      appVersion: "4.5.1-test",
+      clientSessionId: "00000000-0000-4000-8000-000000000011",
+      pageType: "mitgliederAbgleichen",
+      events: [
+        { event: "member_reconciliation_parse_failed", level: "error", code: "CSV_ID_DUPLICATE" },
+        { event: "member_reconciliation_write_failed", level: "error", code: "PERSON_CONFLICT", supportId: "support-import-1", count: 2 },
+        { event: "member_reconciliation_load_failed", level: "error", code: "DATA_NOT_READY" },
+        { event: "member_reconciliation_auth_failed", level: "error", code: "AUTH_REQUIRED" },
+      ],
+    },
+  });
+
+  assert.deepEqual(result, { success: true, accepted: 4, dropped: 0 });
+  assert.deepEqual(logs.map((entry) => entry.fields.frontendEvent), [
+    "member_reconciliation_parse_failed",
+    "member_reconciliation_write_failed",
+    "member_reconciliation_load_failed",
+    "member_reconciliation_auth_failed",
+  ]);
+  assert.equal(logs[1].fields.count, 2);
+  assert.equal(JSON.stringify(logs).includes("E-Mail"), false);
+  assert.equal(JSON.stringify(logs).includes("CSV-Rohdaten"), false);
+});
+
 test("Anonyme Events benoetigen die explizite globale Freigabe", () => {
   const now = { value: 3000000 };
   const { logs, service } = fixture(now);

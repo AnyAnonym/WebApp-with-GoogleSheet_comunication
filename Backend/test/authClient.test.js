@@ -13,7 +13,7 @@ async function waitFor(predicate, timeoutMs, message) {
   throw new Error(message);
 }
 
-function loadAuthClient(fetchImplementation, { locks } = {}) {
+function loadAuthClient(fetchImplementation, { locks, restartConnection = async () => {} } = {}) {
   const windowListeners = new Map();
   const unrefTimeout = (callback, delay, ...args) => {
     const timer = setTimeout(callback, delay, ...args);
@@ -29,6 +29,7 @@ function loadAuthClient(fetchImplementation, { locks } = {}) {
     document: { hidden: false, addEventListener() {} },
     fetch: fetchImplementation,
     navigator: locks ? { locks } : {},
+    __restartConnection: restartConnection,
     setInterval: () => 1,
     setTimeout: unrefTimeout,
     window: {
@@ -38,7 +39,7 @@ function loadAuthClient(fetchImplementation, { locks } = {}) {
   context.globalThis = context;
   const filename = path.resolve(__dirname, "../../Frontend/JS/authClient.js");
   const exported = [];
-  let source = `const restartConnection = async () => {};\nconst diagnostic = { error() {} };\nconst applyDiagnosticPolicy = () => {};\n${fs.readFileSync(filename, "utf8")}`
+  let source = `const restartConnection = globalThis.__restartConnection;\nconst diagnostic = { error() {} };\nconst applyDiagnosticPolicy = () => {};\n${fs.readFileSync(filename, "utf8")}`
     .replace(/^import .*$/gm, "")
     .replace(/\bexport\s+(async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g, (_match, asyncKeyword = "", name) => {
       exported.push(name);
@@ -127,6 +128,67 @@ test("Web Lock serialisiert Auth-Mutationen auch ueber zwei Dokumente", async ()
   releaseLogin();
   await Promise.all([login, logout]);
   assert.deepEqual(calls, ["POST /api/session", "DELETE /api/session"]);
+});
+
+test("Login und erstmalige Passwortvergabe senden Login statt E-Mail", async () => {
+  const requests = [];
+  const response = (body) => ({ ok: true, status: 200, json: async () => body });
+  const api = loadAuthClient(async (url, options = {}) => {
+    if ((options.method || "GET") === "GET") {
+      return response({ success: true, authenticated: false, user: null, expiresAt: null, serverTime: Date.now() });
+    }
+    requests.push({ url, body: JSON.parse(options.body) });
+    if (url === "/api/session") {
+      return response({ success: true, user: { id: "p1", role: "player", login: "player1" }, expiresAt: Date.now() + 60000, serverTime: Date.now() });
+    }
+    return response({ success: true });
+  });
+  await api.ready;
+
+  await api.login("player1", "secret");
+  await api.setupPassword("new-player", "new-secret");
+
+  assert.deepEqual(Object.keys(requests[0].body).sort(), ["login", "passwordHash"]);
+  assert.equal(requests[0].body.login, "player1");
+  assert.match(requests[0].body.passwordHash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(Object.keys(requests[1].body).sort(), ["login", "newPasswordHash"]);
+  assert.equal(requests[1].body.login, "new-player");
+  assert.match(requests[1].body.newPasswordHash, /^[0-9a-f]{64}$/);
+});
+
+test("Login aendert Socketidentitaet, Kontakt-E-Mail aktualisiert nur das sichtbare Benutzerprofil", async () => {
+  const expiresAt = Date.now() + 60000;
+  const users = [
+    { id: "p1", role: "player", login: "old-login", email: "old@example.test" },
+    { id: "p1", role: "player", login: "new-login", email: "old@example.test" },
+    { id: "p1", role: "player", login: "new-login", email: "contact@example.test" },
+  ];
+  let requestIndex = 0;
+  let reconnects = 0;
+  const api = loadAuthClient(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      success: true,
+      authenticated: true,
+      user: users[Math.min(requestIndex++, users.length - 1)],
+      expiresAt,
+      serverTime: Date.now(),
+    }),
+  }), { restartConnection: async () => { reconnects += 1; } });
+  await api.ready;
+  let notifications = 0;
+  api.subscribeAuth(() => { notifications += 1; });
+
+  await api.refreshSession({ reconnect: true });
+  assert.equal(reconnects, 1);
+  assert.equal(notifications, 2);
+  assert.equal(api.getUser().login, "new-login");
+
+  await api.refreshSession({ reconnect: true });
+  assert.equal(reconnects, 1);
+  assert.equal(notifications, 3);
+  assert.equal(api.getUser().email, "contact@example.test");
 });
 
 test("Admin-Passwortsetzen sendet nur Ziel-ID und clientseitigen Hash", async () => {

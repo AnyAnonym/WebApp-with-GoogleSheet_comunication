@@ -113,8 +113,8 @@ function closeModal(modal) {
 const loginModal = createModal("loginModal", `
   <h2>Login</h2>
   <form id="loginForm" method="post" action="/api/session" autocomplete="on">
-    <label for="email">E-Mail:</label>
-    <input type="email" id="email" name="username" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required>
+    <label for="login">Login:</label>
+    <input type="text" id="login" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
 
     <label for="password">Passwort:</label>
     <div style="position: relative; margin-bottom: 16px;">
@@ -174,8 +174,8 @@ const passwordSetupModal = createModal("passwordSetupModal", `
   <h2>Erstmals Passwort vergeben</h2>
   <p>Diese Funktion muss zuvor von einem Administrator freigegeben werden.</p>
   <form id="passwordSetupForm" method="post" action="/api/password-setup" autocomplete="on">
-    <label for="setupEmail">E-Mail:</label>
-    <input type="email" id="setupEmail" name="username" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required>
+    <label for="setupLogin">Login:</label>
+    <input type="text" id="setupLogin" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
     <label for="setupNewPassword">Neues Passwort:</label>
     <input type="password" id="setupNewPassword" name="newPassword" autocomplete="new-password" minlength="6" required>
     <label for="setupConfirmPassword">Passwort bestätigen:</label>
@@ -320,7 +320,7 @@ function openPasswordModal() {
 
   const form = document.getElementById("changePasswordForm");
   form?.reset();
-  if (form) form.elements.username.value = getUser()?.email || "";
+  if (form) form.elements.username.value = getUser()?.login || "";
   closeModal(profileModal);
   openModal(passwordModal);
   document.getElementById("currentPassword")?.focus();
@@ -328,7 +328,7 @@ function openPasswordModal() {
 
 window.openLoginModal = () => {
   openModal(loginModal);
-  document.getElementById("email")?.focus();
+  document.getElementById("login")?.focus();
 };
 
 window.openProfileModal = async (options = {}) => {
@@ -374,6 +374,7 @@ window.openProfileModal = async (options = {}) => {
     nameElement.textContent = profileName(profile);
 
     if (ownProfile) {
+      appendProfileField(textElement, "Login", profile.login, "", actionSignal);
       appendContactFields(textElement, profile, actionSignal);
 
       const passwordButton = document.createElement("button");
@@ -386,6 +387,7 @@ window.openProfileModal = async (options = {}) => {
       return;
     }
 
+    if (profile.login) appendProfileField(textElement, "Login", profile.login, "", actionSignal);
     if (sessionUser) appendContactFields(textElement, profile, actionSignal);
     else textElement.textContent = "Öffentliches Spielerprofil";
     const canChallenge = options.canChallenge === true
@@ -551,21 +553,21 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
   event.preventDefault();
   const form = event.currentTarget;
   const submitButton = form.querySelector('button[type="submit"]');
-  const email = form.elements.username.value.trim();
+  const loginName = form.elements.username.value.trim();
   const password = form.elements.password.value;
 
   setModalBusy(form, true);
   submitButton.textContent = "Anmelden...";
 
   try {
-    await login(email, password);
+    await login(loginName, password);
     form.reset();
     closeModal(loginModal);
     window.showToast("Erfolgreich angemeldet.", "success");
   } catch (error) {
     diagnostic.error("login_failed", error);
     const message = error.code === "LOGIN_FAILED"
-      ? "E-Mail oder Passwort ist ungültig."
+      ? "Login oder Passwort ist ungültig."
       : errorMessage(error, "Anmeldung fehlgeschlagen.");
     window.showToast(message, "error");
   } finally {
@@ -619,18 +621,18 @@ document.getElementById("openPasswordReset").addEventListener("click", () => {
 
 document.getElementById("openPasswordSetup").addEventListener("click", () => {
   document.getElementById("passwordSetupForm")?.reset();
-  const loginEmail = document.getElementById("email")?.value.trim();
-  if (loginEmail) document.getElementById("setupEmail").value = loginEmail;
+  const loginName = document.getElementById("login")?.value.trim();
+  if (loginName) document.getElementById("setupLogin").value = loginName;
   closeModal(loginModal);
   openModal(passwordSetupModal);
-  document.getElementById(loginEmail ? "setupNewPassword" : "setupEmail")?.focus();
+  document.getElementById(loginName ? "setupNewPassword" : "setupLogin")?.focus();
 });
 
 document.getElementById("passwordSetupForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const submitButton = form.querySelector('button[type="submit"]');
-  const email = form.elements.username.value.trim();
+  const loginName = form.elements.username.value.trim();
   const newPassword = form.elements.newPassword.value;
   const confirmation = form.elements.confirmPassword.value;
   if (newPassword.length < 6 || newPassword !== confirmation) {
@@ -642,15 +644,15 @@ document.getElementById("passwordSetupForm").addEventListener("submit", async (e
   }
   setModalBusy(form, true);
   try {
-    await setupPassword(email, newPassword);
+    await setupPassword(loginName, newPassword);
     form.reset();
     closeModal(passwordSetupModal);
     window.showToast("Passwort wurde gesetzt. Du kannst dich jetzt anmelden.", "success");
     window.openLoginModal();
-    document.getElementById("email").value = email;
+    document.getElementById("login").value = loginName;
   } catch (error) {
     const message = error.code === "PASSWORD_SETUP_INVALID"
-      ? "Passwortvergabe ist für diese E-Mail nicht freigegeben."
+      ? "Passwortvergabe ist für diesen Login nicht freigegeben."
       : errorMessage(error, "Passwort konnte nicht gesetzt werden.");
     window.showToast(message, "error");
   } finally {

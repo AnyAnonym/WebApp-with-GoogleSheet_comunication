@@ -6,6 +6,7 @@ import {
   subscribeInvalidations,
 } from "./dataClient.js";
 import { diagnostic } from "./diagnostics.js";
+import { canonicalizePersonChanges } from "./personValues.js";
 
 const readNormalization = createEndpoint("adminPeopleNormalization");
 const writeNormalization = createEndpoint("normalizePerson");
@@ -15,7 +16,8 @@ const FIELD_LABELS = Object.freeze({
   birthDate: "Geburtsdatum",
   gender: "Geschlecht",
   phone: "Telefon Mobil",
-  email: "E-Mail / Login",
+  email: "Kontakt E-Mail",
+  login: "Login",
   country: "Land",
   postalCode: "PLZ",
   city: "Ort",
@@ -114,6 +116,13 @@ function changedPeople() {
     const changes = changesFor(person);
     return Object.keys(changes).length ? [{ person, changes }] : [];
   });
+}
+
+function canonicalChangedPeople() {
+  return changedPeople().map(({ person, changes }) => ({
+    person,
+    changes: canonicalizePersonChanges(changes),
+  }));
 }
 
 function countChanges() {
@@ -319,7 +328,14 @@ function previewValue(value) {
 }
 
 function openPreview() {
-  const entries = changedPeople();
+  let entries;
+  try {
+    entries = canonicalChangedPeople();
+  } catch (error) {
+    setStatus(error.message, "error");
+    document.querySelector(`[data-field="${CSS.escape(error.field || "")}"]`)?.focus();
+    return;
+  }
   if (!entries.length || busy) return;
   lastFocused = document.activeElement;
   const list = element("normalization-preview-list");
@@ -361,7 +377,14 @@ function closePreview() {
 }
 
 async function submitChanges() {
-  const entries = changedPeople();
+  let entries;
+  try {
+    entries = canonicalChangedPeople();
+  } catch (error) {
+    closePreview();
+    setStatus(error.message, "error");
+    return;
+  }
   if (!entries.length || busy) return;
   setBusy(true);
   setStatus(`0 von ${entries.length} Personen geschrieben...`, "loading");

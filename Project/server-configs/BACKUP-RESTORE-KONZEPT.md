@@ -1,6 +1,6 @@
 # ePiber Backup- und Restore-Konzept
 
-Stand: 16.08.2026
+Stand: 23.08.2026
 
 ## 1. Zweck und Status
 
@@ -106,7 +106,7 @@ Abweichung muss vor der naechsten Betriebsfreigabe geklaert werden.
 | PAJ-Spreadsheet | Google Drive/Sheets, ID laut `SERVER-DOKU.txt` | Autoritative Test- und Abnahmedaten |
 | PK-Spreadsheet | Vor Aktivierung festzulegen | Kuenftige PK-Fachdaten; vorher kein produktiver Schutzumfang |
 | Developer Metadata | In den Spreadsheets | `epiberRecord`-Zuordnung fuer sichere Updates und Deletes; muss zusammen mit den Sheetdaten wiederherstellbar sein |
-| `audit.sqlite` | `/var/lib/epiber-<system>/audit.sqlite` | Dauerhafte Fach-, Security-, Court- und Monitoraudits, einschliesslich geschuetzter personenbezogener Daten |
+| `audit.sqlite` | `/var/lib/epiber-<system>/audit.sqlite` | Dauerhafte Fach-, Security-, Court- und Monitoraudits, einschliesslich vollstaendiger normalisierter gueltiger Loginversuche und Quell-IPs sowie weiterer geschuetzter personenbezogener Daten |
 | `scorelog.sqlite` | `/var/lib/epiber-<system>/scorelog.sqlite` | Dauerhafte Court-Scorehistorie und Folgenummern |
 
 ### 4.2 Klasse B: Kritischer Betriebs- und Recovery-State
@@ -336,6 +336,8 @@ ohne zwingenden Grund gleichzeitig angehalten.
 - `pendingMetadataIntents` muss fuer einen regulaeren Sicherungspunkt null sein;
 - direkte Sheet-Editoren und andere API-Clients muessen fuer das Sicherungsfenster
   Writes unterlassen;
+- laufende Personennormalisierungen und Mitgliederabgleiche muessen abgeschlossen
+  sein; es darf kein paralleler Write auf `Personen` mehr aktiv oder eingeplant sein;
 - bestehende Sicherungen duerfen nicht ueberschrieben werden.
 
 ### 8.2 Drain und Snapshot
@@ -420,12 +422,23 @@ Mindestens folgende Punkte werden nach einer Testwiederherstellung geprueft:
 
 - alle acht produktiv gepollten Tabs vorhanden;
 - alle Pflichtspalten vorhanden;
-- eindeutige IDs und kanonisch eindeutige gueltige Personen-E-Mails;
+- eindeutige IDs und kanonisch eindeutige belegte Personen-Logins; mehrere leere
+  Logins bleiben fuer Personen ohne Zugang zulaessig;
+- optionale Kontakt-E-Mails duerfen leer, ungueltig oder mehrfach belegt sein und
+  werden weder als Login noch als fachlicher Eindeutigkeitskonflikt bewertet;
 - `epiberRecord` je Wert hoechstens einer korrekten Zeile zugeordnet;
 - keine Metadata auf falschem Tab, falscher ID oder leerer Zeile;
 - mindestens ein aktiver Admin vorhanden;
 - Service-Account besitzt nur die vorgesehenen Rechte;
 - Testreads und kontrollierte PAJ-Testwrites funktionieren;
+- Login und Passwort-Erstvergabe funktionieren ueber `Personen.Login`, nicht ueber
+  die optionale Kontakt-E-Mail;
+- der lokale PAJ-Mitgliederabgleich erkennt CD-ID-, Identitaets-, Fingerprint- und
+  Login-Konflikte, zeigt die exakten ausgewaehlten Aktionen in der Vorschau und
+  behandelt Familien-E-Mail-Dubletten ohne kuenstlichen Konflikt;
+- Create, Update, Deaktivierung und bestaetigte Zuordnung laufen seriell; ein
+  kontrollierter Fehler nach dem ersten Erfolg weist den Teilerfolg aus, behaelt
+  offene Aktionen und fuehrt keinen automatischen Retry aus;
 - `pendingMetadataIntents` nach dem Wiederanlauf plausibel beziehungsweise null.
 
 ## 10. SQLite-Sicherung
@@ -580,9 +593,11 @@ widersprechen und muessen praktisch mit Restore und Prune getestet werden.
 
 ### 13.2 Datenschutz
 
-`audit.sqlite` enthaelt Namen sowie bei Loginversuchen normalisierte gueltige
-E-Mail-Adressen und Quell-IPs. Backups vervielfachen diese Daten. Vor Aktivierung
-der langfristigen Retention sind daher festzulegen:
+`audit.sqlite` enthaelt Namen sowie bei Loginversuchen vollstaendige normalisierte
+gueltige Logins und Quell-IPs. Kontakt-E-Mail ist nicht Teil neuer Login-Audits;
+historische oder andere Auditfelder koennen dennoch personenbezogene Kontaktdaten
+enthalten. Backups vervielfachen diese Daten. Vor Aktivierung der langfristigen
+Retention sind daher festzulegen:
 
 - fachlicher und rechtlicher Aufbewahrungszweck;
 - maximale Audit-Aufbewahrung;
@@ -670,13 +685,16 @@ Alarmweg darf keine Secrets oder personenbezogenen Backupinhalte uebertragen.
 1. Backend und weitere schreibende Clients stoppen.
 2. Beschaedigten aktuellen Spreadsheetstand vollstaendig forensisch kopieren.
 3. Native Backupkopie oder API-Wiederaufbau als neues Spreadsheet bereitstellen.
-4. Tabs, Pflichtspalten, IDs, E-Mails, Querverweise und Developer Metadata pruefen.
+4. Tabs, Pflichtspalten, IDs, belegte eindeutige Logins, optionale auch doppelte
+   Kontakt-E-Mails, Querverweise und Developer Metadata pruefen.
 5. Service-Account-Freigaben mit minimalen Rechten herstellen.
 6. Unknown-Writes, Operationsresultate und Metadata-Intents gegen Audit und
    wiederhergestellte Sheetzeilen abgleichen.
 7. `SHEET_ID` kontrolliert auf die neue Datei umstellen; Original nicht
    unkontrolliert ueberschreiben.
-8. Backend starten und vollstaendige Readiness- und PAJ-Fachpruefung ausfuehren.
+8. Backend starten und vollstaendige Readiness- und PAJ-Fachpruefung ausfuehren;
+   dazu gehoeren Login-basierte Anmeldung/Erstvergabe sowie der lokale
+   Admin-Mitgliederabgleich mit Vorschau, Konflikt- und Teilerfolgspfad.
 9. Nur bei nachgewiesener Dateninkompatibilitaet SQLite aus demselben
    Sicherungszeitpunkt wiederherstellen.
 10. Alte Datei bis zum Abschluss der Untersuchung unveraendert aufbewahren.
@@ -742,8 +760,15 @@ Ein Restoretest gilt nur als erfolgreich, wenn:
 - das Backend mit der Zielversion startet;
 - `/live`, `/ready` und `/health` erfolgreich sind;
 - Tabellenloads und Rollen funktionieren;
+- belegte Personen-Logins eindeutig sind, doppelte optionale Kontakt-E-Mails den
+  Tabellenload nicht blockieren und Login/Erstvergabe `Personen.Login` verwenden;
 - Developer Metadata korrekt ist;
 - Audit- und ScoreLog-Schreibpfade funktionieren;
+- der Audit-Backupinhalt vollstaendige gueltige Loginversuche und Quell-IPs
+  enthaelt, waehrend der Journalspiegel beide nur maskiert ausgibt;
+- der PAJ-Mitgliederabgleich CSV lokal verarbeitet, Vorschau und einzelne
+  Aktionen korrekt abbildet, Konflikte vor Writes stoppt und Teilerfolg ohne
+  parallele Personenwrites oder automatischen Retry behandelt;
 - Sicherheitsbereinigung nachgewiesen ist;
 - der Test innerhalb des RTO abgeschlossen wurde;
 - Testdaten und temporaere Restoreumgebung anschliessend kontrolliert entfernt

@@ -8,6 +8,7 @@ const {
   stringValue,
 } = require("./validators.js");
 const { validateChanges } = require("./peopleNormalization.js");
+const { validateReconciliationRequest } = require("./memberReconciliation.js");
 
 function objectShape(raw, fields) {
   const value = requireObject(raw);
@@ -25,6 +26,11 @@ const id = (name) => (value) => idValue(value, name);
 const text = (name, options) => (value) => stringValue(value, name, options);
 const integer = (name, options) => (value) => integerValue(value, name, options);
 const operation = (value) => operationId(value);
+const reconciliationWrite = (params) => {
+  const value = requireObject(params);
+  const { operationId: rawOperationId, ...request } = value;
+  return { operationId: operation(rawOperationId), ...validateReconciliationRequest(request) };
+};
 const empty = (params) => objectShape(params, {});
 const competitionFilter = (params) => objectShape(params, { bewerbId: optional(id("bewerbId")) });
 const competitionWrite = (params) => objectShape(params, { operationId: operation, bewerbId: id("bewerbId") });
@@ -60,6 +66,7 @@ function courtAssignment(params) {
 const requestContracts = {
   players: empty,
   adminPeopleNormalization: empty,
+  adminMemberReconciliation: empty,
   publicProfile: (params) => objectShape(params, { id: id("id") }),
   bewerbe: empty,
   bewerbsart: empty,
@@ -81,6 +88,7 @@ const requestContracts = {
     expectedFingerprint: text("expectedFingerprint", { min: 64, max: 64, pattern: /^[0-9a-f]{64}$/i }),
     changes: validateChanges,
   }),
+  reconcilePerson: reconciliationWrite,
   addMatch: (params) => objectShape(params, {
     operationId: operation,
     bewerbId: id("bewerbId"),

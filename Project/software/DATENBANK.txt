@@ -24,7 +24,8 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
   Interner Name   | Sheet-Tab       | Kategorie | Pflichtspalten
   ----------------|-----------------|-----------|------------------------------
   players         | Personen        | slow      | ID, Vorname, Nachname,
-                  |                 |           | E-Mail, PasswdHash, Aktiv, Role
+                  |                 |           | E-Mail, Login, PasswdHash,
+                  |                 |           | Aktiv, Role
   bewerbe         | Bewerb          | slow      | ID, Bezeichnung, BewerbsartID
   bewerbsart      | Bewerbsart      | slow      | ID, Bezeichnung
   matchtyp        | Matchtyp        | slow      | ID, Satztiebreak,
@@ -38,13 +39,15 @@ betroffene Tabelle fuer Fachoperationen unverfuegbar.
                   |                 |           | Entrydate
 
 Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
-Format `[A-Za-z0-9_.:-]{1,64}`. Doppelte kanonische Personen-E-Mails bleiben fuer
-die Adminreparatur lesbar, sperren aber alle betroffenen Logins; Personenwrites
-duerfen keinen Konflikt neu erzeugen oder vergroessern. Normalisierungswrites
-koennen bestehende Gruppen dadurch personweise reduzieren. Eine ungueltige E-Mail-Adresse
-blockiert den Tabellenload nicht, sondern wird fuer Authentifizierung und
-Projektionen wie eine leere E-Mail behandelt und mit Personen-ID, Sheetzeile und
-Fehlergrund strukturiert geloggt. Personen darf nicht leer sein.
+Format `[A-Za-z0-9_.:-]{1,64}`. `Login` ist eine Pflichtspalte der Personen-
+Tabelle, darf in einzelnen Zeilen aber leer sein. Ungueltige oder kanonisch
+doppelte Logins blockieren den Tabellenload nicht und bleiben damit fuer die
+Adminreparatur lesbar; die betroffenen Zeilen sind jedoch nicht anmeldbar.
+Personenwrites duerfen keine Login-Dublettengruppe neu erzeugen oder vergroessern.
+Normalisierungswrites koennen bestehende Gruppen dadurch personweise reduzieren.
+`E-Mail` ist davon unabhaengig: Das Feld ist optional, kanonische Dubletten sind
+zulaessig und haben keine Wirkung auf die Anmeldung. Personen darf nicht leer
+sein.
 
 
 ================================================================================
@@ -99,10 +102,13 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   ID                 | Eindeutige Personen-ID und serverseitige Principal-ID.
   Vorname            | Vorname.
   Nachname           | Nachname.
-  E-Mail             | Loginname; lokaler Teil kleingeschrieben, Domain als
-                     | IDNA-ASCII/Punycode kanonisiert und danach eindeutig.
-                     | Ungueltige Werte gelten technisch als leer und werden
-                     | mit Personen-ID und Sheetzeile geloggt.
+  E-Mail             | Optionale, nicht eindeutige Kontakt-E-Mail. Bei gueltigen
+                     | Werten wird der lokale Teil kleingeschrieben und die
+                     | Domain als IDNA-ASCII/Punycode kanonisiert. Ungueltige
+                     | Werte werden in Profil-/Mitgliederprojektionen wie leer
+                     | behandelt.
+  Login              | Anmeldekennung. Das Sheetfeld darf leer sein; ein belegter
+                     | Wert muss kanonisch und case-insensitiv eindeutig sein.
   PasswdHash         | Neu: `scrypt$v1$N$r$p$salt$key`. Historisch sind
                      | 64-stellige SHA-256-Werte lesbar.
   KennwortVergessen  | `x` ist die Adminfreigabe fuer die einmalige erstmalige
@@ -112,8 +118,9 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   GeburtsDatum       | Geburtsdatum.
   GeschlechtID       | Bevorzugter Fachwert: leer, 1, 2 oder 3.
   Geschlecht         | Legacy-Fallback, falls GeschlechtID fehlt.
-  CD-ID              | Optionale externe ClubDesk-Kennung; in der aktuellen
-                     | Normalisierungsphase weder projiziert noch geschrieben.
+  CD-ID              | Optionale externe ClubDesk-Kennung. Die reine Personen-
+                     | normalisierung schliesst sie aus; der Mitgliederabgleich
+                     | projiziert, verknuepft und schreibt sie kontrolliert.
   Aktiv              | "1" = aktiv. Inaktive Personen koennen sich nicht
                      | anmelden und erscheinen nicht im Mitgliederverzeichnis.
   Role               | Pflichtspalte: player, player A, player B, operator oder
@@ -141,15 +148,65 @@ Normalisierungsvertrag:
   - TelefonMobil ist leer oder folgt
     `00<Laendercode> <Netzvorwahl> <Rest>` mit Ziffern und Leerzeichen. Die beiden
     ersten Trenner sind verpflichtend; weitere Leerzeichen im Rest sind erlaubt.
-  - E-Mails werden validiert und kanonisiert. Doppelte kanonische Werte bleiben im
-    Readmodell als Problem sichtbar und sperren den Login. Ein
-    Normalisierungswrite validiert die gesamte Kandidatentabelle und darf die
-    Anzahl einer kanonischen Dublettengruppe nur beibehalten oder reduzieren;
-    neue oder vergroesserte Konflikte ergeben `EMAIL_CONFLICT`.
-  - Projiziert, fingerprinted und geschrieben werden ausschliesslich Vorname,
-    Nachname, GeburtsDatum, GeschlechtID/Geschlecht, TelefonMobil, E-Mail, Land,
-    PLZ, Ort, Adresse, Aktiv und Role. `PasswdHash`, `KennwortVergessen`,
-    Resetdaten, `CD-ID` und andere Spalten sind ausgeschlossen.
+  - E-Mail ist leer oder eine validierte kanonische Kontaktadresse. Doppelte
+    Kontakt-E-Mails sind zulaessig und werden weder als Konflikt noch als
+    Loginmerkmal behandelt.
+  - Login ist leer oder besteht ohne Rand-Leerraum aus 3 bis 254 Zeichen der
+    ASCII-Menge `A-Z`, `a-z`, `0-9`, `.!#$%&'*+/=?^_`, Gravis und `{|}~@-`. Der
+    kanonische Wert ist kleingeschrieben. Gueltige kanonische Dubletten erscheinen
+    als `LOGIN_DUPLICATE`, ungueltige Werte als `LOGIN_INVALID` und abweichende
+    Grossschreibung als `LOGIN_NONCANONICAL`. Ein Normalisierungswrite validiert
+    die gesamte Kandidatentabelle und darf eine vorhandene Login-Dublettengruppe
+    nur beibehalten oder reduzieren; neue oder vergroesserte Konflikte ergeben
+    `LOGIN_CONFLICT`.
+  - Projiziert, in der Adminoberflaeche sichtbar analysiert, fingerprinted und
+    geschrieben werden genau 13 Stringfelder: Vorname, Nachname, GeburtsDatum,
+    GeschlechtID/Geschlecht, TelefonMobil, E-Mail, Login, Land, PLZ, Ort, Adresse,
+    Aktiv und Role. Damit ist Login wie die anderen kontrollierten Felder
+    personweise reparierbar. `PasswdHash`, `KennwortVergessen`, Resetdaten,
+    `CD-ID` und andere Spalten sind von dieser Projektion und diesem Write
+    ausgeschlossen.
+
+Login-Loadvertrag:
+  - Leere Logins werden akzeptiert. Ungueltige Werte und jede Zeile einer
+    case-insensitiven kanonischen Dublettengruppe werden mit Personen-ID,
+    Sheetzeile und `INVALID_LOGIN` beziehungsweise `DUPLICATE_LOGIN` gemeldet,
+    ohne den Tabellenload zu verwerfen. Die Werte selbst werden nicht geloggt.
+  - Bei einer neuen oder geaenderten Problemmenge wird
+    `player_login_validation_issues` gewarnt; bei unveraenderter Problemmenge
+    folgt nach jeweils zehn Validierungen eine
+    `player_login_validation_summary`. Je Meldung werden hoechstens 20 betroffene
+    Zeilen und die Zahl weiterer Zeilen ausgegeben. Die vollstaendige Behebung
+    erzeugt einmal `player_login_validation_recovered`.
+  - Authentifizierung und Erstvergabe suchen ausschliesslich den kanonischen
+    Login. Nur exakt eine passende aktive Person ist verwendbar; leerer,
+    ungueltiger oder mehrfach belegter Login hat keinen E-Mail-Fallback.
+
+ClubDesk-Mitgliederabgleich:
+  - `adminMemberReconciliation` verlangt zusaetzlich die Spalte `CD-ID` und
+    projiziert pro Person ausschliesslich ID, getrimmte `CD-ID`, die oben
+    genannten 13 kontrollierten Stringfelder und einen Fingerprint aus `CD-ID`
+    plus diesen Feldern. Passwort-, Reset- und sonstige Zusatzfelder werden nicht
+    projiziert.
+  - Eine `CD-ID` ist eine positive Dezimalzahl ohne Vorzeichen oder fuehrende
+    Null, maximal 64 Zeichen lang und personenuebergreifend eindeutig. `update`
+    darf eine bisher leere `CD-ID` verknuepfen, aber keine bestehende Kennung
+    umhaengen und keinen bestehenden Login aendern. Importierte Aktivwerte duerfen
+    nur `1`, Rollen nur `player`, `player A` oder `player B` sein; bestehende
+    Admin-/Operatorrollen sind gegen Importaenderungen geschuetzt.
+  - `create` verlangt Nachname, Aktiv `1` und eine der drei Playerrollen. Alle 13
+    kontrollierten Sheetspalten muessen vorhanden sein; nicht gelieferte Werte
+    werden leer geschrieben. Die neue Personen-ID ist der exakte Nachfolger der
+    hoechsten vorhandenen ID. Deshalb muessen fuer Neuanlagen alle bestehenden
+    Personen-IDs reine Dezimalzahlen sein; die Berechnung verwendet beliebig
+    grosse Ganzzahlen ohne Number-Praezisionsverlust. `deactivate` leert nur
+    Aktiv und ist fuer Admins und Operatoren unzulaessig.
+  - Updates und Neuanlagen pruefen Fingerprint, stabile Zeile, vollstaendige
+    Kandidatentabelle, Login- und `CD-ID`-Konflikte. Neuanlagen schreiben ID,
+    `CD-ID`, die 13 Felder und stabile Developer Metadata; Bestandsupdates
+    schreiben die bestaetigte `CD-ID` und Feldmenge. Unklare Ergebnisse werden
+    ueber Personen-ID, `CD-ID`, Zielwerte und Metadata bestaetigt und nicht blind
+    wiederholt.
 
 Passwort-Vertrag:
   - Der Browser uebertraegt nur den 64-stelligen SHA-256-Credential, niemals das
@@ -157,15 +214,18 @@ Passwort-Vertrag:
     darf nur ueber HTTPS transportiert werden.
   - Das Backend speichert neue Werte mit scrypt N=16384, r=8, p=1, 32-Byte-Key
     und zufaelligem 16-Byte-Salt.
-  - Ein erfolgreicher Login mit einem alten SHA-256-Sheetwert migriert diesen
-    per Compare-and-set zu scrypt. Unbekannte Benutzer durchlaufen eine
-    Dummy-Verifikation gegen Timing-/Enumerationseffekte.
+  - Ein erfolgreicher Login mit einem alten SHA-256-Sheetwert migriert diesen zu
+    scrypt. Vor dem Write wird der zuvor gelesene Hash erneut geprueft; dies ist
+    wegen der fehlenden transaktionalen Sheets-CAS-Semantik kein atomarer
+    Compare-and-set. Unbekannte Benutzer durchlaufen eine Dummy-Verifikation
+    gegen Timing-/Enumerationseffekte.
   - Eine erstmalige Passwortvergabe ist nur fuer eine aktive Person mit
     `KennwortVergessen=x` erlaubt. Nicht vorhandene, inaktive und nicht
     freigegebene Konten erhalten denselben Fehler; der negative Pfad berechnet
-    Dummy-scrypt. Der Write prueft den bisherigen PasswdHash per Compare-and-set
-    und die Freigabe erneut, schreibt scrypt und verbraucht die Freigabe durch
-    gleichzeitiges Leeren von KennwortVergessen.
+    Dummy-scrypt. Der Write prueft den bisherigen PasswdHash und die Freigabe
+    unmittelbar vor dem Update erneut, schreibt scrypt und verbraucht die
+    Freigabe im selben Zeilenupdate durch Leeren von KennwortVergessen; auch
+    diese Vorpruefung ist kein transaktionales Sheets-Compare-and-set.
 
 Personenprojektionen:
   - `players` ist oeffentlich: ID, Vorname, Nachname, Aktiv.
@@ -174,12 +234,13 @@ Personenprojektionen:
     E-Mail, Telefon und Geburtsdatum.
   - `memberDirectory` ist loginpflichtig: aktive Personen mit ID, Namen,
     TelefonMobil, E-Mail, GeburtsDatum und Aktiv.
-  - `myProfile` und die HTTP-Sessionantwort sind privat: ID, Namen, E-Mail,
-    Telefon, Geburtsdatum, Geschlecht und Rolle; nie PasswdHash.
-  - Ein fremdes Mitgliederprofil enthaelt nur fuer Admins zusaetzlich den Boolean
-    `passwordSetupAllowed`. Nur die Admin-Oberflaeche darf diese Freigabe aendern,
-    Resetnachweise erzeugen oder ein Passwort direkt setzen. Hashes und
-    Geheimnisse werden nie projiziert.
+  - `myProfile` und die HTTP-Sessionantwort sind privat: ID, Namen, Login,
+    Kontakt-E-Mail, Telefon, Geburtsdatum, Geschlecht und Rolle; nie PasswdHash.
+  - Ein fremdes Mitgliederprofil enthaelt nur fuer Admins zusaetzlich Login und
+    den Boolean `passwordSetupAllowed`. Nur die Admin-Oberflaeche darf diese
+    Freigabe aendern, Resetnachweise erzeugen oder ein Passwort direkt setzen.
+    Login wird weder im Mitgliederverzeichnis noch in fremden Nicht-Adminprofilen
+    ausgegeben; Hashes und Geheimnisse werden nie projiziert.
 
 Beim eigenen Passwortwechsel, Reset, direkten Admin-Passwortsetzen und der
 erstmaligen Passwortvergabe werden alle Sessions der Zielperson vorsorglich vor
@@ -187,6 +248,15 @@ dem Sheet-Write widerrufen. Beim eigenen erfolgreichen Wechsel wird danach genau
 eine neue Session erstellt. Schlaegt ein direkter Admin-Write oder die erstmalige
 Vergabe fehl oder bleibt sein Ausgang unklar, bleiben die Ziel-Sessions
 widerrufen; das Sheetpasswort kann dabei unveraendert sein.
+Ein erfolgreicher Login widerruft ebenfalls alle bisherigen Sessions der Person
+und erstellt genau eine neue. Die Normalisierung widerruft Sessions bei
+Aenderungen an Login, Aktiv oder Role, der Mitgliederabgleich bei Aktiv oder
+Role; dies gilt jeweils vorsorglich auch bei einem unklaren Writeausgang dieser
+Felder. Eine reine Kontakt-E-Mail- oder `CD-ID`-Aenderung laesst Sessions
+bestehen. Bei jeder Sessionverwendung muss die Person vorhanden und aktiv sein
+und einen gueltigen nichtleeren Login besitzen; der in SQLite gespeicherte
+kanonische Login muss exakt dem aktuellen Personenlogin entsprechen. Andernfalls
+wird eine bei aktuellem Personenstand gefundene Session widerrufen.
 
 
 ================================================================================
@@ -352,8 +422,8 @@ Rekonstruktion eines Live-Stands.
 Tabelle `audit_log`:
   event_id PRIMARY KEY, occurred_at, actor_type, actor_id, actor_name, role,
   action, target_type, target_id, target_name, request_id, operation_id, result,
-  before_json, after_json, error_code, source_ip, attempted_email, instance,
-  created_at, updated_at. `result` ist
+  before_json, after_json, error_code, source_ip, attempted_email,
+  attempted_login, instance, created_at, updated_at. `result` ist
   `started`, `success`, `failed` oder `unknown`. Ein begonnener Request wird mit
   derselben Event-ID auf sein Ergebnis aktualisiert. Der beim Start bekannte
   Vorher-Zustand wird dabei nicht ueberschrieben; ein erst im unklaren
@@ -370,33 +440,37 @@ Monitorverwaltung sowie Login/Logout, Passwortaenderungen/-freigaben/-reset und
 Monitor-Enrollment. Akteur und Rolle stammen serverseitig aus Session oder
 Geraetekontext. `actor_name` ist der Anzeigename zum Ereigniszeitpunkt und ersetzt
 die stabile `actor_id` nicht. Loginversuche speichern die vollstaendige
-normalisierte syntaktisch gueltige Eingabe mit hoechstens 64 UTF-8-Bytes im
-lokalen Teil, hoechstens 254 UTF-8-Bytes insgesamt und kanonischer
-IDNA-ASCII/Punycode-Domain in `attempted_email` sowie die
-serverseitig bestimmte, kanonisierte Quelladresse in `source_ip`; ungueltige E-Mail-Rohtexte
-werden nicht gespeichert. Bei erfolgreichem Login werden ID, damaliger Name und
-Rolle ergaenzt, bei einem Fehlschlag bleibt der Akteur anonym. Ein bestehendes
-Schema wird additiv migriert; alte Zeilen erhalten fuer die drei neuen Felder
-leere Werte.
+kanonische syntaktisch gueltige Anmeldekennung mit maximal 254 Zeichen in
+`attempted_login` sowie die serverseitig bestimmte, kanonisierte Quelladresse in
+`source_ip`; ungueltige Login-Rohtexte werden nicht gespeichert. Bei
+erfolgreichem Login werden ID, damaliger Name und Rolle ergaenzt, bei einem
+Fehlschlag bleibt der Akteur anonym. `attempted_email` bleibt als historische
+Kompatibilitaetsspalte fuer fruehere E-Mail-Login-Audits erhalten, wird von
+aktuellen Loginversuchen aber nicht befuellt. Beide Felder werden beim
+Auditabschluss nur ergaenzt, nicht durch spaetere leere Werte ueberschrieben. Ein
+bestehendes Schema wird additiv migriert; neu hinzugefuegte Spalten erhalten fuer
+alte Zeilen leere Werte.
 
 `target_name` ist ein auf 200 Zeichen begrenzter Anzeigenamensnapshot des Ziels
-zum Auditabschluss. Bei `normalizePerson` ist dies nach Erfolg der resultierende
-Vor-/Nachname, bei einer Ablehnung der noch bekannte bisherige Name. Ein
-terminaler nicht leerer Zielname ergaenzt den beim Start gegebenenfalls noch
-leeren Wert. Bestehende Zeilen werden additiv mit einem leeren Wert migriert.
+zum Auditabschluss. Bei `normalizePerson` und `reconcilePerson` ist dies nach
+Erfolg der resultierende Vor-/Nachname, bei einer Ablehnung der noch bekannte
+bisherige Name. Ein terminaler nicht leerer Zielname ergaenzt den beim Start
+gegebenenfalls noch leeren Wert. Bestehende Zeilen werden additiv mit einem leeren
+Wert migriert.
 
 Passwortwerte, Hashes, Tokens und Cookies werden niemals gespeichert. Name,
-E-Mail und IP sind geschuetzte personenbezogene Auditdaten, werden nicht ueber
-`/status` ausgegeben und werden fachlich ohne automatische Bereinigung
-aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle Loeschung oder
-Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und muss SQLite-
-Backups einbeziehen. Der optionale JSON-Spiegel enthaelt Akteur- und Zielname,
-aber nur maskierte E-Mail- und IP-Werte. Fuer `normalizePerson` enthaelt er eine
-kontrollierte Aenderungszusammenfassung: `active` und `role` erscheinen mit
-kanonischen Alt-/Neuwerten, die anderen zehn erlaubten Felder ausschliesslich mit
-ihrem Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht
-gespiegelt. `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*`
-aktiviert alle implementierten Aktionen.
+Login, historische E-Mail und IP sind geschuetzte personenbezogene Auditdaten,
+werden nicht ueber `/status` ausgegeben und werden fachlich ohne automatische
+Bereinigung aufbewahrt. Eine gegebenenfalls ausdruecklich angeordnete manuelle
+Loeschung oder Anonymisierung ist ein eigener kontrollierter Betriebsvorgang und
+muss SQLite-Backups einbeziehen. Der optionale JSON-Spiegel enthaelt Akteur- und
+Zielname, aber nur maskierte historische E-Mail-, aktuelle Login- und IP-Werte.
+Fuer `normalizePerson` und `reconcilePerson` enthaelt er eine kontrollierte
+Aenderungszusammenfassung: `active` und `role` erscheinen mit kanonischen
+Alt-/Neuwerten, `CD-ID` und die anderen erlaubten Felder ausschliesslich mit ihrem
+Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht gespiegelt.
+`AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*` aktiviert alle
+implementierten Aktionen.
 
 
 ================================================================================
@@ -466,10 +540,17 @@ Eine bekannte Wiederholung wird vor dem Tabellenzugriff aufgeloest und bleibt
 daher auch bei inzwischen nicht aktuellen Sheet-Tabellen abrufbar.
 
 Tabelle `sessions`:
-  sid_hash PRIMARY KEY, user_id, email, created_at, expires_at, last_seen_at.
+  sid_hash PRIMARY KEY, user_id, email, login, created_at, expires_at,
+  last_seen_at.
   Nur SHA-256-Hashes der zufaelligen Cookie-Tokens werden gespeichert. Index auf
   user_id. Ablauf standardmaessig acht Stunden; abgelaufene und widerrufene
-  Sessions werden entfernt.
+  Sessions werden entfernt. `email` ist der Kontaktwert zum Erstellungszeitpunkt;
+  `login` ist die fuer die spaetere Personenpruefung massgebliche kanonische
+  Anmeldekennung. Bestehende Datenbanken werden additiv um `login TEXT NOT NULL
+  DEFAULT ''` erweitert; danach uebernehmen noch leere `login`-Felder einmalig
+  den bisherigen `email`-Wert. Diese historische Uebernahme ist kein dauerhafter
+  E-Mail-Fallback: Beim naechsten Zugriff gilt ausschliesslich der Vergleich mit
+  `Personen.Login`.
 
 Tabelle `password_reset_proofs`:
   proof_hash PRIMARY KEY, person_id, created_by, created_at, expires_at,
@@ -490,8 +571,16 @@ Tabelle `operations`:
 
 Tabelle `login_failures`:
   key_hash PRIMARY KEY, window_start, count, blocked_until. Schluessel aus IP und
-  E-Mail beziehungsweise IP werden nur gehasht gespeichert. Alte Eintraege
-  werden bereinigt und die Tabelle ist gegen unbeschraenktes Wachstum begrenzt.
+  kanonischem Login beziehungsweise nur IP werden nur gehasht gespeichert. Vor
+  jeder Credentialpruefung wird je ein Versuch fuer `IP|Login` und `ip|IP`
+  reserviert; damit zaehlt auch der spaeter erfolgreiche Versuch zunaechst mit
+  und loescht nach erfolgreicher Credentialpruefung beide Eintraege. Das feste
+  Zeitfenster und die Sperrdauer betragen jeweils 15 Minuten. Der kombinierte
+  Schluessel sperrt ab dem fuenften, der reine IP-Schluessel ab dem zwanzigsten
+  Versuch; eine bereits aktive Sperre wird vor einer neuen Reservierung abgelehnt.
+  Abgelaufene alte Eintraege werden bereinigt. Beim Anlegen eines neuen
+  Schluessels ab 10000 Zeilen werden die 1000 aeltesten Fenster entfernt, damit
+  die Tabelle nicht unbeschraenkt waechst.
 
 Der Adminstatus zeigt neben Tabellenalter und `pendingMetadataIntents` nur
 aggregierte ScoreLog-/Auditlog-Zustaende, aber keine Ereigniszeilen, Cookies,
@@ -505,6 +594,17 @@ Tokens, Passwortwerte oder privaten Schluessel.
 Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
 Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
 fuer Personen, Matches1 und EntryList sowie eindeutige IDs/Metadaten zu pruefen.
+Insbesondere muss `Personen.Login` vor dem Backendstart vorhanden sein; bestehende
+Anmeldekonten brauchen einen gueltigen, kanonischen und eindeutigen Login. Es gibt
+keinen Rueckfall auf Kontakt-E-Mail. Fuer den Mitgliederabgleich muessen `CD-ID`
+und alle 13 kontrollierten Feldspalten vorhanden sein, bestehende `CD-ID`-Werte
+eindeutig sein und vor Personenneuanlagen alle Personen-IDs aus reinen
+Dezimalzahlen bestehen. Der kontrollierte Mitgliederabgleich darf nicht parallel
+zu manuellen oder zweiten Backendwrites auf `Personen` laufen: Google Sheets
+bietet keine transaktionale Compare-and-set-Operation ueber Zielzeile, ID-,
+`CD-ID`- und Login-Eindeutigkeit. Fingerprints, die serialisierte `players`-Queue,
+Developer Metadata und Bestaetigungsreads sind Schutzschichten, aber kein
+atomarer Ersatz dafuer.
 ScoreLog- und Auditlog-Dateien muessen getrennt vom State angelegt, gesichert und
 mit ihren WAL-/SHM-Dateien konsistent behandelt werden.
 Die vollstaendige verbindliche Liste steht in

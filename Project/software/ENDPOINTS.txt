@@ -23,6 +23,15 @@ Cookies:
   - Beide sind `Path=/; HttpOnly; SameSite=Strict`, in HTTPS-Instanzen `Secure`.
   - Benutzersessions laufen standardmaessig nach 8 Stunden ab; Monitorcookies
     nach einem Jahr. In SQLite stehen nur SHA-256-Tokenhashes.
+  - Eine Benutzersession ist an Personen-ID und kanonischen Login gebunden. Jede
+    Aufloesung verlangt eine weiterhin vorhandene aktive Person und denselben
+    gueltigen Login; bei aktuellen Personendaten wird eine nicht mehr passende
+    Session widerrufen. Ein erfolgreicher Login widerruft alle aelteren Sessions
+    dieser Person.
+  - Kontrollierte Personenwrites widerrufen alle Sessions der Zielperson, wenn
+    `login`, `active` oder `role` geschrieben werden. Bei unklarem Ausgang eines
+    solchen Writes erfolgt der Widerruf vorsorglich und bleibt bestehen; eine
+    reine Aenderung der Kontakt-E-Mail widerruft keine Session.
 
 Schutz:
   - Mutierende HTTP-Routen, OPTIONS und der WebSocket-Upgrade verlangen eine in
@@ -253,20 +262,29 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
   GET (public):
     `{ success, authenticated, user|null, expiresAt|null, serverTime,
     frontendLogging }`.
-    `user` ist die private Eigenprojektion ohne Passwortdaten.
+    `user` ist bei gueltiger Session die private Eigenprojektion
+    `{ id, firstName, lastName, email, login, phone, birthDate, gender, role }`,
+    sonst `null`; Passwort- und Resetdaten sind nie sichtbar. `email` ist die
+    Kontakt-E-Mail, `login` das davon unabhaengige Anmeldefeld.
 
   POST (public, erlaubte Origin):
-    Body `{ email, passwordHash }`; `passwordHash` ist exakt 64 Hexzeichen
-    (clientseitiger SHA-256-Credential). Prueft Loginlimits, aktive Person und
-    Rolle, migriert einen Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte
-    Sessions und setzt ein neues Sessioncookie. 200 liefert
+    Kanonischer Body `{ login, passwordHash }`; temporaer wird alternativ exakt
+    `{ email, passwordHash }` akzeptiert. Der Alias `email` wird ausschliesslich
+    als Login interpretiert und mit demselben Loginvalidator geprueft; beide
+    Bezeichner zusammen, unbekannte Felder und andere Shapes sind ungueltig. Ein
+    Login besitzt 3 bis 254 erlaubte ASCII-Zeichen, keinen Rand-Leerraum und wird
+    kleingeschrieben. Die Suche erfolgt ausschliesslich in der Spalte `Login` und
+    verlangt genau einen Treffer; es gibt keinen Fallback auf die Kontaktspalte
+    `E-Mail`. `passwordHash` ist exakt 64 Hexzeichen (clientseitiger SHA-256-
+    Credential). Prueft Loginlimits, aktive Person und Rolle, migriert einen
+    Legacy-SHA-256-Sheetwert zu scrypt, widerruft alte Sessions und setzt ein
+    neues Sessioncookie. 200 liefert
     `{ success, user, expiresAt, serverTime, frontendLogging }`. Jeder nach der Bodyannahme
-    verarbeitete Versuch wird auditiert. SQLite speichert die normalisierte
-    syntaktisch gueltige E-Mail mit maximal 64 UTF-8-Bytes vor `@`, maximal 254
-    UTF-8-Bytes nach der Kanonisierung und einer auf IDNA-ASCII/Punycode
-    kanonisierten Domain sowie die serverseitig bestimmte Quell-IP; bei
-    Erfolg zusaetzlich Benutzer-ID, damaligen Namen und Rolle. Ungueltiger
-    E-Mail-Rohtext wird nicht persistiert. Der Journalspiegel maskiert E-Mail und
+    verarbeitete Versuch wird auditiert. SQLite speichert einen syntaktisch
+    gueltigen normalisierten Anmeldewert in `attempted_login` sowie die
+    serverseitig bestimmte Quell-IP; bei Erfolg zusaetzlich Benutzer-ID,
+    damaligen Namen und Rolle. Ein ungueltiger Login-Rohtext und die Kontakt-
+    E-Mail werden dabei nicht persistiert. Der Journalspiegel maskiert Login und
     IP. `X-Forwarded-For` wird nur innerhalb der lokalen Proxy-Vertrauensgrenze
     bei einer Verbindung von `127.0.0.1` oder `::1` akzeptiert; die Proxyidentitaet
     wird nicht kryptografisch nachgewiesen.
@@ -284,17 +302,23 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
   Erfolgsantwort enthaelt die Policy der neuen Session in `frontendLogging`.
 
 ----- POST /api/password-setup (public, erlaubte Origin) -----
-  Body `{ email, newPasswordHash }`; `newPasswordHash` ist exakt 64 Hexzeichen.
-  Vergibt einer aktiven Person einmalig ein Passwort, wenn deren Sheet-Feld
-  `KennwortVergessen` aktuell `x` enthaelt. Nicht vorhandene, inaktive oder nicht
-  freigegebene Konten liefern einheitlich `PASSWORD_SETUP_INVALID`; der negative
-  Pfad fuehrt eine Dummy-scrypt-Berechnung aus. Der Vorgang ist pro Zielperson
-  serialisiert, prueft Freigabe und bisherigen Passwortwert unmittelbar vor dem
-  Write erneut, speichert scrypt und leert `KennwortVergessen` im selben
-  Sheet-Write. Alle Sessions der Person werden vor dem Write und nach Erfolg
-  widerrufen; bei Fehler oder unklarem Ausgang bleiben sie widerrufen. Die Route
-  besitzt ein eigenes IP-Limit. Zusaetzlich teilen sich alle scrypt-Verifikationen
-  und -Erzeugungen eine globale Grenze von vier gleichzeitigen Operationen.
+  Kanonischer Body `{ login, newPasswordHash }`; temporaer wird alternativ exakt
+  `{ email, newPasswordHash }` akzeptiert. Fuer Alias, geschlossenen Body,
+  Loginvalidator und ausschliessliche Suche in der Spalte `Login` gilt derselbe
+  Vertrag wie bei `POST /api/session`; insbesondere gibt es keinen Fallback auf
+  die Kontakt-E-Mail. `newPasswordHash` ist exakt 64 Hexzeichen. Vergibt einer
+  aktiven Person einmalig ein Passwort, wenn deren Sheet-Feld
+  `KennwortVergessen` aktuell `x` enthaelt. Nicht vorhandene, mehrdeutige,
+  inaktive oder nicht freigegebene Konten liefern einheitlich
+  `PASSWORD_SETUP_INVALID`; der negative Pfad fuehrt eine Dummy-scrypt-Berechnung
+  aus. Der Vorgang ist pro Zielperson serialisiert, prueft Freigabe und bisherigen
+  Passwortwert unmittelbar vor dem Write erneut, speichert scrypt und leert
+  `KennwortVergessen` im selben Sheet-Write. Alle Sessions der Person werden vor
+  dem Write und nach Erfolg widerrufen; bei Fehler oder unklarem Ausgang bleiben
+  sie widerrufen. Der Versuch wird wie der Login mit `attempted_login`, nicht mit
+  Kontakt-E-Mail, auditiert. Die Route besitzt ein eigenes IP-Limit. Zusaetzlich
+  teilen sich alle scrypt-Verifikationen und -Erzeugungen eine globale Grenze von
+  vier gleichzeitigen Operationen.
 
 ----- POST /api/password-reset (public, erlaubte Origin) -----
   Body `{ resetToken, newPasswordHash }`. Verbraucht einen gehashten, ablaufenden,
@@ -434,9 +458,10 @@ PUBLIC:
       Minimale Personentabelle: ID, Vorname, Nachname, Aktiv.
 
   `publicProfile { id }`
-      Anonym: ID/Name. Mit Benutzersession: zusaetzlich E-Mail, Telefon,
-      Geburtsdatum. Nur fuer Admins enthaelt ein fremdes Mitgliederprofil
-      zusaetzlich `passwordSetupAllowed`; Adminaktionen sind separate HTTP-Routen.
+      Anonym: `{ id, firstName, lastName }`. Mit Benutzersession zusaetzlich die
+      Kontaktfelder `email`, `phone` und `birthDate`, aber kein Login. Nur fuer
+      Admins enthaelt ein Mitgliederprofil zusaetzlich `login` und
+      `passwordSetupAllowed`; Adminaktionen sind separate HTTP-Routen.
 
   `bewerbe {}`
       Oeffentliche Bewerbprojektion plus `bewerbsartValues`.
@@ -482,7 +507,9 @@ AUTHENTICATED (player, operator oder admin):
       Aktive Mitglieder mit ID, Namen, Telefon, E-Mail, Geburtsdatum und Aktiv.
 
   `myProfile {}`
-      Eigenes privates Profil inklusive Rolle, nie Passwortwerte.
+      `{ success, profile:{ id, firstName, lastName, email, login, phone,
+      birthDate, gender, role } }`; Kontakt-E-Mail und Login sind getrennt, nie
+      erscheinen Passwort- oder Resetwerte.
 
   `operationStatus { operationId }`
       `{ operation:null }` oder Endpoint, `completed|unknown` und createdAt.
@@ -546,21 +573,27 @@ OPERATOR ODER ADMIN:
 
 ADMIN:
   `adminPeopleNormalization {}`
-      Liefert die geschlossene Projektion der zwoelf erlaubten Personenfelder,
+      Liefert die geschlossene Projektion der dreizehn erlaubten Personenfelder,
       Probleme, sichere Vorschlaege, Fingerprints und Summen aus einem aktuellen
       Personenbestand; Passwort- und Resetfelder sind ausgeschlossen.
       Antwort:
       `{ success, people:[{ id, values:{ firstName, lastName, birthDate, gender,
-      phone, email, country, postalCode, city, address, active, role },
+      phone, email, login, country, postalCode, city, address, active, role },
       issues:[{ field, code, message, proposedValue? }], fingerprint }],
       issueCount, affectedCount }`. `fingerprint` ist ein 64-stelliger SHA-256-
-      Vergleichswert ueber genau die zwoelf projizierten Felder.
+      Vergleichswert ueber genau die dreizehn projizierten Felder. Fuer `login`
+      werden `LOGIN_NONCANONICAL`, `LOGIN_INVALID` und `LOGIN_DUPLICATE` gemeldet;
+      ungueltige oder mehrdeutige Logins bleiben zur Adminreparatur sichtbar,
+      koennen aber nicht zur Anmeldung verwendet werden. Kontakt-E-Mail-Dubletten
+      sind erlaubt und kein Loginproblem. Die Admin-Normalisierungsseite zeigt
+      das projizierte Feld `login` an, kanonisiert es, stellt die Aenderung in der
+      Vorschau dar und schreibt den bestaetigten Zielwert ueber `normalizePerson`.
 
   `normalizePerson { operationId, personId, expectedFingerprint, changes }`
-      `changes` enthaelt ein bis zwoelf erlaubte Stringfelder. Der Fingerprint
+      `changes` enthaelt ein bis dreizehn erlaubte Stringfelder. Der Fingerprint
       schuetzt gegen zwischenzeitliche Aenderungen; der Write ist idempotent,
       verwendet eine stabile Personenzeile und prueft Adminschutz, Tabellenwerte
-      und E-Mail-Konflikte. Bestehende Dublettengruppen duerfen personweise
+      und Login-Konflikte. Bestehende Login-Dublettengruppen duerfen personweise
       verkleinert, aber weder neu erzeugt noch vergroessert werden. Der Auditabschluss speichert den resultierenden
       Zielnamen. Im Journal erscheinen fuer Aktiv und Rolle kontrollierte
       Alt-/Neuwerte, fuer alle anderen Felder nur deren Namen. Erreicht ein
@@ -577,9 +610,69 @@ ADMIN:
       neuen Sheetwrite. Der Browser sendet Writes bei Timeout oder
       Transportverlust nicht automatisch erneut.
       Relevante Fehler: `VALIDATION_ERROR`, `PERSON_NOT_FOUND`,
-      `PERSON_CONFLICT`, `WRITE_CONFLICT`, `EMAIL_CONFLICT`,
+      `PERSON_CONFLICT`, `WRITE_CONFLICT`, `LOGIN_CONFLICT`,
       `ADMIN_SELF_PROTECTION`, `LAST_ADMIN_PROTECTION`, `SHEET_SCHEMA`,
       `SHEETS_RATE_LIMITED` und `WRITE_OUTCOME_UNKNOWN`.
+
+  `adminMemberReconciliation {}`
+      Admin-only Read aus einem aktuellen Personenbestand. Liefert
+      `{ success:true, people:[{ id, externalId, values:{ firstName, lastName,
+      birthDate, gender, phone, email, login, country, postalCode, city, address,
+      active, role }, fingerprint }] }`. `externalId` ist die `CD-ID` oder leer;
+      der 64-stellige SHA-256-Fingerprint umfasst `externalId` und genau die
+      dreizehn kontrollierten Werte. Passwort- und Resetfelder, Probleme und
+      Normalisierungssummen sind nicht Teil dieser Projektion.
+
+  `reconcilePerson { operationId, action, ... }`
+      Admin-only Write mit geschlossenem, aktionsabhaengigem Vertrag und dem
+      reduzierten WS-Write-Gewicht `0.1`:
+
+      - `update`: `{ operationId, action:"update", personId,
+        expectedFingerprint, externalId, changes }`. `externalId` ist eine 1 bis
+        64 Stellen lange positive Dezimalzahl. `changes` darf leer sein, wenn eine
+        CD-ID neu verknuepft wird, sonst enthaelt es kontrollierte Stringfelder.
+        `login` ist bei Updates ausdruecklich verboten; `active` darf nur `"1"`
+        und `role` nur `player|player A|player B` sein. Eine bestehende CD-ID darf
+        nicht auf einen anderen Wert umgehaengt werden. Admin-/Operatorrollen
+        duerfen durch Importdaten nicht geaendert werden.
+      - `create`: `{ operationId, action:"create", externalId, values }`.
+        `values` enthaelt mindestens `lastName`, `active:"1"` und eine Rolle
+        `player|player A|player B`; alle uebrigen der dreizehn kontrollierten
+        Felder einschliesslich `login` sind optional und fehlende Werte werden
+        leer angelegt. Die neue Personen-ID ist exakt die groesste numerische ID
+        plus eins; nicht numerische Bestands-IDs verhindern die Anlage.
+      - `deactivate`: `{ operationId, action:"deactivate", personId,
+        expectedFingerprint }`. Setzt ausschliesslich `active` leer und ist fuer
+        Admins und Operatoren mit `ROLE_PROTECTED` verboten.
+
+      `expectedFingerprint` besitzt 64 Hexzeichen und schuetzt Update/Deactivate
+      gegen zwischenzeitliche Personen- oder CD-ID-Aenderungen. Zieltabellen
+      muessen gueltig bleiben; CD-IDs sind eindeutig, Login-Dublettengruppen
+      duerfen nicht neu entstehen oder wachsen. Erfolg liefert
+      `{ success:true, action, personId, fingerprint, repeated?:true,
+      recovered?:true }`; `recovered` gilt fuer bestaetigte Create-Recovery,
+      `repeated` fuer bekannte oder bereits erreichte Resultate.
+
+      `(Admin, operationId)` ist an Endpoint und Payload gebunden. Ein bekanntes
+      terminales Resultat wird ohne neuen Sheetwrite wiedergegeben. Bei
+      `WRITE_OUTCOME_UNKNOWN` speichert SQLite den unklaren Zustand: derselbe
+      Request liest nur zur Bestaetigung nach und fuehrt insbesondere keinen
+      zweiten Append aus. Eine bestaetigte Anlage wird unter derselben Personen-ID
+      inklusive fehlender Metadaten fertiggestellt; ein nicht bestaetigbarer
+      Zustand bleibt unknown und ist ueber `operationStatus` sichtbar. Der Client
+      wiederholt den Write bei Timeout oder Transportverlust nicht automatisch.
+
+      Relevante Fehler: `VALIDATION_ERROR`, `PERSON_NOT_FOUND`,
+      `PERSON_CONFLICT`, `EXTERNAL_ID_CONFLICT`, `LOGIN_CONFLICT`,
+      `ROLE_PROTECTED`, `WRITE_CONFLICT`, `OPERATION_ID_CONFLICT`, `SHEET_SCHEMA`,
+      `SHEETS_RATE_LIMITED` mit `details.retryAfterMs:60000` und
+      `WRITE_OUTCOME_UNKNOWN`. Jeder gueltige Write besitzt Audit `started` und
+      terminal `success|failed|unknown` mit Adminprincipal, Personenziel und
+      operationId; ein erfolgreicher Abschluss speichert auch den resultierenden
+      Zielnamen. Fuer `active` und `role` werden kontrollierte Alt-/Neuwerte
+      gespeichert; fuer CD-ID, Login, Kontakt- und andere Personenfelder nur
+      Aenderungsmarker, keine Werte. Auch ein Auditabschlussfehler nach Mutation
+      wird als `WRITE_OUTCOME_UNKNOWN` offengelegt.
 
   `monitorProvision { operationId, label }`
       Erzeugt Monitor-ID und einmalig sichtbaren Enrollmenttoken. Bei
@@ -663,10 +756,12 @@ SQLite-Fachhistorien:
     Kann der Auditabschluss nach Rueckkehr der Mutation nicht sicher persistiert
     werden, erhaelt der Client `WRITE_OUTCOME_UNKNOWN` statt eines falschen
     Fehlschlag- oder Erfolgsnachweises.
-    Akteur- und Zielnamen, Login-E-Mail und Quell-IP sind personenbezogene
-    Auditfelder in SQLite; sie erscheinen weder in `/status` noch unkontrolliert
-    im Journalspiegel. Der Zielname einer Personennormalisierung darf dort
-    erscheinen; Kontakt- und sonstige Personenwerte bleiben ausgeschlossen.
+    Akteur- und Zielnamen, versuchter Login (`attempted_login`) und Quell-IP sind
+    personenbezogene Auditfelder in SQLite; sie erscheinen weder in `/status`
+    noch unkontrolliert im Journalspiegel. Der Zielname einer
+    Personennormalisierung oder eines Mitgliederabgleichs darf dort erscheinen;
+    Kontakt-E-Mail, Loginwerte aus Personenwrites und sonstige Personenwerte
+    bleiben ausgeschlossen.
     Eine Event-ID darf nur dieselbe Aktion/Request-/Operation-Korrelation von
     `started` auf einen terminalen Zustand aktualisieren; Wiederverwendung ergibt
     `AUDIT_LOG_EVENT_CONFLICT`.

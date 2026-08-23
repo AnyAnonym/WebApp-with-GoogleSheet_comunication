@@ -35,6 +35,7 @@ class StateRepository {
         sid_hash TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         email TEXT NOT NULL,
+        login TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL
@@ -78,6 +79,11 @@ class StateRepository {
         blocked_until INTEGER NOT NULL
       );
     `);
+    const sessionColumns = new Set(this.db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
+    if (!sessionColumns.has("login")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN login TEXT NOT NULL DEFAULT ''");
+    }
+    this.db.exec("UPDATE sessions SET login = email WHERE login = ''");
     const resetColumns = new Set(this.db.prepare("PRAGMA table_info(password_reset_proofs)").all().map((column) => column.name));
     for (const [name, type] of [["payload_hash", "TEXT"], ["stored_hash", "TEXT"], ["claimed_at", "INTEGER"], ["completed_at", "INTEGER"]]) {
       if (!resetColumns.has(name)) this.db.exec(`ALTER TABLE password_reset_proofs ADD COLUMN ${name} ${type}`);
@@ -197,15 +203,15 @@ class StateRepository {
     });
   }
 
-  createSession({ userId, email, ttlMs }) {
+  createSession({ userId, email, login = email, ttlMs }) {
     this.ensureOpen();
     const token = randomToken();
     const now = this.now();
     const expiresAt = now + ttlMs;
     this.db.prepare(`
-      INSERT INTO sessions(sid_hash, user_id, email, created_at, expires_at, last_seen_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(hashToken(token), userId, email, now, expiresAt, now);
+      INSERT INTO sessions(sid_hash, user_id, email, login, created_at, expires_at, last_seen_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(hashToken(token), userId, email, login, now, expiresAt, now);
     return { token, expiresAt };
   }
 
@@ -214,7 +220,7 @@ class StateRepository {
     if (!token) return null;
     const tokenHash = hashToken(token);
     const row = this.db.prepare(`
-      SELECT user_id, email, created_at, expires_at, last_seen_at
+      SELECT user_id, email, login, created_at, expires_at, last_seen_at
       FROM sessions WHERE sid_hash = ?
     `).get(tokenHash);
     if (!row) return null;
@@ -230,6 +236,7 @@ class StateRepository {
       tokenHash,
       userId: row.user_id,
       email: row.email,
+      login: row.login,
       createdAt: Number(row.created_at),
       expiresAt: Number(row.expires_at),
     };

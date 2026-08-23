@@ -47,7 +47,7 @@ const { ScoreLogRepository } = require("./scoreLogRepository.js");
 const { AuditLogRepository } = require("./auditLogRepository.js");
 const logger = require("./logger.js");
 const metrics = require("./metrics.js");
-const { booleanValue, canonicalizeMonitorPath, emailValue, idValue, passwordHashValue, stringValue } = require("./validators.js");
+const { booleanValue, canonicalizeMonitorPath, idValue, loginValue, passwordHashValue, stringValue } = require("./validators.js");
 
 const RESPONSE_REQUEST_ID = Symbol("responseRequestId");
 const RESPONSE_ERROR_CODE = Symbol("responseErrorCode");
@@ -87,6 +87,20 @@ function methodNotAllowed(response, allowed, supportId) {
     ...errorData(new AppError("METHOD_NOT_ALLOWED", "HTTP-Methode ist nicht erlaubt", 405)),
     supportId,
   }, { Allow: allowed.join(", ") });
+}
+
+function authIdentifier(body, passwordField) {
+  if (!body || Array.isArray(body) || typeof body !== "object") {
+    throw new AppError("VALIDATION_ERROR", "Body muss ein Objekt sein");
+  }
+  const keys = Object.keys(body).sort();
+  const canonical = ["login", passwordField].sort();
+  const alias = ["email", passwordField].sort();
+  const matches = (expected) => keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+  if (!matches(canonical) && !matches(alias)) {
+    throw new AppError("VALIDATION_ERROR", "Body-Felder sind ungueltig");
+  }
+  return loginValue(matches(canonical) ? body.login : body.email);
 }
 
 function readiness({ repository, scoreLogRepository = null, auditLogRepository = null, sheetService = null, initialized, shuttingDown }) {
@@ -204,7 +218,7 @@ function createApplication(overrides = {}) {
     let httpAudit = null;
     let httpActionCompleted = false;
     let route = "invalid";
-    const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null, sourceIp = "", attemptedEmail = "" }) => {
+    const beginAudit = ({ action, principal = null, targetType = "", targetId = "", before = null, sourceIp = "", attemptedLogin = "" }) => {
       if (!(AUDIT_ACTIONS.has("*") || AUDIT_ACTIONS.has(action))) return;
       httpAudit = {
         eventId: supportId,
@@ -219,7 +233,7 @@ function createApplication(overrides = {}) {
         result: "started",
         before,
         sourceIp,
-        attemptedEmail,
+        attemptedLogin,
       };
       auditLogRepository.record(httpAudit);
     };
@@ -375,15 +389,15 @@ function createApplication(overrides = {}) {
           if (shuttingDown) throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
           const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
           const sourceIp = getRequestIp(request);
-          let attemptedEmail;
+          let attemptedLogin;
           try {
-            attemptedEmail = emailValue(body.email);
+            attemptedLogin = authIdentifier(body, "passwordHash");
           } catch (error) {
             beginAudit({ action: "login", targetType: "session", sourceIp, before: { identifierValid: false } });
             throw error;
           }
-          beginAudit({ action: "login", targetType: "session", sourceIp, attemptedEmail, before: { identifierValid: true } });
-          const result = await authService.login({ email: attemptedEmail, passwordHash: body.passwordHash, ip: sourceIp });
+          beginAudit({ action: "login", targetType: "session", sourceIp, attemptedLogin, before: { identifierValid: true } });
+          const result = await authService.login({ login: attemptedLogin, passwordHash: body.passwordHash, ip: sourceIp });
           finishAudit({
             principal: {
               type: "user",
@@ -508,9 +522,16 @@ function createApplication(overrides = {}) {
         const ip = getRequestIp(request);
         if (!passwordResetLimiter.take(`setup:${ip}`)) throw new AppError("RESET_RATE_LIMIT", "Zu viele Versuche", 429);
         const body = await readJsonBody(request, Math.min(2048, HTTP_BODY_LIMIT_BYTES));
-        beginAudit({ action: "passwordSetup", targetType: "user" });
+        let attemptedLogin;
+        try {
+          attemptedLogin = authIdentifier(body, "newPasswordHash");
+        } catch (error) {
+          beginAudit({ action: "passwordSetup", targetType: "user", sourceIp: ip, before: { identifierValid: false } });
+          throw error;
+        }
+        beginAudit({ action: "passwordSetup", targetType: "user", sourceIp: ip, attemptedLogin, before: { identifierValid: true } });
         const result = await authService.setupPassword(
-          body.email,
+          attemptedLogin,
           passwordHashValue(body.newPasswordHash, "newPasswordHash"),
         );
         finishAudit({ targetId: result._audit?.personId || "", after: { credentialChanged: true, sessionsRevoked: true } });

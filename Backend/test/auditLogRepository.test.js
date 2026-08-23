@@ -15,12 +15,12 @@ test("Auditlog aktualisiert einen begonnenen Versuch auf sein Ergebnis", () => {
   repository.record({
     eventId: "request-1", actorType: "user", actorId: "p1", role: "admin", action: "courtSetActive",
     targetType: "court", targetId: "1", requestId: "request-1", operationId: "op-1", result: "started", before: { active: false },
-    sourceIp: "203.0.113.42", attemptedEmail: "ADA@example.test",
+    sourceIp: "203.0.113.42", attemptedEmail: "historical@example.test", attemptedLogin: "ADA.LOGIN",
   });
   repository.record({
     eventId: "request-1", actorType: "user", actorId: "p1", actorName: "Ada Admin", role: "admin", action: "courtSetActive",
     targetType: "court", targetId: "1", requestId: "request-1", operationId: "op-1", result: "success", after: { active: true },
-    sourceIp: "198.51.100.10", attemptedEmail: "other@example.test",
+    sourceIp: "198.51.100.10", attemptedEmail: "other@example.test", attemptedLogin: "other.login",
   });
   assert.deepEqual(repository.get("request-1"), {
     eventId: "request-1",
@@ -40,7 +40,8 @@ test("Auditlog aktualisiert einen begonnenen Versuch auf sein Ergebnis", () => {
     after: { active: true },
     errorCode: null,
     sourceIp: "203.0.113.42",
-    attemptedEmail: "ada@example.test",
+    attemptedEmail: "historical@example.test",
+    attemptedLogin: "ada.login",
     instance: "test",
     createdAt: 1000,
     updatedAt: 1000,
@@ -77,6 +78,7 @@ test("Auditlog migriert bestehende Dateien additiv auf neue personenbezogene Aud
   assert.equal(row.targetName, "");
   assert.equal(row.sourceIp, "");
   assert.equal(row.attemptedEmail, "");
+  assert.equal(row.attemptedLogin, "");
   assert.equal(fs.statSync(filename).mode & 0o777, 0o600);
   repository.close();
 });
@@ -93,7 +95,7 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
   repository.record({
     eventId: "login-1", actorType: "user", actorId: "p1", actorName: "Ada Admin", role: "admin",
     action: "login", targetType: "user", targetId: "p1", requestId: "login-1", result: "success",
-    sourceIp: "2001:db8:1234:5678::abcd", attemptedEmail: "ada@example.test",
+    sourceIp: "2001:db8:1234:5678::abcd", attemptedLogin: "ada@example.test",
   });
   assert.deepEqual(events, [{
     level: "info",
@@ -113,7 +115,8 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
       result: "success",
       errorCode: null,
       sourceIpMasked: "2001:db8:1234:5678::/64",
-      attemptedEmailMasked: "a***@example.test",
+      attemptedEmailMasked: "",
+      attemptedLoginMasked: "a***@example.test",
       changeSummary: "",
     },
   }]);
@@ -122,10 +125,11 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
   repository.record({
     eventId: "login-2", actorType: "anonymous", actorId: "", role: "anonymous",
     action: "login", targetType: "session", targetId: "", requestId: "login-2", result: "failed",
-    sourceIp: "203.0.113.42", attemptedEmail: "peter@example.test", errorCode: "LOGIN_FAILED",
+    sourceIp: "203.0.113.42", attemptedLogin: "peter.login", errorCode: "LOGIN_FAILED",
   });
   assert.equal(events[1].fields.sourceIpMasked, "203.0.113.0/24");
-  assert.equal(events[1].fields.attemptedEmailMasked, "p***@example.test");
+  assert.equal(events[1].fields.attemptedEmailMasked, "");
+  assert.equal(events[1].fields.attemptedLoginMasked, "p***");
   repository.close();
 });
 
@@ -165,6 +169,30 @@ test("Normalisierungsjournal zeigt Zielname und kontrollierte Aenderungen ohne K
   assert.equal(journal.includes("new@example.test"), false);
   assert.equal(journal.includes("0043 1 234"), false);
   assert.equal(journal.includes("0043 1 999"), false);
+  repository.close();
+});
+
+test("Mitgliederabgleich journalisiert CD-ID und Feldnamen ohne importierte Kontaktwerte", () => {
+  const events = [];
+  const repository = new AuditLogRepository(":memory:", {
+    instanceId: "test",
+    journal: true,
+    now: () => 1000,
+    log: (level, event, fields) => events.push({ level, event, fields }),
+  });
+  repository.init();
+  repository.record({
+    eventId: "reconcile-1", actorType: "user", actorId: "admin-1", actorName: "Ada Admin", role: "admin",
+    action: "reconcilePerson", targetType: "person", targetId: "1033", targetName: "Neue Person",
+    requestId: "reconcile-1", operationId: "op-2", result: "success",
+    before: null,
+    after: { externalId: "1000494", email: "neu@example.test", address: "Dorf 4", active: "1", role: "player B" },
+  });
+  assert.equal(events[0].fields.changeSummary, "CD-ID geaendert; E-Mail geaendert; Adresse geaendert; Aktiv: unbekannt -> 1; Rolle: unbekannt -> player B");
+  const journal = JSON.stringify(events);
+  assert.equal(journal.includes("1000494"), false);
+  assert.equal(journal.includes("neu@example.test"), false);
+  assert.equal(journal.includes("Dorf 4"), false);
   repository.close();
 });
 

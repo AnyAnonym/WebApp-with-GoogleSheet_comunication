@@ -5,14 +5,22 @@ const dataStore = require("./dataStore.js");
 const { AppError } = require("./errors.js");
 const { analyzeMatchRules } = require("./matchRules.js");
 const {
+  FIELD_DEFINITIONS,
   fieldIndexes,
   personFingerprint,
   projectPeopleNormalization,
   rawPersonValues,
   validateChanges,
 } = require("./peopleNormalization.js");
+const {
+  assertUniqueExternalId,
+  assertUpdateCandidate,
+  projectPeopleReconciliation,
+  reconciliationFingerprint,
+  validateReconciliationRequest,
+} = require("./memberReconciliation.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
-const { assertPlayerEmailConflictsNotWorsened, assertUniquePlayerEmails, validateTableValues } = require("./tableSchemas.js");
+const { assertPlayerLoginConflictsNotWorsened, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
 const { beginSheetTableActivity, executeSheetRead, getSheetReadStatus, rateLimitError } = require("./sheetsReadCoordinator.js");
 
@@ -22,6 +30,13 @@ const WRITE_REFRESH_DELAY_MS = 1000;
 function withAudit(result, audit) {
   Object.defineProperty(result, "_audit", { value: audit, enumerable: false });
   return result;
+}
+
+function reconciliationAuditValues(fields, values, marker) {
+  return Object.fromEntries(fields.map((field) => [
+    field,
+    ["active", "role"].includes(field) ? String(values[field] ?? "") : marker,
+  ]));
 }
 
 function viennaTimestamp(includeSeconds = false) {
@@ -320,7 +335,11 @@ class SheetService {
     const cacheKey = `${tableName}:${recordId}`;
     const previouslyScanned = this.recordMetadataScanned;
     await this.loadRecordMetadata(sheets);
-    if (this.recordMetadata.has(cacheKey)) return this.recordMetadata.get(cacheKey);
+    if (this.recordMetadata.has(cacheKey)) {
+      const metadata = this.recordMetadata.get(cacheKey);
+      this.confirmRecordMetadataIntent(cacheKey, metadata);
+      return metadata;
+    }
     if (!previouslyScanned && !this.recordMetadataUnresolved.has(cacheKey)) return null;
     const response = await executeSheetRead({
       method: "metadata_search",
@@ -367,8 +386,16 @@ class SheetService {
     if (metadata) {
       this.recordMetadata.set(cacheKey, metadata);
       this.recordMetadataUnresolved.delete(cacheKey);
+      this.confirmRecordMetadataIntent(cacheKey, metadata);
     }
     return metadata;
+  }
+
+  confirmRecordMetadataIntent(cacheKey, metadata) {
+    const intentKey = `record-metadata-intent:${cacheKey}`;
+    const intent = this.repository.getState(intentKey, { status: "none" });
+    if (["none", "confirmed"].includes(intent.value.status)) return;
+    this.repository.setState(intentKey, { status: "confirmed", metadataId: metadata.metadataId, at: this.now() }, intent.revision);
   }
 
   async createRecordMetadata(sheets, tableName, recordId, rowIndex) {
@@ -521,6 +548,259 @@ class SheetService {
     });
   }
 
+  async reconcilePerson(principal, params) {
+    const { operationId, ...rawRequest } = params;
+    const request = validateReconciliationRequest(rawRequest);
+    return this.runIdempotent(principal, "reconcilePerson", operationId, request, ({ recoveryOnly, recoveryDetails }) => this.enqueue("players", async () => {
+      this.cancelScheduledRefresh("players");
+      const values = await this.readTable("players");
+      dataStore.set("players", values, { source: "write-read" });
+      const header = headerOf(values);
+      const idIndex = headerIndex(header, "id");
+      const externalIdIndex = headerIndex(header, "cd-id");
+      if (idIndex < 0 || externalIdIndex < 0) throw new AppError("SHEET_SCHEMA", "Personen-Spalten ID oder CD-ID fehlen", 503);
+      const projection = projectPeopleReconciliation(values);
+
+      if (request.action === "create") {
+        const existingIds = values.slice(1).map((row) => String(row[idIndex] || "").trim()).filter(Boolean);
+        if (existingIds.some((id) => !/^\d+$/.test(id))) {
+          throw new AppError("SHEET_SCHEMA", "Personen-IDs muessen fuer Neuanlagen numerisch sein", 503);
+        }
+        const recoveryPersonId = String(recoveryDetails?.personId || recoveryDetails?.recordId || "");
+        const newPersonId = recoveryOnly
+          ? recoveryPersonId
+          : (existingIds.reduce((max, id) => {
+            const value = BigInt(id);
+            return value > max ? value : max;
+          }, 0n) + 1n).toString();
+        if (newPersonId.length > 64) throw new AppError("SHEET_SCHEMA", "Naechste Personen-ID ist zu lang", 503);
+        if (!newPersonId) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Neuanlage ist noch nicht nachweisbar", 503, { externalId: request.externalId });
+        }
+        assertUniqueExternalId(projection.people, request.externalId, recoveryOnly ? newPersonId : "");
+        const existingRowOffset = values.slice(1).findIndex((row) => (
+          String(row[idIndex] || "").trim() === newPersonId
+          && String(row[externalIdIndex] || "").trim() === request.externalId
+        ));
+        if (recoveryOnly && existingRowOffset < 0) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Neuanlage ist noch nicht nachweisbar", 503, {
+            personId: newPersonId,
+            externalId: request.externalId,
+          });
+        }
+
+        const indexes = fieldIndexes(header);
+        for (const field of Object.keys(FIELD_DEFINITIONS)) {
+          if (indexes[field] < 0) throw new AppError("SHEET_SCHEMA", `Personen-Spalte fuer ${field} fehlt`, 503);
+        }
+        const controlledValues = Object.fromEntries(Object.keys(FIELD_DEFINITIONS).map((field) => [field, request.values[field] || ""]));
+        let newRow = existingRowOffset >= 0 ? values[existingRowOffset + 1] : null;
+        if (newRow && Object.entries(controlledValues).some(([field, value]) => String(newRow[indexes[field]] ?? "") !== value)) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Neuanlage stimmt nicht mit dem bestaetigten Zielstand ueberein", 503, {
+            personId: newPersonId,
+            externalId: request.externalId,
+          });
+        }
+        const sheets = await this.getClient();
+        let refreshed = values;
+        let confirmedRowOffset = existingRowOffset;
+        if (!newRow) {
+          newRow = Array(header.length).fill("");
+          newRow[idIndex] = newPersonId;
+          newRow[externalIdIndex] = request.externalId;
+          for (const [field, value] of Object.entries(controlledValues)) newRow[indexes[field]] = value;
+          const candidate = structuredClone(values);
+          candidate.push(newRow);
+          validateTableValues("players", candidate);
+          assertPlayerLoginConflictsNotWorsened(values, candidate);
+          let appendError = null;
+          try {
+            await sheets.spreadsheets.values.append({
+              spreadsheetId: SHEET_ID,
+              range: TABLE_CONFIG.players.range,
+              valueInputOption: "RAW",
+              requestBody: { values: [newRow] },
+            }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+          } catch (error) {
+            appendError = error;
+          }
+          try {
+            refreshed = await this.readTable("players", "confirmation");
+            confirmedRowOffset = refreshed.slice(1).findIndex((row) => (
+              String(row[idIndex] || "").trim() === newPersonId
+              && String(row[externalIdIndex] || "").trim() === request.externalId
+            ));
+            if (confirmedRowOffset < 0) throw appendError || new Error("Angehaengte Personenzeile fehlt");
+            newRow = refreshed[confirmedRowOffset + 1];
+            if (Object.entries(controlledValues).some(([field, value]) => String(newRow[indexes[field]] ?? "") !== value)) {
+              throw appendError || new Error("Angehaengte Personenzeile weicht ab");
+            }
+            validateTableValues("players", refreshed);
+            assertPlayerLoginConflictsNotWorsened(values, refreshed);
+            assertUniqueExternalId(projectPeopleReconciliation(refreshed).people, request.externalId, newPersonId);
+          } catch {
+            throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenneuanlage ist unklar", 503, {
+              personId: newPersonId,
+              externalId: request.externalId,
+            });
+          }
+        }
+
+        const rowIndex = confirmedRowOffset + 1;
+        let metadata;
+        try {
+          metadata = await this.findRecordMetadata(sheets, "players", newPersonId);
+          if (!metadata) metadata = await this.createRecordMetadata(sheets, "players", newPersonId, rowIndex);
+          if (!metadata?.metadataId) throw new Error("Metadaten-ID fehlt");
+        } catch {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Metadaten der neuen Person sind unklar", 503, {
+            personId: newPersonId,
+            externalId: request.externalId,
+          });
+        }
+        dataStore.set("players", refreshed, { source: "write-local", authoritative: false });
+        this.scheduleRefresh("players");
+        const afterProjection = projectPeopleReconciliation(refreshed).people.find((person) => person.id === newPersonId);
+        return withAudit({
+          success: true,
+          action: "create",
+          personId: newPersonId,
+          fingerprint: afterProjection?.fingerprint || reconciliationFingerprint(controlledValues, request.externalId),
+          recovered: recoveryOnly || undefined,
+        }, {
+          targetName: [controlledValues.firstName, controlledValues.lastName].filter(Boolean).join(" "),
+          before: null,
+          after: reconciliationAuditValues(["externalId", ...Object.keys(request.values)], { externalId: request.externalId, ...request.values }, "gesetzt"),
+        });
+      }
+
+      let stable;
+      try {
+        stable = await this.resolveStableRow("players", request.personId, values, "FORMATTED_VALUE");
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+        throw error;
+      }
+      const { metadata, row, sheets } = stable;
+      const beforeValues = rawPersonValues(header, row);
+      const beforeExternalId = String(row[externalIdIndex] || "").trim();
+      const currentFingerprint = reconciliationFingerprint(beforeValues, beforeExternalId);
+      if (currentFingerprint !== request.expectedFingerprint && !recoveryOnly) {
+        throw new AppError("PERSON_CONFLICT", "Personendaten wurden zwischenzeitlich geaendert", 409, {
+          personId: request.personId,
+          currentFingerprint,
+        });
+      }
+
+      let targetExternalId = beforeExternalId;
+      let changes;
+      if (request.action === "deactivate") {
+        const role = String(beforeValues.role || "").trim().toLowerCase();
+        if (["admin", "operator"].includes(role)) {
+          throw new AppError("ROLE_PROTECTED", "Admin und Operator duerfen nicht durch den Mitgliederabgleich deaktiviert werden", 409);
+        }
+        changes = { active: "" };
+      } else {
+        const currentPerson = { id: request.personId, externalId: beforeExternalId };
+        if (!recoveryOnly) assertUpdateCandidate(currentPerson, request);
+        if (!recoveryOnly && beforeExternalId && beforeExternalId !== request.externalId) {
+          throw new AppError("EXTERNAL_ID_CONFLICT", "Eine bestehende CD-ID darf nicht neu zugeordnet werden", 409);
+        }
+        assertUniqueExternalId(projection.people, request.externalId, request.personId);
+        targetExternalId = request.externalId;
+        changes = request.changes;
+        const currentRole = String(beforeValues.role || "").trim().toLowerCase();
+        if (["admin", "operator"].includes(currentRole) && Object.hasOwn(changes, "role") && changes.role.toLowerCase() !== currentRole) {
+          throw new AppError("ROLE_PROTECTED", "Admin- und Operatorrollen duerfen nicht aus Importdaten geaendert werden", 409);
+        }
+      }
+
+      const indexes = fieldIndexes(header);
+      for (const field of Object.keys(changes)) {
+        if (indexes[field] < 0) throw new AppError("SHEET_SCHEMA", `Personen-Spalte fuer ${field} fehlt`, 503);
+      }
+      const targetsMatch = String(row[externalIdIndex] || "").trim() === targetExternalId
+        && Object.entries(changes).every(([field, value]) => String(row[indexes[field]] ?? "") === value);
+      if (recoveryOnly && !targetsMatch) {
+        if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(request.personId);
+        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang des Mitgliederabgleichs ist weiterhin unklar", 503, { personId: request.personId });
+      }
+      if (targetsMatch) {
+        if (recoveryOnly && ["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) {
+          this.repository.revokeUserSessions(request.personId);
+        }
+        return withAudit({ success: true, action: request.action, personId: request.personId, fingerprint: currentFingerprint, repeated: true }, {
+          targetName: [beforeValues.firstName, beforeValues.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
+          before: null,
+          after: null,
+        });
+      }
+
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[idIndex] || "").trim() === request.personId);
+      if (!candidateRow) throw new AppError("PERSON_NOT_FOUND", "Person wurde nicht gefunden", 404);
+      candidateRow[externalIdIndex] = targetExternalId;
+      for (const [field, value] of Object.entries(changes)) candidateRow[indexes[field]] = value;
+      validateTableValues("players", candidate);
+      assertPlayerLoginConflictsNotWorsened(values, candidate);
+      if (targetExternalId) assertUniqueExternalId(projectPeopleReconciliation(candidate).people, targetExternalId, request.personId);
+
+      const maxIndex = Math.max(externalIdIndex, ...Object.keys(changes).map((field) => indexes[field]));
+      const updates = Array(maxIndex + 1).fill(null);
+      updates[externalIdIndex] = targetExternalId;
+      for (const [field, value] of Object.entries(changes)) updates[indexes[field]] = value;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{
+              dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } },
+              majorDimension: "ROWS",
+              values: [updates],
+            }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        try {
+          const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMATTED_VALUE", "confirmation");
+          const confirmed = confirmationRow
+            && String(confirmationRow[externalIdIndex] || "").trim() === targetExternalId
+            && Object.entries(changes).every(([field, value]) => String(confirmationRow[indexes[field]] ?? "") === value);
+          if (!confirmed) throw error;
+        } catch {
+          if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(request.personId);
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang des Mitgliederabgleichs ist unklar", 503, { personId: request.personId });
+        }
+      }
+
+      dataStore.set("players", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("players");
+      if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(request.personId);
+      const afterProjection = projectPeopleReconciliation(candidate).people.find((person) => person.id === request.personId);
+      const changedExternalId = beforeExternalId !== targetExternalId;
+      return withAudit({
+        success: true,
+        action: request.action,
+        personId: request.personId,
+        fingerprint: afterProjection?.fingerprint || "",
+      }, {
+        targetName: [afterProjection?.values.firstName, afterProjection?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
+        before: reconciliationAuditValues(
+          [...(changedExternalId ? ["externalId"] : []), ...Object.keys(changes)],
+          { externalId: beforeExternalId, ...beforeValues },
+          "vorher",
+        ),
+        after: reconciliationAuditValues(
+          [...(changedExternalId ? ["externalId"] : []), ...Object.keys(changes)],
+          { externalId: targetExternalId, ...changes },
+          "nachher",
+        ),
+      });
+    }));
+  }
+
   async normalizePerson(principal, params) {
     const changes = validateChanges(params.changes);
     const payload = {
@@ -551,10 +831,11 @@ class SheetService {
 
       if (recoveryOnly) {
         if (!targetsMatch) {
+          if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
           throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist weiterhin unklar", 503, { personId: params.personId });
         }
         const refreshed = values;
-        if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+        if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
         const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
         return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "", recovered: true }, {
           targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),
@@ -601,7 +882,7 @@ class SheetService {
 
       try {
         validateTableValues("players", candidate);
-        assertPlayerEmailConflictsNotWorsened(values, candidate);
+        assertPlayerLoginConflictsNotWorsened(values, candidate);
       } catch (error) {
         throw error;
       }
@@ -628,6 +909,7 @@ class SheetService {
           const confirmed = confirmationRow && Object.entries(changes).every(([field, value]) => String(confirmationRow[indexes[field]] ?? "") === value);
           if (!confirmed) throw error;
         } catch {
+          if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
           throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Personenaenderung ist unklar", 503, { personId: params.personId });
         }
       }
@@ -635,7 +917,7 @@ class SheetService {
       const refreshed = candidate;
       dataStore.set("players", refreshed, { source: "write-local", authoritative: false });
       this.scheduleRefresh("players");
-      if (["email", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
+      if (["login", "active", "role"].some((field) => Object.hasOwn(changes, field))) this.repository.revokeUserSessions(params.personId);
       const projected = projectPeopleNormalization(refreshed).people.find((person) => person.id === params.personId);
       return withAudit({ success: true, personId: params.personId, fingerprint: projected?.fingerprint || "" }, {
         targetName: [projected?.values.firstName, projected?.values.lastName].map((value) => String(value || "").trim()).filter(Boolean).join(" "),

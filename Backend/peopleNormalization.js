@@ -1,7 +1,7 @@
 const { AppError } = require("./errors.js");
 const { hashPayload } = require("./security.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
-const { emailValue } = require("./validators.js");
+const { emailValue, loginValue } = require("./validators.js");
 
 const FIELD_DEFINITIONS = Object.freeze({
   firstName: { headers: ["vorname"], max: 100 },
@@ -10,6 +10,7 @@ const FIELD_DEFINITIONS = Object.freeze({
   gender: { headers: ["geschlechtid", "geschlecht"], max: 1 },
   phone: { headers: ["telefonmobil"], max: 32 },
   email: { headers: ["e-mail", "email"], max: 254 },
+  login: { headers: ["login"], max: 254 },
   country: { headers: ["land"], max: 100 },
   postalCode: { headers: ["plz"], max: 16 },
   city: { headers: ["ort"], max: 100 },
@@ -32,20 +33,24 @@ const ISSUE_CODES = Object.freeze([
   "GENDER_INVALID",
   "PHONE_FORMAT_INVALID",
   "EMAIL_NONCANONICAL",
-  "EMAIL_DUPLICATE",
   "EMAIL_INVALID",
+  "LOGIN_NONCANONICAL",
+  "LOGIN_DUPLICATE",
+  "LOGIN_INVALID",
   "POSTAL_CODE_INVALID",
   "ACTIVE_NONCANONICAL",
   "ROLE_INVALID",
   "ROLE_NONCANONICAL",
 ]);
 const AUDIT_FIELD_LABELS = Object.freeze([
+  ["externalId", "CD-ID"],
   ["firstName", "Vorname"],
   ["lastName", "Nachname"],
   ["birthDate", "Geburtsdatum"],
   ["gender", "Geschlecht"],
   ["phone", "Telefon"],
   ["email", "E-Mail"],
+  ["login", "Login"],
   ["country", "Land"],
   ["postalCode", "PLZ"],
   ["city", "Ort"],
@@ -103,6 +108,7 @@ function validateTargetValue(field, rawValue) {
   if (definition.required && !value) throw new AppError("VALIDATION_ERROR", `${field} darf nicht leer sein`);
 
   if (field === "email" && value) value = emailValue(value);
+  if (field === "login" && value) value = loginValue(value);
   if (field === "birthDate" && value && !validBirthDate(value)) {
     throw new AppError("VALIDATION_ERROR", "GeburtsDatum muss TT.MM.JJJJ enthalten");
   }
@@ -151,20 +157,28 @@ function issue(field, code, message, proposedValue) {
   };
 }
 
-function analyzePerson(values, duplicateEmails) {
+function safeProposal(field, value) {
+  try {
+    return validateTargetValue(field, value);
+  } catch {
+    return undefined;
+  }
+}
+
+function analyzePerson(values, duplicateLogins) {
   const issues = [];
   for (const field of ["firstName", "lastName", "country", "city", "address"]) {
     const trimmed = values[field].trim();
-    if (values[field] !== trimmed) issues.push(issue(field, "EDGE_WHITESPACE", "Fuehrender oder nachgestellter Leerraum", trimmed));
+    if (values[field] !== trimmed) issues.push(issue(field, "EDGE_WHITESPACE", "Fuehrender oder nachgestellter Leerraum", safeProposal(field, trimmed)));
   }
   if (!values.lastName.trim()) issues.push(issue("lastName", "REQUIRED_VALUE_MISSING", "Nachname fehlt"));
 
   const birthDate = values.birthDate.trim();
-  if (values.birthDate !== birthDate) issues.push(issue("birthDate", "EDGE_WHITESPACE", "Rand-Leerraum im Geburtsdatum", birthDate));
+  if (values.birthDate !== birthDate) issues.push(issue("birthDate", "EDGE_WHITESPACE", "Rand-Leerraum im Geburtsdatum", safeProposal("birthDate", birthDate)));
   if (birthDate && !validBirthDate(birthDate)) issues.push(issue("birthDate", "BIRTH_DATE_INVALID", "Geburtsdatum ist nicht TT.MM.JJJJ"));
 
   const gender = values.gender.trim();
-  if (values.gender !== gender) issues.push(issue("gender", "EDGE_WHITESPACE", "Rand-Leerraum im Geschlecht", gender));
+  if (values.gender !== gender) issues.push(issue("gender", "EDGE_WHITESPACE", "Rand-Leerraum im Geschlecht", safeProposal("gender", gender)));
   if (gender && !["1", "2", "3"].includes(gender)) issues.push(issue("gender", "GENDER_INVALID", "GeschlechtID ist nicht 1, 2 oder 3"));
 
   const phone = values.phone.trim();
@@ -180,7 +194,6 @@ function analyzePerson(values, duplicateEmails) {
     try {
       const normalizedEmail = emailValue(email);
       if (values.email !== normalizedEmail) issues.push(issue("email", "EMAIL_NONCANONICAL", "E-Mail ist nicht kanonisch geschrieben", normalizedEmail));
-      if (duplicateEmails.has(normalizedEmail)) issues.push(issue("email", "EMAIL_DUPLICATE", "E-Mail wird mehrfach verwendet"));
     } catch {
       issues.push(issue("email", "EMAIL_INVALID", "E-Mail-Adresse ist ungueltig"));
     }
@@ -188,8 +201,19 @@ function analyzePerson(values, duplicateEmails) {
     issues.push(issue("email", "EDGE_WHITESPACE", "E-Mail enthaelt nur Leerraum", ""));
   }
 
+  const login = values.login;
+  if (login) {
+    try {
+      const normalizedLogin = loginValue(login);
+      if (login !== normalizedLogin) issues.push(issue("login", "LOGIN_NONCANONICAL", "Login ist nicht kanonisch geschrieben", normalizedLogin));
+      if (duplicateLogins.has(normalizedLogin)) issues.push(issue("login", "LOGIN_DUPLICATE", "Login wird mehrfach verwendet"));
+    } catch {
+      issues.push(issue("login", "LOGIN_INVALID", "Login ist ungueltig"));
+    }
+  }
+
   const postalCode = values.postalCode.trim();
-  if (values.postalCode !== postalCode) issues.push(issue("postalCode", "EDGE_WHITESPACE", "Rand-Leerraum in PLZ", postalCode));
+  if (values.postalCode !== postalCode) issues.push(issue("postalCode", "EDGE_WHITESPACE", "Rand-Leerraum in PLZ", safeProposal("postalCode", postalCode)));
   if (postalCode && !/^\d{4}$/.test(postalCode)) issues.push(issue("postalCode", "POSTAL_CODE_INVALID", "PLZ ist nicht vierstellig"));
 
   const active = values.active.trim();
@@ -198,7 +222,7 @@ function analyzePerson(values, duplicateEmails) {
 
   const role = values.role.trim();
   const normalizedRole = canonicalRole(role);
-  if (!normalizedRole) issues.push(issue("role", "ROLE_INVALID", "Role ist ungueltig", "player"));
+  if (!normalizedRole) issues.push(issue("role", "ROLE_INVALID", "Role ist ungueltig"));
   else if (values.role !== normalizedRole) issues.push(issue("role", "ROLE_NONCANONICAL", "Role ist nicht kanonisch geschrieben", normalizedRole));
   return issues;
 }
@@ -209,28 +233,28 @@ function normalizationContext(table) {
   const idIndex = headerIndex(header, "id");
   if (idIndex < 0) throw new AppError("SHEET_SCHEMA", "Personen-Spalte ID fehlt", 503);
 
-  const emailCounts = new Map();
+  const loginCounts = new Map();
   for (const row of table.slice(1)) {
     const values = rawPersonValues(header, row);
-    if (!values.email.trim()) continue;
+    if (!values.login) continue;
     try {
-      const email = emailValue(values.email);
-      emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
+      const login = loginValue(values.login);
+      loginCounts.set(login, (loginCounts.get(login) || 0) + 1);
     } catch {
       // Invalid values are reported on their row, not used as duplicate keys.
     }
   }
-  const duplicateEmails = new Set([...emailCounts].filter(([, count]) => count > 1).map(([email]) => email));
-  return { header, idIndex, duplicateEmails };
+  const duplicateLogins = new Set([...loginCounts].filter(([, count]) => count > 1).map(([login]) => login));
+  return { header, idIndex, duplicateLogins };
 }
 
 function projectPeopleNormalization(table) {
-  const { header, idIndex, duplicateEmails } = normalizationContext(table);
+  const { header, idIndex, duplicateLogins } = normalizationContext(table);
   const people = table.slice(1).flatMap((row) => {
     const id = String(row[idIndex] || "").trim();
     if (!id) return [];
     const values = rawPersonValues(header, row);
-    const issues = analyzePerson(values, duplicateEmails);
+    const issues = analyzePerson(values, duplicateLogins);
     return [{ id, values, issues, fingerprint: personFingerprint(values) }];
   });
   return {
@@ -241,7 +265,7 @@ function projectPeopleNormalization(table) {
 }
 
 function summarizePeopleNormalization(table) {
-  const { header, idIndex, duplicateEmails } = normalizationContext(table);
+  const { header, idIndex, duplicateLogins } = normalizationContext(table);
   const issueCounts = Object.fromEntries(ISSUE_CODES.map((code) => [code, 0]));
   let peopleCount = 0;
   let affectedCount = 0;
@@ -249,7 +273,7 @@ function summarizePeopleNormalization(table) {
   for (const row of table.slice(1)) {
     if (!String(row[idIndex] || "").trim()) continue;
     peopleCount++;
-    const issues = analyzePerson(rawPersonValues(header, row), duplicateEmails);
+    const issues = analyzePerson(rawPersonValues(header, row), duplicateLogins);
     if (issues.length) affectedCount++;
     issueCount += issues.length;
     for (const entry of issues) issueCounts[entry.code]++;

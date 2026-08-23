@@ -6,3 +6,239 @@ Commit: 4.5.1-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.5.1-paj-1-1` gesetzt.
+
+[4.5.1-paj-1-2] - 2026-08-23
+Commit: 4.5.1-paj-1-2 | Mitgliederabgleich und getrennten Login bereitgestellt
+
+  Added
+  - [Software] Responsive Adminseite `mitgliederAbgleichen.html` fuer den lokalen
+    Vergleich eines vollstaendigen ClubDesk-CSV-Exports mit dem aktuellen
+    Personenbestand angelegt. Sie unterscheidet geaenderte, neue, weggefallene,
+    unklare, konfliktbehaftete und identische Datensaetze, bietet Suche und
+    Filter sowie eine verpflichtende exakte Gesamtvorschau.
+  - [Software] Browserparser fuer Windows-1252, Semikolon-CSV, Quotes und die
+    festgelegten ClubDesk-Pflichtheader eingefuehrt. Dateien sind auf 5 MiB und
+    2000 Datensaetze begrenzt; unbekannte Zusatzspalten und insbesondere
+    Finanz-/Verwaltungsfelder werden unmittelbar verworfen.
+  - [Software] Erstzuordnungen ohne `CD-ID` werden nur bei eindeutigem exaktem
+    Treffer aus normalisiertem Vorname, Nachname und Geburtsdatum vorgeschlagen
+    und muessen bestaetigt werden. Mehrdeutige Identitaeten, doppelte IDs und
+    ungueltige Importwerte blockieren die Aktion; Login-Kollisionen unterdruecken
+    ausschliesslich den automatischen Vorschlag fuer eine Neuanlage.
+  - [Software] Adminprojektion `adminMemberReconciliation` und personweiser
+    Write-RPC `reconcilePerson` mit getrennten Aktionen fuer Verknuepfung/
+    Aktualisierung, Neuanlage und Deaktivierung ergaenzt. Der Vertrag erlaubt bei
+    Neuanlagen dreizehn kontrollierte Personenfelder einschliesslich `Login`, bei
+    Bestandsupdates jedoch keinen Loginwechsel.
+  - [Software] Neue Personen erhalten in der serialisierten `players`-Queue die
+    exakte Folge der hoechsten numerischen Personen-ID, eine eindeutige `CD-ID`,
+    Rolle `player A`, `player B` oder `player`, Aktivstatus `1` und stabile Google
+    Developer Metadata. Passwort-, Reset- und interne Felder bleiben leer.
+  - [Software] Sicherheitskern- und Browsertests fuer CSV-Vertraege, Zuordnung,
+    Differenzbildung, Konflikte, parallele ID-Vergabe, Idempotenz, unklare
+    Ausgaenge, Metadata-Recovery, Datenschutz, Authwechsel, responsive Bedienung,
+    Teilerfolg und erhaltene Restauswahl aufgenommen.
+  - [Datenbank] `Personen.Login` als erforderliche Sheetspalte und `login` als
+    additive SQLite-Session- und Login-Auditspalte eingefuehrt. Bestehende
+    SQLite-Sessions uebernehmen ihren bisherigen Anmeldenamen fuer einen
+    kontrollierten Vergleich mit dem aktuellen Personenlogin.
+
+  Changed
+  - [Software] Bestehende Personen koennen ausschliesslich feldweise bestaetigte
+    Importwerte uebernehmen. Leere Importwerte ueberschreiben den Bestand nicht;
+    Admin- und Operatorrollen werden weder aus Importgruppen geaendert noch bei
+    Exportabwesenheit deaktiviert. Spieler-Deaktivierungen leeren nur `Aktiv`.
+  - [Software] Exakte Vorschauwerte werden im Browser mit denselben Feldregeln wie
+    im Backend kanonisiert. Die Normalisierungsseite bietet fuer ungueltige Rollen
+    und weiterhin ungueltige Trim-Ziele keine uebernehmbaren Vorschlaege mehr.
+  - [Software] Mitgliederwrites pruefen Fingerprint, aktuelle stabile Sheetzeile,
+    `CD-ID`- und Login-Konflikte, erlaubte Rollen sowie den vollstaendigen
+    Kandidatenstand. Writes sind idempotent, stoppen beim ersten Personenfehler
+    und werden bei unklarem Ausgang nicht blind wiederholt.
+  - [Software] Login-Aenderungen der Personennormalisierung sowie Aktiv- oder
+    Rollenaenderungen widerrufen Sitzungen auch bei unklarem Writeausgang und
+    nach erfolgreicher Recovery vorsorglich;
+    reine Kontakt-E-Mail-Aenderungen lassen Sitzungen bestehen. Nach einem
+    bestaetigten Append bleiben Metadatafehler ueber die gespeicherte Personen-ID wiederaufnehmbar;
+    wiedergefundene Metadata schliesst persistente Pending-Intents ab.
+  - [Software] Browserdiagnosen fuer Authentifizierung, Laden, CSV-Parsing und
+    Writes in die feste Allowlist sowie den Seitentyp `mitgliederAbgleichen`
+    aufgenommen. Reconciliation-Audits speichern neben Zielidentitaet nur
+    Feldmarker und kontrollierte Aktiv-/Rollenwerte, keine importierten Kontakt-,
+    Adress- oder Geburtswerte.
+  - [Software] Anmeldung, Passwort-Erstvergabe, Sessionidentitaet und
+    Login-Audits verwenden `Login` statt der Kontakt-E-Mail. Der temporaere
+    HTTP-Parameteralias `email` bleibt kompatibel, wird aber ausschliesslich als
+    Login interpretiert. Sessions werden beim naechsten Zugriff verworfen, wenn
+    ihr gespeicherter Login nicht mehr zum aktuellen Personenlogin passt.
+  - [Software] Kontakt-E-Mail ist optional und darf mehrfach vorkommen. Login ist
+    optional, fuer aktive Personen nicht verpflichtend, bei Belegung jedoch
+    case-insensitiv eindeutig und auf 3 bis 254 E-Mail-kompatible ASCII-Zeichen
+    ohne Leerraum begrenzt. Login ist nur im eigenen Profil und fuer Admins
+    sichtbar; Mitgliederverzeichnis und fremde Profile geben ihn nicht aus.
+  - [Software] Der ClubDesk-Import schlaegt Login nur bei einer Neuanlage mit
+    im Export einmaliger und im Bestand als Login freier Kontakt-E-Mail vor.
+    Bei mehrfach importierten oder bereits als Login belegten Kontakt-E-Mails
+    bleibt Login fuer Neuanlagen leer. Bestehende Logins werden vom Import nie
+    veraendert; es gibt keine zusaetzliche Inhaberauswahl oder Bestaetigung.
+  - [Repository] Paketversion in `Backend/package.json` und
+    `Backend/package-lock.json` auf `4.5.1-paj-1-2` finalisiert.
+
+  Fixed
+  - [Software] ClubDesk-Gruppen mit Funktionszusatz wie `A-Mitglieder (Trainer)`
+    oder `B-Mitglieder (Jugend)` werden als A- beziehungsweise B-Mitgliedschaft
+    erkannt. Eine A-Mitgliedschaft hat Vorrang vor B- und allen weiteren
+    Funktionsgruppen; sonstige Trainer-, Vorstands- oder Vereinsfunktionen haben
+    keine Rollenwirkung.
+  - [Software] Importierte Personendaten, Dateiverweise, Vorschauen und
+    Auswahlinhalte werden bei Verlust der Adminberechtigung vollstaendig aus DOM
+    und Arbeitsspeicher entfernt. Laufende oder ueberholte Dateilesungen und nach
+    Bestandsaenderungen veraltete Auswahlzustaende werden verworfen.
+  - [Software] Konfliktziele erscheinen nicht gleichzeitig als
+    Deaktivierungskandidaten. Sehr grosse numerische Personen-IDs werden ohne
+    JavaScript-Number-Praezisionsverlust fortgeschrieben.
+  - [Software] Wiedererkannte sensible Mitgliederwrites widerrufen Sitzungen
+    auch dann, wenn Google den ersten Write angewendet, aber dessen Antwort und
+    unmittelbare Bestaetigung nicht geliefert hat.
+
+  Pruefungen
+  - [Repository] `npm run check` erfolgreich.
+  - [Repository] `npm test` erfolgreich: alle 227 Backendtests bestanden.
+  - [Repository] `npm run test:browser` erfolgreich: alle zehn Browsertests
+    einschliesslich Mitgliederabgleich, Normalisierung, Navigation und Scoreboard
+    bestanden.
+  - [Repository] `git diff --check` ohne Fehler.
+  - [Software] Fachlicher Test des vollstaendigen Arbeitsstands im PAJ-System
+    durch den User abgeschlossen.
+
+  Betrieb und bekannte Einschraenkungen
+  - [Software] ClubDesk-CSV-Daten werden ausschliesslich lokal im Browser
+    verarbeitet. An das Backend gelangen nur bestaetigte geschlossene
+    Personenaktionen; CSV-Rohdaten werden weder hochgeladen noch geloggt.
+  - [Betrieb] Google Sheets bietet keine transaktionale Compare-and-set-Operation
+    ueber Zielzeile, ID-, `CD-ID`- und Login-Eindeutigkeit. Der kontrollierte
+    Importlauf muss deshalb ohne parallele manuelle oder zweite Backendwrites auf
+    `Personen` erfolgen; Fingerprints, `players`-Queue und Nachkontrollen bleiben
+    zusaetzliche Schutzschichten.
+  - [Betrieb] Vor dem Start dieser Version muss `Personen.Login` im Sheet
+    vorhanden und fuer bestehende Anmeldekonten eindeutig befuellt sein. Erst
+    danach darf der Backendprozess mit dem neuen Pflichtschema gestartet werden;
+    es gibt bewusst keinen Rueckfall von Login auf die nicht eindeutige
+    Kontakt-E-Mail. Bestehende Login-Dubletten werden vor dem Import manuell im
+    Sheet bereinigt.
+  - [Betrieb] Live-Deployment, Backups und fachliche Writes auf Live sind nicht
+    Bestandteil dieses Commits und benoetigen den vereinbarten separaten
+    Freigabeschritt.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/ChangeLogs/ChangeLog-main.txt
+    - Den vollstaendigen Branchumfang als neue Main-Version mit Quelle
+      `4.5.1-paj-1`, Migration, Sicherheitsfolgen, Pruefungen und
+      Betriebsanforderungen zusammengefasst uebernehmen.
+
+    Project/FACHKONZEPT.txt
+    - Den kontrollierten ClubDesk-Mitgliederabgleich als getrennten Adminablauf
+      fuer lokalen CSV-Vergleich, Einzelbestaetigung, Gesamtvorschau und
+      personweise Writes aufnehmen; die bisherige Zukunftsabgrenzung der
+      Personennormalisierung ersetzen.
+    - Login als eindeutige optionale Anmeldekennung von der optionalen,
+      mehrfach verwendbaren Kontakt-E-Mail trennen; Sessionwiderruf fuer Login,
+      Aktiv und Rolle, nicht fuer reine Kontakt-E-Mail-Aenderungen festhalten.
+    - Anforderungen fuer Adminzugriff, lokale CSV-Verarbeitung, eindeutige
+      Erstzuordnung, geschuetzte Neuanlage/Aktualisierung/Deaktivierung und
+      geschuetzte Admin-/Operatorrollen ergaenzen.
+
+    Project/software/SOFTWARE-DOKU.txt
+    - Seitenindex von zwei auf drei Administrationsseiten erweitern und
+      `software/seiten/mitgliederAbgleichen.txt` als ClubDesk-Mitgliederabgleich
+      aufnehmen.
+
+    Project/software/seiten/mitgliederAbgleichen.txt
+    - Neue Seitendokumentation fuer Adminzugriff, Authverlust-Bereinigung,
+      Windows-1252-/Semikolon-CSV-Vertrag, Pflichtheader, 5-MiB-/2000-Zeilen-
+      Grenzen, Feldabbildung, Gruppenprioritaet und Fehlercodes anlegen.
+    - Kategorien, `CD-ID`- und Identitaetszuordnung, Loginvorschlag nur fuer
+      eindeutige freie Neuanlagen, Auswahl, Gesamtvorschau, sequenzielle Writes,
+      Teilerfolg, Reloadschutz und Google-Sheets-CAS-Grenze dokumentieren.
+    - Seitentyp `mitgliederAbgleichen`, vier benannte Browserdiagnosen,
+      kontrollierte Auditmarker und Ausschluss von CSV-Roh- und Kontaktwerten
+      aus Logs und Audit festhalten.
+
+    Project/software/seiten/personenNormalisieren.txt
+    - Die Normalisierung als getrennten Bestandsablauf beschreiben, `login` als
+      dreizehntes kontrolliertes Feld ergaenzen und `CD-ID`, CSV, Neuanlage und
+      Exportdeaktivierung dem Mitgliederabgleich zuordnen.
+    - `EMAIL_DUPLICATE` und E-Mail-Eindeutigkeit entfernen; Kontakt-E-Mail-
+      Dubletten erlauben und `LOGIN_NONCANONICAL`, `LOGIN_DUPLICATE`,
+      `LOGIN_INVALID` sowie Login-Konfliktschutz aufnehmen.
+    - Sessionwiderruf auf Login, Aktiv und Rolle begrenzen und den Audit-/
+      Metrikvertrag auf vierzehn Problemcodes aktualisieren.
+
+    Project/software/seiten/index.txt
+    - Adminnavigation um den Mitgliederabgleich ergaenzen; Login- und
+      Passwortdialoge sowie Passwortmanager-Username von Kontakt-E-Mail auf
+      Login umstellen.
+    - Eigenes Profil mit Login und Kontakt-E-Mail getrennt, fremden Login nur
+      fuer Admins und Kontaktkopie weiterhin nur fuer E-Mail/Telefon beschreiben.
+
+    Project/software/seiten/players.txt
+    - `E-Mail` als Kontakt-E-Mail und `memberDirectory` ausdruecklich ohne Login
+      dokumentieren; eigenen Login im Eigenprofil und fremden Login nur in der
+      Adminprojektion ergaenzen.
+
+    Project/software/ENDPOINTS.txt
+    - `POST /api/session` und `POST /api/password-setup` auf `{ login, ... }`
+      umstellen; `email` nur als temporaeren Parameternamenalias fuer Login ohne
+      Kontakt-E-Mail-Fallback dokumentieren. Session-, Profil- und Auditantworten
+      auf getrennte Login-/Kontaktfelder aktualisieren.
+    - `adminPeopleNormalization`, `normalizePerson`, Problemcodes,
+      Login-Eindeutigkeit und Sessionwiderruf auf dreizehn Felder aktualisieren.
+    - `adminMemberReconciliation {}` und die geschlossenen, nur fuer Admins
+      erlaubten `reconcilePerson`-Aktionen update/create/deactivate samt
+      Fingerprint, `CD-ID`, Rollen-, Login-, Idempotenz- und Recoveryvertrag
+      dokumentieren; Login in Bestandsupdates verbieten.
+
+    Project/software/DATENBANK.txt
+    - `Personen.Login` als Pflichtspalte und optionale case-insensitiv eindeutige
+      Anmeldekennung aufnehmen; Kontakt-`E-Mail` optional, validiert und nicht
+      eindeutig beschreiben. Loginwarnungen ersetzen E-Mail-Dublettenwarnungen.
+    - Dreizehn-Feld-Normalisierung, `CD-ID`-Mitgliederabgleich, Projektionen,
+      Sessionbindung und Rolloutvoraussetzungen dokumentieren.
+    - SQLite-Schema um `sessions.login` und `audit_log.attempted_login` samt
+      additiver Migration ergaenzen; Loginlimits und Auditmaskierung von E-Mail
+      auf Login umstellen, historische Altspalten beibehalten.
+
+    Project/software/ARCHITEKTUR.txt
+    - `memberReconciliation.js`, `personValues.js`, `memberImport.js` und
+      `mitgliederAbgleichen.js` mit Datenfluss, Queue, stabiler Metadata,
+      Append-/Unknown-Recovery, Cacheinvalidierung und Seitenbereitschaft
+      aufnehmen.
+    - Authentifizierung, Limits und Sessions ausschliesslich an Login binden;
+      Kontakt-E-Mail als nicht eindeutiges Profilfeld und Login-Sichtbarkeit nur
+      fuer eigene Person/Admin beschreiben.
+    - Observability um Seitentyp, Allowlist, Redaction und kontrollierte
+      Reconciliation-Audits erweitern; Rolloutreihenfolge Loginspalte/-bestand
+      vor Backendstart festhalten.
+
+    Project/server-configs/ROLLOUT-CHECKLIST.md
+    - `Personen.Login`, eindeutige belegte Logins, Login-basierte Erstvergabe und
+      Login-Auditmaskierung in die Vorpruefungen aufnehmen; mehrfach verwendbare
+      Kontakt-E-Mails erlauben.
+    - PAJ-Abnahme fuer Adminschutz, lokale CSV, Vorschau, Verknuepfung,
+      Neuanlage, Update, Deaktivierung, Konflikt und Teilerfolg sowie Verbot
+      paralleler Personenwrites ergaenzen.
+
+    Project/server-configs/SERVER-SETUP.txt
+    - Passwort-Erstvergabe und Login-Audit von Kontakt-E-Mail auf Login
+      umstellen; normalisierten Login und Quell-IP nur maskiert im Journal
+      beschreiben.
+
+    Project/server-configs/BACKUP-RESTORE-KONZEPT.md
+    - Restorepruefung auf eindeutige belegte Personen-Logins umstellen und leere
+      oder mehrfach verwendete Kontakt-E-Mails zulassen; Audit-Backupinhalt als
+      normalisierte gueltige Logins und Quell-IPs beschreiben.
+
+    AGENTS.md
+    - Schnellreferenz um `mitgliederAbgleichen.html` als Admin-ClubDesk-
+      Mitgliederabgleich ohne URL-Parameter erweitern.

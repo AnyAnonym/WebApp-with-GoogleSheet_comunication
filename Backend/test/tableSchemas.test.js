@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
-const { assertUniquePlayerEmails, validateTableValues } = require("../tableSchemas.js");
+const { assertUniquePlayerLogins, validateTableValues } = require("../tableSchemas.js");
 const logger = require("../logger.js");
 const { roleValue } = require("../validators.js");
 
@@ -18,57 +18,78 @@ test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
   assert.equal(validateTableValues("matchtyp", matchtyp), matchtyp);
 });
 
-test("Personen-IDs bleiben fatal und doppelte E-Mails fuer Reparaturen lesbar", () => {
+function peopleWithLogin() {
+  const values = peopleFixture();
+  values[0].push("Login");
+  values.slice(1).forEach((row) => row.push(row[3]));
+  return values;
+}
+
+test("Personen-IDs bleiben fatal und Login ist eine Pflichtspalte", () => {
   const duplicate = peopleFixture();
   duplicate.push(["p1", "Duplicate", "ID", "ada@example.test", "c".repeat(64), "", "", "", "1", "admin"]);
   assert.throws(() => validateTableValues("players", duplicate), { code: "SHEET_SCHEMA" });
 
-  const valid = peopleFixture();
+  const valid = peopleWithLogin();
   assert.equal(validateTableValues("players", valid), valid);
+  assert.throws(() => validateTableValues("players", peopleFixture()), { code: "SHEET_SCHEMA" });
 
-  const idnDuplicate = peopleFixture();
-  idnDuplicate[1][3] = "üser@münchen.example";
-  idnDuplicate[2][3] = "üser@xn--mnchen-3ya.example";
-  assert.equal(validateTableValues("players", idnDuplicate), idnDuplicate);
-  assert.throws(() => assertUniquePlayerEmails(idnDuplicate), { code: "EMAIL_CONFLICT" });
+  const duplicateEmail = peopleWithLogin();
+  duplicateEmail[2][3] = duplicateEmail[1][3];
+  assert.equal(validateTableValues("players", duplicateEmail), duplicateEmail);
+  assert.doesNotThrow(() => assertUniquePlayerLogins(duplicateEmail));
+
+  duplicateEmail[2][duplicateEmail[0].indexOf("Login")] = duplicateEmail[1].at(-1).toUpperCase();
+  assert.equal(validateTableValues("players", duplicateEmail), duplicateEmail);
+  assert.throws(() => assertUniquePlayerLogins(duplicateEmail), { code: "LOGIN_CONFLICT" });
 });
 
-test("ungueltige Personen-E-Mails werden identifizierbar geloggt und blockieren den Load nicht", (t) => {
+test("ungueltige Personen-Logins werden ohne Rohwerte identifizierbar geloggt und blockieren den Load nicht", (t) => {
   const events = [];
   t.mock.method(logger, "log", (level, event, fields) => events.push({ level, event, fields }));
-  const invalidEmail = peopleFixture();
-  invalidEmail[1][3] = "ada@example";
+  const invalidLogin = peopleWithLogin();
+  invalidLogin[1][invalidLogin[0].indexOf("Login")] = " Ada Login ";
+  invalidLogin.push([...invalidLogin[2]]);
+  invalidLogin[3][0] = "p3";
 
-  assert.equal(validateTableValues("players", invalidEmail), invalidEmail);
-  for (let validation = 1; validation < 10; validation++) validateTableValues("players", invalidEmail);
-  const validEmail = peopleFixture();
-  assert.equal(validateTableValues("players", validEmail), validEmail);
+  assert.equal(validateTableValues("players", invalidLogin), invalidLogin);
+  for (let validation = 1; validation < 10; validation++) validateTableValues("players", invalidLogin);
+  const validLogin = peopleWithLogin();
+  assert.equal(validateTableValues("players", validLogin), validLogin);
 
   assert.deepEqual(events, [
     {
       level: "warn",
-      event: "player_email_validation_issues",
+      event: "player_login_validation_issues",
       fields: {
         table: "players",
-        affectedCount: 1,
-        affected: [{ rowNumber: 2, personId: "p1", reason: "INVALID_EMAIL" }],
+        affectedCount: 3,
+        affected: [
+          { rowNumber: 2, personId: "p1", reason: "INVALID_LOGIN" },
+          { rowNumber: 3, personId: "p2", reason: "DUPLICATE_LOGIN" },
+          { rowNumber: 4, personId: "p3", reason: "DUPLICATE_LOGIN" },
+        ],
         omittedCount: 0,
       },
     },
     {
       level: "warn",
-      event: "player_email_validation_summary",
+      event: "player_login_validation_summary",
       fields: {
         table: "players",
-        affectedCount: 1,
-        affected: [{ rowNumber: 2, personId: "p1", reason: "INVALID_EMAIL" }],
+        affectedCount: 3,
+        affected: [
+          { rowNumber: 2, personId: "p1", reason: "INVALID_LOGIN" },
+          { rowNumber: 3, personId: "p2", reason: "DUPLICATE_LOGIN" },
+          { rowNumber: 4, personId: "p3", reason: "DUPLICATE_LOGIN" },
+        ],
         omittedCount: 0,
       },
     },
     {
       level: "info",
-      event: "player_email_validation_recovered",
-      fields: { table: "players", previousAffectedCount: 1 },
+      event: "player_login_validation_recovered",
+      fields: { table: "players", previousAffectedCount: 3 },
     },
   ]);
 });
@@ -76,7 +97,8 @@ test("ungueltige Personen-E-Mails werden identifizierbar geloggt und blockieren 
 test("ungueltige Personenrollen warnen einmalig und fallen auf player zurueck", (t) => {
   const warnings = [];
   t.mock.method(logger, "log", (level, event, fields) => warnings.push({ level, event, fields }));
-  const invalid = peopleFixture("Court Boss");
+  const invalid = peopleWithLogin();
+  invalid[1][9] = "Court Boss";
 
   assert.equal(validateTableValues("players", invalid), invalid);
   assert.equal(validateTableValues("players", invalid), invalid);

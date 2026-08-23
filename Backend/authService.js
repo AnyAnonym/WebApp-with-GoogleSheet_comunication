@@ -5,7 +5,7 @@ const { PASSWORD_RESET_TTL_MS, SESSION_TTL_MS } = require("./config.js");
 const { AppError } = require("./errors.js");
 const { hashPayload, timingSafeTextEqual } = require("./security.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
-const { emailValue, passwordHashValue, roleValue } = require("./validators.js");
+const { emailValue, loginValue, passwordHashValue, roleValue } = require("./validators.js");
 
 const scryptAsync = promisify(crypto.scrypt);
 const SCRYPT_N = 16384;
@@ -26,6 +26,16 @@ function personEmailValue(value) {
   if (!raw) return "";
   try {
     return emailValue(raw);
+  } catch {
+    return "";
+  }
+}
+
+function personLoginValue(value) {
+  const raw = String(value || "");
+  if (!raw.trim()) return "";
+  try {
+    return loginValue(raw);
   } catch {
     return "";
   }
@@ -78,6 +88,7 @@ class AuthService {
       firstName: headerIndex(header, "vorname"),
       lastName: headerIndex(header, "nachname"),
       email: headerIndex(header, "e-mail", "email"),
+      login: headerIndex(header, "login"),
       passwordHash: headerIndex(header, "passwdhash"),
       phone: headerIndex(header, "telefonmobil"),
       birthDate: headerIndex(header, "geburtsdatum"),
@@ -94,6 +105,8 @@ class AuthService {
       firstName: String(row[indexes.firstName] || "").trim(),
       lastName: String(row[indexes.lastName] || "").trim(),
       email: indexes.email < 0 ? "" : personEmailValue(row[indexes.email]),
+      loginRaw: indexes.login < 0 ? "" : String(row[indexes.login] || ""),
+      login: indexes.login < 0 ? "" : personLoginValue(row[indexes.login]),
       storedPasswordHash: indexes.passwordHash < 0 ? "" : String(row[indexes.passwordHash] || "").trim(),
       phone: indexes.phone < 0 ? "" : String(row[indexes.phone] || "").trim(),
       birthDate: indexes.birthDate < 0 ? "" : String(row[indexes.birthDate] || "").trim(),
@@ -105,9 +118,9 @@ class AuthService {
     })).filter((person) => person.id);
   }
 
-  findByEmail(email) {
-    const normalized = emailValue(email);
-    const matches = this.parsePeople().filter((person) => person.email === normalized);
+  findByLogin(login) {
+    const normalized = loginValue(login);
+    const matches = this.parsePeople().filter((person) => person.login === normalized);
     return matches.length === 1 ? matches[0] : null;
   }
 
@@ -154,7 +167,7 @@ class AuthService {
       email: person.email,
       phone: person.phone,
       birthDate: person.birthDate,
-      ...(includeAdminFields ? { passwordSetupAllowed: person.passwordSetupAllowed } : {}),
+      ...(includeAdminFields ? { login: person.loginRaw, passwordSetupAllowed: person.passwordSetupAllowed } : {}),
     };
   }
 
@@ -164,6 +177,7 @@ class AuthService {
       firstName: person.firstName,
       lastName: person.lastName,
       email: person.email,
+      login: person.loginRaw,
       phone: person.phone,
       birthDate: person.birthDate,
       gender: person.gender,
@@ -216,11 +230,11 @@ class AuthService {
     return { valid: crypto.timingSafeEqual(actual, expected), legacy: false };
   }
 
-  async login({ email, passwordHash, ip }) {
-    const normalizedEmail = emailValue(email);
+  async login({ login, passwordHash, ip }) {
+    const normalizedLogin = loginValue(login);
     const credential = passwordHashValue(passwordHash);
     this.ensurePeopleAvailable();
-    const rateKey = `${ip}|${normalizedEmail}`;
+    const rateKey = `${ip}|${normalizedLogin}`;
     const ipRateKey = `ip|${ip}`;
     const blockedFor = Math.max(this.repository.getLoginBlock(rateKey), this.repository.getLoginBlock(ipRateKey));
     if (blockedFor > 0) {
@@ -233,20 +247,20 @@ class AuthService {
     if (reservedFor > 0) {
       throw new AppError("LOGIN_RATE_LIMIT", "Zu viele Anmeldeversuche", 429, { retryAfterMs: reservedFor });
     }
-    const initialPerson = this.findByEmail(normalizedEmail);
+    const initialPerson = this.findByLogin(normalizedLogin);
     if (!initialPerson?.active) {
       await this.verifyCredential(credential, DUMMY_STORED_HASH);
-      throw new AppError("LOGIN_FAILED", "E-Mail oder Passwort ist ungueltig", 401);
+      throw new AppError("LOGIN_FAILED", "Login oder Passwort ist ungueltig", 401);
     }
     return this.runForUser(initialPerson.id, async () => {
       this.ensurePeopleAvailable();
-      const person = this.findByEmail(normalizedEmail);
+      const person = this.findByLogin(normalizedLogin);
       const verification = await this.verifyCredential(
         credential,
         person?.active && person.id === initialPerson.id ? person.storedPasswordHash : DUMMY_STORED_HASH,
       );
       if (!person || person.id !== initialPerson.id || !person.active || !verification.valid) {
-        throw new AppError("LOGIN_FAILED", "E-Mail oder Passwort ist ungueltig", 401);
+        throw new AppError("LOGIN_FAILED", "Login oder Passwort ist ungueltig", 401);
       }
       this.repository.clearLoginFailures(rateKey);
       this.repository.clearLoginFailures(ipRateKey);
@@ -256,7 +270,7 @@ class AuthService {
         person.storedPasswordHash = upgraded;
       }
       this.repository.revokeUserSessions(person.id);
-      const session = this.repository.createSession({ userId: person.id, email: person.email, ttlMs: SESSION_TTL_MS });
+      const session = this.repository.createSession({ userId: person.id, email: person.email, login: person.login, ttlMs: SESSION_TTL_MS });
       return { session, user: this.privateProfile(person) };
     });
   }
@@ -270,7 +284,7 @@ class AuthService {
       if (!allowLastKnownGoodRole || !hasLastKnownGoodPeople) this.ensurePeopleAvailable();
     }
     const person = this.findById(session.userId);
-    if (!person || !person.active) {
+    if (!person || !person.active || !person.login || session.login !== person.login) {
       if (!peopleCurrent) throw new AppError("PERSON_DATA_UNAVAILABLE", "Personendaten sind derzeit nicht aktuell", 503);
       this.repository.revokeSession(token);
       return null;
@@ -280,6 +294,7 @@ class AuthService {
       principal: {
         type: "user",
         id: person.id,
+        login: person.login,
         email: person.email,
         role: person.role,
         ...(!peopleCurrent ? { roleSource: "last_known_good" } : {}),
@@ -297,7 +312,7 @@ class AuthService {
     try {
       person = this.findById(session.userId);
     } catch {}
-    if (!person?.active) {
+    if (!person?.active || !person.login || session.login !== person.login) {
       if (peopleCurrent) this.repository.revokeSession(token);
       return null;
     }
@@ -340,7 +355,7 @@ class AuthService {
         throw error;
       }
       this.repository.revokeUserSessions(person.id);
-      const session = this.repository.createSession({ userId: person.id, email: person.email, ttlMs: SESSION_TTL_MS });
+      const session = this.repository.createSession({ userId: person.id, email: person.email, login: person.login, ttlMs: SESSION_TTL_MS });
       return { success: true, session, user: this.privateProfile(person) };
     });
   }
@@ -414,18 +429,18 @@ class AuthService {
     });
   }
 
-  async setupPassword(email, newPasswordHash) {
-    const normalizedEmail = emailValue(email);
+  async setupPassword(login, newPasswordHash) {
+    const normalizedLogin = loginValue(login);
     const credential = passwordHashValue(newPasswordHash, "newPasswordHash");
     this.ensurePeopleAvailable();
-    const initialPerson = this.findByEmail(normalizedEmail);
+    const initialPerson = this.findByLogin(normalizedLogin);
     if (!initialPerson?.active || !initialPerson.passwordSetupAllowed) {
       await this.createStoredPasswordHash(credential);
       throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
     }
     return this.runForUser(initialPerson.id, async () => {
       this.ensurePeopleAvailable();
-      const person = this.findByEmail(normalizedEmail);
+      const person = this.findByLogin(normalizedLogin);
       if (!person || person.id !== initialPerson.id || !person.active || !person.passwordSetupAllowed) {
         throw new AppError("PASSWORD_SETUP_INVALID", "Passwortvergabe ist nicht freigegeben", 401);
       }

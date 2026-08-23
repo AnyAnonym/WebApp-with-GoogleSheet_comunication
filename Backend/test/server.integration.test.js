@@ -116,7 +116,10 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   t.mock.method(logger, "log", (level, event, fields = {}) => logEntries.push({ level, event, fields }));
   dataStore.resetForTests();
   const people = peopleFixture();
-  people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator"]);
+  people[0].push("CD-ID", "Login");
+  people[1].push("", "ada.login");
+  people[2].push("", "peter.login");
+  people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator", "", "", "operator.login"]);
   dataStore.set("players", people, { source: "test" });
   dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID", "Geschlecht", "MatchtypID Standard"], ["cup-1", "Cup", "type-1", "2", "1"]], { source: "test" });
   dataStore.set("bewerbsart", [["ID", "Bezeichnung"], ["type-1", "Turnier"]], { source: "test" });
@@ -235,7 +238,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const wrongOriginLogin = await fetch(`${httpBase}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://evil.test" },
-    body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
+    body: JSON.stringify({ login: "ada.login", passwordHash: "a".repeat(64) }),
   });
   assert.equal(wrongOriginLogin.status, 403);
 
@@ -246,30 +249,45 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(oversizedLogin.status, 413);
 
-  const invalidEmailLogin = await fetch(`${httpBase}/api/session`, {
+  const invalidLogin = await fetch(`${httpBase}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "192.0.2.10" },
-    body: JSON.stringify({ email: "<script>@example.test", passwordHash: "b".repeat(64) }),
+    body: JSON.stringify({ login: " bad login ", passwordHash: "b".repeat(64) }),
   });
-  assert.equal(invalidEmailLogin.status, 400);
+  assert.equal(invalidLogin.status, 400);
+
+  const ambiguousLogin = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ login: "ada.login", email: "ada.login", passwordHash: "a".repeat(64) }),
+  });
+  assert.equal(ambiguousLogin.status, 400);
+  const unknownLoginField = await fetch(`${httpBase}/api/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ login: "ada.login", passwordHash: "a".repeat(64), extra: true }),
+  });
+  assert.equal(unknownLoginField.status, 400);
 
   const failedLogin = await fetch(`${httpBase}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "203.0.113.42" },
-    body: JSON.stringify({ email: " ADA@Example.Test ", passwordHash: "b".repeat(64) }),
+    body: JSON.stringify({ email: "ADA.LOGIN", passwordHash: "b".repeat(64) }),
   });
   assert.equal(failedLogin.status, 401);
 
   const loginResponse = await fetch(`${httpBase}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local", "X-Forwarded-For": "198.51.100.20" },
-    body: JSON.stringify({ email: "ada@example.test", passwordHash: "a".repeat(64) }),
+    body: JSON.stringify({ login: "ADA.LOGIN", passwordHash: "a".repeat(64) }),
   });
   assert.equal(loginResponse.status, 200);
   assert.equal(loginResponse.headers.get("access-control-allow-origin"), "http://test.local");
   assert.equal(loginResponse.headers.get("access-control-allow-credentials"), "true");
   const loginPayload = await loginResponse.json();
   assert.equal(loginPayload.user.role, "admin");
+  assert.equal(loginPayload.user.login, "ada.login");
+  assert.equal(loginPayload.user.email, "ada@example.test");
   assert.equal(loginPayload.frontendLogging.enabled, false);
   const cookie = loginResponse.headers.get("set-cookie").split(";", 1)[0];
   assert.match(cookie, /^epiber_test_session=/);
@@ -320,7 +338,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal((await loggingTargetResponse.json()).revision, 1);
 
   const authenticatedSession = await fetch(`${httpBase}/api/session`, { headers: { Cookie: cookie } });
-  assert.equal((await authenticatedSession.json()).user.email, "ada@example.test");
+  const authenticatedSessionPayload = await authenticatedSession.json();
+  assert.equal(authenticatedSessionPayload.user.email, "ada@example.test");
+  assert.equal(authenticatedSessionPayload.user.login, "ada.login");
 
   const adminPasswordResponse = await fetch(`${httpBase}/api/admin/password`, {
     method: "POST",
@@ -337,17 +357,29 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(setupPermissionResponse.status, 200);
   assert.deepEqual(await setupPermissionResponse.json(), { success: true, personId: "p2", allowed: true });
+  const ambiguousSetupResponse = await fetch(`${httpBase}/api/password-setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ login: "peter.login", email: "peter.login", newPasswordHash: "9".repeat(64) }),
+  });
+  assert.equal(ambiguousSetupResponse.status, 400);
+  const unknownSetupFieldResponse = await fetch(`${httpBase}/api/password-setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "http://test.local" },
+    body: JSON.stringify({ login: "peter.login", newPasswordHash: "9".repeat(64), extra: true }),
+  });
+  assert.equal(unknownSetupFieldResponse.status, 400);
   const setupResponse = await fetch(`${httpBase}/api/password-setup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local" },
-    body: JSON.stringify({ email: "peter@example.test", newPasswordHash: "9".repeat(64) }),
+    body: JSON.stringify({ email: "PETER.LOGIN", newPasswordHash: "9".repeat(64) }),
   });
   assert.equal(setupResponse.status, 200);
   assert.deepEqual(await setupResponse.json(), { success: true });
   const repeatedSetupResponse = await fetch(`${httpBase}/api/password-setup`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: "http://test.local" },
-    body: JSON.stringify({ email: "peter@example.test", newPasswordHash: "8".repeat(64) }),
+    body: JSON.stringify({ login: "peter.login", newPasswordHash: "8".repeat(64) }),
   });
   assert.equal(repeatedSetupResponse.status, 401);
 
@@ -466,7 +498,10 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.notEqual(parallelSuccess.supportId, parallelFailure.supportId);
 
   const adminClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local", Cookie: cookie });
-  assert.equal((await adminClient.handshake()).principal.role, "admin");
+  const adminPrincipal = (await adminClient.handshake()).principal;
+  assert.equal(adminPrincipal.role, "admin");
+  assert.equal(adminPrincipal.user.login, "ada.login");
+  assert.equal(adminPrincipal.user.email, "ada@example.test");
   let statusPayload;
   await waitFor(async () => {
     const statusResponse = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
@@ -511,8 +546,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(directory.data.values[0].includes("E-Mail"), true);
   assert.equal(directory.data.values[0].includes("GeburtsDatum"), true);
   assert.equal(directory.data.values[0].includes("PasswdHash"), false);
+  assert.equal(directory.data.values[0].includes("Login"), false);
 
-  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", ttlMs: 60000 });
+  const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", login: "peter.login", ttlMs: 60000 });
   const playerLoggingPolicy = await fetch(`${httpBase}/api/frontend-logging-policy`, {
     headers: { Cookie: `epiber_test_session=${playerSession.token}` },
   });
@@ -568,6 +604,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(memberProfile.data.profile.email, "ada@example.test");
   assert.equal(memberProfile.data.profile.phone, "+43123");
   assert.equal(memberProfile.data.profile.birthDate, "19900102");
+  assert.equal(memberProfile.data.profile.login, undefined);
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
   assert.equal((await fetch(`${httpBase}/api/admin/frontend-logging`, {
@@ -590,7 +627,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal(forbiddenAdminPassword.status, 403);
 
-  const operatorSession = repository.createSession({ userId: "p3", email: "operator@example.test", ttlMs: 60000 });
+  const operatorSession = repository.createSession({ userId: "p3", email: "operator@example.test", login: "operator.login", ttlMs: 60000 });
   const operatorClient = createSocketClient(`${wsBase}/ws`, {
     Origin: "http://test.local",
     Cookie: `epiber_test_session=${operatorSession.token}`,
@@ -610,7 +647,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["adminPeopleNormalization", "normalizePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminMemberReconciliation", "adminPeopleNormalization", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -627,12 +664,19 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
   for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
 
-  assert.equal((await adminClient.request("myProfile")).data.profile.email, "ada@example.test");
+  const ownProfile = await adminClient.request("myProfile");
+  assert.equal(ownProfile.data.profile.email, "ada@example.test");
+  assert.equal(ownProfile.data.profile.login, "ada.login");
   const normalization = await adminClient.request("adminPeopleNormalization");
   assert.equal(normalization.data.success, true);
   assert.equal(normalization.data.people.length >= 2, true);
   assert.equal(Object.hasOwn(normalization.data.people[0].values, "storedPasswordHash"), false);
   assert.equal(Object.hasOwn(normalization.data.people[0].values, "passwordSetupAllowed"), false);
+  const reconciliation = await adminClient.request("adminMemberReconciliation");
+  assert.equal(reconciliation.data.success, true);
+  assert.equal(reconciliation.data.people.length >= 2, true);
+  assert.equal(typeof reconciliation.data.people[0].externalId, "string");
+  assert.equal(Object.hasOwn(reconciliation.data.people[0].values, "storedPasswordHash"), false);
   assert.equal((await adminClient.request("navigator", { profil: "1" })).data.items[0].action.path, "/scoreboard.html");
   adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitors"] }));
   const monitorSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "monitors");
@@ -849,24 +893,27 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);
   }
   const serializedAudit = JSON.stringify(auditRows);
-  assert.equal(serializedAudit.includes("ada@example.test"), true);
-  assert.equal(serializedAudit.includes("<script>@example.test"), false);
+  assert.equal(serializedAudit.includes("ada.login"), true);
+  assert.equal(serializedAudit.includes("ada@example.test"), false);
+  assert.equal(serializedAudit.includes(" bad login "), false);
   assert.equal(serializedAudit.includes("a".repeat(64)), false);
   assert.equal(serializedAudit.includes(provisioned.data.monitor.token), false);
   const failedLoginAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "LOGIN_FAILED");
   assert.equal(failedLoginAudit.errorCode, "LOGIN_FAILED");
   assert.equal(failedLoginAudit.actorType, "anonymous");
   assert.equal(failedLoginAudit.actorName, "");
-  assert.equal(failedLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(failedLoginAudit.attemptedLogin, "ada.login");
+  assert.equal(failedLoginAudit.attemptedEmail, "");
   assert.equal(failedLoginAudit.sourceIp, "203.0.113.42");
-  const invalidEmailAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "VALIDATION_ERROR");
-  assert.equal(invalidEmailAudit.attemptedEmail, "");
-  assert.equal(invalidEmailAudit.sourceIp, "192.0.2.10");
-  assert.deepEqual(invalidEmailAudit.before, { identifierValid: false });
+  const invalidLoginAudit = auditRows.find((row) => row.action === "login" && row.errorCode === "VALIDATION_ERROR" && row.sourceIp === "192.0.2.10");
+  assert.equal(invalidLoginAudit.attemptedLogin, "");
+  assert.equal(invalidLoginAudit.attemptedEmail, "");
+  assert.deepEqual(invalidLoginAudit.before, { identifierValid: false });
   const successfulLoginAudit = auditRows.find((row) => row.action === "login" && row.result === "success");
   assert.equal(successfulLoginAudit.actorId, "p1");
   assert.equal(successfulLoginAudit.actorName, "Ada Admin");
-  assert.equal(successfulLoginAudit.attemptedEmail, "ada@example.test");
+  assert.equal(successfulLoginAudit.attemptedLogin, "ada.login");
+  assert.equal(successfulLoginAudit.attemptedEmail, "");
   assert.equal(successfulLoginAudit.sourceIp, "198.51.100.20");
   const courtAudit = auditRows.find((row) => row.action === "courtAssign" && row.result === "success");
   assert.equal(courtAudit.actorId, "p3");

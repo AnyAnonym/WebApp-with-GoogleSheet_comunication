@@ -79,8 +79,10 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
 ----- GET /ready und GET /health (public, identische Semantik) -----
   200 `{ status: "ready", version }` oder 503 `{ status: "not-ready", version }`.
   Readiness verlangt abgeschlossene Initialisierung, offene SQLite-Datenbank,
-  aktuelle Sheetdaten mit Ausnahme von `matchtyp`, laufenden Poller, keinen
-  Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Court-Frische
+  einen mindestens einmal vollstaendig erfolgreichen Acht-Tabellen-Snapshot,
+  keinen Shutdown und bei aktiven Courts eine nicht stale Courtquelle. Das Alter
+  eines vorhandenen Last-good-Snapshots ist diagnostisch und blockiert Readiness
+  nicht. Court-Frische
   richtet sich nach dem Alter des letzten Erfolgs; ein einzelner Folgefehler
   innerhalb des Frischefensters setzt die Quelle nicht sofort stale. Der Matchtyp-
   Tabellenstatus bleibt diagnostizierbar und neue Court-Zuweisungen verlangen
@@ -92,7 +94,7 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
 ----- GET /metrics (nur interner Loopbackzugriff) -----
   Liefert HTTP 200 mit `Content-Type: text/plain; version=0.0.4; charset=utf-8`
   im Prometheus-Textformat. Enthalten sind begrenzte Gauges, Counter und
-  Histogramme fuer Prozess/Readiness, HTTP, WebSocket, Sheet-/Court-Poller,
+  Histogramme fuer Prozess/Readiness, HTTP, WebSocket, Sheetimporte/Court-Poller,
   SQLite, Frontendcollector und Logger. Personen-, Session-, Request-, IP- und
   Geraetewerte sind keine Labels. Nur GET ist erlaubt. Caddy nimmt `/metrics`
   bewusst nicht in den oeffentlichen Backendmatcher auf; Prometheus scrapt direkt
@@ -102,11 +104,9 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
    Verlangt ein gueltiges Admin-Sessioncookie und liefert
    `Cache-Control: no-store`. Das Top-Level-Objekt enthaelt `status`, `monitor`,
    `provider`, `sheets`, `state`, `scoreLog`, `auditLog` und `authorization`.
-   `authorization` ist `{ role: "admin", roleSource: "current|last_known_good" }`.
-   Ist die Personenquelle stale, darf eine weiterhin gueltige bestehende Session
-   den letzten erfolgreich geladenen aktiven Admin-Snapshot verwenden; ohne
-   solchen Snapshot bleibt der Zugriff 503. Alle anderen geschuetzten Zugriffe
-   verlangen weiterhin aktuelle Personendaten. `status` enthaelt detaillierte Readiness einschliesslich
+    `authorization` ist im Last-good-Modell
+    `{ role: "admin", roleSource: "current" }`. Ohne jemals erfolgreich geladenen
+    Personenstand bleibt der Zugriff 503. `status` enthaelt detaillierte Readiness einschliesslich
    `court.displayRulesReady` und `court.unresolvedActiveRules`; `state` enthaelt
    unter anderem `displayRulesMigration` und die Court-Zustaende.
 
@@ -179,8 +179,8 @@ Status, Dauer, Ergebnis und kontrolliertem Fehlercode strukturiert protokolliert
 
 ----- GET /api/admin/grafana-auth (interner Forward-Auth-Vertrag) -----
   Verlangt eine gueltige aktuelle Session einer aktiven Person mit Rolle `admin`.
-  Anders als `/status` ist bei stale Personendaten kein Last-known-good-Zugriff
-  erlaubt. Erfolg liefert 200 `{ success: true }`, `Cache-Control: no-store` und
+  Der Zugriff verlangt einen erfolgreich geladenen aktiven Personenstand. Erfolg
+  liefert 200 `{ success: true }`, `Cache-Control: no-store` und
   ausschliesslich serverseitig erzeugte Header
   `X-WEBAUTH-USER: epiber-<Instanz>:<Personen-ID>` sowie
   `X-WEBAUTH-ROLE: Admin`. Anonym/abgelaufen/widerrufen liefert 401, eine andere
@@ -572,6 +572,25 @@ OPERATOR ODER ADMIN:
       direction `up|down`; adressierter, geordneter, ablaufender Command.
 
 ADMIN:
+  `sheetDataStatus {}`
+      Liefert den kontrollierten Zustand des Sheet-Snapshots mit
+      `lastSuccessfulRefreshAt`, `dataAgeMs`, `inProgress`,
+      `bootstrapRecoveryActive`, `lastControlledFailure` und den technischen
+      Tabellenmetadaten. Die Antwort enthaelt keine Tabellenzeilen, Credentials
+      oder freien Google-Fehlertexte.
+
+  `refreshSheetData { operationId }`
+      Startet einen exklusiven atomaren Gesamtimport aller acht Tabellen. Alle
+      Tabellen werden vor der gemeinsamen Uebernahme validiert. Erfolg liefert
+      `{ success:true, refreshedAt, tableCount, changedTables, repeated? }` und
+      invalidiert nur tatsaechlich geaenderte Tabellen. Bei Fehler bleibt der
+      letzte gueltige Snapshot aktiv und der Client erhaelt einen kontrollierten
+      Fehler mit Support-ID. Ohne vorherigen Gesamterfolg bleibt Readiness
+      `not-ready`. `(Admin, operationId)` ist idempotent; der Browser wiederholt
+      den Write nach Timeout oder Transportverlust nicht automatisch. Der
+      Auditvertrag umfasst `started` sowie `success|failed|unknown` und projiziert
+      nur Tabellenanzahl, Anzahl geaenderter Tabellen und Abschlusszeit.
+
   `adminPeopleNormalization {}`
       Liefert die geschlossene Projektion der dreizehn erlaubten Personenfelder,
       Probleme, sichere Vorschlaege, Fingerprints und Summen aus einem aktuellen

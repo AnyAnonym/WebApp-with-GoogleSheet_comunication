@@ -1,4 +1,4 @@
-const { TABLE_CONFIG, READINESS_FAST_MAX_AGE_MS, READINESS_SLOW_MAX_AGE_MS } = require("./config.js");
+const { TABLE_CONFIG } = require("./config.js");
 const { hashPayload } = require("./security.js");
 const logger = require("./logger.js");
 
@@ -14,7 +14,7 @@ for (const key of Object.keys(TABLE_CONFIG)) {
     lastUpdate: 0,
     lastMutation: 0,
     lastError: null,
-    pollCount: 0,
+    loadCount: 0,
     readSequence: 0,
     appliedReadSequence: 0,
     mutationVersion: 0,
@@ -29,15 +29,16 @@ function errorCodeOf(error) {
   if (/^[A-Z][A-Z0-9_]{0,63}$/.test(code)) return code;
   const status = Number(error?.response?.status || error?.status);
   if (Number.isInteger(status) && status >= 100 && status <= 599) return `HTTP_${status}`;
-  return error?.name === "AbortError" ? "ABORTED" : "SHEETS_POLL_FAILED";
+  return error?.name === "AbortError" ? "ABORTED" : "SHEETS_READ_FAILED";
 }
 
 function set(tableName, values, {
-  source = "poll",
+  source = "read",
   readToken = null,
   authoritative = true,
   fence = source.startsWith("write"),
   mutation = source === "write" || source === "write-local",
+  notify = true,
 } = {}) {
   const entry = store[tableName];
   if (!entry) return null;
@@ -67,26 +68,50 @@ function set(tableName, values, {
     entry.lastError = null;
     entry.consecutiveErrors = 0;
     entry.failureStartedAt = 0;
-    entry.pollCount++;
+    entry.loadCount++;
   }
   if (changed) entry.revision++;
   const snapshot = {
     ...getMeta(tableName),
+    changed,
     result: recovered ? "recovered" : "applied",
     recoveredErrorCode,
     recoveredErrorSequence,
     outageDurationMs,
   };
-  if (changed || recovered) {
-    for (const listener of listeners) {
-      try {
-        listener({ table: tableName, source, changed, recovered, current: isTableCurrent(tableName), ...snapshot });
-      } catch (error) {
-        logger.log("error", "data_change_listener_failed", { table: tableName, source, error });
-      }
+  if (notify && (changed || recovered)) notifyListeners(tableName, source, changed, recovered, snapshot);
+  return snapshot;
+}
+
+function notifyListeners(tableName, source, changed, recovered, snapshot) {
+  for (const listener of listeners) {
+    try {
+      listener({ table: tableName, source, changed, recovered, current: isTableCurrent(tableName), ...snapshot });
+    } catch (error) {
+      logger.log("error", "data_change_listener_failed", { table: tableName, source, error });
     }
   }
-  return snapshot;
+}
+
+function setAllAuthoritative(valuesByTable, { source = "refresh", readTokens = {} } = {}) {
+  const tableNames = Object.keys(TABLE_CONFIG);
+  if (!valuesByTable || tableNames.some((tableName) => !Array.isArray(valuesByTable[tableName]))) return null;
+  const results = [];
+  for (const tableName of tableNames) {
+    const result = set(tableName, valuesByTable[tableName], {
+      source,
+      readToken: readTokens[tableName] || null,
+      notify: false,
+    });
+    if (!result || result.ignored) return null;
+    results.push({ table: tableName, ...result });
+  }
+  for (const result of results) {
+    if (result.changed || result.result === "recovered") {
+      notifyListeners(result.table, source, result.changed, result.result === "recovered", result);
+    }
+  }
+  return results;
 }
 
 function beginRead(tableName) {
@@ -119,7 +144,7 @@ function markError(tableName, error, readToken = null) {
   const snapshot = { ...getMeta(tableName), result: "failed" };
   for (const listener of listeners) {
     try {
-      listener({ table: tableName, source: "poll-error", changed: false, recovered: false, current: isTableCurrent(tableName), ...snapshot });
+      listener({ table: tableName, source: "read-error", changed: false, recovered: false, current: isTableCurrent(tableName), ...snapshot });
     } catch (listenerError) {
       logger.log("error", "data_error_listener_failed", { table: tableName, error: listenerError });
     }
@@ -139,7 +164,7 @@ function getMeta(tableName) {
     lastUpdate: entry.lastUpdate,
     lastMutation: entry.lastMutation,
     lastError: entry.lastError,
-    pollCount: entry.pollCount,
+    loadCount: entry.loadCount,
     revision: entry.revision,
     rowCount: entry.values.length,
     staleResultCount: entry.staleResultCount,
@@ -157,23 +182,19 @@ function isReady() {
   return Object.values(store).every((entry) => entry.lastUpdate > 0);
 }
 
-function isTableCurrent(tableName, now = Date.now()) {
-  const config = TABLE_CONFIG[tableName];
+function isTableCurrent(tableName) {
   const entry = store[tableName];
-  if (!config || !entry?.lastUpdate) return false;
-  const maxAge = config.category === "fast" ? READINESS_FAST_MAX_AGE_MS : READINESS_SLOW_MAX_AGE_MS;
-  return now - entry.lastUpdate <= maxAge;
+  return Boolean(entry?.lastUpdate);
 }
 
 function getReadiness(now = Date.now()) {
   const tables = {};
   let ready = true;
-  for (const [name, config] of Object.entries(TABLE_CONFIG)) {
+  for (const name of Object.keys(TABLE_CONFIG)) {
     const meta = getMeta(name);
-    const maxAge = config.category === "fast" ? READINESS_FAST_MAX_AGE_MS : READINESS_SLOW_MAX_AGE_MS;
     const ageMs = meta.lastUpdate ? now - meta.lastUpdate : null;
-    const current = meta.lastUpdate > 0 && ageMs <= maxAge;
-    tables[name] = { current, ageMs, maxAge, lastError: meta.lastError, revision: meta.revision, consecutiveErrors: meta.consecutiveErrors };
+    const current = meta.lastUpdate > 0;
+    tables[name] = { available: current, current, ageMs, maxAge: null, lastError: meta.lastError, revision: meta.revision, consecutiveErrors: meta.consecutiveErrors };
     if (!current) ready = false;
   }
   return { ready, tables };
@@ -194,7 +215,7 @@ function resetForTests() {
       lastUpdate: 0,
       lastMutation: 0,
       lastError: null,
-      pollCount: 0,
+      loadCount: 0,
       readSequence: 0,
       appliedReadSequence: 0,
       mutationVersion: 0,
@@ -205,4 +226,4 @@ function resetForTests() {
   }
 }
 
-module.exports = { beginRead, get, getAll, getMeta, getReadiness, isReady, isTableCurrent, markError, onChange, resetForTests, set };
+module.exports = { beginRead, get, getAll, getMeta, getReadiness, isReady, isTableCurrent, markError, onChange, resetForTests, set, setAllAuthoritative };

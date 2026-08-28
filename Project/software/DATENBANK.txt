@@ -18,25 +18,23 @@ freigegebene Projektionen.
   1. GOOGLE SHEETS: GELADENE TABELLEN UND PFLICHTSPALTEN
 ================================================================================
 
-Der Poller laedt acht Tabellen. Schemafehler oder veraltete Daten machen die
-betroffene Tabelle fuer Fachoperationen unverfuegbar.
+Der Start- beziehungsweise Admin-Gesamtimport laedt alle acht Tabellen in einem
+Batch. Erst wenn jede Tabelle ihr Schema erfuellt, ersetzt der neue Stand den
+Last-good-Cache. Ein fehlgeschlagener manueller Import veraendert keine Tabelle.
 
-  Interner Name   | Sheet-Tab       | Kategorie | Pflichtspalten
-  ----------------|-----------------|-----------|------------------------------
-  players         | Personen        | slow      | ID, Vorname, Nachname,
-                  |                 |           | E-Mail, Login, PasswdHash,
-                  |                 |           | Aktiv, Role
-  bewerbe         | Bewerb          | slow      | ID, Bezeichnung, BewerbsartID
-  bewerbsart      | Bewerbsart      | slow      | ID, Bezeichnung
-  matchtyp        | Matchtyp        | slow      | ID, Satztiebreak,
-                  |                 |           | Entscheidender Satz
-  matches1        | Matches1        | fast      | ID, MatchDate, ForderungDate,
-                  |                 |           | BewerbID, BewerbRunde,
-                  |                 |           | Spieler1ID, Spieler3ID, Ergebnis
-  rlPlatzierung   | RL-Platzierung  | fast      | BewerbID, PersonID, Rang
-  navigator       | Navigator       | slow      | Name, Ziel
-  entryList       | EntryList       | fast      | ID, BewerbID, PersonenID,
-                  |                 |           | Entrydate
+  Interner Name   | Sheet-Tab       | Pflichtspalten
+  ----------------|-----------------|------------------------------------------
+  players         | Personen        | ID, Vorname, Nachname, E-Mail, Login,
+                  |                 | PasswdHash, Aktiv, Role
+  bewerbe         | Bewerb          | ID, Bezeichnung, BewerbsartID
+  bewerbsart      | Bewerbsart      | ID, Bezeichnung
+  matchtyp        | Matchtyp        | ID, Satztiebreak, Entscheidender Satz
+  matches1        | Matches1        | ID, MatchDate, ForderungDate, BewerbID,
+                  |                 | BewerbRunde, Spieler1ID, Spieler3ID,
+                  |                 | Ergebnis
+  rlPlatzierung   | RL-Platzierung  | BewerbID, PersonID, Rang
+  navigator       | Navigator       | Name, Ziel
+  entryList       | EntryList       | ID, BewerbID, PersonenID, Entrydate
 
 Jede nichtleere Zeile einer Tabelle mit ID-Spalte braucht eine eindeutige ID im
 Format `[A-Za-z0-9_.:-]{1,64}`. `Login` ist eine Pflichtspalte der Personen-
@@ -126,7 +124,7 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   Role               | Pflichtspalte: player, player A, player B, operator oder
                      | admin.
 
-`KennwortVergessen` ist keine allgemeine Poller-Pflichtspalte. Fuer die
+`KennwortVergessen` ist keine allgemeine Import-Pflichtspalte. Fuer die
 Passwort-Erstvergabe muss sie jedoch vorhanden und fuer den Service-Account
 beschreibbar sein; andernfalls lehnt der betreffende Write die Funktion mit
 `SHEET_SCHEMA` ab.

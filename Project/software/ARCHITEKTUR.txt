@@ -18,7 +18,7 @@
   Node.js Backend auf Loopback
     |-- HTTP/WS-Routing, Contracts, Origin-/Rate-/Groessenlimits
     |-- Cookie-/Rollenauthentifizierung und Datenprojektionen
-    |-- Polling + revisionierter In-Memory-Cache
+    |-- atomarer Start-/Adminimport + revisionierter Last-good-Cache
     |-- serialisierte/idempotente Google-Sheets-Writes
     |-- getrennter SQLite-State sowie Score-/Audit-Fachhistorien
     |-- externes Court-Polling + persistentes SQLite-ScoreLog
@@ -53,8 +53,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 
 `config.js`
   Validiert Instanz, Loopback, Origins, HTTPS-Modus, absolute SQLite-Datei,
-  Court-HTTPS-URL, Poll-/Stale-/Timeoutrelationen und alle Kapazitaetsgrenzen.
-  `TABLE_CONFIG` enthaelt die acht produktiv gepollten Sheet-Tabs.
+  Court-HTTPS-URL, Startimport-Backoff, Timeoutrelationen und alle
+  Kapazitaetsgrenzen. `TABLE_CONFIG` enthaelt die acht importierten Sheet-Tabs.
 
 `contracts.js`, `validators.js`, `errors.js`
   Geschlossene maschinenpruefbare RPC-Parameterobjekte, UUID-operationIds,
@@ -71,9 +71,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Projektionen, prueft scrypt/Legacy-Credentials mit Dummy-Verifikation,
   serialisiert Operationen je Benutzer und orchestriert Login, Migration,
   Logout, Eigenwechsel, Resetnachweis, adminfreigegebene erstmalige Vergabe und
-  Admin-Passwortsetzung. Ausschliesslich der Adminstatus darf innerhalb einer
-  weiterhin gueltigen bestehenden Session einen zuvor erfolgreich geladenen
-  aktiven Admin-Rollensnapshot verwenden, wenn die Personenquelle stale ist.
+  Admin-Passwortsetzung. Rollen werden nach dem ersten erfolgreichen
+  Gesamtsnapshot aus dem aktiven Last-good-Personenstand aufgeloest.
 
 `frontendLoggingService.js`
   Verwaltet revisionsgeschuetzte globale Browserdiagnose-Einstellungen und
@@ -85,7 +84,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 
 `metrics.js`
   Fuehrt dependency-frei feste Gauges, Counter und Histogramme fuer HTTP,
-  WebSocket, Readiness, Sheet-/Court-Poller, SQLite, Frontendcollector und Logger.
+  WebSocket, Readiness, Sheetimporte, Court-Poller, SQLite, Frontendcollector und
+  Logger.
   Alle Dimensionen besitzen geschlossene oder niedrig-kardinale Werte. Das
   interne `GET /metrics` liefert Prometheus-Textformat 0.0.4 und wird von Caddy
   nicht extern veroeffentlicht.
@@ -107,13 +107,13 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   abgelaufene beziehungsweise alte Eintraege.
 
 `dataPoller.js`
-  Laedt beim Start alle acht Tabellen mit einem gemeinsamen `values.batchGet`.
-  Danach Basis-Tick 5 Sekunden, Fast-Kategorie standardmaessig alle 10 Sekunden
-  und Slow-Kategorie alle 30 Sekunden. Alle zu einem Tick faelligen Bereiche
-  werden in einem Request gelesen; ein erfolgreicher Initialload wird nicht nach
-  fuenf Sekunden wiederholt. Fehlgeschlagene Bereiche bleiben nach fuenf Sekunden
-  faellig. Pro Tick gibt es keinen Overlap; jede Tabelle besitzt weiterhin ein
-  eigenes Read-Fence, Schemaergebnis und Fehler-/Recovery-Ergebnis.
+  Laedt beim Start alle acht Tabellen mit einem gemeinsamen `values.batchGet`,
+  validiert alle Antworten vor der Uebernahme und committed den Snapshot
+  gemeinsam. Schlaegt dieser Bootstrap fehl, wird der Gesamtimport mit
+  exponentiellem Backoff und Jitter bis zum ersten Erfolg wiederholt; danach gibt
+  es kein periodisches Google-Sheets-Polling. Ein manueller Adminimport verwendet
+  denselben exklusiven Gesamtpfad. Bei dessen Fehler bleibt der letzte gueltige
+  Snapshot aktiv.
 
 `tableSchemas.js`, `tableUtils.js`
   Kanonisieren Header, erzwingen Pflichtspalten/eindeutige IDs, erfassen
@@ -131,13 +131,13 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   bestehender Logins und von Admin-/Operatorrollen.
 
 `dataStore.js`
-  Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Alter, Pollfehler,
-  Pollzaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler.
-  Autoritative Vollreads bestimmen Tabellenalter und Current-/Readinessstatus;
-  lokale Projektionen eines bestaetigten Writes aktualisieren Werte und
-  `lastMutation`, verlaengern aber nie die autoritative Frische und verdecken
-  keinen Pollfehler. Ein Poll, der vor einem neueren Write startete, darf weder
-  dessen Daten noch dessen Fehlerzustand ueberholen.
+  Revisionierter In-Memory-Cache mit Rohwerten, Fingerprint, Importalter,
+  Ladezaehler, Read-Sequenz, Mutationversion und Stale-Result-Zaehler. Readiness
+  verlangt fuer jede Tabelle mindestens einen erfolgreichen autoritativen Load;
+  das Alter ist danach nur Diagnose und macht Last-good nicht unverfuegbar.
+  Lokale Projektionen bestaetigter Writes aktualisieren Werte und `lastMutation`,
+  aber nicht den Zeitpunkt des letzten Gesamterfolgs. Ein vor einem neueren Write
+  gestarteter Read darf dessen Daten oder Fehlerzustand nicht ueberholen.
 
 `sheetService.js`
   Zentralisiert Google-Reads und alle fachlichen Writes. Queues serialisieren pro
@@ -155,7 +155,7 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   `epiberRecord`-Metadata her.
 
 `sheetsReadCoordinator.js`
-  Kapselt alle Google-Sheets-Reads von Poller und SheetService, erfasst logische
+  Kapselt alle Google-Sheets-Reads von Importmanager und SheetService, erfasst logische
   Requests und tatsaechliche Initial-/Retry-Versuche mit festen Metriklabels und
   koordiniert aktive Tabellenarbeit. Google-429 wird nicht automatisch erneut
   gesendet, sondern sperrt weitere Reads prozessweit fuer 60 Sekunden. Andere
@@ -229,9 +229,9 @@ E-Mail-kompatiblen ASCII-Zeichen ohne Leerraum aufgebaut sein. `Personen.E-Mail`
 ist davon getrennte optionale Kontaktinformation und darf mehrfach vorkommen.
 Ungueltige oder doppelte Logins bleiben fuer die Adminreparatur lesbar, koennen
 aber nicht zur Anmeldung verwendet werden. Der Sheetload protokolliert nur
-Personen-ID, Zeilennummer und kontrollierten Grund beim ersten Auftreten,
-periodisch waehrend des Bestands und bei Recovery; der Loginwert selbst wird
-nicht geloggt. Normalisierungs- und Abgleichswrites duerfen keine Login-
+  Personen-ID, Zeilennummer und kontrollierten Grund bei einem neuen Gesamtimport
+  und bei Recovery; der Loginwert selbst wird nicht geloggt. Normalisierungs- und
+  Abgleichswrites duerfen keine Login-
 Dublettengruppe neu erzeugen oder vergroessern.
 
 Das zufaellige Sessiontoken liegt nur in einem HttpOnly-, SameSite=Strict- und in
@@ -239,9 +239,8 @@ Produktion Secure-Cookie. SQLite speichert nur dessen SHA-256-Hash und bindet di
 Session an Personen-ID und den beim Login gueltigen kanonischen Login. Bei jedem
 HTTP-/RPC-Zugriff werden Login, Aktivstatus und Rolle aus der aktuellen
 Personenzeile ermittelt; fehlt die Person, ist sie inaktiv oder stimmt der Login
-nicht mehr, wird die Session verworfen. Nur `/status` darf bei stale Personen
-innerhalb einer gueltigen bestehenden Session den letzten erfolgreich geladenen
-aktiven Admin-Rollensnapshot verwenden:
+  nicht mehr, wird die Session verworfen. Ohne jemals erfolgreich geladenen
+  Personenstand bleiben geschuetzte Zugriffe gesperrt:
 
   Rolle/Principal | Rechte
   ----------------|-------------------------------------------------------------
@@ -293,7 +292,8 @@ aenderungen starten den WebSocket neu.
 ================================================================================
 
 Lesepfad:
-  Google Sheets -> dataPoller -> Schema-Pruefung -> dataStore
+  Google Sheets -> exklusiver Start-/Admin-Gesamtimport -> Schema-Pruefung
+  -> atomare Last-good-Uebernahme in dataStore
   RPC -> Current-/Access-Pruefung -> Projektion -> Response
 
 Schreibpfad:
@@ -361,12 +361,12 @@ Writes werden dadurch nicht automatisch wiederholt. Die Normalisierungsseite
 erhaelt Meldung und Support-ID ueber den regulaeren Fehlervertrag und zeigt jede
 Referenz genau einmal.
 
-Ein erfolgreicher Vollread verschiebt den naechsten Tabellenpoll relativ zu
-seinem tatsaechlichen Zeitpunkt. Solange eine serialisierte Tabellenoperation
-  aktiv ist, wird ein gleichzeitig faelliger Poll ohne API-Zugriff auf den naechsten
-  Basistick verschoben. Personennormalisierungen bleiben bewusst personweise:
-  Teilerfolge, Einzel-Audit und Wiederaufnahme bleiben erhalten; es gibt keinen
-  alles-oder-nichts-Gesamtbatch.
+Der Gesamtimport ist gegen Tabellenreads und Fachwrites exklusiv: Er wartet auf
+bereits angenommene Tabellenarbeit und blockiert neue bis zu seinem Abschluss.
+Write-spezifische Precondition-, Bestaetigungs-, Metadaten- und Abschlussreads
+bleiben davon unabhaengig fachlich erforderlich. Personennormalisierungen bleiben
+bewusst personweise: Teilerfolge, Einzel-Audit und Wiederaufnahme bleiben
+erhalten; es gibt keinen alles-oder-nichts-Gesamtbatch fuer Fachwrites.
 
 Die Normalisierungsanalyse erzeugt daneben Count-only-Metriken aus dem letzten
 bekannten Personenbestand: separater Aktualitaetsindikator, Gesamtpersonen,
@@ -384,10 +384,12 @@ Metadatenerstellungen bleiben als `record-metadata-intent:*` sichtbar und werden
 nicht blind neu erstellt. Eindeutige 4xx-Ablehnungen duerfen kontrolliert neu
 angesetzt werden.
 
-Cache-Fencing verhindert, dass ein vor dem Write gestarteter Pollerfolg oder
-Pollfehler den neueren Cache ueberschreibt. Jede Tabelle besitzt Revision und
-maximales Alter. Fast ist standardmaessig nach 30 Sekunden, Slow nach 90 Sekunden
-nicht mehr current; betroffene Fachreads liefern 503 statt stale Rohdaten.
+Cache-Fencing verhindert, dass ein vor dem Write gestarteter Readerfolg oder
+Readfehler den neueren Cache ueberschreibt. Jede Tabelle besitzt Revision und
+Importalter. Ohne jemals erfolgreichen Gesamtsnapshot bleiben Readiness und
+abhaengige Fachreads gesperrt; nach einem Erfolg bleibt Last-good ohne zeitliches
+Verfallsfenster verfuegbar, bis ein neuer vollstaendig validierter Snapshot ihn
+ersetzt.
 
 Fachhistorien und Betriebslogs:
   - `scorelog.sqlite` und `audit.sqlite` sind getrennte SQLite-Systeme-of-Record
@@ -623,18 +625,16 @@ migrierbar und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
   - Initialisierung abgeschlossen und kein Shutdown,
   - offene State-, ScoreLog- und Auditlog-SQLite-Datenbanken ohne letzten
     Persistenzfehler,
-  - alle Tabellen ausser `matchtyp` innerhalb ihrer Altersgrenze,
-  - laufenden Sheetpoller,
+  - mindestens einen vollstaendig erfolgreichen Snapshot aller acht Tabellen;
+    dessen Alter ist danach nur diagnostisch,
   - bei aktivem Court eine anhand des letzten Erfolgs noch frische externe
     Courtquelle; ein einzelner Folgefehler setzt sie nicht sofort stale,
   - keinen aktiven Court mit unresolved Legacy-Anzeigeregeln.
 
 Ein solcher aktiver Legacy-Court bleibt bis zur Tabellen-Recovery, erfolgreichen
 Neuzuweisung oder Deaktivierung not-ready. Ein unresolved inaktiver Court blockiert
-Readiness nicht. Die Aktualitaet der Matchtyp-Tabelle selbst ist nach dem
-persistierten Regelsnapshot kein globales Readiness-Gate. Ihr Zustand bleibt in
-`/status` diagnostizierbar; neue Court-Zuweisungen benoetigen weiterhin aktuelle
-Matchtyp-Daten.
+Readiness nicht. Neue Court-Zuweisungen benoetigen weiterhin einen verwendbaren
+Matchtyp-Stand aus dem Last-good-Snapshot.
 
 `/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
 SheetService-, State-, ScoreLog- und Auditlogwerte, einschliesslich
@@ -651,7 +651,8 @@ zeigt nur Oeffnungs-/Fehlerstatus und Zaehler, niemals Ereignisinhalte.
 
 Graceful Shutdown:
   1. Neue HTTP-/WS-Operationen werden mit 503 abgelehnt; Upgrades stoppen.
-  2. Daten- und Courtpoller/Timer stoppen; laufender Courtfetch wird abgebrochen.
+  2. Sheet-Recovery- und Courtpoller-Timer stoppen; laufender Courtfetch wird
+     abgebrochen.
   3. MonitorBroker beendet Geraete und WebSockets schliessen mit 1012.
   4. Aktive WS-Handler, HTTP-Requests und SheetService-Arbeit werden drainiert.
   5. Audit-, ScoreLog- und State-SQLite schliessen erst danach.

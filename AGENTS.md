@@ -149,6 +149,7 @@ Vorlage existieren nicht mehr.
 | `RoundRobin.html` | Gruppenphase | `?id=<bewerbId>&paarungslayout=<0-5>`; `id` erforderlich |
 | `personenNormalisieren.html` | Admin-Personendaten normalisieren | keine |
 | `mitgliederAbgleichen.html` | Admin-ClubDesk-Mitgliederabgleich | keine |
+| `servicebereich.html` | Admin-Status und Gesamtimport der Sheet-Daten | keine |
 
 `matches.html` und `preMatches.html` existieren laut aktueller Dokumentation
 nicht mehr. `matches` und `preMatches` bestehen nur als WebSocket-Aliase fort.

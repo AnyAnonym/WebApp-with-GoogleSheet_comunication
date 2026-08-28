@@ -203,7 +203,7 @@ test("Nicht aufloesbare Regeln eines aktiven Legacy-Courts blockieren Readiness"
   }
 });
 
-test("Aktuelle Matchtyp-Daten sind nach dem Regelsnapshot keine globale Readiness-Abhaengigkeit", () => {
+test("ein vollstaendiger Startsnapshot verlangt auch Matchtyp-Daten", () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   stateStore.init(repository);
@@ -220,8 +220,8 @@ test("Aktuelle Matchtyp-Daten sind nach dem Regelsnapshot keine globale Readines
   courtPoller.getLastData = () => ({ source: { stale: true } });
   try {
     const status = readiness({ repository, initialized: true, shuttingDown: false });
-    assert.equal(status.ready, true);
-    assert.equal(status.data.ready, true);
+    assert.equal(status.ready, false);
+    assert.equal(status.data.ready, false);
     assert.equal(status.data.tables.matchtyp.current, false);
   } finally {
     dataPoller.getStatus = originalPollerStatus;

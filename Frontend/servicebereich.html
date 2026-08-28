@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASKÖ Piberbach - Servicebereich</title>
+  <link rel="stylesheet" href="./CSS/styles.css" />
+  <link rel="stylesheet" href="./CSS/servicebereich.css" />
+</head>
+<body>
+  <div id="header-container"></div>
+  <div id="mobile-nav-container"></div>
+
+  <main class="service-main">
+    <section id="service-access" class="service-access" aria-live="polite">
+      <div class="service-access-card">
+        <p class="service-eyebrow">Geschützter Bereich</p>
+        <h1>Servicebereich</h1>
+        <p id="service-access-message">Sitzung wird geprüft...</p>
+        <a href="index.html" class="service-primary-link">Zur Anmeldung</a>
+      </div>
+    </section>
+
+    <div id="service-app" class="service-app" hidden>
+      <header class="service-heading">
+        <div>
+          <p class="service-eyebrow">Administration / Datenversorgung</p>
+          <h1>Servicebereich</h1>
+          <p>Status der eingelesenen Sheet-Daten prüfen und eine kontrollierte Aktualisierung starten.</p>
+        </div>
+      </header>
+
+      <div id="service-feedback" class="service-feedback" role="status" aria-live="polite"></div>
+
+      <section class="service-panel" aria-labelledby="service-sheet-heading">
+        <div class="service-panel-heading">
+          <div>
+            <p class="service-eyebrow">Google Sheets</p>
+            <h2 id="service-sheet-heading">Datenstatus</h2>
+          </div>
+          <span id="service-state-badge" class="service-state-badge">Wird geladen</span>
+        </div>
+
+        <dl class="service-facts">
+          <div>
+            <dt>Letzte erfolgreiche Aktualisierung</dt>
+            <dd id="service-last-success">Wird geladen...</dd>
+          </div>
+          <div>
+            <dt>Datenalter</dt>
+            <dd id="service-data-age">Wird geladen...</dd>
+          </div>
+        </dl>
+
+        <div id="service-progress" class="service-callout service-progress" role="status" hidden>
+          <strong>Aktualisierung läuft</strong>
+          <span id="service-progress-detail">Die Sheet-Daten werden aktuell neu eingelesen.</span>
+        </div>
+
+        <div id="service-failure" class="service-callout service-failure" role="alert" hidden>
+          <strong>Letzte kontrollierte Fehlermeldung</strong>
+          <span id="service-failure-message"></span>
+          <span id="service-failure-time" class="service-callout-meta"></span>
+          <span id="service-failure-support" class="service-support-id" hidden></span>
+        </div>
+
+        <div class="service-actions">
+          <p>Die Aktualisierung wird nur einmal gestartet. Bei unklarem Ausgang wird dieselbe Vorgangs-ID für einen bewussten erneuten Versuch beibehalten.</p>
+          <button id="service-refresh" class="service-primary-button" type="button">Daten aktualisieren</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="footer-container"></div>
+
+  <script type="module" src="JS/navbar.js"></script>
+  <script type="module" src="JS/modals.js"></script>
+  <script type="module" src="JS/servicebereich.js"></script>
+  <script src="JS/global.js"></script>
+  <script src="JS/footer.js"></script>
+</body>
+</html>

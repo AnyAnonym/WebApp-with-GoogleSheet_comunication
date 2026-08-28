@@ -4,7 +4,6 @@ const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const dataStore = require("../dataStore.js");
-const { READINESS_SLOW_MAX_AGE_MS } = require("../config.js");
 const { AuthService } = require("../authService.js");
 const { StateRepository } = require("../stateRepository.js");
 
@@ -160,20 +159,18 @@ test("Loginwechsel widerruft eine noch gespeicherte Session beim naechsten Zugri
   repository.close();
 });
 
-test("gueltige Adminsession kann opt-in die Last-known-good-Rolle aus stale Personen verwenden", () => {
+test("geladene Personen bleiben bis zum expliziten Datenabgleich die aktuelle Rollenquelle", () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const adminSession = repository.createSession({ userId: "p1", email: "ada@example.test", login: "ada.login", ttlMs: 60000 });
   const playerSession = repository.createSession({ userId: "p2", email: "peter@example.test", login: "peter.login", ttlMs: 60000 });
   const auth = new AuthService({ repository, sheetService: {} });
-  const lastUpdate = dataStore.getMeta("players").lastUpdate;
-  const originalNow = Date.now;
-  Date.now = () => lastUpdate + READINESS_SLOW_MAX_AGE_MS + 1;
   try {
-    assert.throws(() => auth.requireRole(adminSession.token, ["admin"]), { code: "PERSON_DATA_UNAVAILABLE" });
+    const current = auth.requireRole(adminSession.token, ["admin"]);
+    assert.equal(current.principal.roleSource, undefined);
     const admin = auth.requireRole(adminSession.token, ["admin"], { allowLastKnownGoodRole: true });
     assert.equal(admin.principal.role, "admin");
-    assert.equal(admin.principal.roleSource, "last_known_good");
+    assert.equal(admin.principal.roleSource, undefined);
     assert.deepEqual(auth.getDiagnosticIdentity(adminSession.token), { id: "p1", name: "Ada Admin", role: "admin" });
     assert.throws(
       () => auth.requireRole(playerSession.token, ["admin"], { allowLastKnownGoodRole: true }),
@@ -181,7 +178,6 @@ test("gueltige Adminsession kann opt-in die Last-known-good-Rolle aus stale Pers
     );
     assert.equal(repository.getSession(adminSession.token).userId, "p1");
   } finally {
-    Date.now = originalNow;
     repository.close();
   }
 });

@@ -97,22 +97,19 @@ const COURT_FETCH_TIMEOUT_MS = parseInteger("COURT_FETCH_TIMEOUT_MS", 5000, 500,
 const COURT_MAX_RESPONSE_BYTES = parseInteger("COURT_MAX_RESPONSE_BYTES", 262144, 1024, 2097152);
 const COURT_MAX_BACKOFF_MS = parseInteger("COURT_MAX_BACKOFF_MS", 30000, 2000, 300000);
 
-const POLL_BASE_INTERVAL = parseInteger("POLL_BASE_INTERVAL_MS", 5000, 1000, 60000);
-const POLL_FAST_MULTIPLIER = parseInteger("POLL_FAST_MULTIPLIER", 2, 1, 60);
-const POLL_SLOW_MULTIPLIER = parseInteger("POLL_SLOW_MULTIPLIER", 6, 1, 120);
-const READINESS_FAST_MAX_AGE_MS = parseInteger("READINESS_FAST_MAX_AGE_MS", 30000, 5000, 600000);
-const READINESS_SLOW_MAX_AGE_MS = parseInteger("READINESS_SLOW_MAX_AGE_MS", 90000, 10000, 1800000);
+const SHEET_STARTUP_RETRY_BASE_MS = parseInteger("SHEET_STARTUP_RETRY_BASE_MS", process.env.NODE_ENV === "test" ? 10 : 5000, process.env.NODE_ENV === "test" ? 1 : 1000, 60000);
+const SHEET_STARTUP_RETRY_MAX_MS = parseInteger("SHEET_STARTUP_RETRY_MAX_MS", process.env.NODE_ENV === "test" ? 50 : 60000, process.env.NODE_ENV === "test" ? 1 : 5000, 300000);
 const SHUTDOWN_GRACE_MS = parseInteger("SHUTDOWN_GRACE_MS", 90000, 1000, 120000);
 
 const TABLE_CONFIG = {
-  players:       { range: "Personen",       category: "slow" },
-  bewerbe:       { range: "Bewerb",         category: "slow" },
-  bewerbsart:    { range: "Bewerbsart",     category: "slow" },
-  matchtyp:      { range: "Matchtyp",        category: "slow" },
-  matches1:      { range: "Matches1",       category: "fast" },
-  rlPlatzierung: { range: "RL-Platzierung", category: "fast" },
-  navigator:     { range: "Navigator",       category: "slow" },
-  entryList:     { range: "EntryList",       category: "fast" },
+  players:       { range: "Personen" },
+  bewerbe:       { range: "Bewerb" },
+  bewerbsart:    { range: "Bewerbsart" },
+  matchtyp:      { range: "Matchtyp" },
+  matches1:      { range: "Matches1" },
+  rlPlatzierung: { range: "RL-Platzierung" },
+  navigator:     { range: "Navigator" },
+  entryList:     { range: "EntryList" },
 };
 
 function validateRuntimeConfig() {
@@ -139,11 +136,8 @@ function validateRuntimeConfig() {
   }
   const persistentFiles = [STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE].filter((value) => value !== ":memory:");
   if (new Set(persistentFiles).size !== persistentFiles.length) errors.push("STATE_FILE, SCORELOG_FILE und AUDITLOG_FILE muessen getrennte Dateien sein");
-  if (READINESS_FAST_MAX_AGE_MS < POLL_BASE_INTERVAL * POLL_FAST_MULTIPLIER + GOOGLE_REQUEST_TIMEOUT_MS) {
-    errors.push("READINESS_FAST_MAX_AGE_MS muss den schnellen Pollingabstand inklusive Timeout abdecken");
-  }
-  if (READINESS_SLOW_MAX_AGE_MS < POLL_BASE_INTERVAL * POLL_SLOW_MULTIPLIER + GOOGLE_REQUEST_TIMEOUT_MS) {
-    errors.push("READINESS_SLOW_MAX_AGE_MS muss den langsamen Pollingabstand inklusive Timeout abdecken");
+  if (SHEET_STARTUP_RETRY_MAX_MS < SHEET_STARTUP_RETRY_BASE_MS) {
+    errors.push("SHEET_STARTUP_RETRY_MAX_MS muss mindestens SHEET_STARTUP_RETRY_BASE_MS entsprechen");
   }
   if (WS_DEAD_CLIENT_MS < WS_PING_INTERVAL_MS + 5000) {
     errors.push("WS_DEAD_CLIENT_MS muss mindestens 5000 ms ueber WS_PING_INTERVAL_MS liegen");
@@ -173,14 +167,11 @@ module.exports = {
   LOG_LEVEL,
   MONITOR_COOKIE,
   PASSWORD_RESET_TTL_MS,
-  POLL_BASE_INTERVAL,
-  POLL_FAST_MULTIPLIER,
-  POLL_SLOW_MULTIPLIER,
   PORT,
   PROTOCOL_VERSION,
   PUBLIC_ORIGIN,
-  READINESS_FAST_MAX_AGE_MS,
-  READINESS_SLOW_MAX_AGE_MS,
+  SHEET_STARTUP_RETRY_BASE_MS,
+  SHEET_STARTUP_RETRY_MAX_MS,
   SESSION_COOKIE,
   SESSION_TTL_MS,
   SHEET_ID,

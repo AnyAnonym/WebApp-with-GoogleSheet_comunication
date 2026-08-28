@@ -143,7 +143,9 @@ test("Mobile Navigation zeigt rollenabhaengige Links nur berechtigten Benutzern"
 
         const players = page.locator('.mobile-nav-links [data-auth="required"]');
         const adminLinks = page.locator('.mobile-nav-links [data-role="admin"]');
+        const serviceLink = page.locator('.mobile-nav-links a[href="servicebereich.html"]');
         assert.equal(await players.isVisible(), expected.playersVisible, `${expected.role || "anonymous"}: Spielerlink`);
+        assert.equal(await serviceLink.isVisible(), expected.adminVisible, `${expected.role || "anonymous"}: Servicebereich`);
         for (const link of await adminLinks.all()) {
           assert.equal(await link.isVisible(), expected.adminVisible, `${expected.role || "anonymous"}: ${await link.textContent()}`);
         }

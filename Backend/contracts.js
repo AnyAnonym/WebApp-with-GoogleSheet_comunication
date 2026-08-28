@@ -67,6 +67,8 @@ const requestContracts = {
   players: empty,
   adminPeopleNormalization: empty,
   adminMemberReconciliation: empty,
+  sheetDataStatus: empty,
+  refreshSheetData: (params) => objectShape(params, { operationId: operation }),
   publicProfile: (params) => objectShape(params, { id: id("id") }),
   bewerbe: empty,
   bewerbsart: empty,

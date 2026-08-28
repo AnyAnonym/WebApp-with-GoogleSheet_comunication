@@ -32,7 +32,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
 
 
 ================================================================================
-  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 3 ADMINISTRATION)
+  SEITEN-DOKUMENTATION (11 FACHLICHE SEITEN + 4 ADMINISTRATION)
 ================================================================================
 
   Pfad                              | Seite
@@ -49,6 +49,7 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/seiten/rangliste.txt     | Ranglisten-Pyramide
   software/seiten/roundRobin.txt    | RoundRobin-Gruppenphase
   software/seiten/adminLogging.txt  | Frontend-Logging-Administration
+  software/seiten/servicebereich.txt| Sheet-Daten-Servicebereich
   software/seiten/personenNormalisieren.txt
                                      | Personendaten-Normalisierung
   software/seiten/mitgliederAbgleichen.txt

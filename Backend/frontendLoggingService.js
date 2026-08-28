@@ -24,7 +24,7 @@ const EDITABLE_SETTINGS = Object.freeze(Object.keys(DEFAULT_SETTINGS).filter((ke
 const PAGE_TYPES = new Set([
   "Bewerbe", "Matches1", "RoundRobin", "adminLogging", "bewerbsRaster",
   "court-score-test", "entryList", "index", "monitor", "navigator", "players",
-  "mitgliederAbgleichen", "personenNormalisieren", "rangliste", "scoreboard",
+  "mitgliederAbgleichen", "personenNormalisieren", "rangliste", "scoreboard", "servicebereich",
 ]);
 
 const EVENT_LEVELS = new Map([
@@ -85,6 +85,9 @@ const EVENT_LEVELS = new Map([
   ["rpc_request_failed", "warn"],
   ["scoreboard_initialization_failed", "error"],
   ["scoreboard_resynchronization_failed", "error"],
+  ["service_area_auth_failed", "error"],
+  ["sheet_data_refresh_failed", "error"],
+  ["sheet_data_status_load_failed", "error"],
   ["websocket_connection_recovered", "info"],
   ["websocket_state_changed", "debug"],
 ]);

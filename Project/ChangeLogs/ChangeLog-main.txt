@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.6.0
+Stand: 4.6.1
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,66 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.6.1] - 2026-08-28
+Commit: 4.6.1 | Sheet-Datenimport und Servicebereich bereitgestellt
+Quelle: 4.6.0-paj-1
+
+  Added
+  - [Software] Responsive Adminseite `servicebereich.html` fuer Status, Alter und
+    kontrollierte Aktualisierung des aktiven Google-Sheets-Datensnapshots
+    eingefuehrt. Desktop- und Mobilnavigation zeigen sie nur Administratoren.
+  - [Software] Admin-only RPCs `sheetDataStatus {}` und
+    `refreshSheetData { operationId }` mit geschlossenen Vertraegen,
+    Write-Limit, Idempotenz und kontrollierter technischer Statusprojektion
+    aufgenommen.
+  - [Software] Strukturierte Importabschlusslogs, niedrig-kardinale Import- und
+    Snapshotmetriken sowie feste Browserdiagnose-Ereignisse fuer den bekannten
+    Seitentyp `servicebereich` ergaenzt.
+  - [Infrastruktur] Grafana-Uebersicht, Alert `Sheet Snapshot Missing` und Runbook
+    fuer fehlenden Startsnapshot, Google-Zugang, Quote, Schema und kontrollierten
+    Adminimport erweitert.
+  - [Software] Regressionstests fuer Start-Recovery, fehlendes Dauerpolling,
+    atomare Last-good-Uebernahme, Import-/Write-Barriere, Idempotenz,
+    Berechtigungen, BFCache und responsive Servicebereich-Bedienung aufgenommen.
+
+  Changed
+  - [Software] Periodisches Google-Sheets-Polling durch einen atomaren
+    Acht-Tabellen-Startimport ersetzt. Ein fehlgeschlagener Start wird mit
+    exponentiellem Backoff und Jitter bis zum ersten Gesamterfolg wiederholt;
+    danach gibt es kein periodisches Sheets-Polling.
+  - [Software] Manueller Adminimport validiert alle acht Tabellen vor der
+    gemeinsamen Uebernahme. Bei Fehler bleibt der vollstaendige Last-good-Stand
+    aktiv; ohne jemals erfolgreichen Snapshot bleibt das Backend not-ready.
+  - [Software] Snapshotalter ist nach dem ersten Gesamterfolg nur diagnostisch
+    und kein Readiness-Verfallsfenster. Alle acht Tabellen einschliesslich
+    `matchtyp` muessen im Startsnapshot vorhanden sein.
+  - [Software] Gesamtimporte sind gegen bereits angenommene Tabellenreads und
+    Fachwrites exklusiv koordiniert. Precondition-, Bestaetigungs-, Metadaten-
+    und Write-Refresh-Reads bleiben erhalten und angenommene Write-Queues werden
+    nicht von einem spaeteren Import ueberholt.
+  - [Dokumentation] Architektur, Datenhaltung, Endpointvertraege, Softwareindex,
+    neue Seitendokumentation, Projektrouting und Observability-Betriebsablaeufe
+    auf das Import- und Last-good-Modell abgeglichen.
+
+  Pruefungen
+  - `npm run build`: statische Pruefungen und alle 233 Backendtests erfolgreich.
+  - `npm run test:browser`: alle elf Browsertests erfolgreich.
+  - `git diff --check` ohne Fehler; PAJ-Laufzeit mit Version
+    `4.6.0-paj-1-1-x`, erfolgreichem Acht-Tabellen-Startimport, gruenen
+    Readiness-Komponenten und ohne periodische Pollingmetriken technisch geprueft.
+  - Vollstaendige funktionale Pruefung des Servicebereichs und der betroffenen
+    Anwendungsablaeufe im PAJ-System durch den User erfolgreich abgeschlossen.
+
+  Sicherheit, Betrieb und bekannte Einschraenkungen
+  - Manueller Gesamtimport besitzt einen Auditvertrag fuer Start sowie
+    `success|failed|unknown`. Audit und Diagnose enthalten nur kontrollierte
+    Tabellenanzahl, Aenderungsanzahl, Zeiten, Fehlercodes und Support-IDs, aber
+    keine Sheetzeilen, Credentials, freien Payloads oder unnoetigen Personendaten.
+  - Waehrend des kurzen Startimportfensters bleibt Readiness false und
+    Fachrequests koennen kontrolliert `DATA_NOT_READY` erhalten. Nach dem ersten
+    Gesamterfolg werden Last-good-Daten ohne Altersablauf bedient.
+  - Das Live-Deployment bleibt ein getrennt freizugebender Betriebsschritt.
 
 [4.6.0] - 2026-08-23
 Commit: 4.6.0 | Mitgliederabgleich und getrennten Login bereitgestellt

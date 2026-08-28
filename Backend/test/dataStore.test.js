@@ -37,7 +37,7 @@ test("Pollfehler und Erholung werden auch ohne Datenaenderung publiziert", () =>
   dataStore.set("entryList", [["ID"], ["e1"]], { source: "poll" });
   unsubscribe();
 
-  assert.equal(events[0].source, "poll-error");
+  assert.equal(events[0].source, "read-error");
   assert.equal(events[0].changed, false);
   assert.equal(events[1].recovered, true);
   assert.equal(events[1].changed, false);
@@ -85,7 +85,7 @@ test("Fehlerfolge und Ausfalldauer enden mit einem eindeutigen Recovery-Ergebnis
   }
 });
 
-test("lokale Write-Projektion verlaengert keine autoritative Tabellenfrische", () => {
+test("lokale Write-Projektion veraendert Importzeit nicht und Last-good bleibt verfuegbar", () => {
   const originalNow = Date.now;
   let now = 1000;
   Date.now = () => now;
@@ -102,7 +102,8 @@ test("lokale Write-Projektion verlaengert keine autoritative Tabellenfrische", (
     assert.equal(meta.lastMutation, 36000);
     assert.equal(meta.lastError.code, "SHEETS_RATE_LIMITED");
     assert.equal(meta.consecutiveErrors, 1);
-    assert.equal(dataStore.isTableCurrent("entryList", now), false);
+    assert.equal(dataStore.isTableCurrent("entryList", now), true);
+    assert.equal(dataStore.getReadiness(now).tables.entryList.ageMs, 35000);
   } finally {
     Date.now = originalNow;
   }

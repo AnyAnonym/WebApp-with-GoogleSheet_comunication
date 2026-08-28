@@ -7,12 +7,12 @@
     { "type": "stat", "title": "WebSocket-Verbindungen", "id": 2, "gridPos": { "h": 5, "w": 5, "x": 4, "y": 0 }, "targets": [{ "expr": "sum(epiber_ws_connections{deployment=\"$deployment\"})", "refId": "A" }] },
     { "type": "stat", "title": "Pending Metadata", "id": 3, "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 }, "targets": [{ "expr": "epiber_sheet_metadata_intents_pending{deployment=\"$deployment\"}", "refId": "A" }] },
     { "type": "stat", "title": "Sheets Read-Cooldown", "id": 8, "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 }, "targets": [{ "expr": "epiber_sheet_read_cooldown_seconds{deployment=\"$deployment\"}", "refId": "A" }] },
-    { "type": "stat", "title": "Sheets API-Versuche/s", "id": 9, "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 }, "targets": [{ "expr": "sum(rate(epiber_sheet_api_attempts_total{deployment=\"$deployment\"}[5m]))", "refId": "A" }] },
+    { "type": "stat", "title": "Sheet-Import aktiv", "id": 9, "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 }, "targets": [{ "expr": "epiber_sheet_refresh_in_progress{deployment=\"$deployment\"}", "refId": "A" }] },
     { "type": "timeseries", "title": "HTTP-Rate", "id": 4, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 }, "targets": [{ "expr": "sum by (result) (rate(epiber_http_requests_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "{{result}}", "refId": "A" }] },
-    { "type": "timeseries", "title": "Sheet-Alter", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 }, "targets": [{ "expr": "epiber_sheet_table_age_seconds{deployment=\"$deployment\"}", "legendFormat": "{{table}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Alter des Last-good-Snapshots", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 }, "targets": [{ "expr": "epiber_sheet_last_success_age_seconds{deployment=\"$deployment\"}", "legendFormat": "Snapshot", "refId": "A" }] },
     { "type": "timeseries", "title": "Freier Speicher", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 }, "targets": [{ "expr": "node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
     { "type": "timeseries", "title": "HTTP-Latenz p95", "id": 7, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 }, "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, route) (rate(epiber_http_request_duration_seconds_bucket{deployment=\"$deployment\"}[5m])))", "legendFormat": "{{route}}", "refId": "A" }] },
-    { "type": "timeseries", "title": "Sheets Requests nach Zweck", "id": 10, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 }, "targets": [{ "expr": "sum by (purpose, result) (rate(epiber_sheet_api_requests_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "{{purpose}} {{result}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Sheet-Gesamtimporte pro 5 Minuten", "id": 10, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 }, "targets": [{ "expr": "sum by (trigger, result) (increase(epiber_sheet_refresh_operations_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "{{trigger}} {{result}}", "refId": "A" }] },
     { "type": "timeseries", "title": "Sheets Versuche und Retries", "id": 11, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 }, "targets": [{ "expr": "sum by (method, kind) (rate(epiber_sheet_api_attempts_total{deployment=\"$deployment\"}[5m]))", "legendFormat": "{{method}} {{kind}}", "refId": "A" }] }
   ],
   "schemaVersion": 41,
@@ -22,5 +22,5 @@
   "timezone": "browser",
   "title": "ePiber Uebersicht",
   "uid": "epiber-overview",
-  "version": 1
+  "version": 2
 }

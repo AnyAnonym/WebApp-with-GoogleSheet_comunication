@@ -4,14 +4,86 @@ const { peopleFixture, setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const dataStore = require("../dataStore.js");
+const dataPoller = require("../dataPoller.js");
 const { TABLE_CONFIG } = require("../config.js");
 const { SheetService } = require("../sheetService.js");
 const { StateRepository } = require("../stateRepository.js");
 const { projectPeopleNormalization } = require("../peopleNormalization.js");
 const { projectPeopleReconciliation } = require("../memberReconciliation.js");
-const { resetSheetReadCoordinatorForTests } = require("../sheetsReadCoordinator.js");
+const { acquireExclusiveSheetActivity, resetSheetReadCoordinatorForTests } = require("../sheetsReadCoordinator.js");
 
 test.beforeEach(() => resetSheetReadCoordinatorForTests());
+
+test("manueller Gesamtimport ist pro Admin und operationId idempotent", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const service = new SheetService({ repository });
+  let calls = 0;
+  t.mock.method(dataPoller, "refreshAll", async () => {
+    calls++;
+    return { refreshedAt: 1000, tableCount: 8, changedTables: ["players"] };
+  });
+  const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
+  const params = { operationId: "00000000-0000-4000-8000-000000000101" };
+
+  const first = await service.refreshSheetData(principal, params);
+  const repeated = await service.refreshSheetData(principal, params);
+
+  assert.equal(first.success, true);
+  assert.equal(repeated.repeated, true);
+  assert.equal(calls, 1);
+  await service.stop();
+  repository.close();
+});
+
+test("fehlgeschlagener Gesamtimport verwirft keinen geplanten Write-Refresh", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const service = new SheetService({ repository });
+  const timer = setTimeout(() => {}, 60000);
+  timer.unref();
+  service.refreshTimers.set("players", timer);
+  t.mock.method(dataPoller, "refreshAll", async () => {
+    throw Object.assign(new Error("refresh unavailable"), { code: "DATA_REFRESH_FAILED" });
+  });
+
+  await assert.rejects(
+    service.refreshSheetData(
+      { type: "user", id: "p1", role: "admin", name: "Ada Admin" },
+      { operationId: "00000000-0000-4000-8000-000000000102" },
+    ),
+    { code: "DATA_REFRESH_FAILED" },
+  );
+  assert.equal(service.refreshTimers.get("players"), timer);
+  await service.stop();
+  repository.close();
+});
+
+test("Gesamtimport ueberholt keine bereits angenommene Write-Queue", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const service = new SheetService({ repository });
+  const order = [];
+  let releaseFirst;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+  const first = service.enqueue("players", async () => {
+    order.push("write-1");
+    await gate;
+  });
+  const second = service.enqueue("players", async () => { order.push("write-2"); });
+  const exclusive = acquireExclusiveSheetActivity().then((release) => {
+    order.push("import");
+    release();
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(order, ["write-1"]);
+  releaseFirst();
+  await Promise.all([first, second, exclusive]);
+  assert.deepEqual(order, ["write-1", "write-2", "import"]);
+  await service.stop();
+  repository.close();
+});
 
 function fakeSheets(initialTables) {
   const tables = structuredClone(initialTables);

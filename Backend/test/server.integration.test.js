@@ -36,7 +36,7 @@ function createSocketClient(url, headers) {
         socket.once("error", reject);
       });
     },
-    next(predicate = () => true) {
+    next(predicate = () => true, label = "message") {
       const index = messages.findIndex(predicate);
       if (index >= 0) return Promise.resolve(messages.splice(index, 1)[0]);
       return new Promise((resolve, reject) => {
@@ -50,7 +50,7 @@ function createSocketClient(url, headers) {
         const timer = setTimeout(() => {
           const waiterIndex = waiters.indexOf(waiter);
           if (waiterIndex >= 0) waiters.splice(waiterIndex, 1);
-          reject(new Error("WebSocket-Testnachricht nicht empfangen"));
+          reject(new Error(`WebSocket-Testnachricht nicht empfangen: ${label}; socket=${socket.readyState}; queued=${messages.map((message) => `${message.type}:${message.endpoint || message.topic || ""}`).join(",")}`));
         }, 3000);
         waiters.push(waiter);
       });
@@ -66,12 +66,12 @@ function createSocketClient(url, headers) {
         pageType,
         appVersion: clientVersion,
       }));
-      return this.next((message) => message.type === "welcome");
+      return this.next((message) => message.type === "welcome", "welcome");
     },
     async request(endpoint, params = {}) {
       const id = `integration-${++requestCounter}`;
       socket.send(JSON.stringify({ v: 2, type: "request", id, endpoint, params }));
-      return this.next((message) => message.type === "response" && message.id === id);
+      return this.next((message) => message.type === "response" && message.id === id, endpoint);
     },
     async close() {
       if (socket.readyState === WebSocket.CLOSED) return;
@@ -134,6 +134,15 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const repository = new StateRepository(":memory:");
   const sheetService = {
+    async refreshSheetData(_principal, { operationId }) {
+      return {
+        success: true,
+        operationId,
+        refreshedAt: Date.now(),
+        tableCount: Object.keys(TABLE_CONFIG).length,
+        changedTables: [],
+      };
+    },
     async setPasswordHash(personId, storedHash) {
       const current = structuredClone(dataStore.get("players"));
       const row = current.slice(1).find((entry) => entry[0] === personId);
@@ -647,7 +656,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["adminMemberReconciliation", "adminPeopleNormalization", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminMemberReconciliation", "adminPeopleNormalization", "sheetDataStatus", "refreshSheetData", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -663,6 +672,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   for (const endpoint of [...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
   for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
   for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 
   const ownProfile = await adminClient.request("myProfile");
   assert.equal(ownProfile.data.profile.email, "ada@example.test");
@@ -677,6 +687,17 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(reconciliation.data.people.length >= 2, true);
   assert.equal(typeof reconciliation.data.people[0].externalId, "string");
   assert.equal(Object.hasOwn(reconciliation.data.people[0].values, "storedPasswordHash"), false);
+  const sheetStatus = await adminClient.request("sheetDataStatus");
+  assert.equal(sheetStatus.data.success, true);
+  assert.equal(Object.hasOwn(sheetStatus.data, "lastSuccessfulRefreshAt"), true);
+  assert.equal(typeof sheetStatus.data.bootstrapRecoveryActive, "boolean");
+  assert.deepEqual(Object.keys(sheetStatus.data.tables).sort(), Object.keys(TABLE_CONFIG).sort());
+  assert.equal(Object.values(sheetStatus.data.tables).some((table) => Object.hasOwn(table, "lastError")), false);
+  const sheetRefresh = await adminClient.request("refreshSheetData", {
+    operationId: "00000000-0000-4000-8000-000000000099",
+  });
+  assert.equal(sheetRefresh.data.success, true);
+  assert.equal(sheetRefresh.data.tableCount, Object.keys(TABLE_CONFIG).length);
   assert.equal((await adminClient.request("navigator", { profil: "1" })).data.items[0].action.path, "/scoreboard.html");
   adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["monitors"] }));
   const monitorSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "monitors");
@@ -784,10 +805,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.ok(rotated.data.monitor.token);
   assert.equal(await deviceClosed, 4003);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   const revoked = await adminClient.request("monitorRevoke", {
     monitorId,
     operationId: "00000000-0000-4000-8000-000000000306",
   });
+  assert.equal(revoked.data.success, true, JSON.stringify(revoked.data));
   assert.ok(revoked.data.monitor.revokedAt);
   assert.equal((await adminClient.request("monitorList")).data.monitors[0].revokedAt > 0, true);
 
@@ -869,11 +892,10 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   try {
     const stalePeopleStatus = await fetch(`${httpBase}/status`, { headers: { Cookie: cookie } });
     assert.equal(stalePeopleStatus.status, 200);
-    assert.deepEqual((await stalePeopleStatus.json()).authorization, { role: "admin", roleSource: "last_known_good" });
+    assert.deepEqual((await stalePeopleStatus.json()).authorization, { role: "admin", roleSource: "current" });
     const staleGrafanaAuth = await fetch(`${httpBase}/api/admin/grafana-auth`, { headers: { Cookie: cookie } });
-    assert.equal(staleGrafanaAuth.status, 503);
-    assert.equal(staleGrafanaAuth.headers.get("x-webauth-user"), null);
-    assert.equal((await staleGrafanaAuth.json()).error.code, "PERSON_DATA_UNAVAILABLE");
+    assert.equal(staleGrafanaAuth.status, 200);
+    assert.equal(staleGrafanaAuth.headers.get("x-webauth-role"), "Admin");
   } finally {
     Date.now = realDateNow;
   }
@@ -887,7 +909,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
   for (const action of [
     "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
-    "passwordReset", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "passwordReset", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
     "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
   ]) {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);

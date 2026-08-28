@@ -19,6 +19,7 @@ const {
   WS_REQUEST_RATE,
 } = require("./config.js");
 const dataStore = require("./dataStore.js");
+const dataPoller = require("./dataPoller.js");
 const stateStore = require("./stateStore.js");
 const courtPoller = require("./courtPoller.js");
 const { AppError, errorData } = require("./errors.js");
@@ -110,6 +111,17 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         after: internal?.after || null,
       };
     }
+    case "refreshSheetData":
+      return {
+        targetType: "sheet-cache",
+        targetId: "all",
+        before: null,
+        after: internal?.after || (result.success ? {
+          tableCount: result.tableCount || 0,
+          changedTableCount: Array.isArray(result.changedTables) ? result.changedTables.length : 0,
+          refreshedAt: result.refreshedAt || null,
+        } : null),
+      };
     default:
       return { targetType: "", targetId: "", before: null, after: null };
   }
@@ -465,6 +477,35 @@ const endpoints = {
       requireCurrentTables("players");
       return { success: true, ...projectPeopleReconciliation(dataStore.get("players")) };
     },
+  },
+  sheetDataStatus: {
+    access: ["admin"],
+    handler: () => {
+      const status = dataPoller.getStatus();
+      return {
+        success: true,
+        lastSuccessfulRefreshAt: status.lastSuccessfulRefreshAt,
+        dataAgeMs: status.dataAgeMs,
+        inProgress: status.inProgress,
+        bootstrapRecoveryActive: status.bootstrapRecoveryActive,
+        lastControlledFailure: status.lastControlledFailure,
+        tables: Object.fromEntries(Object.entries(status.tables).map(([table, value]) => [table, {
+          lastAttempt: value.lastAttempt || null,
+          lastUpdate: value.lastUpdate || null,
+          revision: value.revision,
+          rowCount: value.rowCount,
+          loadCount: value.loadCount,
+          consecutiveErrors: value.consecutiveErrors,
+          lastErrorCode: value.lastError?.code || null,
+        }])),
+      };
+    },
+  },
+  refreshSheetData: {
+    access: ["admin"],
+    write: true,
+    writeCost: 0.1,
+    handler: (params, context) => dependencies.sheetService.refreshSheetData(context.principal, params),
   },
   myProfile: {
     access: "authenticated",

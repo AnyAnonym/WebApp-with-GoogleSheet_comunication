@@ -223,6 +223,34 @@ test("Mitgliederabgleich akzeptiert nur benannte Diagnoseereignisse ohne Importw
   assert.equal(JSON.stringify(logs).includes("CSV-Rohdaten"), false);
 });
 
+test("Servicebereich akzeptiert nur kontrollierte Aktualisierungsdiagnosen", () => {
+  const { logs, service } = fixture({ value: 2700000 });
+  service.updateSettings(settings(0));
+  const result = service.recordBatch({
+    sourceIp: "203.0.113.8",
+    identity: { id: "p1", name: "Ada Admin", role: "admin" },
+    body: {
+      appVersion: "4.6.0-test",
+      clientSessionId: "00000000-0000-4000-8000-000000000012",
+      pageType: "servicebereich",
+      events: [
+        { event: "sheet_data_status_load_failed", level: "error", code: "DATA_NOT_READY" },
+        { event: "sheet_data_refresh_failed", level: "error", code: "DATA_REFRESH_FAILED", supportId: "support-refresh-1" },
+        { event: "service_area_auth_failed", level: "error", code: "AUTH_REQUIRED" },
+      ],
+    },
+  });
+
+  assert.deepEqual(result, { success: true, accepted: 3, dropped: 0 });
+  assert.deepEqual(logs.map((entry) => entry.fields.frontendEvent), [
+    "sheet_data_status_load_failed",
+    "sheet_data_refresh_failed",
+    "service_area_auth_failed",
+  ]);
+  assert.equal(logs[1].fields.supportId, "support-refresh-1");
+  assert.equal(JSON.stringify(logs).includes("Personen"), false);
+});
+
 test("Anonyme Events benoetigen die explizite globale Freigabe", () => {
   const now = { value: 3000000 };
   const { logs, service } = fixture(now);

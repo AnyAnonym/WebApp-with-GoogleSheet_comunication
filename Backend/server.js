@@ -105,8 +105,7 @@ function authIdentifier(body, passwordField) {
 
 function readiness({ repository, scoreLogRepository = null, auditLogRepository = null, sheetService = null, initialized, shuttingDown }) {
   const data = dataStore.getReadiness();
-  data.ready = Object.entries(data.tables).every(([table, status]) => table === "matchtyp" || status.current);
-  const poller = dataPoller.getStatus();
+  const refresh = dataPoller.getStatus();
   const court = courtPoller.getStatus();
   const courtSource = courtPoller.getLastData().source;
   const courtState = stateStore.getStatus();
@@ -127,7 +126,6 @@ function readiness({ repository, scoreLogRepository = null, auditLogRepository =
     scorelog_sqlite: !scoreLog || Boolean(scoreLog.open && scoreLog.ready),
     auditlog_sqlite: !auditLog || Boolean(auditLog.open && auditLog.ready),
     sheet_data: Boolean(data.ready),
-    sheet_poller: Boolean(poller.running),
     court_source: Boolean(courtReady),
     court_display_rules: Boolean(displayRulesReady),
   };
@@ -141,7 +139,7 @@ function readiness({ repository, scoreLogRepository = null, auditLogRepository =
     reasons,
     state,
     data,
-    poller: { running: poller.running, tickCount: poller.tickCount },
+    refresh,
     court: { ...court, source: courtSource, ready: courtReady, displayRulesReady, unresolvedActiveRules },
     sheets: sheetService?.status?.() || null,
     scoreLog,
@@ -694,7 +692,7 @@ function createApplication(overrides = {}) {
       const result = await dataPoller.initialLoad();
       if (shuttingDown) return { ...result, aborted: true };
       stateStore.migrateLegacyCourtDisplayRules(dataStore.get("matchtyp"));
-      dataPoller.start();
+      dataPoller.start(result);
       const courts = stateStore.getScoreboardCourts();
       courtPoller.setCourtActive(
         { "1": courts["1"].aktiv === 1, "2": courts["2"].aktiv === 1 },

@@ -94,7 +94,7 @@ groups:
         labels: { scope: application, severity: critical }
 
       - uid: epiber-sheet-stale
-        title: ePiber Sheet Data Stale
+        title: ePiber Sheet Snapshot Missing
         condition: C
         data:
           - refId: A
@@ -102,7 +102,7 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             model:
               datasource: { type: prometheus, uid: prometheus }
-              expr: 'min by (deployment) (epiber_sheet_table_current{deployment=~"live|paj",table!="matchtyp"})'
+              expr: 'min by (deployment) (epiber_sheet_table_current{deployment=~"live|paj"})'
               instant: true
               intervalMs: 15000
               maxDataPoints: 43200
@@ -127,8 +127,8 @@ groups:
         execErrState: Alerting
         for: 2m
         annotations:
-          summary: 'Mindestens eine Sheet-Tabelle von {{ $labels.deployment }} ist veraltet'
-          runbook: Project/server-configs/observability/RUNBOOKS.md#sheet-data-stale
+          summary: '{{ $labels.deployment }} besitzt keinen vollstaendigen Sheet-Snapshot'
+          runbook: Project/server-configs/observability/RUNBOOKS.md#sheet-snapshot-missing
         labels: { scope: application, severity: warning }
 
       - uid: epiber-court-stale

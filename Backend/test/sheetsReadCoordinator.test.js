@@ -4,6 +4,8 @@ const { setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
 const {
+  acquireExclusiveSheetActivity,
+  acquireSheetTableActivity,
   executeSheetRead,
   getSheetReadStatus,
   resetSheetReadCoordinatorForTests,
@@ -31,7 +33,7 @@ test("Google-429 startet einen gemeinsamen Cooldown ohne weitere API-Versuche", 
 
   await assert.rejects(executeSheetRead({
     method: "values_batch_get",
-    purpose: "poll",
+    purpose: "initial",
     call: async () => { calls++; },
   }), (error) => error.code === "SHEETS_RATE_LIMITED" && error.details.retryAfterMs === 60000);
   assert.equal(calls, 1);
@@ -39,9 +41,33 @@ test("Google-429 startet einen gemeinsamen Cooldown ohne weitere API-Versuche", 
   now += 60000;
   const result = await executeSheetRead({
     method: "values_batch_get",
-    purpose: "poll",
+    purpose: "initial",
     call: async () => { calls++; return "ok"; },
   });
   assert.equal(result, "ok");
   assert.equal(calls, 2);
+});
+
+test("exklusiver Gesamtimport wartet auf Writes und blockiert neue Tabellenarbeit", async () => {
+  const releaseWrite = await acquireSheetTableActivity("players");
+  let exclusiveAcquired = false;
+  const exclusive = acquireExclusiveSheetActivity().then((release) => {
+    exclusiveAcquired = true;
+    return release;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(exclusiveAcquired, false);
+
+  let secondWriteAcquired = false;
+  const secondWrite = acquireSheetTableActivity("entryList").then((release) => {
+    secondWriteAcquired = true;
+    return release;
+  });
+  releaseWrite();
+  const releaseExclusive = await exclusive;
+  assert.equal(secondWriteAcquired, false);
+  releaseExclusive();
+  const releaseSecondWrite = await secondWrite;
+  assert.equal(secondWriteAcquired, true);
+  releaseSecondWrite();
 });

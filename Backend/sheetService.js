@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { google } = require("googleapis");
 const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.js");
 const dataStore = require("./dataStore.js");
+const dataPoller = require("./dataPoller.js");
 const { AppError } = require("./errors.js");
 const { analyzeMatchRules } = require("./matchRules.js");
 const {
@@ -22,7 +23,7 @@ const {
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const { assertPlayerLoginConflictsNotWorsened, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
-const { beginSheetTableActivity, executeSheetRead, getSheetReadStatus, rateLimitError } = require("./sheetsReadCoordinator.js");
+const { acquireSheetTableActivity, executeSheetRead, getSheetReadStatus, rateLimitError } = require("./sheetsReadCoordinator.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
 const WRITE_REFRESH_DELAY_MS = 1000;
@@ -241,8 +242,8 @@ class SheetService {
     if (this.stopping) return Promise.reject(new AppError("SHUTTING_DOWN", "Server wird beendet", 503));
     if (this.active.size >= 1000) return Promise.reject(new AppError("WRITE_QUEUE_FULL", "Schreibwarteschlange ist voll", 503));
     const previous = this.queues.get(key) || Promise.resolve();
-    const operation = previous.catch(() => {}).then(async () => {
-      const release = Object.hasOwn(TABLE_CONFIG, key) ? beginSheetTableActivity(key) : null;
+    const activity = Object.hasOwn(TABLE_CONFIG, key) ? acquireSheetTableActivity(key) : Promise.resolve(null);
+    const operation = Promise.all([previous.catch(() => {}), activity]).then(async ([, release]) => {
       try {
         return await callback();
       } finally {
@@ -1266,6 +1267,26 @@ class SheetService {
         },
       );
     }));
+  }
+
+  async refreshSheetData(principal, { operationId }) {
+    return this.runIdempotent(principal, "refreshSheetData", operationId, {}, async () => {
+      const result = await dataPoller.refreshAll("admin");
+      for (const tableName of Object.keys(TABLE_CONFIG)) this.cancelScheduledRefresh(tableName);
+      return withAudit({
+        success: true,
+        refreshedAt: result.refreshedAt,
+        tableCount: result.tableCount,
+        changedTables: result.changedTables,
+      }, {
+        before: null,
+        after: {
+          tableCount: result.tableCount,
+          changedTableCount: result.changedTables.length,
+          refreshedAt: result.refreshedAt,
+        },
+      });
+    });
   }
 
   async stop() {

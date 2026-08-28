@@ -23,6 +23,7 @@ function renderHeader() {
         <a href="personenNormalisieren.html" class="${activeClass("personenNormalisieren.html")}" data-role="admin" hidden>Datenpflege</a>
         <a href="mitgliederAbgleichen.html" class="${activeClass("mitgliederAbgleichen.html")}" data-role="admin" hidden>Mitgliederabgleich</a>
         <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
+        <a href="servicebereich.html" class="${activeClass("servicebereich.html")}" data-role="admin" hidden>Servicebereich</a>
         <a href="https://epiber.at/grafana/" data-role="admin" hidden>Grafana</a>
       </nav>
 
@@ -64,6 +65,7 @@ function renderMobileNav() {
           <a href="personenNormalisieren.html" class="${activeClass("personenNormalisieren.html")}" data-role="admin" hidden>Datenpflege</a>
           <a href="mitgliederAbgleichen.html" class="${activeClass("mitgliederAbgleichen.html")}" data-role="admin" hidden>Mitgliederabgleich</a>
           <a href="adminLogging.html" class="${activeClass("adminLogging.html")}" data-role="admin" hidden>Logging</a>
+          <a href="servicebereich.html" class="${activeClass("servicebereich.html")}" data-role="admin" hidden>Servicebereich</a>
           <a href="https://epiber.at/grafana/" data-role="admin" hidden>Grafana</a>
         </nav>
       </div>

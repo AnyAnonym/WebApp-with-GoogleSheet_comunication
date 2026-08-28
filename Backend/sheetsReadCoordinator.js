@@ -9,6 +9,20 @@ const RETRY_STATUS_RANGES = Object.freeze([[100, 199], [408, 408], [500, 599]]);
 let cooldownUntil = 0;
 let now = Date.now;
 const activeTables = new Map();
+let exclusiveActive = false;
+let exclusivePending = 0;
+let activityCount = 0;
+let activityWaiters = [];
+
+function notifyActivityChange() {
+  const waiters = activityWaiters;
+  activityWaiters = [];
+  for (const resolve of waiters) resolve();
+}
+
+function waitForActivityChange() {
+  return new Promise((resolve) => activityWaiters.push(resolve));
+}
 
 function statusOf(error) {
   return Number(error?.response?.status || error?.status || error?.code || 0);
@@ -72,6 +86,39 @@ function beginSheetTableActivity(tableName) {
   };
 }
 
+async function acquireSheetTableActivity(tableName) {
+  while (exclusiveActive || exclusivePending > 0) await waitForActivityChange();
+  activityCount++;
+  activeTables.set(tableName, (activeTables.get(tableName) || 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activityCount = Math.max(0, activityCount - 1);
+    const remaining = (activeTables.get(tableName) || 1) - 1;
+    if (remaining > 0) activeTables.set(tableName, remaining);
+    else activeTables.delete(tableName);
+    notifyActivityChange();
+  };
+}
+
+async function acquireExclusiveSheetActivity() {
+  exclusivePending++;
+  try {
+    while (exclusiveActive || activityCount > 0) await waitForActivityChange();
+    exclusiveActive = true;
+  } finally {
+    exclusivePending--;
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    exclusiveActive = false;
+    notifyActivityChange();
+  };
+}
+
 function isSheetTableActive(tableName) {
   return activeTables.has(tableName);
 }
@@ -80,6 +127,10 @@ function resetSheetReadCoordinatorForTests() {
   cooldownUntil = 0;
   now = Date.now;
   activeTables.clear();
+  exclusiveActive = false;
+  exclusivePending = 0;
+  activityCount = 0;
+  notifyActivityChange();
 }
 
 function setSheetReadNowForTests(callback) {
@@ -87,6 +138,8 @@ function setSheetReadNowForTests(callback) {
 }
 
 module.exports = {
+  acquireExclusiveSheetActivity,
+  acquireSheetTableActivity,
   beginSheetTableActivity,
   executeSheetRead,
   getSheetReadStatus,

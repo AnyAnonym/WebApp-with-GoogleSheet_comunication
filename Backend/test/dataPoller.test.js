@@ -6,8 +6,6 @@ setTestEnvironment();
 const { TABLE_CONFIG } = require("../config.js");
 const dataPoller = require("../dataPoller.js");
 const dataStore = require("../dataStore.js");
-const logger = require("../logger.js");
-const { beginSheetTableActivity } = require("../sheetsReadCoordinator.js");
 const { REQUIRED_HEADERS } = require("../tableSchemas.js");
 
 function tableForRange(range) {
@@ -18,178 +16,142 @@ function valuesFor(tableName, value = `${tableName}-1`) {
   return [REQUIRED_HEADERS[tableName], [value]];
 }
 
-test("Initialload meldet Clientfehler ohne den Prozessstart zu blockieren und kann sich erholen", async () => {
+function clientWithValues(valueForTable = (tableName) => valuesFor(tableName)) {
+  return {
+    spreadsheets: {
+      values: {
+        async batchGet({ ranges }) {
+          return { data: { valueRanges: ranges.map((range) => ({ values: valueForTable(tableForRange(range)) })) } };
+        },
+        async get({ range }) {
+          return { data: { values: valueForTable(tableForRange(range)) } };
+        },
+      },
+    },
+  };
+}
+
+async function waitFor(predicate, timeoutMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Bedingung wurde nicht rechtzeitig erfuellt");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test.beforeEach(async () => {
+  await dataPoller.stop();
   dataStore.resetForTests();
+});
+
+test("fehlgeschlagener Startimport wird automatisch bis zum ersten Gesamterfolg wiederholt", async () => {
+  let calls = 0;
   dataPoller.setSheetsClientFactoryForTests(async () => {
-    throw new Error("credentials unavailable");
+    calls++;
+    if (calls === 1) throw new Error("credentials unavailable");
+    return clientWithValues();
   });
+
   const failed = await dataPoller.initialLoad();
   assert.equal(failed.success, false);
-  assert.equal(failed.results.length, Object.keys(TABLE_CONFIG).length);
-  assert.equal(failed.results.every((result) => result.result === "failed"), true);
-  assert.equal(failed.results.every((result) => typeof result.durationMs === "number"), true);
-  assert.equal(failed.results.every((result) => result.errorCode === "SHEETS_POLL_FAILED"), true);
   assert.equal(dataStore.getReadiness().ready, false);
+  dataPoller.start(failed);
 
-  dataPoller.setSheetsClientFactoryForTests(async () => ({
-    spreadsheets: {
-      values: {
-        async batchGet({ ranges }) {
-          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), `${range}-1`) })) } };
-        },
-      },
-    },
-  }));
-  const recovered = await dataPoller.initialLoad();
-  assert.equal(recovered.success, true);
-  assert.equal(dataStore.getReadiness().ready, true);
-  dataPoller.start();
-  assert.equal(dataPoller.getStatus().running, true);
-  await dataPoller.stop();
+  await waitFor(() => dataStore.getReadiness().ready);
+  assert.equal(calls, 2);
+  assert.equal(dataPoller.getStatus().bootstrapRecoveryActive, false);
 });
 
-test("ueberlappende Sheet-Loads melden ein gezaeuntes Ergebnis als ignored_stale", async () => {
-  dataStore.resetForTests();
-  let entryListCalls = 0;
-  let releaseFirst;
-  let firstStarted;
-  const started = new Promise((resolve) => { firstStarted = resolve; });
-  const gate = new Promise((resolve) => { releaseFirst = resolve; });
-  dataPoller.setSheetsClientFactoryForTests(async () => ({
-    spreadsheets: {
-      values: {
-        async batchGet({ ranges }) {
-          entryListCalls++;
-          if (entryListCalls === 1) {
-            firstStarted();
-            await gate;
-            return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), "older") })) } };
-          }
-          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range), "newer") })) } };
-        },
-      },
-    },
-  }));
-
-  const olderLoad = dataPoller.initialLoad();
-  await started;
-  const newerLoad = await dataPoller.initialLoad();
-  releaseFirst();
-  const fencedLoad = await olderLoad;
-  const olderResult = fencedLoad.results.find(({ table }) => table === "entryList");
-  const newerResult = newerLoad.results.find(({ table }) => table === "entryList");
-
-  assert.equal(olderResult.result, "ignored_stale");
-  assert.equal(olderResult.success, true);
-  assert.equal(newerResult.result, "applied");
-  assert.deepEqual(dataStore.get("entryList"), valuesFor("entryList", "newer"));
-});
-
-test("identische Sheet-Fehler werden unterdrueckt, zusammengefasst und einmalig als Recovery geloggt", async (t) => {
-  dataStore.resetForTests();
-  let failing = true;
-  const events = [];
-  const originalLog = logger.log;
-  logger.log = (level, event, fields) => {
-    events.push({ level, event, fields });
-    return true;
-  };
-  t.after(() => { logger.log = originalLog; });
-  dataPoller.setSheetsClientFactoryForTests(async () => ({
-    spreadsheets: {
-      values: {
-        async batchGet({ ranges }) {
-          return { data: { valueRanges: ranges.map((range) => {
-            const tableName = tableForRange(range);
-            if (tableName === "entryList" && failing) return { values: [] };
-            return { values: valuesFor(tableName) };
-          }) } };
-        },
-      },
-    },
-  }));
-
-  let failedResult;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const load = await dataPoller.initialLoad();
-    failedResult = load.results.find(({ table }) => table === "entryList");
-  }
-  assert.equal(failedResult.result, "failed");
-  assert.equal(failedResult.errorCode, "SHEET_SCHEMA");
-  assert.equal(failedResult.errorSequence, 10);
-
-  failing = false;
-  const recoveredLoad = await dataPoller.initialLoad();
-  const recovered = recoveredLoad.results.find(({ table }) => table === "entryList");
-  assert.equal(recovered.result, "recovered");
-  assert.equal(recovered.errorSequence, 10);
-  assert.equal(events.filter(({ event }) => event === "sheets_table_poll_failed").length, 1);
-  assert.equal(events.filter(({ event }) => event === "sheets_table_poll_failure_summary").length, 1);
-  assert.equal(events.filter(({ event }) => event === "sheets_table_poll_recovered").length, 1);
-});
-
-test("Initialload und Faelligkeiten verwenden je einen Batch ohne Sofortwiederholung", async (t) => {
-  dataStore.resetForTests();
-  let now = 100000;
-  t.mock.method(Date, "now", () => now);
-  const batches = [];
-  dataPoller.setSheetsClientFactoryForTests(async () => ({
-    spreadsheets: {
-      values: {
-        async batchGet({ ranges }) {
-          batches.push([...ranges]);
-          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
-        },
-      },
-    },
-  }));
-  assert.equal((await dataPoller.initialLoad()).success, true);
-  dataPoller.start();
-  t.after(() => dataPoller.stop());
-
-  now += 5000;
-  assert.deepEqual(await dataPoller.runTick(), []);
-  now += 5000;
-  const release = beginSheetTableActivity("matches1");
-  assert.equal((await dataPoller.runTick()).length, 2);
-  release();
-  now += 5000;
-  assert.equal((await dataPoller.runTick()).length, 1);
-  now += 15000;
-  assert.equal((await dataPoller.runTick()).length, 8);
-
-  assert.equal(batches.length, 4);
-  assert.equal(batches[0].length, 8);
-  assert.equal(batches[1].length, 2);
-  assert.equal(batches[2].length, 1);
-  assert.equal(batches[3].length, 8);
-});
-
-test("ungueltiger Batchbereich wird von gesunden Tabellen isoliert", async () => {
-  dataStore.resetForTests();
+test("erfolgreicher Startimport erzeugt kein periodisches Polling", async () => {
   let calls = 0;
   dataPoller.setSheetsClientFactoryForTests(async () => ({
-    spreadsheets: {
-      values: {
-        async batchGet({ ranges }) {
-          calls++;
-          if (ranges.includes("Navigator")) throw Object.assign(new Error("range missing"), { response: { status: 400 } });
-          return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
-        },
-      },
-    },
+    spreadsheets: { values: { async batchGet({ ranges }) {
+      calls++;
+      return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
+    } } },
   }));
 
   const result = await dataPoller.initialLoad();
-  assert.equal(result.success, false);
-  assert.equal(result.results.filter(({ success }) => success).length, 7);
-  assert.equal(result.results.find(({ table }) => table === "navigator").errorCode, "HTTP_400");
-  assert.equal(calls > 1, true);
-  assert.equal(dataStore.getReadiness().tables.players.current, true);
+  dataPoller.start(result);
+  await new Promise((resolve) => setTimeout(resolve, 75));
+
+  assert.equal(result.success, true);
+  assert.equal(calls, 1);
+  assert.equal(dataPoller.getStatus().running, false);
+  assert.equal(dataPoller.getStatus().isPolling, false);
 });
 
-test("globaler Spreadsheet-404 wird nicht durch Batchaufteilung vervielfacht", async () => {
-  dataStore.resetForTests();
+test("manueller Erfolg beendet eine geplante Bootstrap-Recovery", async () => {
+  let calls = 0;
+  dataPoller.setSheetsClientFactoryForTests(async () => {
+    calls++;
+    if (calls === 1) throw new Error("credentials unavailable");
+    return clientWithValues();
+  });
+
+  const failed = await dataPoller.initialLoad();
+  dataPoller.start(failed);
+  assert.equal(dataPoller.getStatus().bootstrapRecoveryActive, true);
+  await dataPoller.refreshAll("admin");
+  await new Promise((resolve) => setTimeout(resolve, 75));
+
+  assert.equal(calls, 2);
+  assert.equal(dataPoller.getStatus().bootstrapRecoveryActive, false);
+  assert.equal(dataPoller.getStatus().recoveryAttempt, 0);
+});
+
+test("manueller Gesamtimport uebernimmt alle validierten Tabellen atomar", async () => {
+  let suffix = "old";
+  dataPoller.setSheetsClientFactoryForTests(async () => clientWithValues((tableName) => valuesFor(tableName, `${tableName}-${suffix}`)));
+  await dataPoller.initialLoad();
+  suffix = "new";
+
+  const result = await dataPoller.refreshAll("admin");
+
+  assert.equal(result.success, true);
+  assert.equal(result.tableCount, Object.keys(TABLE_CONFIG).length);
+  assert.deepEqual(new Set(result.changedTables), new Set(Object.keys(TABLE_CONFIG)));
+  assert.deepEqual(dataStore.get("players"), valuesFor("players", "players-new"));
+  assert.equal(dataPoller.getStatus().lastControlledFailure, null);
+});
+
+test("fehlgeschlagener manueller Gesamtimport behaelt den vollstaendigen Last-good-Stand", async () => {
+  let invalid = false;
+  dataPoller.setSheetsClientFactoryForTests(async () => clientWithValues((tableName) => (
+    invalid && tableName === "navigator" ? [] : valuesFor(tableName, invalid ? "new" : "old")
+  )));
+  await dataPoller.initialLoad();
+  const before = Object.fromEntries(Object.keys(TABLE_CONFIG).map((table) => [table, structuredClone(dataStore.get(table))]));
+  invalid = true;
+
+  await assert.rejects(dataPoller.refreshAll("admin"), (error) => error.code === "DATA_REFRESH_FAILED");
+
+  for (const table of Object.keys(TABLE_CONFIG)) assert.deepEqual(dataStore.get(table), before[table]);
+  assert.equal(dataStore.getReadiness().ready, true);
+  assert.equal(dataPoller.getStatus().lastControlledFailure.code, "SHEET_SCHEMA");
+});
+
+test("paralleler Gesamtimport wird kontrolliert abgewiesen", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let started;
+  const firstStarted = new Promise((resolve) => { started = resolve; });
+  dataPoller.setSheetsClientFactoryForTests(async () => ({
+    spreadsheets: { values: { async batchGet({ ranges }) {
+      started();
+      await gate;
+      return { data: { valueRanges: ranges.map((range) => ({ values: valuesFor(tableForRange(range)) })) } };
+    } } },
+  }));
+
+  const first = dataPoller.initialLoad();
+  await firstStarted;
+  await assert.rejects(dataPoller.refreshAll("admin"), (error) => error.code === "REFRESH_IN_PROGRESS");
+  release();
+  assert.equal((await first).success, true);
+});
+
+test("globaler Spreadsheet-Fehler wird nur einmal angefragt", async () => {
   let calls = 0;
   dataPoller.setSheetsClientFactoryForTests(async () => ({
     spreadsheets: { values: { async batchGet() {

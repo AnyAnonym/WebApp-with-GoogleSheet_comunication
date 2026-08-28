@@ -1,0 +1,35 @@
+================================================================================
+Servicebereich - Status und Aktualisierung der Sheet-Daten
+================================================================================
+-- Funktion und Dateien --
+  HTML: Frontend/servicebereich.html
+  JS:   Frontend/JS/servicebereich.js
+  CSS:  Frontend/CSS/servicebereich.css
+  Die responsive Administrationsseite zeigt Zeitpunkt und Alter des letzten
+  erfolgreichen Acht-Tabellen-Snapshots und startet bei Bedarf einen
+  kontrollierten Gesamtimport. Der Navigationslink `Servicebereich` ist nur fuer
+  eine aufgeloeste Adminsession sichtbar.
+
+-- Zugriff und Datenquellen --
+  Die Seite verlangt client- und serverseitig Rolle `admin`. Ohne aktuelle
+  Adminsession bleibt nur ein neutraler Zugriffshinweis sichtbar. Der Read-RPC
+  `sheetDataStatus {}` liefert den kontrollierten Importzustand; der Write-RPC
+  `refreshSheetData { operationId }` startet den exklusiven atomaren Import aller
+  acht Tabellen. Die Seite erhaelt keine Sheetzeilen oder freien Fehlerpayloads.
+
+-- Bedienung und Ablauf --
+  `Daten aktualisieren` ist waehrend eines laufenden Requests oder serverseitig
+  gemeldeten Imports gesperrt. Die operationId bleibt fuer einen unklaren Ausgang
+  erhalten; eindeutiger Erfolg oder Fehler gibt sie frei. Writes werden bei
+  Timeout oder Transportverlust nicht automatisch wiederholt. Waehrend eines
+  laufenden Imports fragt die Seite den Status alle zwei Sekunden nach; ausserhalb
+  dieses Zustands gibt es kein periodisches Status-RPC. Das sichtbare Datenalter
+  wird lokal alle 30 Sekunden fortgeschrieben.
+
+-- Fehler, Last-good und Diagnose --
+  Ein fehlgeschlagener manueller Import veraendert den letzten gueltigen Snapshot
+  nicht. Die Seite zeigt nur kontrollierte Meldung, Zeitpunkt und gegebenenfalls
+  Support-ID. Die Browserdiagnose-Events `sheet_data_status_load_failed`,
+  `sheet_data_refresh_failed` und `service_area_auth_failed` besitzen feste
+  serverseitige Allowlist-Projektionen; Request-/Response-Payloads, Tabellenwerte,
+  Credentials und freie Stacks werden nicht uebertragen.

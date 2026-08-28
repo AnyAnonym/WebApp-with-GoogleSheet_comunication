@@ -247,24 +247,24 @@ test("operationId bleibt ohne randomUUID ein gueltiger UUID-v4-Wert", (t) => {
   assert.match(runtime.api.createOperationId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
 
-test("Writes werden nach einem temporaeren Fehler nicht automatisch wiederholt", async (t) => {
+test("refreshSheetData wird nach einem temporaeren Fehler nicht automatisch wiederholt", async (t) => {
   const runtime = loadDataClient();
   t.after(() => runtime.api.disconnect());
   const socket = runtime.sockets[0];
   socket.open();
-  socket.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "user", role: "operator" } });
-  const params = { operationId: "00000000-0000-4000-8000-000000000230", monitorId: "monitor-1", direction: "down" };
-  const pending = runtime.api.request("monitorScroll", params);
+  socket.receive({ type: "welcome", v: 2, protocol: 2, principal: { type: "user", role: "admin" } });
+  const params = { operationId: "00000000-0000-4000-8000-000000000230" };
+  const pending = runtime.api.request("refreshSheetData", params);
   await Promise.resolve();
   const first = socket.sent.find((message) => message.type === "request");
   socket.receive({
     type: "response",
     v: 2,
     id: first.id,
-    endpoint: "monitorScroll",
-    data: { success: false, error: { code: "MONITOR_OFFLINE", message: "offline" } },
+    endpoint: "refreshSheetData",
+    data: { success: false, error: { code: "SHUTTING_DOWN", message: "shutdown" } },
   });
-  await assert.rejects(pending, (error) => error.code === "MONITOR_OFFLINE");
+  await assert.rejects(pending, (error) => error.code === "SHUTTING_DOWN");
   const requests = socket.sent.filter((message) => message.type === "request");
   assert.equal(requests.length, 1);
   assert.equal(requests[0].params.operationId, params.operationId);

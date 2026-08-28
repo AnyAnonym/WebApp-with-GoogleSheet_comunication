@@ -6,3 +6,59 @@ Commit: 4.6.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.6.0-paj-1-1` gesetzt.
+
+[4.6.0-paj-1-2] - 2026-08-28
+Commit: 4.6.0-paj-1-2 | Sheet-Datenimport und Servicebereich bereitgestellt
+
+  Added
+  - [Frontend] Responsiven, admin-only Servicebereich fuer Sheet-Datenstatus und kontrollierten Gesamtimport ergaenzt.
+  - [Backend] Admin-RPCs `sheetDataStatus` und `refreshSheetData` mit geschlossenen Vertraegen, Idempotenz, Auditprojektion und Write-Limit integriert.
+  - [Observability] Importmetriken, Browserdiagnose-Allowlist, Snapshot-Runbook und Grafana-Darstellung ergaenzt.
+  - [Tests] Start-Recovery, atomare Last-good-Uebernahme, Importbarriere, Idempotenz, Berechtigungen und Servicebereich im Browser abgedeckt.
+
+  Changed
+  - [Backend] Periodisches Google-Sheets-Polling durch atomaren Acht-Tabellen-Startimport mit Backoff-Recovery bis zum ersten Gesamterfolg ersetzt.
+  - [Backend] Readiness auf vorhandenen Last-good-Snapshot umgestellt; dessen Alter bleibt diagnostisch und ein fehlgeschlagener manueller Import verwirft ihn nicht.
+  - [Backend] Gesamtimporte gegen Tabellenreads und Fachwrites exklusiv koordiniert; Precondition-, Bestaetigungs-, Metadaten- und Write-Refresh-Reads bleiben erhalten.
+  - [Backend] Sheetstatus, strukturierte Abschlusslogs und niedrig-kardinale Prometheusmetriken auf das Importmodell umgestellt.
+  - [Frontend] Servicebereich in Desktop- und Mobilnavigation fuer Administratoren verlinkt.
+  - [Dokumentation] Architektur, Datenhaltung, RPC-Vertraege, Seitendokumentation und Observability-Betriebsablaeufe auf das Importmodell aktualisiert.
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.6.0-paj-1-2` gesetzt.
+
+  Security
+  - [Datenschutz] Servicebereich und Diagnosepfade geben nur kontrollierte Status-, Fehlercode-, Zeit- und Support-ID-Felder aus; Sheetzeilen, Credentials und freie Payloads bleiben ausgeschlossen.
+  - [Audit] Manueller Gesamtimport erfasst Start sowie Erfolg, Ablehnung oder unklaren Ausgang ohne Tabelleninhalte und Geheimnisse.
+
+Dokumentationsuebernahme beim Main-Versionssprung
+
+  AGENTS.md
+  - `servicebereich.html` als Adminseite ohne URL-Parameter in die Schnellreferenz aufnehmen.
+
+  Project/software/ARCHITEKTUR.txt
+  - Periodisches Google-Sheets-Polling durch atomaren Acht-Tabellen-Startimport, Bootstrap-Recovery mit Backoff bis zum ersten Erfolg und manuellen Admin-Gesamtimport ersetzen.
+  - Last-good-Cache, altersunabhaengige Readiness nach dem ersten Gesamterfolg, exklusive Koordination mit Fachwrites und die weiterhin erforderlichen Write-spezifischen Reads dokumentieren.
+  - Importstatus, Importmetriken, Shutdown und Rollenaufloesung aus dem aktiven Last-good-Personenstand beschreiben.
+
+  Project/software/DATENBANK.txt
+  - Acht geladene Tabellen ohne Fast-/Slow-Kategorien sowie gemeinsame Schemavalidierung und atomare Last-good-Uebernahme dokumentieren.
+  - Klarstellen, dass ein fehlgeschlagener manueller Import keine Tabelle des aktiven Snapshots veraendert.
+
+  Project/software/ENDPOINTS.txt
+  - Readiness auf einen mindestens einmal erfolgreichen Acht-Tabellen-Snapshot ohne Altersverfall umstellen.
+  - Admin-RPCs `sheetDataStatus {}` und `refreshSheetData { operationId }` mit Zugriff, Projektion, Idempotenz, Last-good-Fehlerverhalten, Audit und Datenschutz dokumentieren.
+  - Metrikbeschreibung von Sheet-Polling auf Sheetimporte umstellen.
+
+  Project/software/SOFTWARE-DOKU.txt
+  - Anzahl der Administrationsseiten erhoehen und `software/seiten/servicebereich.txt` in den Seitenindex aufnehmen.
+
+  Project/software/seiten/servicebereich.txt
+  - Neue Seitendokumentation fuer Zugriff, Datenquellen, Bedienfolge, Busy-/BFCache-Verhalten, Last-good-Fehlerpfad und kontrollierte Browserdiagnosen aufnehmen.
+
+  Project/server-configs/observability/RUNBOOKS.md
+  - Runbook `Sheet Snapshot Missing` mit Tabellenverfuegbarkeit, strukturierten Importlogs, Google-Zugang/Quote/Schema und kontrolliertem Adminimport aufnehmen.
+
+  Project/server-configs/observability/grafana/dashboards/epiber-overview.json
+  - Dashboard auf Importaktivitaet, Last-good-Snapshotalter und Gesamtimporte pro fuenf Minuten umstellen.
+
+  Project/server-configs/observability/grafana/provisioning/alerting/rules.yml
+  - Sheet-Alert auf fehlenden vollstaendigen Acht-Tabellen-Snapshot und das neue Runbook umstellen.

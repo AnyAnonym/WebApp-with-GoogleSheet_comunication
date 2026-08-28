@@ -26,11 +26,16 @@ separaten Freigabe wieder in Scrapes, Logs, Authentifizierung und Alerts aufgeno
 1. `curl http://127.0.0.1:<port>/metrics` und `epiber_readiness_component_ready` pruefen.
 2. Den ungesunden Teil gezielt untersuchen; keine Fachwrites blind wiederholen.
 
-## Sheet Data Stale
+## Sheet Snapshot Missing
 
-1. Betroffene Tabelle und Deployment ueber `epiber_sheet_table_current` bestimmen.
-2. Sheet-Pollerfehler und Recovery in Loki mit demselben Deployment suchen.
-3. Google-Zugang oder Sheetstruktur pruefen, keine unbekannte Mutation wiederholen.
+1. Betroffene Tabelle und Deployment ueber `epiber_sheet_table_available` bestimmen.
+2. `sheets_full_refresh_failed`, `sheets_startup_recovery_scheduled` und
+   `sheets_startup_recovery_completed` in Loki fuer dasselbe Deployment pruefen.
+3. Google-Zugang, Quote und Sheetstruktur pruefen. Solange noch nie ein
+   vollstaendiger Snapshot geladen wurde, bleibt die Anwendung not-ready.
+4. Einen manuellen Gesamtimport nur als Admin im Servicebereich starten. Bei
+   unklarem Ausgang keine neue operationId erzeugen und keine Fachwrites blind
+   wiederholen; Support-ID und Auditstatus verwenden.
 
 ## Court Source Stale
 

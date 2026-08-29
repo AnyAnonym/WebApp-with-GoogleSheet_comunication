@@ -2,13 +2,14 @@ import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { ready, getUser, isAuthenticated, subscribeAuth } from "./authClient.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 import { diagnostic } from "./diagnostics.js";
-import { isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } from "./rankingMatchState.js";
+import { isActiveRankingRank, isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } from "./rankingMatchState.js";
 
 const readRlPlatzierung     = createEndpoint("rlPlatzierung");
 const readPlayersList       = createEndpoint("players");
 const readPreMatches        = createEndpoint("preMatches");
 const readMatchRestrictions = createEndpoint("readMatchRestrictions");
 const readBewerbe           = createEndpoint("bewerbe");
+const readRankingChallengeState = createEndpoint("rankingChallengeState");
 
 const params    = new URLSearchParams(window.location.search);
 const BEWERB_ID = params.get("id")
@@ -129,16 +130,16 @@ async function fetchBusyIds() {
 
 /**
  * Vergleicht Matchdaten mit new Date() (wie clock.js).
- * Gibt zurück, wer Schutzzeit (nach Sieg) bzw. Sperrzeit (nach Niederlage) hat.
+ * Gibt zurück, wer Schonzeit (nach Sieg) bzw. Sperrzeit (nach Niederlage) hat.
  */
 async function fetchRestrictions() {
   const res = await readMatchRestrictions({ bewerbId: BEWERB_ID });
-  const { success, complete, schutzzeit = [], sperrzeit = [] } = res?.data || {};
+  const { success, complete, schonzeit = [], sperrzeit = [] } = res?.data || {};
   if (!success || complete !== true) throw new Error("Schutz- und Sperrzeiten sind nicht vollstaendig.");
 
   return {
-    schutzzeitMap: new Map(
-      schutzzeit.map(({ id, until }) => [String(id).trim(), new Date(until)])
+    schonzeitMap: new Map(
+      schonzeit.map(({ id, until }) => [String(id).trim(), new Date(until)])
     ),
     sperrzeitMap: new Map(
       sperrzeit.map(({ id, until })  => [String(id).trim(), new Date(until)])
@@ -147,18 +148,22 @@ async function fetchRestrictions() {
 }
 
 /** Identifiziert den aktuell eingeloggten Spieler */
-async function fetchMyState(rankedList) {
+async function fetchMyState() {
   await ready;
   const myPlayerId = String(getUser()?.id || "").trim();
   if (!myPlayerId) return null;
-
-  const myEntry = rankedList.find(
-    (player) => String(player.playerId || "").trim() === myPlayerId
-  );
-
-  return myEntry
-    ? { myPlayerId, myRank: myEntry.rank }
-    : { myPlayerId, myRank: null };
+  const state = (await readRankingChallengeState({ bewerbId: BEWERB_ID })).data;
+  if (!state?.success || !["ranked", "returning", "newcomer", "ineligible"].includes(state.mode)) {
+    throw new Error("Ranglistenstatus ist unvollstaendig.");
+  }
+  return {
+    myPlayerId,
+    mode: state.mode,
+    myRank: Number.isInteger(Number(state.rank)) && Number(state.rank) > 0 ? Number(state.rank) : null,
+    returnFromRank: Number.isInteger(Number(state.returnFromRank)) && Number(state.returnFromRank) > 0
+      ? Number(state.returnFromRank)
+      : null,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -167,11 +172,11 @@ async function fetchMyState(rankedList) {
 //  Reihenfolge der Farbzuweisung:
 //   1. Mein Kästchen       → blau  (.selected)
 //   2. In offener Forderung → gelb  (.challenged)
-//   3. Hat Schutzzeit       → lila  (.protected) + Timer
+//   3. Hat Schonzeit        → lila  (.protected) + Timer
 //   4. Ich habe Sperrzeit   → lila  (.protected) + Timer
 //   5. Normal forderbar     → grün  (.challengeable)
 //   6. Nicht forderbar      → keine Klasse (grau)
-//      Ausnahme: hat Schutzzeit → lila (sichtbar für alle)
+//      Ausnahme: hat Schonzeit → lila (sichtbar für alle)
 // ═══════════════════════════════════════════════════════════════════════════
 async function applyAllRules(container, pyramid, rankedList) {
 
@@ -181,7 +186,7 @@ async function applyAllRules(container, pyramid, rankedList) {
   const [busyRes, restrictRes, myRes] = await Promise.allSettled([
     fetchBusyIds(),
     fetchRestrictions(),
-    fetchMyState(rankedList),
+    fetchMyState(),
   ]);
 
   const busyData = busyRes.status === "fulfilled"
@@ -189,17 +194,19 @@ async function applyAllRules(container, pyramid, rankedList) {
     : (diagnostic.warn("ranking_busy_data_load_failed", { error: busyRes.reason }),
        { busyIds: new Set(), preMatches: [] });
 
-  const { schutzzeitMap, sperrzeitMap } = restrictRes.status === "fulfilled"
+  const { schonzeitMap, sperrzeitMap } = restrictRes.status === "fulfilled"
     ? restrictRes.value
     : (diagnostic.warn("ranking_restrictions_load_failed", { error: restrictRes.reason }),
-       { schutzzeitMap: new Map(), sperrzeitMap: new Map() });
-  scheduleRestrictionExpiry([...schutzzeitMap.values(), ...sperrzeitMap.values()]);
+       { schonzeitMap: new Map(), sperrzeitMap: new Map() });
+  scheduleRestrictionExpiry([...schonzeitMap.values(), ...sperrzeitMap.values()]);
 
   const myState = myRes.status === "fulfilled"
     ? myRes.value
     : (diagnostic.warn("ranking_identity_state_load_failed", { error: myRes.reason }), null);
 
-  const ruleDataComplete = busyRes.status === "fulfilled" && restrictRes.status === "fulfilled";
+  const ruleDataComplete = busyRes.status === "fulfilled"
+    && restrictRes.status === "fulfilled"
+    && myRes.status === "fulfilled";
   let warning = document.getElementById("rankingDataWarning");
   if (!ruleDataComplete && !warning) {
     warning = document.createElement("div");
@@ -217,7 +224,7 @@ async function applyAllRules(container, pyramid, rankedList) {
 
   diagnostic.info("ranking_rules_loaded", {
     busyCount: busyData.busyIds.size,
-    protectionCount: schutzzeitMap.size,
+    protectionCount: schonzeitMap.size,
     blockingCount: sperrzeitMap.size,
   });
 
@@ -236,7 +243,17 @@ async function applyAllRules(container, pyramid, rankedList) {
 
   // ── Schritt 3: Forderbare IDs berechnen (Regelwerk)
   const challengeableIds = new Set();
-  if (ruleDataComplete && myRow !== -1 && myCol !== -1) {
+  if (ruleDataComplete && myState?.mode === "newcomer") {
+    for (const player of rankedList) {
+      if (player.playerId) challengeableIds.add(String(player.playerId).trim());
+    }
+  } else if (ruleDataComplete && myState?.mode === "returning" && myState.returnFromRank) {
+    for (const player of rankedList) {
+      if (player.rank >= myState.returnFromRank && player.playerId) {
+        challengeableIds.add(String(player.playerId).trim());
+      }
+    }
+  } else if (ruleDataComplete && myRow !== -1 && myCol !== -1) {
     const me = pyramid[myRow][myCol];
 
     // Gleiche Zeile – alle links von mir
@@ -259,6 +276,9 @@ async function applyAllRules(container, pyramid, rankedList) {
       const rank1 = pyramid.flat().find((p) => p.rank === 1);
       if (rank1?.playerId) challengeableIds.add(String(rank1.playerId).trim());
     }
+  }
+  for (const player of rankedList) {
+    if (!player.active) challengeableIds.delete(String(player.playerId || "").trim());
   }
 
   // ── Schritt 4: Bin ich selbst gesperrt? (Sperrzeit nach Niederlage)
@@ -301,7 +321,7 @@ async function applyAllRules(container, pyramid, rankedList) {
   // ── Schritt 6: DOM ATOMAR aktualisieren  ← erst HIER werden Klassen geändert
   container.querySelectorAll(".box").forEach((b) => {
     b.classList.remove("selected", "challengeable", "challenged", "protected",
-      "schutz", "sperrzeit", "challenge-with-me");
+      "schonzeit", "sperrzeit", "challenge-with-me");
     b.style.cursor = "";
     b.title = "";
     b.querySelector(".box-timer")?.remove();
@@ -309,7 +329,7 @@ async function applyAllRules(container, pyramid, rankedList) {
 
   pyramid.flat().forEach(({ playerId, box, rank }) => {
     const id = String(playerId).trim();
-    const playerState = rankingPlayerState(id, myPlayerId, busyData.busyIds, schutzzeitMap, sperrzeitMap);
+    const playerState = rankingPlayerState(id, myPlayerId, busyData.busyIds, schonzeitMap, sperrzeitMap);
 
     // Der blaue Rahmen bleibt erhalten; Schutz-/Sperrstatus und Timer bleiben sichtbar.
     if (playerState.selected) box.classList.add("selected");
@@ -327,12 +347,12 @@ async function applyAllRules(container, pyramid, rankedList) {
       return;
     }
 
-    // ── 2. Schutzzeit nach Sieg → rosa (gilt für alle, nicht nur forderbare)
+    // ── 2. Schonzeit nach Sieg → rosa (gilt für alle, nicht nur forderbare)
     if (playerState.status === "protection") {
-      box.classList.add("schutz");
+      box.classList.add("schonzeit");
       box.style.cursor = "default";
-      box.title = `Schutzzeit nach Sieg – läuft ab am ${schutzzeitMap.get(id).toLocaleString("de-AT")}`;
-      startProtectionTimer(box, schutzzeitMap.get(id));
+      box.title = `Schonzeit nach Sieg – läuft ab am ${schonzeitMap.get(id).toLocaleString("de-AT")}`;
+      startProtectionTimer(box, schonzeitMap.get(id));
       return;
     }
 
@@ -370,7 +390,7 @@ async function applyAllRules(container, pyramid, rankedList) {
   diagnostic.info("ranking_rules_applied", {
     challengeableCount: challengeableIds.size,
     busyCount: [...challengeableIds].filter((id) => busyData.busyIds.has(id)).length,
-    protectionCount: [...challengeableIds].filter((id) => schutzzeitMap.has(id)).length,
+    protectionCount: [...challengeableIds].filter((id) => schonzeitMap.has(id)).length,
     blockingCount: [...challengeableIds].filter((id) => sperrzeitMap.has(id)).length,
   });
 
@@ -405,29 +425,35 @@ export async function loadRanking() {
   const pIdIdx = pHeader.indexOf("id");
   const pFnIdx = pHeader.indexOf("vorname");
   const pLnIdx = pHeader.indexOf("nachname");
+  const pActiveIdx = pHeader.indexOf("aktiv");
 
   const playerMap = new Map();
   playerValues.slice(1).forEach((row) => {
     const id = String(row[pIdIdx] || "").trim();
     const firstName = String(row[pFnIdx] || "").trim();
     const lastName = String(row[pLnIdx] || "").trim();
-    if (id) playerMap.set(id, { firstName, lastName });
+    if (id) playerMap.set(id, {
+      firstName,
+      lastName,
+      active: pActiveIdx < 0 || String(row[pActiveIdx] || "").trim() === "1",
+    });
   });
 
   const rankedList = rankValues.slice(1)
     .filter((row) => {
       const bewerbId = String(row[bewerbIdIdx] || "").trim();
-      return !BEWERB_ID || bewerbId === BEWERB_ID;
+      return (!BEWERB_ID || bewerbId === BEWERB_ID) && isActiveRankingRank(row[rankIdx]);
     })
     .map((row) => {
       const playerId = String(row[personIdIdx] || "").trim();
-      const player = playerMap.get(playerId) || { firstName: "Unbekannt", lastName: "" };
+      const player = playerMap.get(playerId) || { firstName: "Unbekannt", lastName: "", active: false };
       return {
         bewerbId: String(row[bewerbIdIdx] || "").trim(),
         rank: Number(row[rankIdx]),
         playerId,
         firstName: player.firstName,
         lastName: player.lastName,
+        active: player.active,
         name: `${player.firstName} ${player.lastName}`.trim(),
       };
     })
@@ -480,7 +506,7 @@ function renderRankingLegend() {
   }
   // Diese Einträge sind für alle sichtbar
   itemsBox.push('<div class="legend-item"><span class="legend-swatch challenged"></span><span>In offener Forderung</span></div>');
-  itemsBox.push('<div class="legend-item"><span class="legend-swatch schutz"></span><span>Schutzzeit</span></div>');
+  itemsBox.push('<div class="legend-item"><span class="legend-swatch schonzeit"></span><span>Schonzeit</span></div>');
   itemsBox.push('<div class="legend-item"><span class="legend-swatch sperrzeit"></span><span>Sperrzeit</span></div>');
 
   // Rahmen-Sektion (nur für eingeloggte Nutzer)
@@ -499,7 +525,9 @@ function renderRankingLegend() {
   legend.innerHTML = `
     <div class="legend-label">Legende:</div>
     ${sections.join("\n")}
+    ${authenticated ? '<button type="button" class="ranking-withdrawn-button">Rausgehängte Spieler</button>' : ""}
   `;
+  legend.querySelector(".ranking-withdrawn-button")?.addEventListener("click", () => window.openWithdrawnRankingPlayers?.(BEWERB_ID));
 }
 
 export async function renderRanking() {
@@ -546,6 +574,9 @@ export async function renderRanking() {
 
   rankedList.sort((a, b) => a.rank - b.rank);
 
+  const pyramidContent = document.createElement("div");
+  pyramidContent.className = "pyramid-content";
+  container.appendChild(pyramidContent);
   const pyramid = [];
   let current = 0, level = 1;
 
@@ -554,8 +585,6 @@ export async function renderRanking() {
     const rowSize   = Math.min(level, remaining);
     const rowEl     = document.createElement("div");
     rowEl.className = "row";
-    rowEl.style.justifyContent = "flex-start";
-    rowEl.style.gap = "20px";
 
     const rowBoxes = [];
 
@@ -581,9 +610,6 @@ export async function renderRanking() {
       box.addEventListener("click", () => {
         window.openProfileModal?.({
           playerId: player.playerId || "",
-          boxElement: box,
-          bewerbId: BEWERB_ID,
-          canChallenge: box.classList.contains("challengeable"),
         });
       });
 
@@ -604,7 +630,7 @@ export async function renderRanking() {
     }
 
     pyramid.push(rowBoxes);
-    container.appendChild(rowEl);
+    pyramidContent.appendChild(rowEl);
     level++;
   }
 

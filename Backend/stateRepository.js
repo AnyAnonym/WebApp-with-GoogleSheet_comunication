@@ -456,6 +456,15 @@ class StateRepository {
     return result;
   }
 
+  deleteOperation(actorKey, operationId, endpoint, payload) {
+    this.ensureOpen();
+    const existing = this.getOperation(actorKey, operationId, endpoint, payload);
+    if (!existing) return false;
+    return this.db.prepare(`
+      DELETE FROM operations WHERE actor_key = ? AND operation_id = ?
+    `).run(actorKey, operationId).changes === 1;
+  }
+
   getLoginBlock(key) {
     this.ensureOpen();
     const row = this.db.prepare("SELECT blocked_until FROM login_failures WHERE key_hash = ?").get(hashToken(key));

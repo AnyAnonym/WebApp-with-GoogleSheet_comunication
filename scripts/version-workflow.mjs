@@ -22,7 +22,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  const options = { apply: false, json: false, paths: [] };
+  const options = { apply: false, json: false, paths: [], binaryPaths: [] };
 
   for (let index = 0; index < rest.length; index += 1) {
     const argument = rest[index];
@@ -34,6 +34,11 @@ function parseArgs(argv) {
       const value = rest[index + 1];
       if (!value || value.startsWith("--")) fail("--path benoetigt einen Wert");
       options.paths.push(value);
+      index += 1;
+    } else if (argument === "--binary-path") {
+      const value = rest[index + 1];
+      if (!value || value.startsWith("--")) fail("--binary-path benoetigt einen Wert");
+      options.binaryPaths.push(value);
       index += 1;
     } else if (["--system", "--subject", "--branch", "--version", "--target", "--main-sha", "--branch-sha"].includes(argument)) {
       const value = rest[index + 1];
@@ -386,15 +391,25 @@ function assertNoSecrets(files) {
   if (matchedFile) fail(`Potenzielles Geheimnis darf nicht gestaged werden: ${matchedFile}`);
 }
 
-function assertNoSecretContent(indexFile) {
+function assertNoSecretContent(indexFile, approvedBinaries) {
+  const numstat = run("git", ["diff", "--cached", "--numstat", "--no-renames"], {
+    cwd: root,
+    env: { ...process.env, GIT_INDEX_FILE: indexFile },
+  }).stdout;
+  const binaries = numstat.split("\n").flatMap((line) => {
+    const match = line.match(/^-\t-\t(.+)$/);
+    return match ? [match[1]] : [];
+  });
+  const unapproved = binaries.find((file) => !approvedBinaries.includes(file));
+  if (unapproved) fail(`Binaere Aenderung benoetigt --binary-path: ${unapproved}`);
+  const unnecessaryApproval = approvedBinaries.find((file) => !binaries.includes(file));
+  if (unnecessaryApproval) fail(`--binary-path bezeichnet keine binaere Aenderung: ${unnecessaryApproval}`);
   const diff = run("git", ["diff", "--cached", "--no-ext-diff", "--unified=0", "--no-color"], {
     cwd: root,
     env: { ...process.env, GIT_INDEX_FILE: indexFile },
   }).stdout;
-  if (/^Binary files .* differ$/m.test(diff)) {
-    fail("Binaere Aenderungen muessen ausserhalb des automatischen Commitablaufs einzeln geprueft werden");
-  }
-  const matchedPattern = SECRET_CONTENT_RES.find((expression) => expression.test(diff));
+  const textDiff = diff.replace(/^Binary files .* differ\n?/gm, "");
+  const matchedPattern = SECRET_CONTENT_RES.find((expression) => expression.test(textDiff));
   if (matchedPattern) fail(`Gestagter Inhalt entspricht einem Geheimnismuster: ${matchedPattern}`);
 }
 
@@ -424,6 +439,9 @@ function assertRenamePairsAllowed(output, allowed) {
 }
 
 function stageAllowed(allowed, { rejectPreStaged = false, mandatory = [] } = {}) {
+  const approvedBinaries = options.binaryPaths.map((entry) => relative(path.resolve(root, entry)));
+  const binaryOutsideAllowed = approvedBinaries.find((file) => !allowed.includes(file));
+  if (binaryOutsideAllowed) fail(`--binary-path muss auch mit --path freigegeben sein: ${binaryOutsideAllowed}`);
   const preStaged = statusPaths("staged");
   if (rejectPreStaged && preStaged.length) {
     fail(`Bereits gestagte Dateien blockieren den Branch-Commit: ${preStaged.join(", ")}`);
@@ -459,7 +477,7 @@ function stageAllowed(allowed, { rejectPreStaged = false, mandatory = [] } = {})
     assertRenamePairsAllowed(renameOutput, allowed);
     assertNoSecrets(staged);
     temporaryGit(["diff", "--cached", "--check"]);
-    assertNoSecretContent(temporaryIndex);
+    assertNoSecretContent(temporaryIndex, approvedBinaries);
     assertMandatoryStaged(staged, mandatory);
     if (options.apply) fs.copyFileSync(temporaryIndex, realIndex);
     return staged;

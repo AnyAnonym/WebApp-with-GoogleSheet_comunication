@@ -15,6 +15,11 @@ export function isOpenRankingMatch(row, indexes) {
     .every((index) => parseRankingParticipant(row[index]).special === null);
 }
 
+export function isActiveRankingRank(raw) {
+  const rank = Number(raw);
+  return Number.isInteger(rank) && rank > 0;
+}
+
 export function rankingPlayerState(id, currentPlayerId, busyIds, protection, blocked) {
   const selected = Boolean(currentPlayerId && id === currentPlayerId);
   if (busyIds.has(id) && !selected) return { selected, status: "busy" };

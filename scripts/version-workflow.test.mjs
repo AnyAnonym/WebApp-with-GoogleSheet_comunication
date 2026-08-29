@@ -276,7 +276,29 @@ test("commit staging rejects potential secret files", () => {
       repo,
       1,
     );
-    assert.match(binaryResult.stderr, /Binaere Aenderungen/);
+    assert.match(binaryResult.stderr, /Binaere Aenderung benoetigt --binary-path/);
+    assert.equal(git(repo, "diff", "--cached", "--name-only"), "");
+    const approvedBinaryResult = run(
+      process.execPath,
+      [
+        script,
+        "branch-commit",
+        "--subject",
+        "Unsicherer Test",
+        "--path",
+        "asset.bin",
+        "--binary-path",
+        "asset.bin",
+        "--path",
+        "Backend/package.json",
+        "--path",
+        "Backend/package-lock.json",
+        "--path",
+        "Project/ChangeLogs/ChangeLog-1.2.3-paj-1.txt",
+      ],
+      repo,
+    );
+    assert.match(approvedBinaryResult.stdout, /Dry-Run/);
     assert.equal(git(repo, "diff", "--cached", "--name-only"), "");
   } finally {
     fs.rmSync(base, { recursive: true, force: true });

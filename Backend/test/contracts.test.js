@@ -8,8 +8,8 @@ test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
     "courtSetActive", "entryList", "getScoreboardCourts", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
     "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myProfile", "navigator", "normalizePerson", "operationStatus",
-    "players", "preMatches", "publicProfile", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
-    "scoreboardSnapshot", "sheetDataStatus", "withdrawFromRanking",
+    "players", "preMatches", "publicProfile", "rankingChallengeState", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
+    "scoreboardSnapshot", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
   ]);
 });
 

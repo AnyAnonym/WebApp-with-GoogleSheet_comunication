@@ -13,6 +13,9 @@ function tableForRange(range) {
 }
 
 function valuesFor(tableName, value = `${tableName}-1`) {
+  if (tableName === "rlPlatzierung") {
+    return [REQUIRED_HEADERS[tableName], [`${value}-competition`, `${value}-person`, "1", "", "", ""]];
+  }
   return [REQUIRED_HEADERS[tableName], [value]];
 }
 

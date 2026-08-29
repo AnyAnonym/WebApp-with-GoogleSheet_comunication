@@ -7,7 +7,7 @@ RANGLISTENREGELN ASKOE PIBERBACH
 
 Jedes Vereinsmitglied kann entsprechend Geschlecht und Altersklasse in den
 jeweils vorgesehenen Ranglisten mitspielen. Jede Rangliste ist ein eigener
-Bewerb; Forderungen, offene Matches, Schutzzeiten, Sperrzeiten und Rangpositionen
+Bewerb; Forderungen, offene Matches, Schonzeiten, Sperrzeiten und Rangpositionen
 gelten nur innerhalb dieser Rangliste. [Bestaetigt]
 
 
@@ -44,11 +44,11 @@ Eine Forderung ist nicht zulaessig, wenn: [Bestaetigt]
 
   - der Forderer oder der Geforderte bereits an einer offenen Forderung beteiligt
     ist;
-  - der Geforderte nach einem Sieg noch Schutzzeit besitzt;
+  - der Geforderte nach einem Sieg noch Schonzeit besitzt;
   - der Forderer nach einer Niederlage noch Sperrzeit besitzt;
   - die gewaehlte Position nach den Ranglistenregeln nicht forderbar ist.
 
-Ein freiwilliger Verzicht auf eine laufende Schutzzeit ist derzeit nicht Teil des
+Ein freiwilliger Verzicht auf eine laufende Schonzeit ist derzeit nicht Teil des
 Regelwerks. [Bestaetigt]
 
 
@@ -84,11 +84,11 @@ beidseitige Zurueckreihung ohne eindeutig verantwortliche Seite zugleich als
 Matchabschluss behandelt wird, ist noch festzulegen. [Offen]
 
 
-5. SCHUTZZEIT UND SPERRZEIT
+5. SCHONZEIT UND SPERRZEIT
 ===========================
 
 Der Gewinner eines Ranglistenmatches erhaelt ab dem minutengenauen
-Abschlusszeitpunkt exakt 7 x 24 Stunden Schutzzeit. Waehrend dieser Schutzzeit
+Abschlusszeitpunkt exakt 7 x 24 Stunden Schonzeit. Waehrend dieser Schonzeit
 kann er nicht gefordert werden, darf aber selbst sofort eine zulaessige Forderung
 nach vorne aussprechen. [Bestaetigt]
 
@@ -98,10 +98,10 @@ Er kann jedoch gefordert werden, sofern keine andere Regel dies verhindert.
 [Bestaetigt]
 
 Ein regulaeres Ergebnis, ein Walkover und ein Retirement bestimmen jeweils
-Gewinner und Verlierer und loesen dieselben Schutz- und Sperrzeiten aus.
+Gewinner und Verlierer und loesen dieselben Schon- und Sperrzeiten aus.
 [Bestaetigt]
 
-Gewinnt oder verliert ein Spieler waehrend einer noch laufenden Schutz- oder
+Gewinnt oder verliert ein Spieler waehrend einer noch laufenden Schon- oder
 Sperrzeit ein weiteres zulaessiges Ranglistenmatch, soll der neueste Abschluss den
 danach geltenden Status bestimmen. [Arbeitsannahme]
 
@@ -113,8 +113,8 @@ Gewinnt der Geforderte: [Bestaetigt]
 
   - behalten beide Spieler ihre bisherigen Positionen;
   - erhaelt der Forderer sieben Tage Sperrzeit;
-  - erhaelt der Geforderte sieben Tage Schutzzeit;
-  - darf der Geforderte trotz Schutzzeit sofort selbst nach vorne fordern.
+  - erhaelt der Geforderte sieben Tage Schonzeit;
+  - darf der Geforderte trotz Schonzeit sofort selbst nach vorne fordern.
 
 
 7. WERTUNG BEI SIEG DES FORDERERS
@@ -126,8 +126,8 @@ Gewinnt der Forderer: [Bestaetigt]
   - werden der Geforderte und alle zwischen beiden bisherigen Positionen
     liegenden Spieler jeweils um einen Rang nach hinten gereiht;
   - erhaelt der Geforderte sieben Tage Sperrzeit;
-  - erhaelt der Forderer sieben Tage Schutzzeit;
-  - darf der Forderer trotz Schutzzeit sofort weiter nach vorne fordern.
+  - erhaelt der Forderer sieben Tage Schonzeit;
+  - darf der Forderer trotz Schonzeit sofort weiter nach vorne fordern.
 
 
 8. NEUEINSTEIGER
@@ -136,7 +136,16 @@ Gewinnt der Forderer: [Bestaetigt]
 Ein noch nicht gereihter, teilnahmeberechtigter Spieler darf sich an einer
 beliebigen Position in die Rangliste einfordern. Bis zum Abschluss dieser
 Forderung bleibt er ausserhalb der Rangliste. Fuer den gewaehlten Gegner gelten
-die normalen Regeln zu offener Forderung und Schutzzeit. [Bestaetigt]
+die normalen Regeln zu offener Forderung und Schonzeit. [Bestaetigt]
+
+Als teilnahmeberechtigt gilt ein aktiver angemeldeter Spieler, dessen
+`GeschlechtID` in der kommaseparierten Liste `Bewerb.Geschlecht` enthalten ist
+und dessen Jahrgang die `Bewerb.Alterskategorie` erfuellt. Ein leeres
+Geschlechtsfeld laesst alle Geschlechter zu. Alterskategorien verwenden `N+` fuer
+mindestens N und `N-` fuer hoechstens N Jahre; leer und `0+` sind
+uneingeschraenkt. Das Alter wird als Kalenderjahr der Forderung minus Geburtsjahr
+bestimmt. Bei einer einschraenkenden Regel sperren fehlende oder ungueltige
+Personendaten den Neueinstieg. [Bestaetigt]
 
 Gewinnt der Neueinsteiger, uebernimmt er die geforderte Position. Der bisherige
 Inhaber und alle nachfolgenden Spieler werden jeweils um einen Rang nach hinten
@@ -167,13 +176,13 @@ Alle hinter ihm gereihten Spieler ruecken jeweils einen Rang nach vorne. Der
 urspruengliche Rang bleibt ausschliesslich als Rueckkehranspruch erhalten.
 [Bestaetigt]
 
-Ein Spieler darf sich waehrend einer eigenen Schutz- oder Sperrzeit raushaengen.
+Ein Spieler darf sich waehrend einer eigenen Schon- oder Sperrzeit raushaengen.
 Bei einer offenen Forderung ist das Raushaengen nicht zulaessig. Das offene Match
 muss zuerst durch einen anerkannten Matchabschluss beendet werden. Will der
 Spieler vor Spielbeginn nicht antreten, erklaert er seinen eigenen Walkover; hat
 das Match bereits begonnen und gibt er auf, ist es ein Retirement. [Bestaetigt]
 
-Eine beim Raushaengen laufende Schutzzeit erlischt sofort und endgueltig. Sie lebt
+Eine beim Raushaengen laufende Schonzeit erlischt sofort und endgueltig. Sie lebt
 bei einer spaeteren Rueckkehr nicht wieder auf, weil der nicht gereihte Spieler
 ohnehin nicht gefordert werden kann. [Bestaetigt]
 
@@ -192,26 +201,27 @@ des Raushaengens und endet am entsprechenden lokalen Datum zur gleichen lokalen
 Uhrzeit. Eine noch erhaltene Sperrzeit muss vor jeder Rueckkehr abgelaufen sein.
 [Bestaetigt]
 
-Innerhalb dieser Frist darf sich der Spieler genau auf seinem gespeicherten
-urspruenglichen Rang wieder einfordern, unabhaengig davon, wie sich die Rangliste
-zwischenzeitlich veraendert hat. Der dort aktuell gereihte Spieler muss nach den
-normalen Regeln verfuegbar sein; insbesondere duerfen keine offene Forderung und
-keine Schutzzeit entgegenstehen. [Bestaetigt]
+Innerhalb dieser Frist darf der Spieler den aktuell auf seinem gespeicherten
+urspruenglichen Rang gereihten Spieler oder jeden dahinter gereihten Spieler
+fordern, unabhaengig davon, wie sich die Rangliste zwischenzeitlich veraendert
+hat. Der gewaehlte Spieler muss nach den normalen Regeln verfuegbar sein;
+insbesondere duerfen keine offene Forderung und keine Schonzeit entgegenstehen.
+[Bestaetigt]
 
 Existiert der urspruengliche Rang wegen einer inzwischen kuerzeren Rangliste nicht
 mehr, wird der Rueckkehrer nach Ablauf einer etwaigen erhaltenen Sperrzeit sofort
 am letzten Rang eingereiht. Ein Rueckkehrspiel ist dann nicht erforderlich.
 [Bestaetigt]
 
-Gewinnt der Rueckkehrer sein Rueckkehrspiel, uebernimmt er den gespeicherten
-urspruenglichen Rang. Der Geforderte und alle nachfolgenden betroffenen Spieler
-ruecken jeweils einen Rang nach hinten. Der Rueckkehrer erhaelt Schutzzeit, der
+Gewinnt der Rueckkehrer sein Rueckkehrspiel, uebernimmt er den Rang des
+Geforderten. Der Geforderte und alle nachfolgenden betroffenen Spieler
+ruecken jeweils einen Rang nach hinten. Der Rueckkehrer erhaelt Schonzeit, der
 Geforderte Sperrzeit. [Bestaetigt]
 
 Verliert der Rueckkehrer, wird er unmittelbar einen Rang hinter dem Geforderten
 eingereiht. Der bisher auf dieser Position gereihte Spieler und alle folgenden
 Spieler ruecken jeweils einen Rang nach hinten. Der Rueckkehrer erhaelt sieben
-Tage Sperrzeit, der Geforderte sieben Tage Schutzzeit. Danach gelten fuer beide
+Tage Sperrzeit, der Geforderte sieben Tage Schonzeit. Danach gelten fuer beide
 wieder die normalen Ranglistenregeln. [Bestaetigt]
 
 Nach Ablauf der zwoelf Monate erlischt der gespeicherte Rueckkehranspruch. Der
@@ -225,5 +235,7 @@ Spieler gilt bei einem spaeteren Wiedereinstieg als Neueinsteiger nach Abschnitt
 Ergebnisbedingte Rangverschiebungen und Entscheidungen nach Fristueberschreitung
 werden derzeit durch die sportliche Leitung beziehungsweise den Administrator
 manuell vollzogen. Diese organisatorische Zustaendigkeit aendert die sportlichen
-Folgen dieses Regelwerks nicht. Details stehen in
+Folgen dieses Regelwerks nicht. Die Anwendung legt die Forderung an und zeigt
+zulaessige Gegner an, fuehrt nach Sieg oder Niederlage aber keine automatische
+Einreihung oder Rangverschiebung aus. Details stehen in
 `Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`.

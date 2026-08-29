@@ -15,6 +15,7 @@ const dataStore = {
 
 test("Monitorpfade werden kanonisiert", () => {
   assert.equal(canonicalizeMonitorPath("scoreboard.html", dataStore), "/scoreboard.html");
+  assert.equal(canonicalizeMonitorPath("Sponsoren.html", dataStore), "/Sponsoren.html");
   assert.equal(canonicalizeMonitorPath("/rangliste.html?id=2", dataStore), "/rangliste.html?id=2");
   assert.equal(canonicalizeMonitorPath("/RoundRobin.html?paarungslayout=2&id=cup-1", dataStore), "/RoundRobin.html?id=cup-1&paarungslayout=2");
 });

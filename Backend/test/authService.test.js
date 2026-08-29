@@ -49,6 +49,21 @@ test("Mitgliederprofil enthaelt Kontaktdaten und Geburtsdatum", () => {
   repository.close();
 });
 
+test("GeschlechtID hat im Personenprofil Vorrang vor dem Legacy-Feld", () => {
+  const people = structuredClone(dataStore.get("players"));
+  people[0].push("GeschlechtID");
+  people[1].push("3");
+  people[2].push("2");
+  dataStore.set("players", people, { source: "test-gender-id" });
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const auth = new AuthService({ repository, sheetService: {} });
+
+  assert.equal(auth.findById("p1").gender, "3");
+  assert.equal(auth.findById("p2").gender, "2");
+  repository.close();
+});
+
 test("Login migriert Legacy-Hash und erzeugt serverseitige Session", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();

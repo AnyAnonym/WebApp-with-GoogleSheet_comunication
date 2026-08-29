@@ -139,6 +139,7 @@ function canonicalizeMonitorPath(rawPath, dataStore) {
   const rules = {
     "/index.html": {},
     "/scoreboard.html": {},
+    "/Sponsoren.html": {},
     "/Matches1.html": {},
     "/Bewerbe.html": {},
     "/bewerbsRaster.html": { id: "required" },

@@ -162,7 +162,9 @@ Commit: 4.6.1-paj-1-3 | Versionsworkflow automatisiert
 Commit: 4.6.1-paj-1-4 | Forderungen und Audit erweitert
 
   Changed
-  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.6.1-paj-1-3-x` gesetzt.
+  - [Repository] Paketversion in `Backend/package.json` und
+    `Backend/package-lock.json` fuer den Zielcommit auf `4.6.1-paj-1-4`
+    finalisiert.
   - [Rangliste] Neue Forderungen speichern den Forderer als erste und den
     Geforderten als zweite Matchseite; bestehende Matchzeilen bleiben
     unveraendert.
@@ -184,3 +186,164 @@ Commit: 4.6.1-paj-1-4 | Forderungen und Audit erweitert
     angelegten Versuch und unklaren Ausgang automatisiert getestet.
   - [Observability] Dashboardvertrag und Ausschluss sensibler Felder
     automatisiert getestet.
+
+[4.6.1-paj-1-5] - 2026-08-29
+Commit: 4.6.1-paj-1-5 | Ranglistenbetrieb und Anzeigen erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und
+    `Backend/package-lock.json` im Arbeitsstand auf `4.6.1-paj-1-4-x` gesetzt und
+    fuer den Zielcommit auf `4.6.1-paj-1-5` finalisiert.
+  - [Profile] Das gemeinsame Spielerprofil in einen festen Namen, horizontal
+    scrollbare System-/Ranglisten-/Adminreiter und einen einzigen vertikal
+    scrollbaren, viewportbegrenzten Inhaltsbereich umgebaut. Hintergrundscrollen
+    wird gesperrt; Escape schliesst weiterhin.
+  - [Profile] Ranglistenreiter verwenden direkt die Bewerbsbezeichnung ohne
+    zusaetzliches `RL`, zeigen zuerst die Ranglistenposition und blenden leere
+    Aktionshinweise aus.
+  - [Rangliste] Profilreiter werden serverseitig aus aktiven und rausgehaengten
+    Ranglistenmitgliedschaften gebildet und verwenden die zentrale
+    Forderbarkeitspruefung statt CSS-Zustand der aufrufenden Seite. Sie zeigen
+    offene Forderungen mit Gegner und Forderungszeit; Eigenprofile koennen sich
+    ohne offene Forderung ueber einen begruendeten Bestaetigungsdialog raushaengen.
+  - [Rangliste] Der Raushaengewrite prueft frische Ranglisten- und Matchdaten,
+    schreibt Mitgliedschaft und Rangverdichtung in einem Google-Batch und
+    bestaetigt unklare Ausgaenge ueber stabile Composite-Zeilenmetadaten und einen
+    persistenten Recovery-Plan, statt den Write blind zu wiederholen.
+  - [Performance] Ranglisten- und Matchdaten werden parallel gelesen; Anlage und
+    Bestaetigung aller betroffenen Zeilenmetadaten erfolgen jeweils gebuendelt.
+    Die Anzahl der Google-Aufrufe waechst dadurch nicht mehr mit den
+    nachrueckenden Spielern.
+  - [Performance] Mehrdeutige Ranglistenmetadaten derselben Zeile werden fuer alle
+    Zielzeilen gemeinsam gesucht und mit einem einzigen Cleanup-Batch bereinigt.
+    Metadatendubletten unterschiedlicher Zeilen bleiben ein Schemakonflikt; der
+    Cleanup besitzt kontrollierte Prometheus-Metriken ohne Personen- oder
+    Grundwerte.
+  - [Frontend] Der erlaeuternde Absatz im Raushaengedialog wurde ersatzlos
+    entfernt; der Dialog enthaelt nur Grundfeld und verbindliche Aktion.
+  - [Login] Fehlgeschlagene Anmeldungen erscheinen auf Desktop und Mobilgeraeten
+    dauerhaft als zugaengliche Statusmeldung direkt im Loginmodal. Eine aktive
+    Anmeldesperre nennt die aus der serverseitigen Restdauer gerundete Wartezeit,
+    statt nur eine kurzlebige Benachrichtigung am Viewportrand anzuzeigen.
+  - [Mobile Rangliste] Die Pyramide verwendet einen viewportbreiten horizontalen
+    Scrollport mit separatem breitem Innencontainer. Die Seite selbst bleibt ohne
+    horizontalen Ueberlauf; Profiloverlays werden auch nach seitlichem Scrollen
+    mittig im sichtbaren Viewport geoeffnet und erhalten beim Schliessen die
+    Pyramidenposition.
+  - [Rangliste] Angemeldete Benutzer sehen Raushaengezeit und Grund im Profil
+    sowie die nach Zeitpunkt sortierte Liste `Rausgehängte Spieler`; anonym
+    bleiben diese Werte verborgen. Eine alte Schonzeit erlischt endgueltig, eine
+    Sperrzeit bleibt erhalten.
+  - [Rangliste] Rausgehaengte Spieler koennen innerhalb der Rueckkehrfrist den
+    Spieler auf ihrem gespeicherten letzten Rang oder jeden dahinter gereihten
+    Spieler fordern. Das Eigenprofil projiziert dafuer den letzten Rang; die
+    Pyramide markiert dieselben serverseitig erlaubten Zielbereiche gruen.
+  - [Rangliste] Aktive Neueinsteiger ohne Ranglistenzeile und Spieler nach Ablauf
+    ihrer Rueckkehrfrist koennen jeden regulaer verfuegbaren Rang fordern und
+    sehen diese Ziele gruen. Die serverseitige Teilnahmepruefung verwendet die
+    Geschlechtsliste des Bewerbs sowie dessen `N+`-/`N-`-Alterskategorie nach
+    Kalenderjahr und bleibt bei fehlenden eingeschraenkten Personendaten
+    fail-closed. Matchanlage und Profilaktion verwenden dieselbe Regelpruefung;
+    Einreihung und Rangverschiebung bleiben nach Ergebnissen ausschliesslich
+    manuell.
+  - [Rangliste] Der sichtbare und technische Begriff `Schutzzeit` wurde in der
+    Anwendung und den kanonischen aktuellen Dokumenten durch `Schonzeit` ersetzt.
+  - [Daten] Rang `0` in `RL-Platzierung` als rausgehaengt definiert und nur mit
+    RausgehangenAm, positiver letzter Platzierung sowie Grund zugelassen;
+    Mitgliedschaften pro Bewerb/Person muessen eindeutig sein.
+  - [Datenschutz] Oeffentliche Profile projizieren fuer rausgehaengte Zeilen nur
+    den neutralen Status, nicht Zeitpunkt, vorherigen Rang oder Grund.
+  - [Datenschutz] Der freie Raushaengegrund bleibt aus Audit, Loki und technischen
+    Logs ausgeschlossen; Auditdaten enthalten nur kontrollierte Statusfelder.
+  - [Anzeige] Die neue, nicht anderweitig verlinkte Seite `Sponsoren.html` zeigt
+    das Sponsorenbild ohne Beschnitt oder Verzerrung viewportfuellend auf schwarzem
+    Hintergrund und verhindert Seiten-Scrolling.
+  - [Monitorsteuerung] `Sponsoren.html` als parameterloses lokales Monitorziel
+    freigegeben. Die Seite bestaetigt den geladenen Zustand erst nach erfolgreichem
+    Bildladen und meldet einen kontrollierten Fehler bei einem Bildladefehler.
+  - [Repository] Der Commitworkflow akzeptiert einzeln gepruefte Binaerdateien nur
+    mit zusaetzlicher, pfadgenauer `--binary-path`-Freigabe; nicht binaere,
+    nicht zugleich gestattete oder nicht explizit freigegebene Pfade bleiben
+    gesperrt.
+
+  Pruefungen
+  - [Backend] 249 Tests fuer Profilprojektion, Forderbarkeit, Rangverdichtung,
+    offene-Forderung-Ablehnung, unbekannten Writeausgang, Datenschutz sowie
+    aktive, rausgehaengte, unvollstaendige und doppelte Ranglistenzeilen erfolgreich.
+    Ein 24-Zeilen-Vertrag prueft die konstante Anzahl der Google-Aufrufe; auch eine
+    unklare Bulk-Metadatenerstellung bleibt mit demselben Recovery-Plan fortsetzbar.
+    Weitere Vertraege pruefen gemeinsamen Dubletten-Cleanup, Rueckkehrforderungen
+    ab dem gespeicherten Rang, die Zwoelfmonatsfrist, Neueinsteigerforderungen
+    ohne Rangwrite sowie Geschlechts- und Kalenderjahr-Altersgrenzen.
+  - [Browser] Fuenfzehn Chromium-Tests fuer rollenabhaengige Reiter,
+    Raushaengedialog, Rausgehaengt-Daten, Adminaktionen, Escape,
+    Hintergrundsperre und kleine mobile Landscape-Hoehe erfolgreich. Der mobile
+    Ranglistenvertrag prueft zusaetzlich getrennten Pyramiden-Scroll,
+    unveraenderte Dokumentbreite, sichtbare Dialogzentrierung und erhaltene
+    Scrollposition. Der mobile Loginvertrag prueft dauerhaft sichtbare Meldungen
+    fuer ungueltige Zugangsdaten und eine Sperre mit gerundeter Restdauer.
+  - [Repository] Statische Pruefung, fuenf Workflow-Tests und `git diff --check`
+    erfolgreich.
+  - [Repository] Workflow-Test fuer Ablehnung und explizite Dry-Run-Freigabe einer
+    Binaerdatei erfolgreich.
+  - [Backend] Monitorpfad-Validator einschliesslich `Sponsoren.html` erfolgreich
+    getestet.
+  - [Browser] Zwei Chromium-Tests fuer unverzerrtes Vollbildlayout, erfolgreiches
+    Monitor-Ready und den kontrollierten Bildladefehler erfolgreich.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/FACHKONZEPT.txt
+    - Den bestaetigten Ranglistenbetrieb mit verbindlichen Forderungen,
+      temporaerem Raushaengen, Rueckkehrregeln und weiterhin manueller
+      ergebnisbedingter Rangpflege beibehalten.
+
+    Project/Regelwerk/Spielbetrieb/RANGLISTE.txt
+    - Neueinsteigerpruefung ueber Aktivstatus, Bewerbsgeschlechtsliste und
+      `N+`-/`N-`-Alterskategorie nach Kalenderjahr sowie den fail-closed-Vertrag
+      bei fehlenden eingeschraenkten Personendaten uebernehmen.
+    - Raushaengen, Rangverdichtung, fortgeltende Sperrzeit, erloeschende
+      Schonzeit und Rueckkehrforderungen ab dem gespeicherten Rang oder dahinter
+      beibehalten; automatische Einreihung bleibt ausgeschlossen.
+
+    Project/software/ARCHITEKTUR.txt
+    - Profil-Ranglistenprojektion, zentrale Forderbarkeitspruefung, kontrollierte
+      Eigenprofilprojektion des Rueckkehrrangs und gebuendelte
+      Composite-Metadatenaufloesung dokumentiert beibehalten.
+
+    Project/software/DATENBANK.txt
+    - Profilfeld `rankings`, Bewerbsvalidierung fuer Geschlechtslisten und
+      Alterskategorien sowie Rang-0-Vertrag mit Zeitpunkt, letztem Rang und Grund
+      uebernehmen.
+
+    Project/software/ENDPOINTS.txt
+    - `rankingChallengeState`, `withdrawnRankingPlayers`, den erweiterten
+      Profilvertrag und `addMatch` fuer Rueckkehrer und Neueinsteiger uebernehmen.
+    - `withdrawFromRanking` mit Batch-Rangverdichtung, Recovery-Plan und Ausschluss
+      des freien Grunds aus Audit und Logs beibehalten.
+
+    Project/software/seiten/index.txt
+    - Dauerhafte Loginfehlermeldung und gerundete Restwartezeit bei
+      `LOGIN_RATE_LIMIT` dokumentiert beibehalten.
+
+    Project/software/seiten/players.txt
+    - Gemeinsames Profilmodal mit System-, Ranglisten- und Adminreitern sowie
+      aktiven und rausgehaengten Mitgliedschaften uebernehmen.
+
+    Project/software/seiten/rangliste.txt
+    - Serverbestimmten Forderungsmodus, gruene Neueinsteiger-/Rueckkehrziele,
+      sichtbares Raushaengen, Rausgehaengtenliste, Datenschutz und manuelle
+      Ergebnisrangpflege uebernehmen.
+
+    Project/DokuVersGit.txt
+    - Den pfadgenauen `--binary-path`-Vertrag fuer einzeln gepruefte
+      Binaerdateien bei Branch- und Release-Commits uebernehmen.
+
+    Project/software/SOFTWARE-DOKU.txt
+    - Die Sponsorenanzeige in den Index der fachlichen Seitendokumentation
+      aufnehmen und die Seitenanzahl entsprechend anpassen.
+
+    Project/software/seiten/Sponsoren.txt
+    - Zweck, Dateien, unverzerrte `contain`-Skalierung mit schwarzen Freiflaechen,
+      fehlende Navigationselemente sowie Ready-/Fehlerverhalten im Monitorbetrieb
+      dokumentieren.

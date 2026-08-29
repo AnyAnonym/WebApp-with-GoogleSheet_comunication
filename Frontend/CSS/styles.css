@@ -18,6 +18,10 @@ body {
   overflow-x: hidden;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .diagnostic-mode-notice {
   position: fixed;
   right: max(12px, env(safe-area-inset-right));
@@ -90,6 +94,23 @@ body {
   border: 1px solid #ccc;
   border-radius: 6px;
   font: inherit;
+}
+
+.login-status {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #c62828;
+  border-radius: 6px;
+  color: #8e1616;
+  background: #fff0f0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.login-status[hidden] {
+  display: none;
 }
 
 .password-manager-username {
@@ -191,6 +212,121 @@ body {
 .profile-copy-button:hover .profile-copy-icon::after,
 .profile-copy-button:focus-visible .profile-copy-icon::after {
   background: #eef4ff;
+}
+
+.profile-modal {
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+  overflow: hidden;
+}
+
+.profile-dialog {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(100%, 560px);
+  max-width: 560px;
+  max-height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.profile-dialog > h2 {
+  min-width: 0;
+  margin: 0;
+  padding: 24px 56px 18px;
+  overflow-wrap: anywhere;
+}
+
+.profile-tabs {
+  display: flex;
+  min-width: 0;
+  padding: 0 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid #e1e5eb;
+  border-bottom: 1px solid #d6dbe3;
+  background: #f7f8fa;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.profile-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 14px 8px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: #4a5568;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.profile-tab[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: #fff;
+}
+
+.profile-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.profile-body {
+  min-height: 0;
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.profile-panel[hidden] {
+  display: none;
+}
+
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.profile-actions:empty {
+  display: none;
+}
+
+.profile-actions .btn-login {
+  margin-top: 0;
+}
+
+@media (max-width: 600px) {
+  .profile-modal {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .profile-dialog > h2 {
+    padding: 20px 48px 16px;
+    font-size: 1.35rem;
+  }
+
+  .profile-tabs {
+    padding: 0 8px;
+  }
+
+  .profile-tab {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .profile-body {
+    padding: 18px 16px 20px;
+  }
 }
 
 .btn-login {
@@ -910,22 +1046,43 @@ input[type="date"] {
   justify-content: flex-start;
   gap: 24px;
   flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
 }
 
+#rankingSection {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .pyramid {
+  flex: 1 1 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pyramid-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
+  width: max-content;
+  min-width: 100%;
   margin: 0;
   padding: 8px;
-  width: fit-content;
 }
 
 .row {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 20px;
   flex-wrap: wrap;
@@ -977,7 +1134,7 @@ input[type="date"] {
   background: #fff6cc;
 }
 
-.ranking-legend .legend-swatch.schutz {
+.ranking-legend .legend-swatch.schonzeit {
   background: #f4b8c8;
 }
 
@@ -1003,6 +1160,50 @@ input[type="date"] {
   font-weight: 700;
   font-size: 0.9rem;
   margin-top: 8px;
+}
+
+.ranking-withdrawn-button {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 7px 12px;
+  border: 1px solid #8b2f45;
+  border-radius: 999px;
+  background: transparent;
+  color: #8b2f45;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ranking-withdrawn-button:hover,
+.ranking-withdrawn-button:focus-visible {
+  background: #fbe9ee;
+}
+
+.withdrawn-players-list {
+  display: grid;
+  gap: 12px;
+}
+
+.withdrawn-player {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 16px;
+  padding: 12px;
+  border-left: 4px solid #8b2f45;
+  border-radius: 4px;
+  background: #f8f8f8;
+}
+
+.withdrawn-player span {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.withdrawn-player p {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
 }
 
 .box {
@@ -1085,15 +1286,15 @@ input[type="date"] {
 }
 
 /* -------------------------------------------------- */
-/*  SCHUTZZEIT / SPERRZEIT                             */
+/*  SCHONZEIT / SPERRZEIT                              */
 /* -------------------------------------------------- */
 
-.box.schutz {
+.box.schonzeit {
   background: #f4b8c8 !important;
   cursor: default !important;
 }
 
-.box.schutz:hover {
+.box.schonzeit:hover {
   background: #eba0b4 !important;
   box-shadow: 0 2px 8px rgba(214, 51, 108, 0.25);
 }
@@ -1469,8 +1670,7 @@ input[type="date"] {
   display: none !important;
 }
 
-#withdrawBtn,
-#profileActions {
+#withdrawBtn {
   display: none !important;
 }
 
@@ -1649,12 +1849,13 @@ input[type="date"] {
 
 @media (max-width: 768px) {
   .pyramid {
+    flex-basis: 100%;
+    padding-bottom: 15px;
+  }
+
+  .pyramid-content {
     gap: 15px;
     padding: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    min-width: 0;
-    padding-bottom: 15px;
   }
 
   .row {
@@ -1737,11 +1938,11 @@ input[type="date"] {
 
 @media (max-width: 480px) {
   .pyramid {
-    gap: 10px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    min-width: 0;
     padding-bottom: 15px;
+  }
+
+  .pyramid-content {
+    gap: 10px;
   }
 
   .row {

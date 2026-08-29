@@ -157,7 +157,11 @@ Verbindliches Automatisierungsskript:
    Index. Beim offenen Merge muessen alle bereits durch den Merge gestagten Pfade
    einzeln freigegeben sein. Das Skript prueft Staging und Diff zuerst mit einem
    temporaeren Index und uebernimmt ihn nur bei Erfolg. Nicht zugeordnete
-   Aenderungen werden weder gestaged noch veraendert.
+    Aenderungen werden weder gestaged noch veraendert.
+   Eine einzeln gepruefte Binaerdatei muss zusaetzlich mit demselben exakten Pfad
+   als `--binary-path <Pfad>` freigegeben werden. Die Freigabe ist nur gueltig,
+   wenn der Pfad zugleich als `--path` zugelassen und im Staged Diff tatsaechlich
+   binaer ist; alle anderen Binaeraenderungen bleiben gesperrt.
 7. `release-open` wird erst nach bestaetigter konkreter Main-Version ausgefuehrt.
    Der bei der Versionsfrage ausgegebene volle Main-SHA und Branch-SHA wird mit
    `--main-sha` und `--branch-sha` uebergeben. Das Skript aktualisiert die

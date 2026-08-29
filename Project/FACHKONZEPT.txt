@@ -332,12 +332,12 @@ automatische Wertung.
 
   LF-50 Ranglistenforderungen sollen nach dem verbindlichen sportlichen
         Regelwerk ausgesprochen, terminiert, abgeschlossen und in ihren
-        Schutz-/Sperrfolgen dargestellt werden. [Bestaetigt]
+        Schon-/Sperrfolgen dargestellt werden. [Bestaetigt]
 
   LF-51 Spieler sollen sich ohne Genehmigung temporaer raushaengen und innerhalb
         von zwoelf Kalendermonaten regelkonform zurueckkehren koennen. Eine beim
         Raushaengen laufende Sperrzeit bleibt bis zu ihrem urspruenglichen Ende
-        erhalten; eine Schutzzeit erlischt. [Bestaetigt]
+        erhalten; eine Schonzeit erlischt. [Bestaetigt]
 
 
 ================================================================================

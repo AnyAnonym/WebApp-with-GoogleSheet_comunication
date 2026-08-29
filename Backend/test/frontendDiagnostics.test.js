@@ -62,9 +62,9 @@ test("Scoreboard-Namensgroesse kann im Notfall strikten Ueberlauf beseitigen", (
 });
 
 test("Ranglistenmatches erkennen nur exakte [wo]- und [ret]-Abschluesse", () => {
-  const { isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } = loadFrontendModule(
+  const { isActiveRankingRank, isOpenRankingMatch, parseRankingParticipant, rankingPlayerState } = loadFrontendModule(
     "rankingMatchState.js",
-    ["isOpenRankingMatch", "parseRankingParticipant", "rankingPlayerState"],
+    ["isActiveRankingRank", "isOpenRankingMatch", "parseRankingParticipant", "rankingPlayerState"],
   );
   const indexes = { result: 0, p1: 1, p2: -1, p3: 2, p4: -1 };
 
@@ -75,6 +75,10 @@ test("Ranglistenmatches erkennen nur exakte [wo]- und [ret]-Abschluesse", () => 
   assert.equal(isOpenRankingMatch(["", "p1 [w.o.]", "p2"], indexes), true);
   assert.equal(isOpenRankingMatch(["", "p1 [WO]", "p2"], indexes), true);
   assert.equal(isOpenRankingMatch(["", "p1 [wo] text", "p2"], indexes), true);
+  assert.equal(isActiveRankingRank("1"), true);
+  assert.equal(isActiveRankingRank("0"), false);
+  assert.equal(isActiveRankingRank("-1"), false);
+  assert.equal(isActiveRankingRank("1.5"), false);
   assert.deepEqual(JSON.parse(JSON.stringify(parseRankingParticipant("p1 [wo]"))), { id: "p1", special: "wo" });
   assert.deepEqual(JSON.parse(JSON.stringify(parseRankingParticipant("p2 [RET]"))), { id: "p2 [RET]", special: null });
 
@@ -161,24 +165,36 @@ test("Profilbereinigung entfernt Namen, Kontaktdaten, Aktionen und Scope", () =>
   const action = { handler: () => "sensitive action" };
   let handlersAborted = false;
   const actionController = { abort() { handlersAborted = true; } };
-  const actions = {
-    children: [action],
+  const container = (children = []) => ({
+    children,
     replaceChildren() { this.children = []; },
-    style: { setProperty(nameValue, value, priority) { this.value = [nameValue, value, priority]; } },
-  };
+  });
+  const tabs = container([{ textContent: "Rangliste Herren" }]);
+  const rankings = container([{ textContent: "Ranglistenaktion" }]);
+  const systemActions = container([action]);
+  const adminActions = container([{ textContent: "Reset-Code erstellen" }]);
   const modal = {
     dataset: { profileScope: "private" },
     removeAttribute(nameValue) { if (nameValue === "data-profile-scope") delete this.dataset.profileScope; },
     querySelector(selector) {
-      return { "#profileName": name, "#profileText": text, "#profileActions": actions }[selector] || null;
+      return {
+        "#profileName": name,
+        "#profileText": text,
+        "#profileTabs": tabs,
+        "#profileRankingPanels": rankings,
+        "#profileSystemActions": systemActions,
+        "#profileAdminActions": adminActions,
+      }[selector] || null;
     },
   };
 
   clearProfileModalContent(modal, actionController);
   assert.equal(name.textContent, "Profil");
   assert.deepEqual(text.children, []);
-  assert.deepEqual(actions.children, []);
-  assert.deepEqual(actions.style.value, ["display", "none", "important"]);
+  assert.deepEqual(tabs.children, []);
+  assert.deepEqual(rankings.children, []);
+  assert.deepEqual(systemActions.children, []);
+  assert.deepEqual(adminActions.children, []);
   assert.equal(modal.dataset.profileScope, undefined);
   assert.equal(handlersAborted, true);
 });

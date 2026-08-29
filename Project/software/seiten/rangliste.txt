@@ -10,9 +10,10 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   `Project/Regelwerk/Spielbetrieb/RANGLISTE.txt`.
 
 -- Daten und Aktualisierung --
-  Reads: `rlPlatzierung`, minimale `players`-Projektion, `preMatches`, `bewerbe`
-  und `readMatchRestrictions`. Letzteres muss vollstaendige Schutz- und Sperrdaten
-  bestaetigen; andernfalls werden Forderungen sichtbar deaktiviert. Invalidierungen
+  Reads: `rlPlatzierung`, minimale `players`-Projektion, `preMatches`, `bewerbe`,
+  `readMatchRestrictions` und fuer angemeldete Benutzer
+  `rankingChallengeState`. Restriktions- und Eigenstatus muessen vollstaendig
+  sein; andernfalls werden Forderungen sichtbar deaktiviert. Invalidierungen
   `ranking`, `matches`, `players`, `bewerbe`, Sessionaenderungen und das naechste
   Restriktionsende serialisieren einen kompletten Refresh. Initialer Erfolg meldet
   Monitor-Ready, Fehler werden im Inhalt gezeigt und als Monitor-Failed gemeldet.
@@ -20,23 +21,42 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
 -- Sitzung, Profile und Aktionen --
   Die eigene Position kommt aus der serverseitigen Sitzung, nicht aus Browserdaten.
   Profilklick verwendet `publicProfile` beziehungsweise fuer das eigene Profil
-  `myProfile`: anonym nur ID/Name, angemeldet E-Mail/Telefon/Geburtsdatum, eigenes
-  Profil zusaetzlich Geschlecht/Passwortaenderung. Nur Admins erhalten bei fremden
-  Profilen die vom Profilstatus abhaengige Aktion `Passwortvergabe freigeben` oder
-  `Passwortfreigabe aufheben` sowie Reset-Code und direktes Passwortsetzen.
+  `myProfile`. Das gemeinsame Modal zeigt `System`, je serverseitig ermittelter
+  Ranglistenmitgliedschaft `<Bewerbsname>` und fuer Admins am fremden Profil
+  `Admin`. System enthaelt Kontaktwerte, beim Eigenprofil Login und
+  Passwortaenderung. Admin enthaelt Passwortfreigabe, Reset-Code und direktes
+  Passwortsetzen. Die Reiterleiste scrollt horizontal; Name und Reiter bleiben
+  fest, nur der auf Viewport und Safe Area begrenzte Inhalt scrollt vertikal.
+  Hintergrundscrollen ist waehrend des Dialogs gesperrt, Escape schliesst ihn.
+  Die Ranglistenreiter haengen nicht von der aufrufenden Seite ab.
+  Ein aktiver Ranglistenreiter zeigt `Ranglistenposition: <Rang>` und gegebenenfalls
+  die offene Forderung mit Gegnername und Forderungszeit. Beim eigenen Profil ist
+  `Raushängen` nur ohne offene Forderung aktiv; bei einem tatsaechlich forderbaren
+  fremden Profil erscheint `Fordern`. Rang `0` bleibt aus der Pyramide entfernt,
+  besitzt aber einen Profilreiter mit Raushaengezeit und Grund fuer angemeldete
+  Benutzer; eine Position `0` wird nicht angezeigt. Das Eigenprofil liefert den
+  gespeicherten letzten Rang als Startpunkt fuer eine Rueckkehrforderung.
   Forderungen senden stabile `operationId`, `bewerbId` und `opponentId`; der Server
   prueft Identitaet und Regeln. Bei Erfolg ist die Forderung sofort verbindlich
   und wird mit dem Forderer in `Spieler1ID` sowie dem Geforderten in `Spieler3ID`
   gespeichert. Bestehende Matchzeilen werden nicht umgeordnet.
 
 -- Fachlogik --
-  Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schutzzeit;
+  Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schonzeit;
   lila: Sperrzeit. Forderbar sind links in derselben Reihe und ab eigener Spalte in
   der Reihe darueber; Rang 3 darf Rang 1 fordern. Eigene/offene/geschuetzte oder
-  gesperrte Konstellationen begrenzen Aktionen. Ein Match mit dem exakt
+  gesperrte Konstellationen begrenzen Aktionen. Fuer einen rausgehaengten Spieler
+  werden der gespeicherte letzte Rang und alle dahinterliegenden Raenge gruen
+  dargestellt; der Server prueft dieselbe Untergrenze und die Zwoelfmonatsfrist.
+  Ein nach Geschlecht und Kalenderjahr-Altersgrenze teilnahmeberechtigter
+  Neueinsteiger ohne Ranglistenzeile sowie ein Spieler nach Ablauf seiner
+  Rueckkehrfrist sieht alle regulaer verfuegbaren Gegner gruen und kann jeden
+  davon fordern. Fehlende eingeschraenkte Personendaten und unvollstaendige
+  Regeldaten bleiben fail-closed.
+  Ein Match mit dem exakt
   kleingeschriebenen Marker `[wo]` oder `[ret]` gilt auch ohne Ergebnis als
   abgeschlossen und wird nicht mehr gelb als offene Forderung angezeigt. Gewinner
-  und Verlierer erhalten die serverseitig berechnete Schutz- beziehungsweise
+  und Verlierer erhalten die serverseitig berechnete Schon- beziehungsweise
   Sperrzeit samt Timer; beim eigenen Spieler bleibt der blaue Rahmen zusaetzlich
   zur Fristdarstellung sichtbar. Andere Markerschreibweisen werden nicht erkannt.
   Eine angelegte Forderung kann nicht abgelehnt oder abgebrochen werden. Ein
@@ -44,20 +64,25 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   ein spaeterer Nichtantritt wird als Walkover abgeschlossen.
 
 -- Observability --
-  Jeder Forderungswrite besitzt Audit `started` und danach `success`, `failed`
+  Jeder Forderungs- und Raushaengewrite besitzt Audit `started` und danach `success`, `failed`
   oder `unknown`. Der Forderer stammt aus der Session, Zielperson und Bewerb aus
   validierten Parametern; Erfolg ergaenzt die stabile Match-ID. Der kontrollierte
   Journalspiegel erlaubt das Filtern im Grafana-Dashboard
   `ePiber Ranglistenaktivitaeten`. Personen-, Bewerbs-, Match-, Request- und
-  Operation-IDs bleiben JSON-Felder und werden keine Loki-Labels.
+  Operation-IDs bleiben JSON-Felder und werden keine Loki-Labels. Das
+  Raushaengeaudit enthaelt Bewerb, alten Rang, Zeitpunkt und Anzahl der
+  Rangverschiebungen, aber nie den freien Grund.
 
--- Verdeckte Funktion und Sicherheit --
-  Der sichtbare `Raushaengen`-Button ist entfernt. Modal, Clientfunktion und
-  `withdrawFromRanking`-Endpoint mit `operationId`, Bewerb, Rang und Grund bleiben
-  technisch vorhanden, werden derzeit aber nicht angeboten. Namen und Pyramide
-  entstehen als sichere DOM-Knoten; das statische Legenden-Markup enthaelt keine
-  externen Werte.
+-- Raushaengen und Sicherheit --
+  Der Bestaetigungsdialog verlangt ausschliesslich einen Grund mit 3 bis 500
+  Zeichen. Der Write wird waehrend der Anfrage gegen Schliessen gesperrt.
+  Nachfolgende aktive Raenge ruecken in einem Batch auf;
+  unklare Google-Ausgaenge werden anhand eines persistenten Plans bestaetigt statt
+  blind wiederholt. Angemeldete Benutzer koennen ueber den Button
+  `Rausgehängte Spieler` bei der Legende die nach Zeitpunkt absteigend sortierte
+  Liste mit Datum und Grund oeffnen. Namen, Gruende und Pyramide entstehen als
+  sichere DOM-Textknoten.
 
-  Damit weicht der aktuelle Softwarestand vom bestaetigten Regelwerk ab: Das
-  fachlich vorgesehene Raushaengen, der Neueinsteiger- und Rueckkehrablauf sowie
-  die Forderungsfristen sind noch nicht vollstaendig umgesetzt.
+  Die Anwendung legt Forderungen fuer Neueinsteiger und Rueckkehrer an, veraendert
+  nach einem Sieg oder einer Niederlage aber keine Ranglistenzeile. Einreihung und
+  ergebnisbedingte Rangverschiebungen werden weiterhin manuell vollzogen.

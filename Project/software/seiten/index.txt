@@ -31,6 +31,14 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   Username-Feld. Passwortfelder werden beim Schliessen zurueckgesetzt und wieder
   verdeckt.
 
+  Fehlgeschlagene Anmeldungen zeigen ihre Rueckmeldung dauerhaft und als
+  zugaengliche Statusmeldung direkt im geoeffneten Loginmodal statt nur in einer
+  kurzlebigen Benachrichtigung am Viewportrand. Ungueltige Zugangsdaten werden
+  einheitlich als ungueltiger Login oder ungueltiges Passwort gemeldet; eine
+  aktive Anmeldesperre nennt anhand der serverseitigen Restdauer die gerundete
+  Wartezeit in Minuten. Die Meldung bleibt bis zum naechsten Versuch oder bis zum
+  Schliessen des Dialogs sichtbar.
+
   Im Login kann eine zuvor vom Administrator freigegebene Person ueber
   `Erstmals Passwort vergeben` mit Login und zweimaligem neuen Passwort ihr
   erstes Passwort setzen. Danach wird die Anmeldung mit uebernommenem Login erneut

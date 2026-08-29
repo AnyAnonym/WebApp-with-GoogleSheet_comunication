@@ -8,13 +8,26 @@ const warnedInvalidRoles = new Set();
 const PLAYER_LOGIN_SUMMARY_EVERY = 10;
 let playerLoginIssueState = { signature: "", validations: 0, affectedCount: 0 };
 
+function validCompactTimestamp(value) {
+  const match = String(value).match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return false;
+  const [, yy, month, day, hour, minute] = match;
+  const year = Number(yy) >= 50 ? 1900 + Number(yy) : 2000 + Number(yy);
+  const date = new Date(Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute)));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === Number(month) - 1
+    && date.getUTCDate() === Number(day)
+    && date.getUTCHours() === Number(hour)
+    && date.getUTCMinutes() === Number(minute);
+}
+
 const REQUIRED_HEADERS = {
   players: ["id", "vorname", "nachname", "e-mail", "login", "passwdhash", "aktiv", "role"],
   bewerbe: ["id", "bezeichnung", "bewerbsartid"],
   bewerbsart: ["id", "bezeichnung"],
   matchtyp: ["id", "satztiebreak", "entscheidender satz"],
   matches1: ["id", "matchdate", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler3id", "ergebnis"],
-  rlPlatzierung: ["bewerbid", "personid", "rang"],
+  rlPlatzierung: ["bewerbid", "personid", "rang", "rausgehangenam", "rausgehangenletzteplatzierung", "rausgehangengrund"],
   navigator: ["name", "ziel"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
@@ -139,6 +152,62 @@ function validateTableValues(tableName, values) {
       for (const entry of entries) loginIssues.push({ ...entry, reason: "DUPLICATE_LOGIN" });
     }
     reportPlayerLoginIssues(loginIssues);
+  }
+  if (tableName === "bewerbe") {
+    const genderIndex = headerIndex(header, "geschlecht");
+    const ageIndex = headerIndex(header, "alterskategorie");
+    for (const [offset, row] of values.slice(1).entries()) {
+      const gender = genderIndex < 0 ? "" : String(row[genderIndex] || "").trim();
+      if (gender) {
+        const values = gender.split(",").map((value) => value.trim());
+        if (values.some((value) => !["1", "2", "3"].includes(value)) || new Set(values).size !== values.length) {
+          throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Geschlecht in Zeile ${offset + 2} ist ungueltig`, 503);
+        }
+      }
+      const age = ageIndex < 0 ? "" : String(row[ageIndex] || "").trim();
+      if (age && !/^\d{1,3}[+-]$/.test(age)) {
+        throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Alterskategorie in Zeile ${offset + 2} ist ungueltig`, 503);
+      }
+    }
+  }
+  if (tableName === "rlPlatzierung") {
+    const competitionIndex = headerIndex(header, "bewerbid");
+    const personIndex = headerIndex(header, "personid");
+    const rankIndex = headerIndex(header, "rang");
+    const withdrawnAtIndex = headerIndex(header, "rausgehangenam");
+    const previousRankIndex = headerIndex(header, "rausgehangenletzteplatzierung");
+    const reasonIndex = headerIndex(header, "rausgehangengrund");
+    const memberships = new Set();
+    const activeRanks = new Set();
+    for (const [offset, row] of values.slice(1).entries()) {
+      if (!row.some((value) => String(value || "").trim())) continue;
+      const competitionId = String(row[competitionIndex] || "").trim();
+      const personId = String(row[personIndex] || "").trim();
+      const rankText = String(row[rankIndex] ?? "").trim();
+      const rank = Number(rankText);
+      if (!competitionId || !personId || !/^\d+$/.test(rankText) || !Number.isSafeInteger(rank)) {
+        throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Mitgliedschaft oder Rang in Zeile ${offset + 2} ist ungueltig`, 503);
+      }
+      const key = `${competitionId}\u0000${personId}`;
+      if (memberships.has(key)) throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Mitgliedschaft ist nicht eindeutig`, 503);
+      memberships.add(key);
+      if (rank !== 0) {
+        const rankKey = `${competitionId}\u0000${rank}`;
+        if (activeRanks.has(rankKey)) throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Aktiver Rang ist nicht eindeutig`, 503);
+        activeRanks.add(rankKey);
+        continue;
+      }
+      const withdrawnAt = String(row[withdrawnAtIndex] || "").trim();
+      const previousRankText = String(row[previousRankIndex] ?? "").trim();
+      const reason = String(row[reasonIndex] || "").trim();
+      if (!validCompactTimestamp(withdrawnAt)
+        || !/^[1-9]\d*$/.test(previousRankText)
+        || !Number.isSafeInteger(Number(previousRankText))
+        || reason.length < 3
+        || reason.length > 500) {
+        throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Raushaengedaten in Zeile ${offset + 2} sind unvollstaendig`, 503);
+      }
+    }
   }
   return values;
 }

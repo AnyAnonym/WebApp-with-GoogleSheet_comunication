@@ -12,7 +12,7 @@ Dateien:
       Gemeinsame Matchbegriffe, regulaerer Abschluss, Walkover und Retirement.
 
   RANGLISTE.txt
-      Forderungsrangliste, Fristen, Schutz-/Sperrzeiten, Neueinsteiger,
+      Forderungsrangliste, Fristen, Schon-/Sperrzeiten, Neueinsteiger,
       Rangverschiebung, Raushaengen und Rueckkehr.
 
   KO-BEWERBE.txt

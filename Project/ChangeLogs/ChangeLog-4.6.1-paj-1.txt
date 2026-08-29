@@ -93,3 +93,67 @@ Commit: 4.6.1-paj-1-2 | Fachliches Regelwerk strukturiert
     Project/software/seiten/scoreboard.txt
     - Verweise auf die jeweils zugeordnete kanonische Regeldatei und bei der
       Rangliste die benannte Soll-/Ist-Abweichung beibehalten.
+
+[4.6.1-paj-1-3] - 2026-08-29
+Commit: 4.6.1-paj-1-3 | Versionsworkflow automatisiert
+
+  Added
+  - [Repository] `scripts/version-workflow.mjs` als lokalen, versionierten
+    Zustandsautomaten fuer Inspektion, Branchanlage, `-x`-Arbeitsbeginn,
+    Branchfinalisierung, Branch-Commit, Release-Oeffnung, Merge-Commit und Push
+    angelegt.
+  - [Repository] `scripts/version-workflow.test.mjs` mit temporaeren
+    Git-Repositories fuer Dry-Run, Initialcommit, lueckenlose Branchnummern,
+    explizites Dateistaging, Secretblockade, temporaeren Index, SHA-Drift,
+    Rename-Paare, MERGE_HEAD-Vertrag, Release-Rollback, echten
+    Zwei-Eltern-Merge und Push-Verifikation angelegt.
+
+  Changed
+  - [Dokumentation] `Project/DokuVersGit.txt` ordnet natuerlich formulierte
+    Benutzerauftraege verbindlich den Skriptaktionen zu; eigene OpenCode-Befehle,
+    Plugins oder globale Konfigurationen sind nicht erforderlich.
+  - [Dokumentation] Freigaben fuer Commit, Merge, Main-Version und Push bleiben
+    unveraendert getrennt. SemVer-Bewertung, Kurzkommentar, Changelog-Inhalt,
+    Dokumentationsuebernahme, Dateizugehoerigkeit und Konfliktloesung bleiben
+    ausdruecklich Aufgaben von Benutzer und LLM.
+  - [Dokumentation] Release-Aktionen verlangen die bei der Versionsbestaetigung
+    festgehaltenen vollen Main- und Branch-SHAs. Nach Remote-Aktualisierung
+    blockiert jede Abweichung den Merge, statt einen fortgeschrittenen Main-Stand
+    unter einer veralteten Versionsfreigabe zu integrieren.
+  - [Repository] Mutierende Skriptaktionen verwenden standardmaessig Dry-Run und
+    benoetigen `--apply`; Commitaktionen akzeptieren nur einzelne explizite
+    Dateipfade und pruefen den Index zuerst in einer temporaeren Kopie.
+  - [Repository] Fehlgeschlagene Branch-Finalisierungen koennen mit
+    `branch-reopen` deterministisch auf den zugehoerigen `-x`-Stand
+    zurueckgestellt werden.
+  - [Repository] Secrets, unerwartete vorab gestagte Dateien, offene Konflikte,
+    fremde Merge-SHAs, `-x`-Commits, inkonsistente Paketversionen und unpassende
+    Branch-/Commitnummern blockieren den Ablauf.
+  - [Repository] Automatisierte Commits blockieren geheime Dateinamen,
+    hochwahrscheinliche Geheimnismuster und binaere Aenderungen; Umbenennungen
+    muessen mit altem und neuem Pfad freigegeben werden. Fehlgeschlagene
+    Indexpruefungen hinterlassen weder einen veraenderten Index noch eine
+    teilweise finalisierte Release-Paketversion.
+  - [Repository] `npm run build` um die standardmaessige Ausfuehrung der neuen
+    Workflow-Tests erweitert.
+  - [Repository] Paketversion in `Backend/package.json` und
+    `Backend/package-lock.json` fuer den Zielcommit auf `4.6.1-paj-1-3`
+    finalisiert.
+
+  Pruefungen
+  - [Repository] `node --check scripts/version-workflow.mjs` erfolgreich.
+  - [Repository] `npm run build` mit 233 Backendtests und fuenf
+    End-to-End-Workflow-Tests erfolgreich.
+  - [Repository] `git diff --check` ohne Fehler.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/DokuVersGit.txt
+    - Verbindliche Skriptzuordnung, unveraenderte Freigabegrenzen, exakte
+      Datei- und SHA-Vertraege, Dry-Run-Standard sowie Abgrenzung der weiterhin
+      semantisch zu pruefenden LLM-Aufgaben beibehalten.
+
+    Project/ChangeLogs/ChangeLog-main.txt
+    - Das neue lokale Workflow-Skript, seine Sicherheitsgrenzen, automatisierten
+      Git-End-to-End-Tests und die Einbindung in den Build zusammengefasst
+      uebernehmen.

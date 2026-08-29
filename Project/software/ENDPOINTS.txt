@@ -515,7 +515,11 @@ AUTHENTICATED (player, operator oder admin):
       `{ operation:null }` oder Endpoint, `completed|unknown` und createdAt.
 
   `addMatch { operationId, bewerbId, opponentId }`
-      Forderer aus Session; stabile Match-ID und serverseitige Fachregeln.
+      Forderer aus Session; stabile Match-ID und serverseitige Fachregeln. Eine
+      erfolgreich angelegte Forderung ist sofort verbindlich und nicht durch den
+      Geforderten ablehnbar. Bei neuen Forderungen steht der Forderer in
+      `Spieler1ID`, der Geforderte in `Spieler3ID`. Audit `addMatch` erfasst ab
+      `started` Akteur, Zielperson und Bewerb; Erfolg ergaenzt die Match-ID.
 
   `addEntryList { operationId, bewerbId }`
       Person und `Entrydate` aus Session/Serverzeit.

@@ -34,6 +34,12 @@ vom Geforderten nicht abgelehnt und von keiner Seite abgebrochen werden. Sie wir
 nur durch ein regulaer beendetes Match, einen Walkover oder ein Retirement
 abgeschlossen. [Bestaetigt]
 
+Ein regelwidriger, unvollstaendiger oder technisch fehlgeschlagener
+Bedienversuch erzeugt keine Forderung und ist daher keine Ablehnung durch den
+Geforderten. Sobald die Forderung erfolgreich angelegt wurde, ist sie fuer beide
+Seiten verbindlich. Will eine Seite vor Spielbeginn nicht antreten, wird das
+Match durch ihren eigenen Walkover abgeschlossen. [Bestaetigt]
+
 Eine Forderung ist nicht zulaessig, wenn: [Bestaetigt]
 
   - der Forderer oder der Geforderte bereits an einer offenen Forderung beteiligt

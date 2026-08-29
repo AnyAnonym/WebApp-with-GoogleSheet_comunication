@@ -157,3 +157,30 @@ Commit: 4.6.1-paj-1-3 | Versionsworkflow automatisiert
     - Das neue lokale Workflow-Skript, seine Sicherheitsgrenzen, automatisierten
       Git-End-to-End-Tests und die Einbindung in den Build zusammengefasst
       uebernehmen.
+
+[4.6.1-paj-1-4] - 2026-08-29
+Commit: 4.6.1-paj-1-4 | Forderungen und Audit erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.6.1-paj-1-3-x` gesetzt.
+  - [Rangliste] Neue Forderungen speichern den Forderer als erste und den
+    Geforderten als zweite Matchseite; bestehende Matchzeilen bleiben
+    unveraendert.
+  - [Observability] Das bestehende `addMatch`-Audit erfasst ab `started`
+    Zielperson und Bewerb, ergaenzt bei Erfolg die Match-ID und spiegelt nur
+    kontrollierte Felder fuer Loki. Nicht angelegte Versuche werden klar von
+    verbindlich ausgesprochenen Forderungen und unklaren Ausgaengen getrennt.
+  - [Dokumentation] Verbindlichkeit, Walkover-Abschluss, Spielerreihenfolge und
+    Auditvertrag der Forderung in Regel-, Daten-, Endpoint-, Architektur- und
+    Seitendokumentation praezisiert.
+
+  Added
+  - [Observability] Provisioniertes Grafana-Dashboard `ePiber
+    Ranglistenaktivitaeten` fuer Forderungszahlen, Ausgaenge, Fehlercodes,
+    personenbezogenen Auditverlauf und technische Requestdiagnose ergaenzt.
+
+  Pruefungen
+  - [Backend] Spielerreihenfolge sowie Auditprojektion fuer Erfolg, nicht
+    angelegten Versuch und unklaren Ausgang automatisiert getestet.
+  - [Observability] Dashboardvertrag und Ausschluss sensibler Felder
+    automatisiert getestet.

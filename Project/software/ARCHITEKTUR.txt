@@ -421,6 +421,11 @@ Fachhistorien und Betriebslogs:
     nur der geaenderte Feldname, nie sein Wert, ins Journal geschrieben.
     Doppelte oder aktionsfremd wiederverwendete Audit-Event-IDs werden abgewiesen
     und koennen terminale Zeilen nicht auf `started` zuruecksetzen.
+    `addMatch` bildet eine Ranglistenforderung als Akteur Forderer, Personenziel
+    Geforderter und kontrollierten Bewerbskontext ab. Erfolg ergaenzt die
+    Match-ID; `failed` bedeutet ausschliesslich, dass keine Forderung angelegt
+    wurde. Der Journalspiegel stellt diese erlaubten IDs fuer Grafana bereit,
+    ohne sie zu Loki-Labels zu machen.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der

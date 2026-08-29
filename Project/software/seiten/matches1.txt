@@ -34,3 +34,6 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   werden dargestellt. Alle externen Namen, Bewerbe und Matchwerte werden mit
   createElement/textContent in sichere DOM-Knoten geschrieben; Badges entstehen
   nur aus einer begrenzten internen Typauswahl.
+  Die Anzeige folgt der gespeicherten Reihenfolge Spieler1-Seite vor
+  Spieler3-Seite. Neue Ranglistenforderungen zeigen deshalb den Forderer zuerst;
+  bestehende Matchzeilen werden nicht migriert und behalten ihre Reihenfolge.

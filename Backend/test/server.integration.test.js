@@ -134,6 +134,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const repository = new StateRepository(":memory:");
   const sheetService = {
+    async addMatch(_principal, { operationId }) {
+      return { success: true, newMatchId: `m-${operationId.slice(-8)}` };
+    },
     async refreshSheetData(_principal, { operationId }) {
       return {
         success: true,
@@ -606,6 +609,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const playerClient = createSocketClient(`${wsBase}/ws`, {
     Origin: "http://test.local",
     Cookie: `epiber_test_session=${playerSession.token}`,
+    "X-Forwarded-For": "198.51.100.88",
   });
   assert.equal((await playerClient.handshake()).principal.role, "player");
   assert.equal((await playerClient.request("memberDirectory")).data.success, true);
@@ -885,6 +889,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     satz1home: "0", satz1gast: "0", satz2home: "0", satz2gast: "0",
     satz3home: "0", satz3gast: "0", punktehome: "0", punktegast: "0",
   });
+  const challenge = await playerClient.request("addMatch", {
+    operationId: "00000000-0000-4000-8000-000000000201",
+    bewerbId: "cup-1",
+    opponentId: "p1",
+  });
+  assert.equal(challenge.data.newMatchId, "m-00000201");
 
   const realDateNow = Date.now;
   const staleNow = realDateNow() + 120000;
@@ -906,10 +916,28 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   )), true);
 
   const auditRows = application.auditLogRepository.list();
+  const challengeAudit = auditRows.find((row) => row.action === "addMatch" && row.result === "success");
+  assert.deepEqual({
+    actorId: challengeAudit.actorId,
+    actorName: challengeAudit.actorName,
+    targetType: challengeAudit.targetType,
+    targetId: challengeAudit.targetId,
+    targetName: challengeAudit.targetName,
+    before: challengeAudit.before,
+    after: challengeAudit.after,
+  }, {
+    actorId: "p2",
+    actorName: "Peter Player",
+    targetType: "person",
+    targetId: "p1",
+    targetName: "Ada Admin",
+    before: { bewerbId: "cup-1", opponentId: "p1" },
+    after: { matchId: "m-00000201", bewerbId: "cup-1", opponentId: "p1" },
+  });
   const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
   for (const action of [
     "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
-    "passwordReset", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "passwordReset", "addMatch", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
     "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
   ]) {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);

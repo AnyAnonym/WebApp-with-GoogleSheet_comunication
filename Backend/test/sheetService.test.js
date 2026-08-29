@@ -966,6 +966,9 @@ test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () =
   assert.notEqual(first.newMatchId, second.newMatchId);
   assert.equal(fake.calls.append.filter((call) => call.range === "Matches1").length, 2);
   assert.equal(dataStore.get("matches1").length, 3);
+  const firstMatch = fake.tables.Matches1.find((row) => row[1] === first.newMatchId);
+  assert.equal(firstMatch[6], "p1");
+  assert.equal(firstMatch[8], "p2");
 
   const repeated = await service.addMatch(principal, { operationId: firstOperation, bewerbId: "cup-1", opponentId: "p2" });
   assert.equal(repeated.newMatchId, first.newMatchId);

@@ -69,7 +69,13 @@ function shouldAudit(action) {
 function auditProjection(endpoint, params, result = {}, internal = null) {
   switch (endpoint) {
     case "addMatch":
-      return { targetType: "match", targetId: result.newMatchId || "", after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId } };
+      return {
+        targetType: "person",
+        targetId: params.opponentId,
+        targetName: personDisplayName(params.opponentId),
+        before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
+        after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
+      };
     case "addEntryList":
       return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
     case "removeEntryList":

@@ -66,11 +66,13 @@ Matches1 enthaelt offene und gespielte Matches.
   BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
   MatchtypID      | Optionale Matchtyp-Ueberschreibung. Ist sie gesetzt,
                   | ueberstimmt sie `Bewerb.MatchtypID Standard`.
-  Spieler1ID      | Erste Heim-/Gegner-ID; als Abschlussmarker sind nur die
+  Spieler1ID      | Erste Heim-ID. Bei neuen Ranglistenforderungen steht hier
+                  | der Forderer; als Abschlussmarker sind nur die
                   | exakt kleingeschriebenen Suffixe [wo] oder [ret] zulaessig.
                   | Bei manueller Auslosung ist temporaer `PRE` zulaessig.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
-  Spieler3ID      | Erste Gast-/Forderer-ID; bei manueller Auslosung ist
+  Spieler3ID      | Erste Gast-ID. Bei neuen Ranglistenforderungen steht hier
+                  | der Geforderte; bei manueller Auslosung ist
                   | temporaer `PRE` zulaessig.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
@@ -469,6 +471,16 @@ Alt-/Neuwerten, `CD-ID` und die anderen erlaubten Felder ausschliesslich mit ihr
 Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht gespiegelt.
 `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*` aktiviert alle
 implementierten Aktionen.
+
+Forderungen verwenden die Auditaktion `addMatch`. Der Forderer ist der
+serverseitige Akteur, der Geforderte das Personenziel mit ID und Namenssnapshot.
+Bereits `started` speichert den kontrollierten Kontext aus Bewerb- und
+Gegner-ID, damit auch ein nicht angelegter oder unklarer Versuch fachlich
+zugeordnet bleibt. Bei Erfolg ergaenzt `after_json` die stabile Match-ID. Der
+Journalspiegel `audit_recorded` gibt fuer diese Aktion zusaetzlich nur Bewerb-
+und Match-ID aus; Kontaktwerte, freie Texte und sonstige Personendaten bleiben
+ausgeschlossen. `failed` bezeichnet dabei einen Versuch, bei dem keine
+Forderung angelegt wurde, niemals eine Ablehnung durch den Geforderten.
 
 
 ================================================================================

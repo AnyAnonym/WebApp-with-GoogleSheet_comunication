@@ -25,7 +25,9 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Profilen die vom Profilstatus abhaengige Aktion `Passwortvergabe freigeben` oder
   `Passwortfreigabe aufheben` sowie Reset-Code und direktes Passwortsetzen.
   Forderungen senden stabile `operationId`, `bewerbId` und `opponentId`; der Server
-  prueft Identitaet und Regeln.
+  prueft Identitaet und Regeln. Bei Erfolg ist die Forderung sofort verbindlich
+  und wird mit dem Forderer in `Spieler1ID` sowie dem Geforderten in `Spieler3ID`
+  gespeichert. Bestehende Matchzeilen werden nicht umgeordnet.
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schutzzeit;
@@ -37,6 +39,17 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   und Verlierer erhalten die serverseitig berechnete Schutz- beziehungsweise
   Sperrzeit samt Timer; beim eigenen Spieler bleibt der blaue Rahmen zusaetzlich
   zur Fristdarstellung sichtbar. Andere Markerschreibweisen werden nicht erkannt.
+  Eine angelegte Forderung kann nicht abgelehnt oder abgebrochen werden. Ein
+  regelwidriger oder technisch fehlgeschlagener Aufruf legt keine Forderung an;
+  ein spaeterer Nichtantritt wird als Walkover abgeschlossen.
+
+-- Observability --
+  Jeder Forderungswrite besitzt Audit `started` und danach `success`, `failed`
+  oder `unknown`. Der Forderer stammt aus der Session, Zielperson und Bewerb aus
+  validierten Parametern; Erfolg ergaenzt die stabile Match-ID. Der kontrollierte
+  Journalspiegel erlaubt das Filtern im Grafana-Dashboard
+  `ePiber Ranglistenaktivitaeten`. Personen-, Bewerbs-, Match-, Request- und
+  Operation-IDs bleiben JSON-Felder und werden keine Loki-Labels.
 
 -- Verdeckte Funktion und Sicherheit --
   Der sichtbare `Raushaengen`-Button ist entfernt. Modal, Clientfunktion und

@@ -178,6 +178,10 @@ class AuditLogRepository {
       this.lastError = null;
       const persisted = this.get(row.eventId);
       if (this.journal && persisted.result !== "started") {
+        const challengeFields = persisted.action === "addMatch" ? {
+          bewerbId: String(persisted.after?.bewerbId || persisted.before?.bewerbId || ""),
+          matchId: String(persisted.after?.matchId || ""),
+        } : {};
         this.log(persisted.result === "failed" ? "warn" : "info", "audit_recorded", {
           eventId: persisted.eventId,
           action: persisted.action,
@@ -198,6 +202,7 @@ class AuditLogRepository {
           changeSummary: ["normalizePerson", "reconcilePerson"].includes(persisted.action)
             ? normalizationAuditSummary(persisted.before, persisted.after)
             : "",
+          ...challengeFields,
         });
       }
       return persisted;

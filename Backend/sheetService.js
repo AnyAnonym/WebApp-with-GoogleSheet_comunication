@@ -1077,8 +1077,8 @@ class SheetService {
         id: newId,
         forderungdate: viennaTimestamp(),
         bewerbid: params.bewerbId,
-        spieler1id: params.opponentId,
-        spieler3id: principal.id,
+        spieler1id: principal.id,
+        spieler3id: params.opponentId,
       });
       const sheets = await this.getClient();
       try {

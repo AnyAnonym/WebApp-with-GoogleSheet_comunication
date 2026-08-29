@@ -21,6 +21,7 @@ const readPublicProfile = createEndpoint("publicProfile");
 const readMyProfile = createEndpoint("myProfile");
 const addMatch = createEndpoint("addMatch");
 const withdrawFromRanking = createEndpoint("withdrawFromRanking");
+const readWithdrawnRankingPlayers = createEndpoint("withdrawnRankingPlayers");
 let withdrawContext = null;
 let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
@@ -33,6 +34,13 @@ function errorMessage(value, fallback) {
   if (typeof value?.error === "string") return value.error;
   if (value?.message) return value.message;
   return fallback;
+}
+
+function setLoginStatus(message = "") {
+  const status = document.getElementById("loginStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.hidden = !message;
 }
 
 window.showToast = function (message, type = "info") {
@@ -68,6 +76,7 @@ function createModal(id, content, { explicitDismiss = false } = {}) {
 
 function openModal(modal) {
   modal?.classList.remove("hidden");
+  if (modal) document.body.classList.add("modal-open");
 }
 
 function setModalBusy(form, busy) {
@@ -108,6 +117,7 @@ function closeModal(modal) {
     if (token) token.textContent = "";
     if (target) target.textContent = "";
   }
+  if (!document.querySelector(".modal:not(.hidden)")) document.body.classList.remove("modal-open");
 }
 
 const loginModal = createModal("loginModal", `
@@ -121,6 +131,8 @@ const loginModal = createModal("loginModal", `
       <input type="password" id="password" name="password" autocomplete="current-password" required style="width: 100%; padding-right: 40px;">
       <span class="toggle-password" data-target="password" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; user-select: none;">&#128065;</span>
     </div>
+
+    <p id="loginStatus" class="login-status" role="alert" aria-live="assertive" aria-atomic="true" hidden></p>
 
     <button type="submit" class="btn-login">Anmelden</button>
     <button type="button" id="openPasswordSetup" class="btn-login">Erstmals Passwort vergeben</button>
@@ -208,9 +220,24 @@ const adminPasswordModal = createModal("adminPasswordModal", `
 
 const profileModal = createModal("profileModal", `
   <h2 id="profileName">Profil</h2>
-  <div id="profileText">Lade Profildaten...</div>
-  <div id="profileActions" style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 16px;"></div>
+  <div id="profileTabs" class="profile-tabs" role="tablist" aria-label="Profilbereiche"></div>
+  <div id="profileBody" class="profile-body" aria-live="polite">
+    <section id="profileSystemPanel" class="profile-panel" role="tabpanel">
+      <div id="profileText">Lade Profildaten...</div>
+      <div id="profileSystemActions" class="profile-actions"></div>
+    </section>
+    <div id="profileRankingPanels"></div>
+    <section id="profileAdminPanel" class="profile-panel" role="tabpanel" hidden>
+      <div id="profileAdminActions" class="profile-actions"></div>
+    </section>
+  </div>
 `);
+profileModal.classList.add("profile-modal");
+profileModal.setAttribute("role", "dialog");
+profileModal.setAttribute("aria-modal", "true");
+profileModal.setAttribute("aria-labelledby", "profileName");
+profileModal.querySelector(".modal-content")?.classList.add("profile-dialog");
+profileModal.querySelector(".close")?.setAttribute("aria-label", "Profil schließen");
 
 const withdrawModal = createModal("withdrawModal", `
   <h2>Raushängen</h2>
@@ -219,9 +246,14 @@ const withdrawModal = createModal("withdrawModal", `
     <textarea id="withdrawReason" name="withdrawReason" minlength="3" maxlength="500" required placeholder="Bitte geben Sie den Grund ein..." style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit;"></textarea>
 
     <div style="display: flex; gap: 10px; margin-top: 12px; justify-content: flex-end;">
-      <button type="submit" class="btn-login">Senden</button>
+      <button type="submit" class="btn-login">Verbindlich raushängen</button>
     </div>
   </form>
+`, { explicitDismiss: true });
+
+const withdrawnPlayersModal = createModal("withdrawnPlayersModal", `
+  <h2 id="withdrawnPlayersTitle">Rausgehängte Spieler</h2>
+  <div id="withdrawnPlayersBody" class="withdrawn-players-list" aria-live="polite"></div>
 `);
 
 function formatPhone(value) {
@@ -235,6 +267,12 @@ function formatBirthDate(value) {
   const short = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
   if (short) return `${short[3]}.${short[2]}.${Number(short[1]) >= 50 ? "19" : "20"}${short[1]}`;
   return raw || "---";
+}
+
+function formatCompactDate(value) {
+  const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return String(value || "").trim() || "---";
+  return `${match[3]}.${match[2]}.20${match[1]}, ${match[4]}:${match[5]} Uhr`;
 }
 
 function profileName(profile) {
@@ -311,6 +349,73 @@ function appendContactFields(container, profile, signal) {
   appendProfileField(container, "Geburtsdatum", formatBirthDate(profile.birthDate), "", signal);
 }
 
+function activateProfileTab(tab) {
+  const tabs = [...profileModal.querySelectorAll('[role="tab"]')];
+  for (const candidate of tabs) {
+    const selected = candidate === tab;
+    candidate.setAttribute("aria-selected", String(selected));
+    const panel = document.getElementById(candidate.getAttribute("aria-controls"));
+    if (panel) panel.hidden = !selected;
+  }
+  tab.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+}
+
+function appendProfileTab(container, label, panel, selected, signal) {
+  const tab = document.createElement("button");
+  tab.type = "button";
+  tab.className = "profile-tab";
+  tab.setAttribute("role", "tab");
+  tab.setAttribute("aria-controls", panel.id);
+  tab.setAttribute("aria-selected", String(selected));
+  tab.textContent = label;
+  panel.setAttribute("aria-labelledby", `${panel.id}Tab`);
+  tab.id = `${panel.id}Tab`;
+  tab.addEventListener("click", () => activateProfileTab(tab), { signal });
+  container.appendChild(tab);
+}
+
+function appendChallengeButton(container, profile, ranking, signal) {
+  const challengeButton = document.createElement("button");
+  challengeButton.type = "button";
+  challengeButton.className = "btn-login";
+  challengeButton.textContent = "Fordern";
+  container.appendChild(challengeButton);
+
+  challengeButton.addEventListener("click", async () => {
+    if (!isAuthenticated()) {
+      window.showToast("Bitte zuerst anmelden.", "error");
+      closeModal(profileModal);
+      window.openLoginModal();
+      return;
+    }
+
+    challengeButton.disabled = true;
+    challengeButton.textContent = "Sende...";
+    const operationKey = `match:add:${ranking.competitionId}:${profile.id}`;
+
+    try {
+      const matchResult = await addMatch({
+        operationId: getOperationId(operationKey),
+        bewerbId: ranking.competitionId,
+        opponentId: String(profile.id),
+      });
+      if (!matchResult.data?.success) {
+        throw new Error(errorMessage(matchResult.data, "Herausforderung konnte nicht gespeichert werden."));
+      }
+      releaseOperationId(operationKey);
+      window.showToast("Herausforderung erfolgreich gesendet!", "success");
+      closeModal(profileModal);
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      releaseOperationId(operationKey, error);
+      diagnostic.error("profile_challenge_failed", error);
+      window.showToast(errorMessage(error, "Herausforderung fehlgeschlagen."), "error");
+      challengeButton.disabled = false;
+      challengeButton.textContent = "Fordern";
+    }
+  }, { signal });
+}
+
 function openPasswordModal() {
   if (!isAuthenticated()) {
     window.showToast("Bitte zuerst anmelden.", "error");
@@ -327,6 +432,7 @@ function openPasswordModal() {
 }
 
 window.openLoginModal = () => {
+  setLoginStatus();
   openModal(loginModal);
   document.getElementById("login")?.focus();
 };
@@ -348,15 +454,23 @@ window.openProfileModal = async (options = {}) => {
 
   const nameElement = document.getElementById("profileName");
   const textElement = document.getElementById("profileText");
-  const actionsElement = document.getElementById("profileActions");
+  const tabsElement = document.getElementById("profileTabs");
+  const rankingPanelsElement = document.getElementById("profileRankingPanels");
+  const systemActionsElement = document.getElementById("profileSystemActions");
+  const adminPanel = document.getElementById("profileAdminPanel");
+  const adminActionsElement = document.getElementById("profileAdminActions");
   profileActionController?.abort();
   profileActionController = new AbortController();
   const actionSignal = profileActionController.signal;
   profileModal.dataset.profileScope = ownProfile ? "private" : "public";
   nameElement.textContent = "Lade Profil...";
   textElement.textContent = "";
-  actionsElement.replaceChildren();
-  actionsElement.style.setProperty("display", "none", "important");
+  tabsElement.replaceChildren();
+  rankingPanelsElement.replaceChildren();
+  systemActionsElement.replaceChildren();
+  adminActionsElement.replaceChildren();
+  adminPanel.hidden = true;
+  document.getElementById("profileSystemPanel").hidden = false;
   openModal(profileModal);
 
   try {
@@ -382,19 +496,57 @@ window.openProfileModal = async (options = {}) => {
       passwordButton.className = "btn-login";
       passwordButton.textContent = "Passwort ändern";
       passwordButton.addEventListener("click", openPasswordModal, { once: true, signal: actionSignal });
-      actionsElement.appendChild(passwordButton);
-      actionsElement.style.setProperty("display", "flex", "important");
-      return;
+      systemActionsElement.appendChild(passwordButton);
+    } else {
+      if (profile.login) appendProfileField(textElement, "Login", profile.login, "", actionSignal);
+      if (sessionUser) appendContactFields(textElement, profile, actionSignal);
+      else textElement.textContent = "Öffentliches Spielerprofil";
     }
 
-    if (profile.login) appendProfileField(textElement, "Login", profile.login, "", actionSignal);
-    if (sessionUser) appendContactFields(textElement, profile, actionSignal);
-    else textElement.textContent = "Öffentliches Spielerprofil";
-    const canChallenge = options.canChallenge === true
-      || options.boxElement?.classList.contains("challengeable");
-    const bewerbId = String(options.bewerbId || "").trim();
+    const rankings = Array.isArray(profile.rankings) ? profile.rankings : [];
+    rankings.forEach((ranking, index) => {
+      const panel = document.createElement("section");
+      panel.id = `profileRankingPanel${index}`;
+      panel.className = "profile-panel";
+      panel.setAttribute("role", "tabpanel");
+      panel.hidden = true;
+      if (ranking.status === "active") appendProfileField(panel, "Ranglistenposition", ranking.rank, "", actionSignal);
+      if (ranking.openChallenge) {
+        appendProfileField(
+          panel,
+          "Offene Forderung",
+          `${ranking.openChallenge.opponentName} · ${formatCompactDate(ranking.openChallenge.challengedAt)}`,
+          "",
+          actionSignal,
+        );
+      }
+      if (ranking.status === "withdrawn" && ranking.withdrawal) {
+        appendProfileField(panel, "Rausgehängt am", formatCompactDate(ranking.withdrawal.withdrawnAt), "", actionSignal);
+        appendProfileField(panel, "Grund", ranking.withdrawal.reason, "", actionSignal);
+      }
+      const actions = document.createElement("div");
+      actions.className = "profile-actions";
+      panel.appendChild(actions);
+      if (ownProfile && ranking.status === "active") {
+        const withdrawButton = document.createElement("button");
+        withdrawButton.type = "button";
+        withdrawButton.className = "btn-login";
+        withdrawButton.textContent = "Raushängen";
+        withdrawButton.disabled = ranking.canWithdraw !== true;
+        withdrawButton.title = ranking.openChallenge ? "Während einer offenen Forderung ist Raushängen nicht möglich." : "";
+        if (ranking.canWithdraw === true) {
+          withdrawButton.addEventListener("click", () => {
+            window.openWithdrawModal({ rank: ranking.rank, bewerbId: ranking.competitionId });
+          }, { once: true, signal: actionSignal });
+        }
+        actions.appendChild(withdrawButton);
+      } else if (ranking.canChallenge === true) {
+        appendChallengeButton(actions, profile, ranking, actionSignal);
+      }
+      rankingPanelsElement.appendChild(panel);
+    });
 
-    if (sessionUser?.role === "admin") {
+    if (!ownProfile && sessionUser?.role === "admin") {
       const setupButton = document.createElement("button");
       setupButton.type = "button";
       setupButton.className = "btn-login";
@@ -418,7 +570,7 @@ window.openProfileModal = async (options = {}) => {
           setupButton.disabled = false;
         }
       }, { signal: actionSignal });
-      actionsElement.appendChild(setupButton);
+      adminActionsElement.appendChild(setupButton);
 
       const resetButton = document.createElement("button");
       resetButton.type = "button";
@@ -441,7 +593,7 @@ window.openProfileModal = async (options = {}) => {
           resetButton.disabled = false;
         }
       }, { signal: actionSignal });
-      actionsElement.appendChild(resetButton);
+      adminActionsElement.appendChild(resetButton);
 
       const setPasswordButton = document.createElement("button");
       setPasswordButton.type = "button";
@@ -455,54 +607,18 @@ window.openProfileModal = async (options = {}) => {
         openModal(adminPasswordModal);
         document.getElementById("adminNewPassword")?.focus();
       }, { signal: actionSignal });
-      actionsElement.appendChild(setPasswordButton);
-      actionsElement.style.setProperty("display", "flex", "important");
+      adminActionsElement.appendChild(setPasswordButton);
     }
 
-    if (!canChallenge || !bewerbId) return;
-
-    const challengeButton = document.createElement("button");
-    challengeButton.type = "button";
-    challengeButton.className = "btn-login";
-    challengeButton.textContent = "Fordern";
-    actionsElement.appendChild(challengeButton);
-    actionsElement.style.setProperty("display", "flex", "important");
-
-    challengeButton.addEventListener("click", async () => {
-      if (!isAuthenticated()) {
-        window.showToast("Bitte zuerst anmelden.", "error");
-        closeModal(profileModal);
-        window.openLoginModal();
-        return;
-      }
-
-      challengeButton.disabled = true;
-      challengeButton.textContent = "Sende...";
-      const operationKey = `match:add:${bewerbId}:${profile.id}`;
-
-      try {
-        const matchResult = await addMatch({
-          operationId: getOperationId(operationKey),
-          bewerbId,
-          opponentId: String(profile.id),
-        });
-
-        if (!matchResult.data?.success) {
-          throw new Error(errorMessage(matchResult.data, "Herausforderung konnte nicht gespeichert werden."));
-        }
-
-        releaseOperationId(operationKey);
-        window.showToast("Herausforderung erfolgreich gesendet!", "success");
-        closeModal(profileModal);
-        setTimeout(() => window.location.reload(), 1000);
-      } catch (error) {
-        releaseOperationId(operationKey, error);
-        diagnostic.error("profile_challenge_failed", error);
-        window.showToast(errorMessage(error, "Herausforderung fehlgeschlagen."), "error");
-        challengeButton.disabled = false;
-        challengeButton.textContent = "Fordern";
-      }
-    }, { signal: actionSignal });
+    const systemPanel = document.getElementById("profileSystemPanel");
+    appendProfileTab(tabsElement, "System", systemPanel, true, actionSignal);
+    [...rankingPanelsElement.children].forEach((panel, index) => {
+      appendProfileTab(tabsElement, rankings[index].competitionName, panel, false, actionSignal);
+    });
+    if (adminActionsElement.childElementCount) {
+      adminPanel.hidden = true;
+      appendProfileTab(tabsElement, "Admin", adminPanel, false, actionSignal);
+    }
   } catch (error) {
     if (requestGeneration !== profileRequestGeneration) return;
     diagnostic.error("profile_load_failed", error);
@@ -549,6 +665,46 @@ window.openWithdrawModal = ({ rank, bewerbId } = {}) => {
   document.getElementById("withdrawReason")?.focus();
 };
 
+window.openWithdrawnRankingPlayers = async (bewerbId) => {
+  const normalizedBewerbId = String(bewerbId || "").trim();
+  if (!isAuthenticated()) {
+    window.showToast("Bitte zuerst anmelden.", "error");
+    window.openLoginModal();
+    return;
+  }
+  if (!normalizedBewerbId) return;
+  const title = document.getElementById("withdrawnPlayersTitle");
+  const body = document.getElementById("withdrawnPlayersBody");
+  title.textContent = "Rausgehängte Spieler";
+  body.textContent = "Lade Daten...";
+  openModal(withdrawnPlayersModal);
+  try {
+    const result = await readWithdrawnRankingPlayers({ bewerbId: normalizedBewerbId });
+    const data = result.data;
+    if (!data?.success) throw new Error(errorMessage(data, "Liste konnte nicht geladen werden."));
+    title.textContent = data.competitionName ? `Rausgehängt · ${data.competitionName}` : "Rausgehängte Spieler";
+    body.replaceChildren();
+    if (!data.players?.length) {
+      body.textContent = "Derzeit ist niemand rausgehängt.";
+      return;
+    }
+    for (const player of data.players) {
+      const entry = document.createElement("article");
+      entry.className = "withdrawn-player";
+      const heading = document.createElement("strong");
+      heading.textContent = player.name;
+      const date = document.createElement("span");
+      date.textContent = formatCompactDate(player.withdrawnAt);
+      const reason = document.createElement("p");
+      reason.textContent = player.reason;
+      entry.append(heading, date, reason);
+      body.appendChild(entry);
+    }
+  } catch (error) {
+    body.textContent = errorMessage(error, "Liste konnte nicht geladen werden.");
+  }
+};
+
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -556,6 +712,7 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
   const loginName = form.elements.username.value.trim();
   const password = form.elements.password.value;
 
+  setLoginStatus();
   setModalBusy(form, true);
   submitButton.textContent = "Anmelden...";
 
@@ -566,10 +723,21 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
     window.showToast("Erfolgreich angemeldet.", "success");
   } catch (error) {
     diagnostic.error("login_failed", error);
-    const message = error.code === "LOGIN_FAILED"
-      ? "Login oder Passwort ist ungültig."
-      : errorMessage(error, "Anmeldung fehlgeschlagen.");
-    window.showToast(message, "error");
+    let message = errorMessage(error, "Anmeldung fehlgeschlagen.");
+    if (error.code === "LOGIN_FAILED") {
+      message = "Login oder Passwort ist ungültig.";
+    } else if (error.code === "LOGIN_RATE_LIMIT") {
+      const retryAfterMs = Number(error.details?.retryAfterMs);
+      const minutes = Number.isFinite(retryAfterMs) && retryAfterMs > 0
+        ? Math.max(1, Math.ceil(retryAfterMs / 60000))
+        : 0;
+      message = minutes === 1
+        ? "Zu viele Anmeldeversuche. Bitte in einer Minute erneut versuchen."
+        : minutes > 1
+          ? `Zu viele Anmeldeversuche. Bitte in ${minutes} Minuten erneut versuchen.`
+          : "Zu viele Anmeldeversuche. Bitte später erneut versuchen.";
+    }
+    setLoginStatus(message);
   } finally {
     setModalBusy(form, false);
     submitButton.textContent = "Anmelden";
@@ -750,7 +918,7 @@ document.getElementById("withdrawForm").addEventListener("submit", async (event)
     return;
   }
 
-  submitButton.disabled = true;
+  setModalBusy(form, true);
   submitButton.textContent = "Sende...";
   const operationKey = `ranking:withdraw:${withdrawContext.bewerbId}:${withdrawContext.rank}:${reason}`;
 
@@ -770,15 +938,15 @@ document.getElementById("withdrawForm").addEventListener("submit", async (event)
     withdrawContext = null;
     form.reset();
     closeModal(withdrawModal);
-    window.showToast("Rückzug wurde erfolgreich gesendet.", "success");
+    window.showToast("Du wurdest erfolgreich rausgehängt.", "success");
     setTimeout(() => window.location.reload(), 1000);
   } catch (error) {
     releaseOperationId(operationKey, error);
     diagnostic.error("ranking_withdraw_failed", error);
     window.showToast(errorMessage(error, "Rückzug konnte nicht gespeichert werden."), "error");
   } finally {
-    submitButton.disabled = false;
-    submitButton.textContent = "Senden";
+    setModalBusy(form, false);
+    submitButton.textContent = "Verbindlich raushängen";
   }
 });
 

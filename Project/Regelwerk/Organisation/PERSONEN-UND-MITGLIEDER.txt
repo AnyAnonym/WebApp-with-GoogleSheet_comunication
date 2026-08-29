@@ -1,0 +1,60 @@
+================================================================================
+PERSONEN UND MITGLIEDER
+================================================================================
+
+1. PERSONENBESTAND
+==================
+
+Der Personenbestand trennt Identitaet, Kontaktangaben, Anmeldekennung,
+Aktivstatus, Mitgliederklassifikation und Systemrolle. Eine inaktive Person kann
+sich nicht anmelden. [Bestaetigt]
+
+Login und Kontakt-E-Mail sind getrennte Angaben. Ein belegter Login muss
+eindeutig sein. Eine Kontakt-E-Mail darf fehlen oder von mehreren Personen
+verwendet werden und verleiht fuer sich allein keine Loginberechtigung.
+[Bestaetigt]
+
+
+2. MITGLIEDERKLASSIFIKATION
+===========================
+
+`player A` und `player B` kennzeichnen die fachliche A-/B-Mitgliedschaft. Beide
+sind gemeinsam mit `player` fachlich gleichgestellt. Trainer-, Vorstands- oder
+andere Vereinsfunktionen erzeugen keine eigene Spielerrolle. [Bestaetigt]
+
+
+3. PERSONENNORMALISIERUNG
+=========================
+
+Nur Administratoren duerfen vorhandene Personendaten kontrolliert normalisieren.
+Vor jeder Aenderung muessen Zielperson, betroffenes Feld, bisheriger Wert und
+Zielwert in einer Gesamtvorschau sichtbar sein. Passwort-, Reset- und interne
+Sicherheitsfelder gehoeren nicht zur fachlichen Normalisierung. [Bestaetigt]
+
+4. CLUBDESK-MITGLIEDERABGLEICH
+==============================
+
+Nur Administratoren duerfen einen ClubDesk-Mitgliederexport abgleichen und
+Aenderungen freigeben. Die Exportdatei bleibt lokal und wird nicht in ePiber
+gespeichert. [Bestaetigt]
+
+Eine Zuordnung zu einer vorhandenen Person erfordert eine exakte eindeutige
+Identitaetspruefung und die ausdrueckliche Bestaetigung des Administrators. Vor
+dem Schreiben zeigt eine Gesamtvorschau Person, Aktion sowie bisherige und neue
+Werte. Jede Personenaktion wird einzeln freigegeben. Bereits erfolgreich
+abgeschlossene Personenaktionen bleiben bei einem spaeteren Fehler bestehen.
+[Bestaetigt]
+
+Der Abgleich darf Personen anlegen, eine ClubDesk-ID zuordnen,
+Mitgliederklassifikation und Aktivstatus pflegen. Bestehende Logins werden durch
+den Import niemals geaendert. Admins und Operatoren werden bei Exportabwesenheit
+nicht automatisch deaktiviert oder auf eine Spielerrolle reduziert. [Bestaetigt]
+
+
+5. ABGRENZUNG DER BEIDEN ABLAEUFE
+=================================
+
+Personennormalisierung und ClubDesk-Mitgliederabgleich sind getrennte
+Arbeitsablaeufe. Die Normalisierung importiert keine CSV, legt keine Personen an,
+schreibt keine ClubDesk-ID und leitet keine Mitgliedsklassifikation aus einem
+Export ab. [Bestaetigt]

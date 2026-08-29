@@ -255,7 +255,7 @@ enthaelt hoechstens eine nicht geheime Browser-deviceId; keine Sessiontokens und
 keine Rollenautoritaet.
 
 Datenprojektionen:
-  - Anonymes Spielerprofil: ID und Name.
+  - Anonymes Spielerprofil: ID, Name und kontrollierte Ranglistenmitgliedschaften.
   - Angemeldetes fremdes Profil: zusaetzlich Kontakt-E-Mail, Telefon und
     Geburtsdatum, aber kein Login.
   - Eigenprofil: zusaetzlich Login, Geschlecht und Rolle.
@@ -264,6 +264,15 @@ Datenprojektionen:
   - Admin erhaelt am fremden Profil zusaetzlich Login und
     `passwordSetupAllowed`, aber keine fremden Passwortdaten. Freigabe,
     Reset-Code-Erzeugung und direktes Setzen sind separate Adminaktionen.
+  - Profil-Ranglisten werden ohne Google-Read aus den bereits importierten
+    Tabellen `bewerbe`, `rlPlatzierung`, `matches1` und `players` gebildet.
+    `BewerbsartID=2` grenzt Ranglisten ab. Forderbarkeit und offene Forderung
+    verwenden dieselbe serverseitige Regelauswertung wie der anschliessende
+    Write; der Write prueft trotzdem erneut. Rang `0` wird als `withdrawn`
+    projiziert. Angemeldete Benutzer erhalten seinen Zeitpunkt und Grund,
+    anonyme Profile nicht. Der vorherige Rang bleibt grundsaetzlich im
+    Persistenzlayer und wird nur dem berechtigten Eigenprofil innerhalb der
+    zwoelfmonatigen Rueckkehrfrist kontrolliert projiziert.
 
 Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
 Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
@@ -353,6 +362,14 @@ abgeleitet. Vor Update/Delete werden Personen-, Matches1- und EntryList-Zeilen
 ueber ID und `epiberRecord`-Developer-Metadaten unmittelbar neu aufgeloest. Ein
 Write kann dadurch keine durch Sortieren/Verschieben benachbarte Zeile treffen.
 
+Beim Raushaengen identifiziert `BewerbID + PersonID` jede betroffene
+Ranglistenzeile. Ranglisten- und Matchtabelle werden parallel frisch gelesen;
+fehlende Zeilenmetadaten entstehen gemeinsam in einem Create-Batch und alle
+Metadatenzeilen werden mit einem einzigen `batchGetByDataFilter` bestaetigt. Die
+Anzahl dieser Google-Aufrufe bleibt damit unabhaengig von der Zahl der
+nachrueckenden Spieler. Nur eine tatsaechlich unpassende Metadatenbindung faellt
+auf die einzelne konfliktgeschuetzte Neuaufloesung zurueck.
+
 Erreicht ein Google-Sheets-Read vor dem Write die externe Minutenquote, projiziert
 SheetService den Rohfehler `429` als `SHEETS_RATE_LIMITED` mit einer
 verstaendlichen Warteaufforderung und kontrolliertem `retryAfterMs: 60000`. Der
@@ -421,6 +438,11 @@ Fachhistorien und Betriebslogs:
     nur der geaenderte Feldname, nie sein Wert, ins Journal geschrieben.
     Doppelte oder aktionsfremd wiederverwendete Audit-Event-IDs werden abgewiesen
     und koennen terminale Zeilen nicht auf `started` zuruecksetzen.
+    `addMatch` bildet eine Ranglistenforderung als Akteur Forderer, Personenziel
+    Geforderter und kontrollierten Bewerbskontext ab. Erfolg ergaenzt die
+    Match-ID; `failed` bedeutet ausschliesslich, dass keine Forderung angelegt
+    wurde. Der Journalspiegel stellt diese erlaubten IDs fuer Grafana bereit,
+    ohne sie zu Loki-Labels zu machen.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der

@@ -1,0 +1,53 @@
+================================================================================
+KO-BEWERBE
+================================================================================
+
+1. GRUNDPRINZIP
+===============
+
+In einem KO-Bewerb scheidet die unterlegene Seite nach einem abgeschlossenen
+Match aus; die siegreiche Seite erreicht die zugeordnete naechste Runde. Einzel
+und Doppel sind moeglich. [Arbeitsannahme]
+
+Regulaere Ergebnisse, Walkover und Retirement bestimmen den Gewinner nach
+`ALLGEMEINE-MATCHREGELN.txt`. [Bestaetigt]
+
+
+2. RUNDEN UND RASTER
+====================
+
+Das Raster kann Vorrunden, Achtelfinale, Viertelfinale, Halbfinale und Finale
+abbilden. Welche Rastergroessen und Rundenfolgen fuer eine Bewerbsart zulaessig
+sind, ist noch nicht als vollstaendige sportliche Regel festgelegt. [Offen]
+
+
+3. FREILOS BYE
+===============
+
+`BYE` bezeichnet ein Freilos und keine Person. Die gegenueberliegende besetzte
+Seite steigt ohne Match in die naechste Runde auf. `BYE` besitzt kein Profil und
+darf nicht mit dem temporaeren Auslosungsmarker `PRE` verwechselt werden.
+[Arbeitsannahme]
+
+Die Regeln zur manuellen Platzierung von Freilosen und zur Fortfuehrung bei
+unvollstaendig besetzten Rastern sind noch fachlich zu bestaetigen. [Offen]
+
+
+4. MANUELLE AUSLOSUNG UND PRE
+============================
+
+Vor einem manuellen Ziehungsschritt kennzeichnet die Turnierleitung die als
+Naechstes zu besetzende Rasterposition mit `PRE`. `PRE` ist weder Person noch
+Freilos und bezeichnet nur die aktuell zu besetzende Position. [Bestaetigt]
+
+Nach der Ziehung wird der gezogene Spieler dieser Position zugeordnet. Damit endet
+der temporaere `PRE`-Zustand; die Position wird wieder als normale
+Spielerposition behandelt. [Bestaetigt]
+
+
+5. GESETZTE SPIELER
+====================
+
+Gesetzte Spieler koennen im Raster als solche gekennzeichnet werden. Nach welchen
+Setzregeln sie bestimmt und auf Rasterpositionen verteilt werden, ist noch nicht
+fachlich festgelegt. [Offen]

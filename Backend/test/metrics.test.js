@@ -17,6 +17,8 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   metrics.recordSheetApiAttempt({ method: "values_batch_get", purpose: "initial", kind: "initial" });
   metrics.recordSheetApiAttempt({ method: "values_batch_get", purpose: "initial", kind: "retry" });
   metrics.recordSheetApiRequest({ method: "values_batch_get", purpose: "initial", result: "success", durationMs: 50 });
+  metrics.recordSheetApiRequest({ method: "metadata_rows", purpose: "metadata_rows", result: "success", durationMs: 60 });
+  metrics.recordSheetApiRequest({ method: "metadata_cleanup", purpose: "metadata_cleanup", result: "success", durationMs: 70 });
   metrics.recordSheetRefresh({ trigger: "admin", result: "success", durationMs: 60 });
   metrics.recordFrontendEvents("accepted", 2);
 
@@ -50,6 +52,8 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   assert.match(output, /epiber_http_requests_total\{method="GET",result="success",route="\/api\/admin\/grafana-auth"\} 1/);
   assert.match(output, /# TYPE epiber_http_requests_total counter/);
   assert.match(output, /# TYPE epiber_http_request_duration_seconds histogram/);
+  assert.match(output, /method="metadata_rows",purpose="metadata_rows"/);
+  assert.match(output, /method="metadata_cleanup",purpose="metadata_cleanup"/);
   assert.match(output, /epiber_http_requests_total\{method="OTHER",result="failed",route="not_found"\} 1/);
   assert.match(output, /epiber_ws_requests_total\{endpoint="unknown",result="rejected"\} 1/);
   assert.match(output, /epiber_sheet_table_loads_total\{result="failed",table="unknown"\} 1/);

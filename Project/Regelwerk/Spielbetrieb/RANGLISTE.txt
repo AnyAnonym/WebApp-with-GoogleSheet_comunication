@@ -1,0 +1,241 @@
+================================================================================
+RANGLISTENREGELN ASKOE PIBERBACH
+================================================================================
+
+1. TEILNAHME UND GELTUNGSBEREICH
+================================
+
+Jedes Vereinsmitglied kann entsprechend Geschlecht und Altersklasse in den
+jeweils vorgesehenen Ranglisten mitspielen. Jede Rangliste ist ein eigener
+Bewerb; Forderungen, offene Matches, Schonzeiten, Sperrzeiten und Rangpositionen
+gelten nur innerhalb dieser Rangliste. [Bestaetigt]
+
+
+2. AUFBAU UND FORDERBARE POSITIONEN
+===================================
+
+Die Rangliste wird als Pyramide aus Zeilen dargestellt. Ein bereits gereihter
+Spieler darf folgende Spieler fordern: [Bestaetigt]
+
+  - alle Spieler links von ihm in derselben Zeile;
+  - alle Spieler ab seiner eigenen Spalte nach rechts in der unmittelbar
+    darueberliegenden Zeile;
+  - als Sonderregel darf Rang 3 zusaetzlich Rang 1 fordern.
+
+Die eigene Person kann nicht gefordert werden. Eine Position ausserhalb dieses
+Bereichs ist fuer einen bereits gereihten Spieler nicht forderbar. [Bestaetigt]
+
+
+3. AUSSPRECHEN UND VERBINDLICHKEIT EINER FORDERUNG
+==================================================
+
+Eine Forderung entsteht mit ihrem minutengenauen Forderungszeitpunkt. Sie kann
+vom Geforderten nicht abgelehnt und von keiner Seite abgebrochen werden. Sie wird
+nur durch ein regulaer beendetes Match, einen Walkover oder ein Retirement
+abgeschlossen. [Bestaetigt]
+
+Ein regelwidriger, unvollstaendiger oder technisch fehlgeschlagener
+Bedienversuch erzeugt keine Forderung und ist daher keine Ablehnung durch den
+Geforderten. Sobald die Forderung erfolgreich angelegt wurde, ist sie fuer beide
+Seiten verbindlich. Will eine Seite vor Spielbeginn nicht antreten, wird das
+Match durch ihren eigenen Walkover abgeschlossen. [Bestaetigt]
+
+Eine Forderung ist nicht zulaessig, wenn: [Bestaetigt]
+
+  - der Forderer oder der Geforderte bereits an einer offenen Forderung beteiligt
+    ist;
+  - der Geforderte nach einem Sieg noch Schonzeit besitzt;
+  - der Forderer nach einer Niederlage noch Sperrzeit besitzt;
+  - die gewaehlte Position nach den Ranglistenregeln nicht forderbar ist.
+
+Ein freiwilliger Verzicht auf eine laufende Schonzeit ist derzeit nicht Teil des
+Regelwerks. [Bestaetigt]
+
+
+4. TERMIN- UND AUSTRAGUNGSFRIST
+===============================
+
+Ab dem minutengenauen Forderungszeitpunkt laufen gleichzeitig: [Bestaetigt]
+
+  - exakt 7 x 24 Stunden fuer die Vereinbarung und Bestaetigung eines Spieltermins;
+  - exakt 14 x 24 Stunden fuer die Austragung und den Abschluss des Matches.
+
+Der Termin wird zwischen beiden Spielern muendlich, telefonisch, per Chat oder
+auf andere geeignete Weise vereinbart. Einer der beiden Spieler muss den
+vereinbarten Termin im System festhalten. Die konkrete Bedienfunktion ist keine
+Spielregel. [Bestaetigt]
+
+Wird innerhalb von sieben Tagen kein Termin erreicht, kann die sportliche Leitung
+eingreifen. Sie versucht zunaechst zu vermitteln. Behindert eine Seite die
+Terminfindung offensichtlich oder verzoegert sie unbegruendet, kann die
+sportliche Leitung den Verlust eines Ranglistenplatzes aussprechen. Ist kein
+Verursacher feststellbar oder sind beide Seiten unkooperativ, koennen beide um
+jeweils einen Platz zurueckgereiht werden. Ausnahmen sind nur in begruendeten
+Faellen zur Sicherung eines fairen Ablaufs vorgesehen. [Bestaetigt]
+
+Nach Ablauf der vierzehn Tage erfolgt keine automatische Wertung. Die sportliche
+Leitung entscheidet ueber das weitere Vorgehen. [Bestaetigt]
+
+Eine reine Rangverschiebung oder organisatorische Sanktion beendet die offene
+Forderung nicht von selbst. Soll eine nicht gespielte Forderung beendet werden,
+muss die sportliche Leitung einen anerkannten sportlichen Abschluss festlegen;
+bei Nichtantritt ist dies ein Walkover der nicht antretenden Seite. Wie eine
+beidseitige Zurueckreihung ohne eindeutig verantwortliche Seite zugleich als
+Matchabschluss behandelt wird, ist noch festzulegen. [Offen]
+
+
+5. SCHONZEIT UND SPERRZEIT
+===========================
+
+Der Gewinner eines Ranglistenmatches erhaelt ab dem minutengenauen
+Abschlusszeitpunkt exakt 7 x 24 Stunden Schonzeit. Waehrend dieser Schonzeit
+kann er nicht gefordert werden, darf aber selbst sofort eine zulaessige Forderung
+nach vorne aussprechen. [Bestaetigt]
+
+Der Verlierer erhaelt ab dem minutengenauen Abschlusszeitpunkt exakt 7 x 24
+Stunden Sperrzeit. Waehrend dieser Sperrzeit darf er keine Forderung aussprechen.
+Er kann jedoch gefordert werden, sofern keine andere Regel dies verhindert.
+[Bestaetigt]
+
+Ein regulaeres Ergebnis, ein Walkover und ein Retirement bestimmen jeweils
+Gewinner und Verlierer und loesen dieselben Schon- und Sperrzeiten aus.
+[Bestaetigt]
+
+Gewinnt oder verliert ein Spieler waehrend einer noch laufenden Schon- oder
+Sperrzeit ein weiteres zulaessiges Ranglistenmatch, soll der neueste Abschluss den
+danach geltenden Status bestimmen. [Arbeitsannahme]
+
+
+6. WERTUNG BEI SIEG DES GEFORDERTEN
+===================================
+
+Gewinnt der Geforderte: [Bestaetigt]
+
+  - behalten beide Spieler ihre bisherigen Positionen;
+  - erhaelt der Forderer sieben Tage Sperrzeit;
+  - erhaelt der Geforderte sieben Tage Schonzeit;
+  - darf der Geforderte trotz Schonzeit sofort selbst nach vorne fordern.
+
+
+7. WERTUNG BEI SIEG DES FORDERERS
+=================================
+
+Gewinnt der Forderer: [Bestaetigt]
+
+  - uebernimmt er die Position des Geforderten;
+  - werden der Geforderte und alle zwischen beiden bisherigen Positionen
+    liegenden Spieler jeweils um einen Rang nach hinten gereiht;
+  - erhaelt der Geforderte sieben Tage Sperrzeit;
+  - erhaelt der Forderer sieben Tage Schonzeit;
+  - darf der Forderer trotz Schonzeit sofort weiter nach vorne fordern.
+
+
+8. NEUEINSTEIGER
+================
+
+Ein noch nicht gereihter, teilnahmeberechtigter Spieler darf sich an einer
+beliebigen Position in die Rangliste einfordern. Bis zum Abschluss dieser
+Forderung bleibt er ausserhalb der Rangliste. Fuer den gewaehlten Gegner gelten
+die normalen Regeln zu offener Forderung und Schonzeit. [Bestaetigt]
+
+Als teilnahmeberechtigt gilt ein aktiver angemeldeter Spieler, dessen
+`GeschlechtID` in der kommaseparierten Liste `Bewerb.Geschlecht` enthalten ist
+und dessen Jahrgang die `Bewerb.Alterskategorie` erfuellt. Ein leeres
+Geschlechtsfeld laesst alle Geschlechter zu. Alterskategorien verwenden `N+` fuer
+mindestens N und `N-` fuer hoechstens N Jahre; leer und `0+` sind
+uneingeschraenkt. Das Alter wird als Kalenderjahr der Forderung minus Geburtsjahr
+bestimmt. Bei einer einschraenkenden Regel sperren fehlende oder ungueltige
+Personendaten den Neueinstieg. [Bestaetigt]
+
+Gewinnt der Neueinsteiger, uebernimmt er die geforderte Position. Der bisherige
+Inhaber und alle nachfolgenden Spieler werden jeweils um einen Rang nach hinten
+gereiht. [Bestaetigt]
+
+Verliert der Neueinsteiger, bleibt er zunaechst ausserhalb und erhaelt sieben Tage
+Sperrzeit. Nach deren Ablauf darf er den Spieler genau zehn Positionen hinter dem
+urspruenglich geforderten Rang oder jeden weiter hinten gereihten Spieler fordern.
+[Bestaetigt]
+
+Existieren hinter dem urspruenglich geforderten Rang weniger als zehn weitere
+Positionen, wird der Neueinsteiger unmittelbar nach seiner Niederlage am letzten
+Rang eingereiht. Die sieben Tage Sperrzeit gelten trotzdem und verhindern bis zu
+ihrem urspruenglichen Ende eine neue Forderung. [Bestaetigt]
+
+
+9. TEMPORAERES RAUSHAENGEN
+==========================
+
+Ein gereihter Spieler kann sich bei Verletzung, laengerer Abwesenheit oder aus
+einem anderen von ihm angegebenen Grund selbst temporaer aus der Rangliste
+raushaengen. Eine Genehmigung der sportlichen Leitung ist nicht erforderlich.
+Grund, minutengenauer Zeitpunkt und bisheriger Rang werden festgehalten.
+[Bestaetigt]
+
+Mit dem Raushaengen wird der Spieler sofort aus der aktuellen Rangliste entfernt.
+Alle hinter ihm gereihten Spieler ruecken jeweils einen Rang nach vorne. Der
+urspruengliche Rang bleibt ausschliesslich als Rueckkehranspruch erhalten.
+[Bestaetigt]
+
+Ein Spieler darf sich waehrend einer eigenen Schon- oder Sperrzeit raushaengen.
+Bei einer offenen Forderung ist das Raushaengen nicht zulaessig. Das offene Match
+muss zuerst durch einen anerkannten Matchabschluss beendet werden. Will der
+Spieler vor Spielbeginn nicht antreten, erklaert er seinen eigenen Walkover; hat
+das Match bereits begonnen und gibt er auf, ist es ein Retirement. [Bestaetigt]
+
+Eine beim Raushaengen laufende Schonzeit erlischt sofort und endgueltig. Sie lebt
+bei einer spaeteren Rueckkehr nicht wieder auf, weil der nicht gereihte Spieler
+ohnehin nicht gefordert werden kann. [Bestaetigt]
+
+Eine beim Raushaengen laufende Sperrzeit bleibt dagegen mit ihrem urspruenglichen
+minutengenauen Endzeitpunkt erhalten. Das Raushaengen verlaengert oder startet sie
+nicht neu. Solange sie laeuft, darf der Spieler weder ein Rueckkehrspiel fordern
+noch aufgrund eines nicht mehr vorhandenen Zielrangs automatisch wieder
+eingereiht werden. [Bestaetigt]
+
+
+10. RUECKKEHR INNERHALB VON ZWOELF MONATEN
+==========================================
+
+Der Rueckkehranspruch gilt zwoelf Kalendermonate ab dem minutengenauen Zeitpunkt
+des Raushaengens und endet am entsprechenden lokalen Datum zur gleichen lokalen
+Uhrzeit. Eine noch erhaltene Sperrzeit muss vor jeder Rueckkehr abgelaufen sein.
+[Bestaetigt]
+
+Innerhalb dieser Frist darf der Spieler den aktuell auf seinem gespeicherten
+urspruenglichen Rang gereihten Spieler oder jeden dahinter gereihten Spieler
+fordern, unabhaengig davon, wie sich die Rangliste zwischenzeitlich veraendert
+hat. Der gewaehlte Spieler muss nach den normalen Regeln verfuegbar sein;
+insbesondere duerfen keine offene Forderung und keine Schonzeit entgegenstehen.
+[Bestaetigt]
+
+Existiert der urspruengliche Rang wegen einer inzwischen kuerzeren Rangliste nicht
+mehr, wird der Rueckkehrer nach Ablauf einer etwaigen erhaltenen Sperrzeit sofort
+am letzten Rang eingereiht. Ein Rueckkehrspiel ist dann nicht erforderlich.
+[Bestaetigt]
+
+Gewinnt der Rueckkehrer sein Rueckkehrspiel, uebernimmt er den Rang des
+Geforderten. Der Geforderte und alle nachfolgenden betroffenen Spieler
+ruecken jeweils einen Rang nach hinten. Der Rueckkehrer erhaelt Schonzeit, der
+Geforderte Sperrzeit. [Bestaetigt]
+
+Verliert der Rueckkehrer, wird er unmittelbar einen Rang hinter dem Geforderten
+eingereiht. Der bisher auf dieser Position gereihte Spieler und alle folgenden
+Spieler ruecken jeweils einen Rang nach hinten. Der Rueckkehrer erhaelt sieben
+Tage Sperrzeit, der Geforderte sieben Tage Schonzeit. Danach gelten fuer beide
+wieder die normalen Ranglistenregeln. [Bestaetigt]
+
+Nach Ablauf der zwoelf Monate erlischt der gespeicherte Rueckkehranspruch. Der
+Spieler gilt bei einem spaeteren Wiedereinstieg als Neueinsteiger nach Abschnitt 8.
+[Bestaetigt]
+
+
+11. VERANTWORTUNG UND MANUELLE ENTSCHEIDUNGEN
+=============================================
+
+Ergebnisbedingte Rangverschiebungen und Entscheidungen nach Fristueberschreitung
+werden derzeit durch die sportliche Leitung beziehungsweise den Administrator
+manuell vollzogen. Diese organisatorische Zustaendigkeit aendert die sportlichen
+Folgen dieses Regelwerks nicht. Die Anwendung legt die Forderung an und zeigt
+zulaessige Gegner an, fuehrt nach Sieg oder Niederlage aber keine automatische
+Einreihung oder Rangverschiebung aus. Details stehen in
+`Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`.

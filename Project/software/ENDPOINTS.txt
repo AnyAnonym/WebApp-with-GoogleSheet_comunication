@@ -461,7 +461,16 @@ PUBLIC:
       Anonym: `{ id, firstName, lastName }`. Mit Benutzersession zusaetzlich die
       Kontaktfelder `email`, `phone` und `birthDate`, aber kein Login. Nur fuer
       Admins enthaelt ein Mitgliederprofil zusaetzlich `login` und
-      `passwordSetupAllowed`; Adminaktionen sind separate HTTP-Routen.
+      `passwordSetupAllowed`; Adminaktionen sind separate HTTP-Routen. Jede
+      Variante enthaelt `rankings:[{ competitionId, competitionName, rank,
+      status:"active|withdrawn", canChallenge, canWithdraw, openChallenge }]`.
+      `openChallenge` enthaelt bei einer offenen Forderung Match-ID, Richtung,
+      Gegner-ID/-Name und Forderungszeit. `canChallenge` und `canWithdraw` sind
+      auf den aktuellen serverseitigen Principal bezogen. Angemeldete Benutzer
+      erhalten bei Rang `0` zusaetzlich
+      `withdrawal:{ withdrawnAt, reason }`. Nur im Eigenprofil enthaelt
+      `withdrawal` ausserdem `previousRank`; anonym und in fremden Profilen wird
+      dieser Wert nicht projiziert.
 
   `bewerbe {}`
       Oeffentliche Bewerbprojektion plus `bewerbsartValues`.
@@ -480,7 +489,9 @@ PUBLIC:
       Projektion ID/BewerbID/PersonenID/Entrydate plus Name-`playerMap`.
 
   `readMatchRestrictions { bewerbId? }`
-      `{ complete:true, schutzzeit:[{id,until}], sperrzeit:[{id,until}] }`.
+      `{ complete:true, schonzeit:[{id,until}], sperrzeit:[{id,until}] }`.
+      Eine vor dem Raushaengen entstandene Schonzeit wird nicht mehr projiziert;
+      eine Sperrzeit behaelt ihren urspruenglichen Endzeitpunkt.
 
   `getScoreboardCourts {}`
       Revisionierte persistente Court-Zustaende inklusive der bei Zuweisung
@@ -508,14 +519,40 @@ AUTHENTICATED (player, operator oder admin):
 
   `myProfile {}`
       `{ success, profile:{ id, firstName, lastName, email, login, phone,
-      birthDate, gender, role } }`; Kontakt-E-Mail und Login sind getrennt, nie
-      erscheinen Passwort- oder Resetwerte.
+      birthDate, gender, role, rankings:[...] } }`; `rankings` folgt dem Vertrag
+      von `publicProfile`. Kontakt-E-Mail und Login sind getrennt; Passwort- und
+      Resetwerte erscheinen nie. Raushaengezeit und -grund folgen dem
+      angemeldeten Profilvertrag.
+
+  `rankingChallengeState { bewerbId }`
+      Liefert fuer den angemeldeten Spieler den serverseitig bestimmten Modus
+      `ranked|returning|newcomer|ineligible` sowie nur bei Bedarf `rank` oder
+      `returnFromRank`. Neueinsteiger ohne Ranglistenzeile und Spieler nach Ablauf
+      ihrer zwoelfmonatigen Rueckkehrfrist werden anhand von Aktivstatus,
+      `Bewerb.Geschlecht`, `Bewerb.Alterskategorie`, Personengeschlecht und
+      Geburtsjahr geprueft. Personenwerte selbst werden nicht ausgegeben.
+
+  `withdrawnRankingPlayers { bewerbId }`
+      Nur fuer angemeldete Benutzer. Liefert Bewerb-ID/-Bezeichnung und alle
+      Rang-0-Mitgliedschaften als `{ personId, name, withdrawnAt, reason }`,
+      absteigend nach Raushaengezeit sortiert.
 
   `operationStatus { operationId }`
       `{ operation:null }` oder Endpoint, `completed|unknown` und createdAt.
 
   `addMatch { operationId, bewerbId, opponentId }`
-      Forderer aus Session; stabile Match-ID und serverseitige Fachregeln.
+      Forderer aus Session; stabile Match-ID und serverseitige Fachregeln. Eine
+      erfolgreich angelegte Forderung ist sofort verbindlich und nicht durch den
+      Geforderten ablehnbar. Bei neuen Forderungen steht der Forderer in
+      `Spieler1ID`, der Geforderte in `Spieler3ID`. Audit `addMatch` erfasst ab
+      `started` Akteur, Zielperson und Bewerb; Erfolg ergaenzt die Match-ID. Ein
+      innerhalb von zwoelf Monaten rausgehaengter Spieler darf ab seinem
+      gespeicherten letzten Rang jeden dort oder dahinter gereihten aktiven
+      Spieler fordern. Offene Forderung, eigene Sperrzeit und gegnerische
+      Schonzeit werden weiterhin serverseitig geprueft. Ein teilnahmeberechtigter
+      Neueinsteiger ohne Ranglistenzeile sowie ein Spieler nach Ablauf der
+      Rueckkehrfrist darf jeden aktiven Rang fordern. Der Write legt nur das Match
+      an; Einreihung und Rangverschiebung nach einem Ergebnis bleiben manuell.
 
   `addEntryList { operationId, bewerbId }`
       Person und `Entrydate` aus Session/Serverzeit.
@@ -524,8 +561,14 @@ AUTHENTICATED (player, operator oder admin):
       Entfernt nur den eigenen stabil aufgeloesten Eintrag.
 
   `withdrawFromRanking { operationId, bewerbId, rank, reason }`
-      rank 1..10000, reason 3..500 Zeichen. Der serverseitig validierte Rueckzug
-      wird idempotent im SQLite-Auditlog erfasst; es gibt keinen Logging-Sheetwrite.
+      rank 1..10000, reason 3..500 Zeichen. Nur die eigene aktive Mitgliedschaft
+      ohne offene Forderung kann rausgehaengt werden. Der Server setzt ihren Rang
+      samt Zeitpunkt, letztem Rang und Grund auf `0` und rueckt alle nachfolgenden
+      aktiven Raenge in demselben Google-Batch auf. Bewerbsbezogene Serialisierung,
+      stabile Zeilenmetadaten und ein persistierter Recovery-Plan verhindern
+      konkurrierende Forderungen sowie einen blinden Wiederholungswrite. Audit und
+      technische Logs enthalten nur kontrollierte Statusfelder, nie den freien
+      Grund; es gibt keinen Logging-Sheetwrite.
 
 OPERATOR ODER ADMIN:
   `navigator { profil? }`

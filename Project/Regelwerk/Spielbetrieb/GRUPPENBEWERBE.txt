@@ -1,0 +1,45 @@
+================================================================================
+GRUPPENBEWERBE UND ROUND ROBIN
+================================================================================
+
+1. GRUNDPRINZIP
+===============
+
+Ein Round-Robin-Bewerb ordnet Spieler oder Doppelteams Gruppen zu. Innerhalb einer
+Gruppe werden die vorgesehenen Seiten gegeneinander gepaart. Einzel und Doppel
+sind moeglich. [Arbeitsannahme]
+
+
+2. TABELLENWERTUNG
+==================
+
+Der aktuelle fachliche Arbeitsstand vergleicht die Gruppenteilnehmer in dieser
+Reihenfolge: [Arbeitsannahme]
+
+  1. Anzahl der Siege;
+  2. Satzdifferenz;
+  3. Gamedifferenz.
+
+Die Entscheidung bei danach weiterhin vollstaendig gleichen Werten, ein direkter
+Vergleich, die genaue Behandlung nicht ausgetragener Matches sowie besondere
+Wertungen fuer Match-Tie-Breaks sind noch nicht fachlich festgelegt. [Offen]
+
+
+3. WALKOVER UND RETIREMENT
+==========================
+
+Walkover und Retirement bestimmen einen Gewinner nach
+`ALLGEMEINE-MATCHREGELN.txt`. Wie ein Match ohne regulaer vollstaendiges Ergebnis
+in Satz- und Gamedifferenz eingeht, ist noch zu entscheiden. [Offen]
+
+
+4. AUFSTIEG
+============
+
+Abhaengig vom Bewerb koennen bestimmte Platzierungen oder eine festgelegte Anzahl
+der bestgereihten Teilnehmer in eine weitere Gruppen- oder KO-Phase aufsteigen.
+Die konkrete Aufstiegsregel muss fuer den jeweiligen Bewerb festgelegt sein.
+[Arbeitsannahme]
+
+Die derzeit verwendeten Spezifikationswerte und ihre vollstaendige fachliche
+Grammatik sind noch zu bestaetigen. [Offen]

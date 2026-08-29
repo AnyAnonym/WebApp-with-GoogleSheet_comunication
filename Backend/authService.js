@@ -83,6 +83,7 @@ class AuthService {
     const values = dataStore.get("players");
     if (!Array.isArray(values) || values.length < 2) return [];
     const header = headerOf(values);
+    const genderIdIndex = headerIndex(header, "geschlechtid");
     const indexes = {
       id: headerIndex(header, "id"),
       firstName: headerIndex(header, "vorname"),
@@ -92,7 +93,7 @@ class AuthService {
       passwordHash: headerIndex(header, "passwdhash"),
       phone: headerIndex(header, "telefonmobil"),
       birthDate: headerIndex(header, "geburtsdatum"),
-      gender: headerIndex(header, "geschlechtid", "geschlecht"),
+      gender: genderIdIndex >= 0 ? genderIdIndex : headerIndex(header, "geschlecht"),
       active: headerIndex(header, "aktiv"),
       role: headerIndex(header, "role"),
       passwordSetup: headerIndex(header, "kennwortvergessen"),

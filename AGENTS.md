@@ -100,6 +100,8 @@ Project/     Dokumentation und Konfigurationsvorlagen
 | Thema der Anfrage | Zuerst lesen |
 |-------------------|--------------|
 | Zweck, Zielgruppen, Nutzungsszenarien oder fachliche Anforderungen | `Project/FACHKONZEPT.txt` |
+| Tennis-, Match-, Ranglisten-, KO- oder Gruppenbewerbsregel | `Project/Regelwerk/Spielbetrieb/README.txt`, danach nur die dort zugeordnete Regeldatei |
+| Rollen, Verantwortlichkeiten, Bewerbsorganisation, Personenpflege oder Platz-/Anzeigebetrieb | `Project/Regelwerk/Organisation/README.txt`, danach nur die dort zugeordnete Regeldatei |
 | Konkrete HTML-Seite | Bei bekanntem Dokumentnamen direkt `Project/software/seiten/<dokumentname>.txt`, sonst Zuordnung in `Project/software/SOFTWARE-DOKU.txt` |
 | HTTP/WS, Parameter, Requests oder Responses | `Project/software/ENDPOINTS.txt` |
 | WebSocket-Close-Code, Reconnect oder Versionsreload | `Project/software/WEBSOCKET-CLOSE-CODES.txt` |
@@ -143,6 +145,7 @@ Vorlage existieren nicht mehr.
 | `players.html` | Spieler-Tabelle | keine |
 | `scoreboard.html` | Live-Scoreboard | keine |
 | `monitor.html` | Ferngesteuerte Anzeige | keine |
+| `Sponsoren.html` | Verdeckte Sponsoren-Monitoranzeige | keine |
 | `navigator.html` | Fernbedienung fuer Monitor | `?profil=<id>`, Standard `1` |
 | `entryList.html` | Eintragungsliste | `?id=<bewerbId>` erforderlich |
 | `rangliste.html` | Ranglisten-Pyramide | `?id=<bewerbId>`, Standard `2` |

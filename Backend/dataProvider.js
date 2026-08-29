@@ -25,7 +25,7 @@ const courtPoller = require("./courtPoller.js");
 const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
-const { analyzeMatchRules } = require("./matchRules.js");
+const { analyzeMatchRules, parseMatchDate, parseParticipant } = require("./matchRules.js");
 const { projectPeopleNormalization } = require("./peopleNormalization.js");
 const { projectPeopleReconciliation } = require("./memberReconciliation.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
@@ -69,7 +69,13 @@ function shouldAudit(action) {
 function auditProjection(endpoint, params, result = {}, internal = null) {
   switch (endpoint) {
     case "addMatch":
-      return { targetType: "match", targetId: result.newMatchId || "", after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId } };
+      return {
+        targetType: "person",
+        targetId: params.opponentId,
+        targetName: personDisplayName(params.opponentId),
+        before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
+        after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
+      };
     case "addEntryList":
       return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
     case "removeEntryList":
@@ -136,6 +142,157 @@ function personDisplayName(personId) {
   const row = values.slice(1).find((entry) => String(entry[idIndex] || "").trim() === String(personId || "").trim());
   if (!row) return "";
   return [row[firstNameIndex], row[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ");
+}
+
+function profileRankings(personId, principal = null) {
+  requireCurrentTables("bewerbe", "matches1", "players", "rlPlatzierung");
+  const competitions = dataStore.get("bewerbe");
+  const competitionHeader = headerOf(competitions);
+  const competitionIndexes = {
+    id: headerIndex(competitionHeader, "id"),
+    name: headerIndex(competitionHeader, "bezeichnung"),
+    type: headerIndex(competitionHeader, "bewerbsartid"),
+    sortOrder: headerIndex(competitionHeader, "sortorder"),
+  };
+  const rankingCompetitions = new Map(competitions.slice(1)
+    .filter((row) => String(row[competitionIndexes.type] || "").trim() === "2")
+    .map((row) => {
+      const id = String(row[competitionIndexes.id] || "").trim();
+      return [id, {
+        competitionId: id,
+        competitionName: String(row[competitionIndexes.name] || "").trim(),
+        sortOrder: competitionIndexes.sortOrder < 0 || String(row[competitionIndexes.sortOrder] || "").trim() === ""
+          ? Number.POSITIVE_INFINITY
+          : Number(row[competitionIndexes.sortOrder]),
+      }];
+    })
+    .filter(([id]) => id));
+  const rankings = dataStore.get("rlPlatzierung");
+  const rankingHeader = headerOf(rankings);
+  const rankingIndexes = {
+    competition: headerIndex(rankingHeader, "bewerbid"),
+    person: headerIndex(rankingHeader, "personid"),
+    rank: headerIndex(rankingHeader, "rang"),
+    withdrawnAt: headerIndex(rankingHeader, "rausgehangenam"),
+    previousRank: headerIndex(rankingHeader, "rausgehangenletzteplatzierung"),
+    reason: headerIndex(rankingHeader, "rausgehangengrund"),
+  };
+  const matches = dataStore.get("matches1");
+  const matchHeader = headerOf(matches);
+  const matchIndexes = {
+    ignore: headerIndex(matchHeader, "ignore"),
+    id: headerIndex(matchHeader, "id"),
+    competition: headerIndex(matchHeader, "bewerbid"),
+    challengedAt: headerIndex(matchHeader, "forderungdate"),
+    result: headerIndex(matchHeader, "ergebnis"),
+    p1: headerIndex(matchHeader, "spieler1id"),
+    p2: headerIndex(matchHeader, "spieler2id"),
+    p3: headerIndex(matchHeader, "spieler3id"),
+    p4: headerIndex(matchHeader, "spieler4id"),
+  };
+  const names = playerNameMap();
+  const openChallenge = (competitionId) => {
+    const row = matches.slice(1).find((entry) => {
+      if (matchIndexes.ignore >= 0 && String(entry[matchIndexes.ignore] || "").trim() === "1") return false;
+      if (String(entry[matchIndexes.competition] || "").trim() !== competitionId) return false;
+      if (String(entry[matchIndexes.result] || "").trim()) return false;
+      const participants = [matchIndexes.p1, matchIndexes.p2, matchIndexes.p3, matchIndexes.p4]
+        .filter((index) => index >= 0)
+        .map((index) => parseParticipant(entry[index]));
+      return participants.every((participant) => !participant.retired)
+        && participants.some((participant) => participant.id === String(personId));
+    });
+    if (!row) return null;
+    const challengerId = parseParticipant(row[matchIndexes.p1]).id;
+    const challengedId = parseParticipant(row[matchIndexes.p3]).id;
+    const direction = challengerId === String(personId) ? "challenger" : "challenged";
+    const opponentId = direction === "challenger" ? challengedId : challengerId;
+    return {
+      matchId: String(row[matchIndexes.id] || "").trim(),
+      direction,
+      opponentId,
+      opponentName: names.get(opponentId) || "Unbekannter Spieler",
+      challengedAt: String(row[matchIndexes.challengedAt] || "").trim(),
+    };
+  };
+  return rankings.slice(1).flatMap((row) => {
+    if (String(row[rankingIndexes.person] || "").trim() !== String(personId)) return [];
+    const competition = rankingCompetitions.get(String(row[rankingIndexes.competition] || "").trim());
+    if (!competition) return [];
+    const rank = Number(row[rankingIndexes.rank]);
+    const withdrawn = rank === 0;
+    const withdrawnAt = String(row[rankingIndexes.withdrawnAt] || "").trim();
+    const returnExpiresAt = parseMatchDate(withdrawnAt);
+    if (returnExpiresAt) returnExpiresAt.setFullYear(returnExpiresAt.getFullYear() + 1);
+    const ownReturnAvailable = withdrawn
+      && principal?.type === "user"
+      && String(principal.id || "") === String(personId)
+      && returnExpiresAt
+      && new Date() <= returnExpiresAt;
+    const challenge = openChallenge(competition.competitionId);
+    const canChallenge = !withdrawn
+      && principal?.type === "user"
+      && String(principal.id || "") !== String(personId)
+      && dependencies.sheetService.challengeEligibility(principal, competition.competitionId, String(personId)).allowed;
+    return [{
+      competitionId: competition.competitionId,
+      competitionName: competition.competitionName,
+      rank,
+      status: withdrawn ? "withdrawn" : "active",
+      canChallenge,
+      canWithdraw: !withdrawn && principal?.type === "user" && String(principal.id || "") === String(personId) && !challenge,
+      openChallenge: challenge,
+      ...(withdrawn && principal?.type === "user" ? {
+        withdrawal: {
+          withdrawnAt,
+          reason: String(row[rankingIndexes.reason] || "").trim(),
+          ...(ownReturnAvailable ? {
+            previousRank: Number(row[rankingIndexes.previousRank]),
+          } : {}),
+        },
+      } : {}),
+      sortOrder: competition.sortOrder,
+    }];
+  }).sort((left, right) => (
+    left.sortOrder - right.sortOrder
+    || left.competitionName.localeCompare(right.competitionName, "de")
+    || left.competitionId.localeCompare(right.competitionId, "de")
+  )).map(({ sortOrder, ...ranking }) => ranking);
+}
+
+function withdrawnRankingPlayers(competitionId) {
+  requireCurrentTables("bewerbe", "players", "rlPlatzierung");
+  const competitions = dataStore.get("bewerbe");
+  const competitionHeader = headerOf(competitions);
+  const competitionRow = competitions.slice(1).find((row) => String(row[headerIndex(competitionHeader, "id")] || "").trim() === competitionId);
+  if (!competitionRow || String(competitionRow[headerIndex(competitionHeader, "bewerbsartid")] || "").trim() !== "2") {
+    throw new AppError("RANKING_REQUIRED", "Bewerb ist keine Rangliste", 409);
+  }
+  const values = dataStore.get("rlPlatzierung");
+  const header = headerOf(values);
+  const indexes = {
+    competition: headerIndex(header, "bewerbid"),
+    person: headerIndex(header, "personid"),
+    rank: headerIndex(header, "rang"),
+    withdrawnAt: headerIndex(header, "rausgehangenam"),
+    reason: headerIndex(header, "rausgehangengrund"),
+  };
+  const names = playerNameMap();
+  const players = values.slice(1).flatMap((row) => {
+    if (String(row[indexes.competition] || "").trim() !== competitionId || Number(row[indexes.rank]) !== 0) return [];
+    const personId = String(row[indexes.person] || "").trim();
+    return [{
+      personId,
+      name: names.get(personId) || "Unbekannter Spieler",
+      withdrawnAt: String(row[indexes.withdrawnAt] || "").trim(),
+      reason: String(row[indexes.reason] || "").trim(),
+    }];
+  }).sort((left, right) => right.withdrawnAt.localeCompare(left.withdrawnAt) || left.name.localeCompare(right.name, "de"));
+  return {
+    competitionId,
+    competitionName: String(competitionRow[headerIndex(competitionHeader, "bezeichnung")] || "").trim(),
+    players,
+  };
 }
 
 function writeAudit({ eventId, principal, endpoint, params, result = {}, internal = null, outcome, error = null }) {
@@ -207,11 +364,27 @@ function parsePlayerId(raw) {
 function readMatchRestrictions(params) {
   const competitionId = params?.bewerbId ? idValue(params.bewerbId, "bewerbId") : null;
   const rules = analyzeMatchRules(dataStore.get("matches1"), competitionId);
+  const rankings = dataStore.get("rlPlatzierung");
+  const rankingHeader = headerOf(rankings);
+  const rankingIndexes = {
+    competition: headerIndex(rankingHeader, "bewerbid"),
+    person: headerIndex(rankingHeader, "personid"),
+    withdrawnAt: headerIndex(rankingHeader, "rausgehangenam"),
+  };
+  const withdrawalByPerson = new Map(rankings.slice(1).flatMap((row) => {
+    if (competitionId && String(row[rankingIndexes.competition] || "").trim() !== competitionId) return [];
+    const at = parseMatchDate(row[rankingIndexes.withdrawnAt]);
+    return at ? [[String(row[rankingIndexes.person] || "").trim(), at]] : [];
+  }));
+  const protection = [...rules.protection.entries()].filter(([id, until]) => {
+    const withdrawnAt = withdrawalByPerson.get(id);
+    return !withdrawnAt || new Date(until.getTime() - (7 * 24 * 60 * 60 * 1000)) > withdrawnAt;
+  });
   const entry = ([id, until]) => ({ id, until: until.toISOString() });
   return {
     success: true,
     complete: true,
-    schutzzeit: [...rules.protection.entries()].map(entry),
+    schonzeit: protection.map(entry),
     sperrzeit: [...rules.blocked.entries()].map(entry),
   };
 }
@@ -401,7 +574,7 @@ const endpoints = {
       const profile = context.auth
         ? dependencies.authService.memberProfile(id, { includeAdminFields: context.principal.role === "admin" })
         : dependencies.authService.publicProfile(id);
-      return { success: true, profile };
+      return { success: true, profile: { ...profile, rankings: profileRankings(id, context.principal) } };
     },
   },
   bewerbe: {
@@ -421,7 +594,7 @@ const endpoints = {
   matches1: {
     access: "public",
     handler: (params) => {
-      requireCurrentTables("matches1");
+      requireCurrentTables("matches1", "rlPlatzierung");
       let values = filterIgnored(dataStore.get("matches1"));
       if (params?.bewerbId) values = filterByField(values, "bewerbid", idValue(params.bewerbId, "bewerbId"));
       return { success: true, values: publicTable("matches1", values) };
@@ -455,6 +628,10 @@ const endpoints = {
       requireCurrentTables("matches1");
       return readMatchRestrictions(params);
     },
+  },
+  withdrawnRankingPlayers: {
+    access: "authenticated",
+    handler: (params) => ({ success: true, ...withdrawnRankingPlayers(idValue(params.bewerbId, "bewerbId")) }),
   },
   getScoreboardCourts: { access: "public", handler: () => ({ success: true, courts: stateStore.getScoreboardCourts() }) },
   courtScores: { access: "public", handler: () => ({ success: true, data: courtPoller.getLastData() }) },
@@ -509,7 +686,17 @@ const endpoints = {
   },
   myProfile: {
     access: "authenticated",
-    handler: (_params, context) => ({ success: true, profile: context.auth.user }),
+    handler: (_params, context) => ({
+      success: true,
+      profile: { ...context.auth.user, rankings: profileRankings(context.principal.id, context.principal) },
+    }),
+  },
+  rankingChallengeState: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.sheetService.rankingChallengeState(
+      context.principal,
+      idValue(params.bewerbId, "bewerbId"),
+    ),
   },
   operationStatus: {
     access: "authenticated",

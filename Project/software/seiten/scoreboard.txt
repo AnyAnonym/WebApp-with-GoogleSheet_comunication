@@ -10,6 +10,8 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   Hauptnutzungen sind der mobile Liveticker und die Fernsehanzeige am Tennisplatz
   fuer Spielstaende weiter entfernter Plaetze. Die externe Einheit und ihr
   Betriebsablauf sind in `Project/Scoreboard-Funktion.md` beschrieben.
+  Fachliche Betriebsverantwortung und Nutzungsregeln stehen in
+  `Project/Regelwerk/Organisation/PLATZ-UND-ANZEIGEBETRIEB.txt`.
 
 -- Snapshot, Push und Resync --
   Das fruehere Ein-/Fuenf-Sekunden-Polling ist entfernt. `scoreboardSnapshot`

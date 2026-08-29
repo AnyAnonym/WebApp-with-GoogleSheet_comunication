@@ -14,6 +14,8 @@ Mitglieder abgleichen - kontrollierter ClubDesk-Import
   CSV ausschliesslich lokal, vergleicht sie mit `adminMemberReconciliation {}`
   und sendet erst nach Einzelwahl und Gesamtvorschau geschlossene personweise
   Aktionen an `reconcilePerson`. CSV-Rohdaten werden nicht hochgeladen.
+  Fachliche Organisationsregeln stehen in
+  `Project/Regelwerk/Organisation/PERSONEN-UND-MITGLIEDER.txt`.
 
 -- Zugang, Authwechsel und Bereinigung --
   Nur eine aktuelle aktive Adminsession darf die Seite verwenden. Bis zur

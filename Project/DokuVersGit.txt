@@ -42,6 +42,15 @@ einem Durchlauf ausschliesslich folgende Vorbereitung:
    Dateien pruefen und knapp melden. Tests sind fuer diese reine Nummerierungs-
    und Changelogvorbereitung nicht erforderlich.
 
+Der Normalablauf wird mit folgendem Repository-Skript ausgefuehrt:
+
+  node scripts/version-workflow.mjs branch-start --system <paj|pk> --apply
+
+Das Skript fuehrt die festgelegte Mechanik aus und stoppt bei jeder Abweichung.
+Der Auftrag `herrichten` autorisiert diesen Aufruf einschliesslich des darin
+enthaltenen Initialcommits. Ein eigener OpenCode-Befehl oder eine globale
+OpenCode-Konfiguration ist dafuer nicht erforderlich.
+
 `herrichten` autorisiert keinen fachlichen Commit, kein `dokumentieren`, keinen
 Push, Merge, Netzwerkabgleich oder direkte Main-Aenderung. Ist `main` nicht
 sauber, stimmen Version und letzter Main-Commit nicht logisch ueberein oder ist
@@ -96,6 +105,83 @@ gelten die folgenden Detailregeln.
     fuer regelgebundene Vorbereitungs- und Abschlussroutinen bevorzugt; fuer
     Analyse, Umsetzung und schwierige Pruefungen bleiben staerkere Modelle
     vorgesehen.
+
+Verbindliches Automatisierungsskript:
+
+1. Die deterministische Versions- und Git-Mechanik wird mit
+   `node scripts/version-workflow.mjs <aktion>` ausgefuehrt. OpenCode-Kommandos,
+   Plugins oder globale Konfigurationen sind dafuer nicht erforderlich. Das LLM
+   leitet aus dem natuerlich formulierten Userauftrag die zulaessige Aktion ab.
+2. Ohne `--apply` veraendert das Skript weder Arbeitsbaum noch echten Git-Index,
+   Commits oder Referenzen. Es darf fuer realistische Stagingpruefungen einen
+   anschliessend entfernten temporaeren Index anlegen. `inspect` ist
+   ausschliesslich lesend.
+3. Ein natuerlich formulierter Auftrag autorisiert nur die nach den Grundregeln
+   ohnehin freigegebenen Skriptaktionen. Der Skriptaufruf erweitert keine
+   Freigabe. Insbesondere bleiben Commit, Push, Merge und Main-Version getrennt
+   freizugeben, soweit der User sie nicht eindeutig gemeinsam beauftragt.
+4. Folgende Zuordnung ist verbindlich:
+
+     Userauftrag / Phase              Skriptaktion
+     -------------------------------- ------------------------------------------
+     Zustand pruefen                  inspect
+     herrichten                       branch-start --system <paj|pk> --apply
+     neue Arbeit nach Branch-Commit   work-start --apply
+     Branch finalisieren              branch-finalize --subject <Text> --apply
+     Finalisierung wieder oeffnen     branch-reopen --apply
+     Branch committen                 branch-commit --subject <Text>
+                                      --path <Pfad>... --apply
+     bestaetigten Merge oeffnen       release-open --branch <Branch>
+                                      --version <Version>
+                                      --main-sha <BestaetigterMainSHA>
+                                      --branch-sha <BestaetigterBranchSHA>
+                                      --apply
+     offenen Merge committen          release-commit --branch <Branch>
+                                      --version <Version>
+                                      --main-sha <BestaetigterMainSHA>
+                                      --branch-sha <BestaetigterBranchSHA>
+                                      --subject <Text>
+                                      --path <Pfad>... --apply
+     freigegebenen Stand pushen       push --target <branch|main> --apply
+
+5. `branch-start` bildet den Schnellablauf aus Abschnitt 0 vollstaendig ab.
+   `work-start` setzt Paketdateien und offenen Branch-Changelogabschnitt auf den
+   verpflichtenden `-x`-Stand. `branch-finalize` setzt die naechste lueckenlose
+   Branch-Commit-ID und finalisiert nur die formalen Abschnittsfelder. Muss nach
+   einer gescheiterten Finalisierung wieder inhaltlich gearbeitet werden, stellt
+   `branch-reopen` Paketdateien und Abschnitt auf die zugehoerige `-x`-Arbeits-ID
+   zurueck.
+6. `branch-commit` und `release-commit` akzeptieren mit jedem `--path` exakt eine
+   einzelne, zuvor vom LLM als auftragsbezogen bestimmte Datei. Verzeichnisse und
+   Repository-Root sind unzulaessig. `branch-commit` verlangt einen anfangs leeren
+   Index. Beim offenen Merge muessen alle bereits durch den Merge gestagten Pfade
+   einzeln freigegeben sein. Das Skript prueft Staging und Diff zuerst mit einem
+   temporaeren Index und uebernimmt ihn nur bei Erfolg. Nicht zugeordnete
+    Aenderungen werden weder gestaged noch veraendert.
+   Eine einzeln gepruefte Binaerdatei muss zusaetzlich mit demselben exakten Pfad
+   als `--binary-path <Pfad>` freigegeben werden. Die Freigabe ist nur gueltig,
+   wenn der Pfad zugleich als `--path` zugelassen und im Staged Diff tatsaechlich
+   binaer ist; alle anderen Binaeraenderungen bleiben gesperrt.
+7. `release-open` wird erst nach bestaetigter konkreter Main-Version ausgefuehrt.
+   Der bei der Versionsfrage ausgegebene volle Main-SHA und Branch-SHA wird mit
+   `--main-sha` und `--branch-sha` uebergeben. Das Skript aktualisiert die
+   Remote-Referenzen und verlangt danach exakte Uebereinstimmung von lokalem und
+   Remote-Main sowie lokalem und Remote-Seitenbranch mit diesen bestaetigten
+   Werten. Es aktualisiert keinen abweichenden Main-Stand automatisch. Jede
+   Abweichung laesst die Versionsbestaetigung verfallen. Nur bei unveraenderten
+   Referenzen oeffnet es den echten Merge mit `--no-ff --no-commit`.
+8. Das Skript entscheidet niemals ueber SemVer-Stufe, konkrete Main-Version,
+   Commit-Kurzkommentar, Changelog-Inhalt, permanente Dokumentation,
+   Auftragszugehoerigkeit einer Datei, Konfliktloesung oder den Umgang mit
+   unerwarteten Aenderungen. Diese Punkte werden weiterhin durch LLM-Pruefung und
+   erforderliche Userbestaetigung festgelegt.
+9. Bei einem Skriptfehler wird nicht auf freie Git-Einzelbefehle ausgewichen, um
+   eine Schutzpruefung zu umgehen. Zustand und Ursache werden geprueft; entweder
+   wird der Zustand im freigegebenen Workflow korrigiert oder das Skript samt
+   Tests angepasst.
+10. Direkte Main-Ausnahmen nach Abschnitt 10 werden vorerst nicht automatisiert.
+    Das Skript verweigert `work-start`, `branch-finalize` und `branch-commit` auf
+    main. Fuer diese seltene Ausnahme gilt weiterhin der manuelle Detailablauf.
 
 Verpflichtender Beginn jeder neuen Arbeit:
 

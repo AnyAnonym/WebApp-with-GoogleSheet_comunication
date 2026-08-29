@@ -8,6 +8,8 @@ RoundRobin-Gruppenphase - Tabellen und Paarungslisten
   Eigenstaendige Seite und dynamisch importierbare Ansicht fuer bewerbsRaster.js.
   Gruppenkarten zeigen Rang, Spiele, Siege, Saetze und Games sowie Paarungen;
   Einzel und Doppel werden unterstuetzt.
+  Fachliche Regeln und noch offene Wertungsfragen stehen in
+  `Project/Regelwerk/Spielbetrieb/GRUPPENBEWERBE.txt`.
 
 -- Daten und Aktualisierung --
   Oeffentliche Endpoints und Topics `matches`, `players`, `bewerbe`, `bewerbsart`.

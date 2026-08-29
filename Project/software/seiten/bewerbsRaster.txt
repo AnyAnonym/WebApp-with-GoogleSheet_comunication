@@ -8,6 +8,8 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   RoundRobin-Faehigkeit stammen aus der Bewerbsart; Spalten werden anhand von Namen
   und Ergebnissen bemessen. Fuer breite Raster scrollt das gesamte Dokument
   horizontal, nicht nur ein innerer Rastercontainer.
+  Verbindliche beziehungsweise offene sportliche Regeln stehen in
+  `Project/Regelwerk/Spielbetrieb/KO-BEWERBE.txt`.
 
 -- Daten und Aktualisierung --
   Oeffentliche Endpoints `matches`, `players`, `bewerbe` und `bewerbsart`.

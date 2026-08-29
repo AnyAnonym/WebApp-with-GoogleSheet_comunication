@@ -1,0 +1,65 @@
+================================================================================
+ALLGEMEINE MATCHREGELN
+================================================================================
+
+1. GELTUNGSBEREICH
+==================
+
+Die Regeln gelten fuer Einzel- und Doppelmatches aller in ePiber gefuehrten
+Bewerbe, soweit die jeweilige Bewerbsform keine bestaetigte Sonderregel besitzt.
+Ein Match ist vor Spielbeginn offen, nach regulaerem Ende oder einem anerkannten
+Sonderabschluss abgeschlossen. [Bestaetigt]
+
+
+2. REGULAERER ABSCHLUSS
+=======================
+
+Ein regulaer begonnenes und zu Ende gespieltes Match wird durch sein Ergebnis
+abgeschlossen. Der Gewinner ergibt sich aus den gewonnenen Saetzen nach dem fuer
+das Match geltenden Matchtyp. [Arbeitsannahme]
+
+Die vollstaendige Ergebnisgrammatik, notwendige Gewinnsatzanzahl, Satz-Tie-Breaks,
+Match-Tie-Breaks, No-Ad und die spaetere systemweite Ergebnisvalidierung werden
+gesondert festgelegt. [Offen]
+
+
+3. WALKOVER [wo]
+=================
+
+`[wo]` bezeichnet einen Walkover. Der mit `[wo]` markierte Spieler tritt nicht
+zum Match an; das Match hat nicht begonnen. Der andere Spieler beziehungsweise
+die andere Seite gewinnt ohne gespieltes Ergebnis. `[wo]` bezeichnet damit nicht
+den Unterlegenen eines begonnenen Matches, sondern ausschliesslich den
+Nichtantritt vor Spielbeginn. [Bestaetigt]
+
+Der fachliche Abschlusszeitpunkt ist der Zeitpunkt, zu dem der Walkover
+ausgesprochen wird. Ab diesem Zeitpunkt beginnen alle an den Matchabschluss
+anknuepfenden Fristen. Ein Grund oder eine Bemerkung ist sportlich weder
+verpflichtend noch empfohlen. [Bestaetigt]
+
+
+4. RETIREMENT [ret]
+====================
+
+`[ret]` bezeichnet ein Retirement, also die Aufgabe nach Beginn des Matches. Der
+mit `[ret]` markierte Spieler beziehungsweise die markierte Seite kann das bereits
+begonnene Match nicht beenden und verliert. Der andere Spieler beziehungsweise
+die andere Seite gewinnt. Das bis zur Aufgabe gespielte Teilergebnis darf
+erhalten bleiben. [Bestaetigt]
+
+Der fachliche Abschlusszeitpunkt ist der Zeitpunkt der Aufgabe. Ab diesem
+Zeitpunkt beginnen alle an den Matchabschluss anknuepfenden Fristen. [Bestaetigt]
+
+
+5. ABGRENZUNG VON [wo] UND [ret]
+================================
+
+  [wo]   Kein Spielantritt; das Match hat nicht begonnen.
+  [ret]  Aufgabe nach Spielbeginn; ein Teilergebnis kann vorliegen.
+
+Beide Sonderabschluesse bestimmen einen Gewinner, sind aber fachlich nicht
+austauschbar. Andere Schreibweisen oder die konkrete technische Kodierung sind
+kein Bestandteil dieses Regelwerks.
+
+Ob und wie ein Sonderabschluss bei einem Doppel an einem einzelnen Partner oder
+an der gesamten Seite dargestellt wird, ist noch fachlich festzulegen. [Offen]

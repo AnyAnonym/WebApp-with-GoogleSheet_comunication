@@ -78,11 +78,13 @@ const requestContracts = {
   rlPlatzierung: competitionFilter,
   entryList: competitionFilter,
   readMatchRestrictions: competitionFilter,
+  withdrawnRankingPlayers: (params) => objectShape(params, { bewerbId: id("bewerbId") }),
   getScoreboardCourts: empty,
   courtScores: empty,
   scoreboardSnapshot: empty,
   memberDirectory: empty,
   myProfile: empty,
+  rankingChallengeState: (params) => objectShape(params, { bewerbId: id("bewerbId") }),
   operationStatus: (params) => objectShape(params, { operationId: operation }),
   normalizePerson: (params) => objectShape(params, {
     operationId: operation,

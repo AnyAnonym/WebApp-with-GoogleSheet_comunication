@@ -133,6 +133,75 @@ test("Audit-Journal spiegelt Namen, aber nur maskierte E-Mail und IP", () => {
   repository.close();
 });
 
+test("Forderungsaudit spiegelt kontrollierten Bewerb und Match fuer alle Ausgaenge", () => {
+  const events = [];
+  const repository = new AuditLogRepository(":memory:", {
+    instanceId: "test",
+    journal: true,
+    now: () => 1000,
+    log: (level, event, fields) => events.push({ level, event, fields }),
+  });
+  repository.init();
+
+  for (const [suffix, result, errorCode] of [
+    ["success", "success", null],
+    ["failed", "failed", "OPPONENT_PROTECTED"],
+    ["unknown", "unknown", "WRITE_OUTCOME_UNKNOWN"],
+  ]) {
+    const eventId = `challenge-${suffix}`;
+    repository.record({
+      eventId,
+      actorType: "user",
+      actorId: "p1",
+      actorName: "Ada Admin",
+      role: "player",
+      action: "addMatch",
+      targetType: "person",
+      targetId: "p2",
+      targetName: "Peter Player",
+      requestId: eventId,
+      operationId: `operation-${suffix}`,
+      result: "started",
+      before: { bewerbId: "ranking-1", opponentId: "p2" },
+    });
+    repository.record({
+      eventId,
+      actorType: "user",
+      actorId: "p1",
+      actorName: "Ada Admin",
+      role: "player",
+      action: "addMatch",
+      targetType: "person",
+      targetId: "p2",
+      targetName: "Peter Player",
+      requestId: eventId,
+      operationId: `operation-${suffix}`,
+      result,
+      after: result === "success" ? { matchId: "m-stable", bewerbId: "ranking-1", opponentId: "p2" } : null,
+      errorCode,
+    });
+  }
+
+  assert.deepEqual(events.map(({ level, event, fields }) => ({
+    level,
+    event,
+    action: fields.action,
+    actorId: fields.actorId,
+    targetId: fields.targetId,
+    targetName: fields.targetName,
+    bewerbId: fields.bewerbId,
+    matchId: fields.matchId,
+    result: fields.result,
+    errorCode: fields.errorCode,
+  })), [
+    { level: "info", event: "audit_recorded", action: "addMatch", actorId: "p1", targetId: "p2", targetName: "Peter Player", bewerbId: "ranking-1", matchId: "m-stable", result: "success", errorCode: null },
+    { level: "warn", event: "audit_recorded", action: "addMatch", actorId: "p1", targetId: "p2", targetName: "Peter Player", bewerbId: "ranking-1", matchId: "", result: "failed", errorCode: "OPPONENT_PROTECTED" },
+    { level: "info", event: "audit_recorded", action: "addMatch", actorId: "p1", targetId: "p2", targetName: "Peter Player", bewerbId: "ranking-1", matchId: "", result: "unknown", errorCode: "WRITE_OUTCOME_UNKNOWN" },
+  ]);
+  assert.deepEqual(repository.get("challenge-failed").before, { bewerbId: "ranking-1", opponentId: "p2" });
+  repository.close();
+});
+
 test("Normalisierungsjournal zeigt Zielname und kontrollierte Aenderungen ohne Kontaktwerte", () => {
   const events = [];
   const repository = new AuditLogRepository(":memory:", {

@@ -4,7 +4,7 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const dataPoller = require("./dataPoller.js");
 const { AppError } = require("./errors.js");
-const { analyzeMatchRules } = require("./matchRules.js");
+const { analyzeMatchRules, parseMatchDate } = require("./matchRules.js");
 const {
   FIELD_DEFINITIONS,
   fieldIndexes,
@@ -23,6 +23,7 @@ const {
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const { assertPlayerLoginConflictsNotWorsened, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
+const metrics = require("./metrics.js");
 const { acquireSheetTableActivity, executeSheetRead, getSheetReadStatus, rateLimitError } = require("./sheetsReadCoordinator.js");
 
 const RECORD_METADATA_KEY = "epiberRecord";
@@ -40,7 +41,7 @@ function reconciliationAuditValues(fields, values, marker) {
   ]));
 }
 
-function viennaTimestamp(includeSeconds = false) {
+function viennaTimestamp(includeSeconds = false, date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Vienna",
     year: "2-digit",
@@ -50,9 +51,32 @@ function viennaTimestamp(includeSeconds = false) {
     minute: "2-digit",
     second: includeSeconds ? "2-digit" : undefined,
     hourCycle: "h23",
-  }).formatToParts(new Date());
+  }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}${values.month}${values.day}-${values.hour}${values.minute}${includeSeconds ? `-${values.second}` : ""}`;
+}
+
+function viennaYear(date) {
+  return Number(new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Vienna",
+    year: "numeric",
+  }).format(date));
+}
+
+function birthYear(value) {
+  const text = String(value || "").trim();
+  const compact = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  const dotted = text.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  const year = Number(compact?.[1] || dotted?.[3]);
+  const month = Number(compact?.[2] || dotted?.[2]);
+  const day = Number(compact?.[3] || dotted?.[1]);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? year
+    : null;
 }
 
 function stableRecordId(prefix, principal, operationId) {
@@ -151,7 +175,7 @@ class SheetService {
 
   assertChallengeAllowed(principal, competitionId, opponentId, matches = dataStore.get("matches1")) {
     requireCurrentData("players", "bewerbe", "matches1", "rlPlatzierung");
-    this.competition(competitionId);
+    const context = this.rankingChallengeContext(principal, competitionId);
     const players = dataStore.get("players");
     const playerHeader = headerOf(players);
     const playerIdIndex = headerIndex(playerHeader, "id");
@@ -159,7 +183,64 @@ class SheetService {
     const activePlayers = new Set(players.slice(1)
       .filter((row) => activeIndex < 0 || String(row[activeIndex] || "").trim() === "1")
       .map((row) => String(row[playerIdIndex] || "").trim()));
-    if (!activePlayers.has(principal.id) || !activePlayers.has(opponentId)) {
+    if (!activePlayers.has(opponentId)) {
+      throw new AppError("PLAYER_NOT_ACTIVE", "Spieler ist nicht aktiv", 409);
+    }
+    const opponentIndex = context.entries.findIndex((entry) => entry.id === opponentId);
+    if (opponentIndex < 0) throw new AppError("RANKING_MEMBERSHIP_REQUIRED", "Gegner muss in der Rangliste gereiht sein", 409);
+
+    if (context.mode === "returning") {
+      if (context.entries[opponentIndex].rank < context.returnFromRank) {
+        throw new AppError("CHALLENGE_NOT_ALLOWED", "Dieser Spieler kann nicht gefordert werden", 409);
+      }
+    } else if (context.mode === "ranked") {
+      const rows = [];
+      for (let index = 0, size = 1; index < context.entries.length; size++) {
+        rows.push(context.entries.slice(index, index + size));
+        index += size;
+      }
+      let myRow = -1;
+      let myColumn = -1;
+      for (const [rowIndex, row] of rows.entries()) {
+        const column = row.findIndex((entry) => entry.id === principal.id);
+        if (column >= 0) {
+          myRow = rowIndex;
+          myColumn = column;
+          break;
+        }
+      }
+      const allowed = new Set();
+      for (let index = 0; index < myColumn; index++) allowed.add(rows[myRow][index].id);
+      const rowAbove = rows[myRow - 1] || [];
+      for (let index = myColumn; index < rowAbove.length; index++) allowed.add(rowAbove[index].id);
+      if (context.rank === 3) {
+        const first = context.entries.find((entry) => entry.rank === 1);
+        if (first) allowed.add(first.id);
+      }
+      if (!allowed.has(opponentId)) throw new AppError("CHALLENGE_NOT_ALLOWED", "Dieser Spieler kann nicht gefordert werden", 409);
+    }
+
+    const rules = analyzeMatchRules(matches, competitionId, new Date(this.now()));
+    if (rules.busyIds.has(principal.id) || rules.busyIds.has(opponentId)) {
+      throw new AppError("PLAYER_BUSY", "Mindestens ein Spieler hat bereits eine offene Forderung", 409);
+    }
+    if (rules.blocked.has(principal.id)) throw new AppError("PLAYER_BLOCKED", "Eigene Sperrzeit ist noch aktiv", 409);
+    if (rules.protection.has(opponentId)) throw new AppError("OPPONENT_PROTECTED", "Gegnerische Schonzeit ist noch aktiv", 409);
+  }
+
+  rankingChallengeContext(principal, competitionId) {
+    requireCurrentData("players", "bewerbe", "rlPlatzierung");
+    const { header: competitionHeader, row: competition } = this.competition(competitionId);
+    if (String(competition[headerIndex(competitionHeader, "bewerbsartid")] || "").trim() !== "2") {
+      throw new AppError("RANKING_REQUIRED", "Bewerb ist keine Rangliste", 409);
+    }
+
+    const players = dataStore.get("players");
+    const playerHeader = headerOf(players);
+    const playerIdIndex = headerIndex(playerHeader, "id");
+    const activeIndex = headerIndex(playerHeader, "aktiv");
+    const person = players.slice(1).find((row) => String(row[playerIdIndex] || "").trim() === String(principal?.id || ""));
+    if (!person || (activeIndex >= 0 && String(person[activeIndex] || "").trim() !== "1")) {
       throw new AppError("PLAYER_NOT_ACTIVE", "Spieler ist nicht aktiv", 409);
     }
 
@@ -168,46 +249,94 @@ class SheetService {
     const competitionIndex = headerIndex(rankingHeader, "bewerbid");
     const personIndex = headerIndex(rankingHeader, "personid");
     const rankIndex = headerIndex(rankingHeader, "rang");
-    const entries = rankings.slice(1)
+    const previousRankIndex = headerIndex(rankingHeader, "rausgehangenletzteplatzierung");
+    const withdrawnAtIndex = headerIndex(rankingHeader, "rausgehangenam");
+    const competitionEntries = rankings.slice(1)
       .filter((row) => String(row[competitionIndex] || "").trim() === competitionId)
-      .map((row) => ({ id: String(row[personIndex] || "").trim(), rank: Number(row[rankIndex]) }))
+      .map((row) => ({
+        id: String(row[personIndex] || "").trim(),
+        rank: Number(row[rankIndex]),
+        previousRank: Number(row[previousRankIndex]),
+        withdrawnAt: String(row[withdrawnAtIndex] || "").trim(),
+      }));
+    const entries = competitionEntries
       .filter((entry) => entry.id && Number.isInteger(entry.rank) && entry.rank > 0)
       .sort((left, right) => left.rank - right.rank);
-    const myIndex = entries.findIndex((entry) => entry.id === principal.id);
-    const opponentIndex = entries.findIndex((entry) => entry.id === opponentId);
-    if (myIndex < 0 || opponentIndex < 0) throw new AppError("RANKING_MEMBERSHIP_REQUIRED", "Beide Spieler muessen in der Rangliste sein", 409);
-
-    const rows = [];
-    for (let index = 0, size = 1; index < entries.length; size++) {
-      rows.push(entries.slice(index, index + size));
-      index += size;
+    const membership = competitionEntries.find((entry) => entry.id === principal.id);
+    if (membership && Number.isInteger(membership.rank) && membership.rank > 0) {
+      return { mode: "ranked", rank: membership.rank, returnFromRank: null, entries };
     }
-    let myRow = -1;
-    let myColumn = -1;
-    for (const [rowIndex, row] of rows.entries()) {
-      const column = row.findIndex((entry) => entry.id === principal.id);
-      if (column >= 0) {
-        myRow = rowIndex;
-        myColumn = column;
-        break;
+    if (membership?.rank === 0) {
+      if (!Number.isInteger(membership.previousRank) || membership.previousRank < 1) {
+        throw new AppError("RANKING_RETURN_INVALID", "Gespeicherter Rueckkehrrang ist ungueltig", 409);
+      }
+      const withdrawnAt = parseMatchDate(membership.withdrawnAt);
+      if (!withdrawnAt) throw new AppError("RANKING_RETURN_INVALID", "Raushaengezeitpunkt ist ungueltig", 409);
+      const expiresAt = new Date(withdrawnAt);
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      if (new Date(this.now()) <= expiresAt) {
+        return { mode: "returning", rank: null, returnFromRank: membership.previousRank, entries };
+      }
+    } else if (membership) {
+      throw new AppError("RANKING_MEMBERSHIP_REQUIRED", "Ranglistenmitgliedschaft ist ungueltig", 409);
+    }
+
+    this.assertNewcomerEligible({ competitionHeader, competition, playerHeader, person });
+    return { mode: "newcomer", rank: null, returnFromRank: null, entries };
+  }
+
+  assertNewcomerEligible({ competitionHeader, competition, playerHeader, person }) {
+    const genderIndex = headerIndex(competitionHeader, "geschlecht");
+    const allowedGenderText = genderIndex < 0 ? "" : String(competition[genderIndex] || "").trim();
+    if (allowedGenderText) {
+      const allowedGenders = allowedGenderText.split(",").map((value) => value.trim());
+      if (allowedGenders.some((value) => !["1", "2", "3"].includes(value)) || new Set(allowedGenders).size !== allowedGenders.length) {
+        throw new AppError("SHEET_SCHEMA", "Geschlecht des Ranglistenbewerbs ist ungueltig", 503);
+      }
+      const genderIdIndex = headerIndex(playerHeader, "geschlechtid");
+      const personGenderIndex = genderIdIndex >= 0 ? genderIdIndex : headerIndex(playerHeader, "geschlecht");
+      const personGender = personGenderIndex < 0 ? "" : String(person[personGenderIndex] || "").trim();
+      if (!allowedGenders.includes(personGender)) {
+        throw new AppError("RANKING_ENTRY_NOT_ELIGIBLE", "Geschlecht passt nicht zum Ranglistenbewerb", 409);
       }
     }
-    const allowed = new Set();
-    for (let index = 0; index < myColumn; index++) allowed.add(rows[myRow][index].id);
-    const rowAbove = rows[myRow - 1] || [];
-    for (let index = myColumn; index < rowAbove.length; index++) allowed.add(rowAbove[index].id);
-    if (entries[myIndex].rank === 3) {
-      const first = entries.find((entry) => entry.rank === 1);
-      if (first) allowed.add(first.id);
-    }
-    if (!allowed.has(opponentId)) throw new AppError("CHALLENGE_NOT_ALLOWED", "Dieser Spieler kann nicht gefordert werden", 409);
 
-    const rules = analyzeMatchRules(matches, competitionId, new Date(this.now()));
-    if (rules.busyIds.has(principal.id) || rules.busyIds.has(opponentId)) {
-      throw new AppError("PLAYER_BUSY", "Mindestens ein Spieler hat bereits eine offene Forderung", 409);
+    const ageIndex = headerIndex(competitionHeader, "alterskategorie");
+    const ageText = ageIndex < 0 ? "" : String(competition[ageIndex] || "").trim();
+    if (!ageText || ageText === "0+") return;
+    const ageRule = ageText.match(/^(\d{1,3})([+-])$/);
+    if (!ageRule) throw new AppError("SHEET_SCHEMA", "Alterskategorie des Ranglistenbewerbs ist ungueltig", 503);
+    const personBirthDateIndex = headerIndex(playerHeader, "geburtsdatum");
+    const year = birthYear(personBirthDateIndex < 0 ? "" : person[personBirthDateIndex]);
+    if (!year) throw new AppError("RANKING_ENTRY_NOT_ELIGIBLE", "Geburtsdatum fuer die Alterspruefung fehlt", 409);
+    const age = viennaYear(new Date(this.now())) - year;
+    if (age < 0) throw new AppError("RANKING_ENTRY_NOT_ELIGIBLE", "Geburtsdatum fuer die Alterspruefung ist ungueltig", 409);
+    const limit = Number(ageRule[1]);
+    const eligible = ageRule[2] === "+" ? age >= limit : age <= limit;
+    if (!eligible) throw new AppError("RANKING_ENTRY_NOT_ELIGIBLE", "Alter passt nicht zum Ranglistenbewerb", 409);
+  }
+
+  rankingChallengeState(principal, competitionId) {
+    try {
+      const { mode, rank, returnFromRank } = this.rankingChallengeContext(principal, competitionId);
+      return { success: true, mode, rank, returnFromRank };
+    } catch (error) {
+      if (error?.code === "RANKING_ENTRY_NOT_ELIGIBLE") {
+        return { success: true, mode: "ineligible", rank: null, returnFromRank: null };
+      }
+      throw error;
     }
-    if (rules.blocked.has(principal.id)) throw new AppError("PLAYER_BLOCKED", "Eigene Sperrzeit ist noch aktiv", 409);
-    if (rules.protection.has(opponentId)) throw new AppError("OPPONENT_PROTECTED", "Gegnerische Schutzzeit ist noch aktiv", 409);
+  }
+
+  challengeEligibility(principal, competitionId, opponentId) {
+    if (String(principal?.id || "") === String(opponentId || "")) return { allowed: false, code: "MATCH_SELF" };
+    try {
+      this.assertChallengeAllowed(principal, competitionId, opponentId);
+      return { allowed: true, code: "" };
+    } catch (error) {
+      if (error instanceof AppError) return { allowed: false, code: error.code };
+      throw error;
+    }
   }
 
   assertRankingMembership(principal, competitionId, rank) {
@@ -448,6 +577,141 @@ class SheetService {
     return metadata;
   }
 
+  async searchRecordMetadataBatch(sheets, tableName, recordIds) {
+    if (!recordIds.length) return new Map();
+    const cacheKeys = new Set(recordIds.map((recordId) => `${tableName}:${recordId}`));
+    const response = await executeSheetRead({
+      method: "metadata_search",
+      purpose: "metadata_search",
+      call: (options) => sheets.spreadsheets.developerMetadata.search({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          dataFilters: [...cacheKeys].map((metadataValue) => ({ developerMetadataLookup: {
+            metadataKey: RECORD_METADATA_KEY,
+            metadataValue,
+            visibility: "DOCUMENT",
+            locationType: "ROW",
+          } })),
+        },
+      }, options),
+    });
+    const grouped = new Map();
+    for (const match of response.data.matchedDeveloperMetadata || []) {
+      const metadata = match.developerMetadata;
+      const cacheKey = String(metadata?.metadataValue || "");
+      if (!metadata || !cacheKeys.has(cacheKey)) continue;
+      if (!grouped.has(cacheKey)) grouped.set(cacheKey, []);
+      grouped.get(cacheKey).push(metadata);
+    }
+    const result = new Map();
+    const duplicates = [];
+    for (const recordId of recordIds) {
+      const cacheKey = `${tableName}:${recordId}`;
+      const matches = grouped.get(cacheKey) || [];
+      if (matches.length > 1) {
+        const locations = matches.map((metadata) => {
+          const range = metadata.location?.dimensionRange;
+          return range ? `${range.sheetId}:${range.startIndex}:${range.endIndex}` : null;
+        });
+        if (locations.some((location) => !location) || new Set(locations).size !== 1) {
+          throw new AppError("SHEET_SCHEMA", `Metadaten fuer ${cacheKey} sind nicht eindeutig`, 503);
+        }
+        matches.sort((left, right) => Number(left.metadataId) - Number(right.metadataId));
+        duplicates.push(...matches.slice(1));
+      }
+      if (matches.length) result.set(recordId, matches[0]);
+    }
+    if (duplicates.length) {
+      const startedAt = Date.now();
+      metrics.recordSheetApiAttempt({ method: "metadata_cleanup", purpose: "metadata_cleanup", kind: "initial" });
+      try {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            requests: duplicates.map((metadata) => ({
+              deleteDeveloperMetadata: { dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } } },
+            })),
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        metrics.recordSheetApiRequest({ method: "metadata_cleanup", purpose: "metadata_cleanup", result: "success", durationMs: Date.now() - startedAt });
+      } catch (error) {
+        metrics.recordSheetApiRequest({ method: "metadata_cleanup", purpose: "metadata_cleanup", result: "failed", durationMs: Date.now() - startedAt });
+        logger.log("warn", "sheet_metadata_duplicate_cleanup_failed", { table: tableName, duplicateCount: duplicates.length, error });
+      }
+    }
+    return result;
+  }
+
+  async createRecordMetadataBatch(sheets, tableName, records) {
+    if (!records.length) return new Map();
+    const sheetId = await this.getSheetId(sheets, tableName);
+    const intents = records.map(({ recordId, rowIndex }) => {
+      const cacheKey = `${tableName}:${recordId}`;
+      const intentKey = `record-metadata-intent:${cacheKey}`;
+      const intent = this.repository.getState(intentKey, { status: "none" });
+      if (intent.value.status === "pending") {
+        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Zeilenmetadaten werden noch bestaetigt", 503, { tableName, recordId });
+      }
+      this.repository.setState(intentKey, { status: "pending", at: this.now() }, intent.revision);
+      return { cacheKey, intentKey, recordId, rowIndex };
+    });
+    let metadataByIndex;
+    try {
+      const response = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          requests: intents.map(({ cacheKey, rowIndex }) => ({
+            createDeveloperMetadata: { developerMetadata: {
+              metadataKey: RECORD_METADATA_KEY,
+              metadataValue: cacheKey,
+              visibility: "DOCUMENT",
+              location: { dimensionRange: { sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 } },
+            } },
+          })),
+        },
+      }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+      const replies = response.data.replies || [];
+      if (replies.length === intents.length) {
+        metadataByIndex = replies.map((reply) => reply?.createDeveloperMetadata?.developerMetadata);
+      }
+    } catch (error) {
+      try {
+        const confirmed = await this.searchRecordMetadataBatch(sheets, tableName, intents.map(({ recordId }) => recordId));
+        if (confirmed.size === intents.length) metadataByIndex = intents.map(({ recordId }) => confirmed.get(recordId));
+      } catch {}
+      if (!metadataByIndex) {
+        const status = Number(error?.response?.status || error?.status || 0);
+        if (status >= 400 && status < 500 && status !== 408) {
+          for (const intent of intents) {
+            const pending = this.repository.getState(intent.intentKey, { status: "pending" });
+            this.repository.setState(intent.intentKey, { status: "failed", at: this.now(), statusCode: status }, pending.revision);
+          }
+          if (status === 429) throw rateLimitError();
+          throw error;
+        }
+        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Metadatenerstellung ist unklar", 503, {
+          tableName,
+          recordIds: intents.map(({ recordId }) => recordId),
+        });
+      }
+    }
+    if (!metadataByIndex || metadataByIndex.some((metadata) => metadata?.metadataId === undefined || metadata.metadataId === null)) {
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Zeilenmetadaten konnten nicht vollstaendig bestaetigt werden", 503, {
+        tableName,
+        recordIds: intents.map(({ recordId }) => recordId),
+      });
+    }
+    const result = new Map();
+    intents.forEach((intent, index) => {
+      const metadata = metadataByIndex[index];
+      this.recordMetadata.set(intent.cacheKey, metadata);
+      const pending = this.repository.getState(intent.intentKey, { status: "pending" });
+      this.repository.setState(intent.intentKey, { status: "confirmed", metadataId: metadata.metadataId, at: this.now() }, pending.revision);
+      result.set(intent.recordId, metadata);
+    });
+    return result;
+  }
+
   async deleteRecordMetadata(sheets, tableName, recordId, metadataId) {
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId: SHEET_ID,
@@ -476,6 +740,32 @@ class SheetService {
     return rows.length === 1 ? rows[0] : null;
   }
 
+  async readMetadataRows(sheets, metadataIds, valueRenderOption = "UNFORMATTED_VALUE") {
+    if (!metadataIds.length) return new Map();
+    const response = await executeSheetRead({
+      method: "metadata_rows",
+      purpose: "metadata_rows",
+      call: (options) => sheets.spreadsheets.values.batchGetByDataFilter({
+        spreadsheetId: SHEET_ID,
+        requestBody: {
+          dataFilters: metadataIds.map((metadataId) => ({ developerMetadataLookup: { metadataId } })),
+          majorDimension: "ROWS",
+          valueRenderOption,
+        },
+      }, options),
+    });
+    const result = new Map();
+    for (const entry of response.data.valueRanges || []) {
+      const rows = entry.valueRange?.values || [];
+      if (rows.length !== 1) continue;
+      for (const filter of entry.dataFilters || []) {
+        const metadataId = filter.developerMetadataLookup?.metadataId;
+        if (metadataId !== undefined && metadataId !== null) result.set(Number(metadataId), rows[0]);
+      }
+    }
+    return result;
+  }
+
   async resolveStableRow(tableName, recordId, initialValues = null, valueRenderOption = "FORMULA") {
     const sheets = await this.getClient();
     let values = initialValues || await this.readTable(tableName);
@@ -492,6 +782,97 @@ class SheetService {
       values = await this.readTable(tableName);
     }
     throw new AppError("WRITE_CONFLICT", "Datensatz wurde waehrend der Aktualisierung verschoben", 409);
+  }
+
+  async resolveStableCompositeRow(tableName, recordId, identity, initialValues = null) {
+    const sheets = await this.getClient();
+    let values = initialValues || await this.readTable(tableName);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const header = headerOf(values);
+      const offset = values.slice(1).findIndex((row) => identity(row, header));
+      if (offset < 0) throw new AppError("RECORD_NOT_FOUND", "Datensatz wurde nicht gefunden", 404);
+      let metadata = await this.findRecordMetadata(sheets, tableName, recordId);
+      if (!metadata) metadata = await this.createRecordMetadata(sheets, tableName, recordId, offset + 1);
+      const row = await this.readMetadataRow(sheets, metadata.metadataId, "UNFORMATTED_VALUE");
+      if (row && identity(row, header)) return { sheets, metadata, row, header };
+      await this.deleteRecordMetadata(sheets, tableName, recordId, metadata.metadataId);
+      values = await this.readTable(tableName);
+    }
+    throw new AppError("WRITE_CONFLICT", "Ranglistenzeile wurde waehrend der Aktualisierung verschoben", 409);
+  }
+
+  async resolveStableCompositeRows(tableName, records, initialValues = null) {
+    const sheets = await this.getClient();
+    const values = initialValues || await this.readTable(tableName);
+    const header = headerOf(values);
+    await this.loadRecordMetadata(sheets);
+    const resolvedMetadata = new Map();
+    const missing = [];
+    const unresolved = [];
+    for (const record of records) {
+      const cacheKey = `${tableName}:${record.recordId}`;
+      const metadata = this.recordMetadata.get(cacheKey) || null;
+      if (metadata) {
+        resolvedMetadata.set(record.recordId, metadata);
+        continue;
+      }
+      if (this.recordMetadataUnresolved.has(cacheKey)) {
+        unresolved.push(record.recordId);
+        continue;
+      }
+      const offset = values.slice(1).findIndex((row) => record.identity(row, header));
+      if (offset < 0) throw new AppError("RECORD_NOT_FOUND", "Datensatz wurde nicht gefunden", 404);
+      missing.push({ recordId: record.recordId, rowIndex: offset + 1 });
+    }
+    if (unresolved.length) {
+      const recovered = await this.searchRecordMetadataBatch(sheets, tableName, unresolved);
+      for (const recordId of unresolved) {
+        const metadata = recovered.get(recordId);
+        if (!metadata) throw new AppError("SHEET_SCHEMA", `Metadaten fuer ${tableName}:${recordId} fehlen`, 503);
+        const cacheKey = `${tableName}:${recordId}`;
+        this.recordMetadata.set(cacheKey, metadata);
+        this.recordMetadataUnresolved.delete(cacheKey);
+        this.confirmRecordMetadataIntent(cacheKey, metadata);
+        resolvedMetadata.set(recordId, metadata);
+      }
+    }
+    const pending = missing.filter(({ recordId }) => (
+      this.repository.getState(`record-metadata-intent:${tableName}:${recordId}`, { status: "none" }).value.status === "pending"
+    ));
+    if (pending.length) {
+      const confirmed = await this.searchRecordMetadataBatch(sheets, tableName, pending.map(({ recordId }) => recordId));
+      for (const { recordId } of pending) {
+        const intentKey = `record-metadata-intent:${tableName}:${recordId}`;
+        const intent = this.repository.getState(intentKey, { status: "pending" });
+        const metadata = confirmed.get(recordId);
+        if (metadata) {
+          this.recordMetadata.set(`${tableName}:${recordId}`, metadata);
+          this.repository.setState(intentKey, { status: "confirmed", metadataId: metadata.metadataId, at: this.now() }, intent.revision);
+          resolvedMetadata.set(recordId, metadata);
+        } else {
+          this.repository.setState(intentKey, { status: "retry", at: this.now() }, intent.revision);
+        }
+      }
+    }
+    const toCreate = missing.filter(({ recordId }) => !resolvedMetadata.has(recordId));
+    for (const [recordId, metadata] of await this.createRecordMetadataBatch(sheets, tableName, toCreate)) {
+      resolvedMetadata.set(recordId, metadata);
+    }
+    const rows = await this.readMetadataRows(
+      sheets,
+      records.map(({ recordId }) => resolvedMetadata.get(recordId).metadataId),
+    );
+    const result = [];
+    for (const record of records) {
+      const metadata = resolvedMetadata.get(record.recordId);
+      const row = rows.get(Number(metadata.metadataId));
+      if (row && record.identity(row, header)) {
+        result.push({ sheets, metadata, row, header });
+      } else {
+        result.push(await this.resolveStableCompositeRow(tableName, record.recordId, record.identity, values));
+      }
+    }
+    return result;
   }
 
   async refreshCache(tableName, fallback) {
@@ -530,12 +911,21 @@ class SheetService {
     return this.enqueue(`operation:${actorKey}:${operationId}`, async () => {
       const repeated = this.repository.getOperation(actorKey, operationId, endpoint, payload);
       if (repeated && repeated.operationStatus !== "unknown") return { ...repeated, repeated: true };
+      let checkpointed = false;
       try {
         const result = await callback({
           recoveryOnly: repeated?.operationStatus === "unknown",
           recoveryDetails: repeated?.details || null,
+          checkpointUnknown: (details) => {
+            const marker = { operationStatus: "unknown", details };
+            const current = this.repository.getOperation(actorKey, operationId, endpoint, payload);
+            if (current) this.repository.replaceOperation(actorKey, operationId, endpoint, payload, marker);
+            else this.repository.saveOperation(actorKey, operationId, endpoint, payload, marker);
+            checkpointed = true;
+          },
         });
-        if (repeated) this.repository.replaceOperation(actorKey, operationId, endpoint, payload, result);
+        const current = this.repository.getOperation(actorKey, operationId, endpoint, payload);
+        if (current) this.repository.replaceOperation(actorKey, operationId, endpoint, payload, result);
         else this.repository.saveOperation(actorKey, operationId, endpoint, payload, result);
         return repeated ? { ...result, repeated: true } : result;
       } catch (error) {
@@ -543,6 +933,8 @@ class SheetService {
           const marker = { operationStatus: "unknown", details: error.details || null };
           if (repeated) this.repository.replaceOperation(actorKey, operationId, endpoint, payload, marker);
           else this.repository.saveOperation(actorKey, operationId, endpoint, payload, marker);
+        } else if (checkpointed) {
+          this.repository.deleteOperation(actorKey, operationId, endpoint, payload);
         }
         throw error;
       }
@@ -1057,7 +1449,7 @@ class SheetService {
 
   async addMatch(principal, params) {
     const payload = { bewerbId: params.bewerbId, opponentId: params.opponentId };
-    return this.runIdempotent(principal, "addMatch", params.operationId, payload, ({ recoveryOnly }) => this.enqueue("matches1", async () => {
+    return this.runIdempotent(principal, "addMatch", params.operationId, payload, ({ recoveryOnly }) => this.enqueue(`ranking:${params.bewerbId}`, () => this.enqueue("matches1", async () => {
       if (params.opponentId === principal.id) throw new AppError("MATCH_SELF", "Ein Spieler kann sich nicht selbst fordern");
       this.cancelScheduledRefresh("matches1");
       const values = await this.readTable("matches1");
@@ -1077,8 +1469,8 @@ class SheetService {
         id: newId,
         forderungdate: viennaTimestamp(),
         bewerbid: params.bewerbId,
-        spieler1id: params.opponentId,
-        spieler3id: principal.id,
+        spieler1id: principal.id,
+        spieler3id: params.opponentId,
       });
       const sheets = await this.getClient();
       try {
@@ -1105,7 +1497,7 @@ class SheetService {
       dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
       this.scheduleRefresh("matches1");
       return { success: true, newMatchId: newId };
-    }));
+    })));
   }
 
   async addEntry(principal, params) {
@@ -1257,16 +1649,172 @@ class SheetService {
 
   async withdrawFromRanking(principal, params) {
     const payload = { reason: params.reason, rank: params.rank, bewerbId: params.bewerbId };
-    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, () => this.enqueue("ranking-withdrawal", async () => {
-      this.assertRankingMembership(principal, params.bewerbId, params.rank);
-      return withAudit(
-        { success: true },
-        {
-          before: { bewerbId: params.bewerbId, rank: params.rank, membership: true },
-          after: { withdrawalRequested: true, reason: params.reason },
-        },
-      );
-    }));
+    return this.runIdempotent(principal, "withdrawFromRanking", params.operationId, payload, ({ recoveryOnly, recoveryDetails, checkpointUnknown }) => (
+      this.enqueue(`ranking:${params.bewerbId}`, () => this.enqueue("rlPlatzierung", async () => {
+        const [values, matches] = await Promise.all([
+          this.readTable("rlPlatzierung"),
+          this.readTable("matches1"),
+        ]);
+        dataStore.set("rlPlatzierung", values, { source: "write-read" });
+        dataStore.set("matches1", matches, { source: "write-read" });
+
+        const competition = this.competition(params.bewerbId);
+        const competitionTypeIndex = headerIndex(competition.header, "bewerbsartid");
+        if (String(competition.row[competitionTypeIndex] || "").trim() !== "2") {
+          throw new AppError("RANKING_REQUIRED", "Bewerb ist keine Rangliste", 409);
+        }
+
+        const header = headerOf(values);
+        const indexes = {
+          competition: headerIndex(header, "bewerbid"),
+          person: headerIndex(header, "personid"),
+          rank: headerIndex(header, "rang"),
+          withdrawnAt: headerIndex(header, "rausgehangenam"),
+          previousRank: headerIndex(header, "rausgehangenletzteplatzierung"),
+          reason: headerIndex(header, "rausgehangengrund"),
+        };
+        const membership = (personId) => values.slice(1).find((row) => (
+          String(row[indexes.competition] || "").trim() === params.bewerbId
+          && String(row[indexes.person] || "").trim() === String(personId)
+        ));
+        const ownRow = membership(principal.id);
+        if (!ownRow) throw new AppError("RANKING_MEMBERSHIP_REQUIRED", "Spieler ist nicht in dieser Rangliste", 409);
+
+        let plan = recoveryOnly ? recoveryDetails : null;
+        if (!plan) {
+          const currentRank = Number(ownRow[indexes.rank]);
+          if (currentRank <= 0) throw new AppError("RANKING_ALREADY_WITHDRAWN", "Spieler ist bereits rausgehaengt", 409);
+          if (currentRank !== params.rank) throw new AppError("RANK_CONFLICT", "Rang wurde zwischenzeitlich geaendert", 409);
+          const now = new Date(this.now());
+          const rules = analyzeMatchRules(matches, params.bewerbId, now);
+          if (rules.busyIds.has(String(principal.id))) {
+            throw new AppError("RANKING_WITHDRAWAL_MATCH_OPEN", "Raushängen ist waehrend einer offenen Forderung nicht moeglich", 409);
+          }
+          const targets = values.slice(1).flatMap((row) => {
+            if (String(row[indexes.competition] || "").trim() !== params.bewerbId) return [];
+            const rank = Number(row[indexes.rank]);
+            const personId = String(row[indexes.person] || "").trim();
+            if (personId === String(principal.id)) return [{ personId, beforeRank: currentRank, afterRank: 0, own: true }];
+            return Number.isInteger(rank) && rank > currentRank
+              ? [{ personId, beforeRank: rank, afterRank: rank - 1, own: false }]
+              : [];
+          });
+          plan = {
+            phase: "ranking-withdrawal",
+            bewerbId: params.bewerbId,
+            personId: String(principal.id),
+            previousRank: currentRank,
+            withdrawnAt: viennaTimestamp(false, now),
+            targets,
+          };
+        }
+        if (plan.phase !== "ranking-withdrawal"
+          || plan.bewerbId !== params.bewerbId
+          || plan.personId !== String(principal.id)
+          || !Array.isArray(plan.targets)) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Recovery-Plan der Ranglistenaenderung ist ungueltig", 503, plan);
+        }
+
+        checkpointUnknown(plan);
+        const stableRows = await this.resolveStableCompositeRows(
+          "rlPlatzierung",
+          plan.targets.map((target) => ({
+            recordId: `membership:${params.bewerbId}:${target.personId}`,
+            identity: (row, rowHeader) => (
+              String(row[headerIndex(rowHeader, "bewerbid")] || "").trim() === params.bewerbId
+              && String(row[headerIndex(rowHeader, "personid")] || "").trim() === target.personId
+            ),
+          })),
+          values,
+        );
+        const stable = plan.targets.map((target, index) => ({
+          ...target,
+          metadataId: stableRows[index].metadata.metadataId,
+          row: stableRows[index].row,
+        }));
+
+        const targetMatches = (entry) => {
+          if (Number(entry.row[indexes.rank]) !== entry.afterRank) return false;
+          if (!entry.own) return true;
+          return String(entry.row[indexes.withdrawnAt] || "").trim() === plan.withdrawnAt
+            && Number(entry.row[indexes.previousRank]) === plan.previousRank
+            && String(entry.row[indexes.reason] || "").trim() === params.reason;
+        };
+        const beforeMatches = (entry) => Number(entry.row[indexes.rank]) === entry.beforeRank;
+        if (recoveryOnly && stable.every(targetMatches)) {
+          dataStore.set("rlPlatzierung", values, { source: "write-read" });
+          return withAudit({
+            success: true,
+            recovered: true,
+            withdrawnAt: plan.withdrawnAt,
+            previousRank: plan.previousRank,
+            shiftedCount: Math.max(0, plan.targets.length - 1),
+          }, {
+            before: { bewerbId: params.bewerbId, rank: plan.previousRank },
+            after: { rank: 0, withdrawnAt: plan.withdrawnAt, shiftedCount: Math.max(0, plan.targets.length - 1), reasonRecorded: true },
+          });
+        }
+        if (!stable.every(beforeMatches)) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ranglistenaenderung besitzt einen gemischten Zustand", 503, plan);
+        }
+
+        const updatedRows = stable.map((entry) => {
+          const row = [...entry.row];
+          row[indexes.rank] = entry.afterRank;
+          if (entry.own) {
+            row[indexes.withdrawnAt] = plan.withdrawnAt;
+            row[indexes.previousRank] = plan.previousRank;
+            row[indexes.reason] = params.reason;
+          }
+          return { ...entry, updatedRow: row };
+        });
+        const candidate = structuredClone(values);
+        for (const entry of updatedRows) {
+          const row = candidate.slice(1).find((candidateRow) => (
+            String(candidateRow[indexes.competition] || "").trim() === params.bewerbId
+            && String(candidateRow[indexes.person] || "").trim() === entry.personId
+          ));
+          if (row) row.splice(0, row.length, ...entry.updatedRow);
+        }
+        validateTableValues("rlPlatzierung", candidate);
+
+        this.cancelScheduledRefresh("rlPlatzierung");
+        const sheets = await this.getClient();
+        try {
+          const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+            spreadsheetId: SHEET_ID,
+            requestBody: {
+              valueInputOption: "RAW",
+              data: updatedRows.map((entry) => ({
+                dataFilter: { developerMetadataLookup: { metadataId: entry.metadataId } },
+                majorDimension: "ROWS",
+                values: [entry.updatedRow],
+              })),
+            },
+          }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+          if (Number(response.data.totalUpdatedRows) !== updatedRows.length) throw new Error("Ranglistenupdate hat nicht alle Zeilen aktualisiert");
+        } catch (error) {
+          try {
+            for (const entry of updatedRows) entry.row = await this.readMetadataRow(sheets, entry.metadataId, "UNFORMATTED_VALUE", "confirmation");
+            if (!updatedRows.every(targetMatches)) throw error;
+          } catch {
+            throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang des Raushängens ist unklar", 503, plan);
+          }
+        }
+
+        dataStore.set("rlPlatzierung", candidate, { source: "write-local", authoritative: false });
+        this.scheduleRefresh("rlPlatzierung");
+        return withAudit({
+          success: true,
+          withdrawnAt: plan.withdrawnAt,
+          previousRank: plan.previousRank,
+          shiftedCount: Math.max(0, plan.targets.length - 1),
+        }, {
+          before: { bewerbId: params.bewerbId, rank: plan.previousRank },
+          after: { rank: 0, withdrawnAt: plan.withdrawnAt, shiftedCount: Math.max(0, plan.targets.length - 1), reasonRecorded: true },
+        });
+      }))
+    ));
   }
 
   async refreshSheetData(principal, { operationId }) {

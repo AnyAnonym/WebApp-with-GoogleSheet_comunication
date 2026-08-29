@@ -1,0 +1,57 @@
+================================================================================
+PLATZ- UND ANZEIGEBETRIEB
+================================================================================
+
+1. VERANTWORTUNG
+================
+
+Operatoren und Administratoren duerfen Courts, Scoreboard und Monitoranzeigen im
+laufenden Betrieb bedienen. Spieler und anonyme Besucher besitzen keine
+entsprechende Betriebsverantwortung. Nur Administratoren verwalten
+Monitorgeraete. [Bestaetigt]
+
+
+2. COURTZUWEISUNG
+=================
+
+Ein Court kann einem offenen Match oder einer individuellen Einzel- oder
+Doppelpaarung zugewiesen werden. Eine Leerzuweisung entfernt den Matchkontext,
+ohne den Aktivstatus des Courts automatisch zu veraendern. [Arbeitsannahme]
+
+Bei einer neuen Matchzuweisung gelten fuer die Anzeige die zu diesem Zeitpunkt
+wirksamen Matchtypregeln. Spaetere Aenderungen des Matchtyps sollen ein laufendes
+Match nicht nachtraeglich umdeuten. [Bestaetigt]
+
+
+3. COURTAKTIVITAET UND SCORE
+============================
+
+Ein inaktiver Court behaelt seinen zuletzt sichtbaren Spielstand, uebernimmt aber
+keine neuen externen Scoreaenderungen. Eine neue Zuweisung setzt den sichtbaren
+Spielstand fuer den neuen Matchkontext zurueck. [Arbeitsannahme]
+
+
+4. SCOREBOARD-NUTZUNG
+=====================
+
+Das Live-Scoreboard wird als mobiler Liveticker und als Fernsehanzeige am
+Tennisplatz genutzt. Beide Ansichten verwenden dieselben fachlichen Livedaten,
+haben aber unterschiedliche Anforderungen an Lesedistanz und
+Informationsdichte. [Bestaetigt]
+
+Die Anzeige interpretiert physische Drehwerte anhand des beim Court hinterlegten
+Matchtyps. Satz-Tie-Break und entscheidender Match-Tie-Break muessen entsprechend
+dieser Zaehlweise dargestellt werden. Die genauen technischen Projektionen stehen
+in `Project/Scoreboard-Funktion.md`. [Bestaetigt]
+
+
+5. MONITORANZEIGEN
+==================
+
+Autorisierte Operatoren und Administratoren waehlen, welche freigegebene
+Anwendungsansicht ein Monitor zeigt, und koennen die Anzeige fernsteuern. Das
+Monitorgeraet stellt die Anweisung dar, trifft aber keine fachliche Entscheidung.
+[Arbeitsannahme]
+
+Technische Observability mit Grafana, Prometheus oder Loki ist kein
+Anzeigebetrieb und ausdruecklich nicht Bestandteil dieses Regelwerks.

@@ -16,6 +16,29 @@ test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
   assert.equal(validateTableValues("entryList", entryList), entryList);
   const matchtyp = [["ID", "Satztiebreak", "Entscheidender Satz"], ["1", "6-6", "MT10"]];
   assert.equal(validateTableValues("matchtyp", matchtyp), matchtyp);
+  assert.throws(() => validateTableValues("rlPlatzierung", [["BewerbID", "PersonID", "Rang"]]), { code: "SHEET_SCHEMA" });
+});
+
+test("Rang null verlangt vollstaendige Raushaengedaten", () => {
+  const header = ["ID", "BewerbID", "PersonID", "Rang", "RausgehangenAm", "RausgehangenLetztePlatzierung", "RausgehangenGrund"];
+  const active = [header, ["r1", "ranking-1", "p1", "3", "", "", ""]];
+  assert.equal(validateTableValues("rlPlatzierung", active), active);
+  const withdrawn = [header, ["r1", "ranking-1", "p1", "0", "260829-1230", "3", "Verletzt"]];
+  assert.equal(validateTableValues("rlPlatzierung", withdrawn), withdrawn);
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "0", "", "3", "Verletzt"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "0", "260829-1230", "0", "Verletzt"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "0", "260829-1230", "3", "x"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "0", "261332-2599", "3", "Verletzt"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "2", "", "", ""], ["r2", "ranking-1", "p1", "3", "", "", ""]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("rlPlatzierung", [header, ["r1", "ranking-1", "p1", "2", "", "", ""], ["r2", "ranking-1", "p2", "2", "", "", ""]]), { code: "SHEET_SCHEMA" });
+});
+
+test("Bewerbe validieren Geschlechtslisten und Alterskategorien", () => {
+  const header = ["ID", "Bezeichnung", "BewerbsartID", "Geschlecht", "Alterskategorie"];
+  assert.equal(validateTableValues("bewerbe", [header, ["r1", "Offen", "2", "1, 2,3", "0+"]]).length, 2);
+  assert.equal(validateTableValues("bewerbe", [header, ["r1", "Jugend", "2", "2", "18-"]]).length, 2);
+  assert.throws(() => validateTableValues("bewerbe", [header, ["r1", "Falsch", "2", "1,4", "60+"]]), { code: "SHEET_SCHEMA" });
+  assert.throws(() => validateTableValues("bewerbe", [header, ["r1", "Falsch", "2", "1", "Senioren"]]), { code: "SHEET_SCHEMA" });
 });
 
 function peopleWithLogin() {

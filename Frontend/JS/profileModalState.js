@@ -4,9 +4,14 @@ export function clearProfileModalContent(modal, actionController) {
   modal.removeAttribute("data-profile-scope");
   const nameElement = modal.querySelector("#profileName");
   const textElement = modal.querySelector("#profileText");
-  const actionsElement = modal.querySelector("#profileActions");
+  const tabsElement = modal.querySelector("#profileTabs");
+  const rankingPanelsElement = modal.querySelector("#profileRankingPanels");
+  const systemActionsElement = modal.querySelector("#profileSystemActions");
+  const adminActionsElement = modal.querySelector("#profileAdminActions");
   if (nameElement) nameElement.textContent = "Profil";
   textElement?.replaceChildren();
-  actionsElement?.replaceChildren();
-  actionsElement?.style.setProperty("display", "none", "important");
+  tabsElement?.replaceChildren();
+  rankingPanelsElement?.replaceChildren();
+  systemActionsElement?.replaceChildren();
+  adminActionsElement?.replaceChildren();
 }

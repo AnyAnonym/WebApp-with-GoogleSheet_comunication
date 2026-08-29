@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.6.1
+Stand: 4.7.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,57 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.7.0] - 2026-08-29
+Commit: 4.7.0 | Ranglistenbetrieb und Anzeigen erweitert
+Quelle: 4.6.1-paj-1
+
+  Added
+  - [Dokumentation] Kanonisches Regelwerk fuer Match-, Ranglisten-, KO- und
+    Gruppenbetrieb sowie Rollen, Bewerbsorganisation, Personenpflege und
+    Platz-/Anzeigebetrieb eingefuehrt.
+  - [Software] Ranglistenprofile um aktive und rausgehaengte Mitgliedschaften,
+    offene Forderungen, Raushaengen und die sortierte Liste rausgehaengter Spieler
+    erweitert.
+  - [Software] Teilnahmeberechtigte Neueinsteiger und Spieler nach abgelaufener
+    Rueckkehrfrist koennen jeden verfuegbaren Rang fordern; Rueckkehrer innerhalb
+    von zwoelf Monaten fordern ab ihrem gespeicherten Rang oder dahinter.
+    Geschlechtslisten und `N+`-/`N-`-Altersgrenzen werden serverseitig geprueft.
+  - [Software] Verdeckte Monitorseite `Sponsoren.html` zeigt das Sponsorenbild
+    scrollfrei und unverzerrt im Vollbild und bestaetigt Ready erst nach
+    erfolgreichem Bildladen.
+  - [Observability] Grafana-Dashboard `ePiber Ranglistenaktivitaeten`,
+    kontrollierter Forderungs-Auditvertrag sowie niedrig-kardinale Metriken fuer
+    gebuendelte Metadatenreads und Dubletten-Cleanup aufgenommen.
+  - [Repository] Lokalen Versionsworkflow fuer Branchstart, Finalisierung,
+    explizites Staging, SHA-gesicherte Releases und verifizierte Pushes samt
+    End-to-End-Tests eingefuehrt. Einzeln gepruefte Binaerdateien benoetigen eine
+    zusaetzliche pfadgenaue `--binary-path`-Freigabe.
+
+  Changed
+  - [Software] Neue Forderungen speichern den Forderer in `Spieler1ID` und den
+    Geforderten in `Spieler3ID`; bestehende Matchzeilen bleiben unveraendert.
+  - [Software] Raushaengen schreibt Rang `0`, Zeitpunkt, letzten Rang und Grund,
+    verdichtet nachfolgende Raenge in einem Google-Batch und bestaetigt unklare
+    Ausgaenge ueber stabile Composite-Metadaten und einen Recovery-Plan.
+  - [Performance] Metadaten fuer alle betroffenen Ranglistenzeilen werden
+    gebuendelt gesucht, angelegt und gelesen; gleichzeilige Dubletten werden in
+    einem Cleanup-Batch entfernt, unterschiedliche Zeilen bleiben Schemakonflikt.
+  - [Software] Profilmodal auf feste Kopfzeile, horizontal scrollbare System-,
+    Ranglisten- und Adminreiter sowie einen viewportbegrenzten Inhaltsbereich
+    umgestellt. Die mobile Ranglistenpyramide scrollt getrennt vom Dokument.
+  - [Software] Loginfehler bleiben im Modal sichtbar; eine aktive Sperre nennt die
+    gerundete Restwartezeit. Der Begriff `Schutzzeit` wurde durch `Schonzeit`
+    ersetzt.
+  - [Datenschutz] Raushaengegrund und private Rueckkehrdaten bleiben aus
+    oeffentlichen Profilen, Audit, Loki und technischen Logs ausgeschlossen.
+    Ergebnisbedingte Einreihung und Rangverschiebung bleiben manuell.
+
+  Tests
+  - [Backend] 249 Tests sowie fuenf Workflow-Tests erfolgreich.
+  - [Browser] 15 Chromium-Tests fuer Profile, Rangliste, Login, Administration,
+    Scoreboard, Servicebereich und Sponsorenanzeige erfolgreich.
+  - [Repository] Statische Pruefung und `git diff --check` erfolgreich.
 
 [4.6.1] - 2026-08-28
 Commit: 4.6.1 | Sheet-Datenimport und Servicebereich bereitgestellt

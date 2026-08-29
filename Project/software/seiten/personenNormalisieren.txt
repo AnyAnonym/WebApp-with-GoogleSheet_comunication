@@ -12,6 +12,8 @@ Personendaten normalisieren - kontrollierte Admin-Datenpflege
   Korrekturen personweise. CSV-Import, Personenneuanlage, `CD-ID`-Writes,
   exportgesteuerte Deaktivierung und automatische A-/B-Zuordnung gehoeren
   ausschliesslich zum getrennten Ablauf `mitgliederAbgleichen.html`.
+  Fachliche Organisationsregeln stehen in
+  `Project/Regelwerk/Organisation/PERSONEN-UND-MITGLIEDER.txt`.
 
 -- Zugang und Ladezustaende --
   Nur eine aktuelle aktive Adminsession darf die Seite verwenden. Bis zur

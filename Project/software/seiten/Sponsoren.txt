@@ -1,0 +1,32 @@
+================================================================================
+Sponsorenanzeige - Verdeckte lokale Monitorseite
+================================================================================
+-- Funktion und Dateien --
+  HTML: Frontend/Sponsoren.html
+  CSS:  Frontend/CSS/sponsoren.css
+  JS:   Frontend/JS/sponsoren.js
+  Bild: Frontend/sponsoren.jpeg
+  Parameterlose, nicht in der normalen Navigation verlinkte Same-Origin-Seite
+  fuer den Monitorbetrieb. Sie besitzt weder Navbar noch Footer oder lokale
+  Bedienelemente.
+
+-- Darstellung --
+  HTML und Body belegen den gesamten Viewport, verhindern Seiten-Scrolling und
+  verwenden einen schwarzen Hintergrund. Das Bild belegt Breite und Hoehe des
+  Viewports mit `object-fit: contain`; es wird weder beschnitten noch verzerrt.
+  Bei abweichendem Seitenverhaeltnis bleiben schwarze Freiflaechen sichtbar.
+  Das Layout funktioniert ohne Desktop-/Mobil-Sonderfall.
+
+-- Monitorvertrag und Fehler --
+  Die Seite meldet `epiber-monitor-ready` erst, wenn das Bild nachweislich mit
+  positiver natuerlicher Breite geladen wurde. Ist es beim Modulstart bereits im
+  Browsercache, wird derselbe Zustand unmittelbar geprueft. Ein Ladefehler meldet
+  kontrolliert `SPONSOR_IMAGE_LOAD_FAILED`; ein Ready-Signal wird dann nicht
+  gesendet. Freie Fehlertexte, Personenwerte oder andere Fachdaten werden nicht
+  uebertragen.
+
+-- Sicherheit und Abgrenzung --
+  Der Navigator darf die Seite als lokalen parameterlosen Monitorpfad ansteuern.
+  Sie besitzt keine eigene Sitzung, keine Datenreads und keine Schreibaktion. Das
+  Bild ist ein versioniertes lokales Asset; externe Bildquellen und dynamische
+  Zielparameter sind ausgeschlossen.

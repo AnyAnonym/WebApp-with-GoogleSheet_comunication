@@ -7,6 +7,8 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   CSS:  Frontend/CSS/Matches1.css
   Ersetzt die frueheren getrennten Matches-/PreMatches-Seiten und zeigt Daten aus
   `matches1` als Matchkarten.
+  Die sportliche Bedeutung von regulaerem Abschluss, `[wo]` und `[ret]` steht in
+  `Project/Regelwerk/Spielbetrieb/ALLGEMEINE-MATCHREGELN.txt`.
 
 -- Daten und Aktualisierung --
   Oeffentliche Endpoints `matches1`, `players` (minimale Projektion) und `bewerbe`.
@@ -32,3 +34,6 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   werden dargestellt. Alle externen Namen, Bewerbe und Matchwerte werden mit
   createElement/textContent in sichere DOM-Knoten geschrieben; Badges entstehen
   nur aus einer begrenzten internen Typauswahl.
+  Die Anzeige folgt der gespeicherten Reihenfolge Spieler1-Seite vor
+  Spieler3-Seite. Neue Ranglistenforderungen zeigen deshalb den Forderer zuerst;
+  bestehende Matchzeilen werden nicht migriert und behalten ihre Reihenfolge.

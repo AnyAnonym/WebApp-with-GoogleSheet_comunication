@@ -66,11 +66,13 @@ Matches1 enthaelt offene und gespielte Matches.
   BewerbRunde     | Runde/Partie, z.B. R1, AF-P3, VF, HF, F oder G1.
   MatchtypID      | Optionale Matchtyp-Ueberschreibung. Ist sie gesetzt,
                   | ueberstimmt sie `Bewerb.MatchtypID Standard`.
-  Spieler1ID      | Erste Heim-/Gegner-ID; als Abschlussmarker sind nur die
+  Spieler1ID      | Erste Heim-ID. Bei neuen Ranglistenforderungen steht hier
+                  | der Forderer; als Abschlussmarker sind nur die
                   | exakt kleingeschriebenen Suffixe [wo] oder [ret] zulaessig.
                   | Bei manueller Auslosung ist temporaer `PRE` zulaessig.
   Spieler2ID      | Optionaler Doppelpartner von Spieler1ID.
-  Spieler3ID      | Erste Gast-/Forderer-ID; bei manueller Auslosung ist
+  Spieler3ID      | Erste Gast-ID. Bei neuen Ranglistenforderungen steht hier
+                  | der Geforderte; bei manueller Auslosung ist
                   | temporaer `PRE` zulaessig.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
@@ -239,6 +241,17 @@ Personenprojektionen:
     Freigabe aendern, Resetnachweise erzeugen oder ein Passwort direkt setzen.
     Login wird weder im Mitgliederverzeichnis noch in fremden Nicht-Adminprofilen
     ausgegeben; Hashes und Geheimnisse werden nie projiziert.
+  - `publicProfile` und `myProfile` enthalten zusaetzlich `rankings`. Das Array
+    wird serverseitig aus `RL-Platzierung`, Bewerben mit `BewerbsartID=2`,
+    `Matches1` und Personen gebildet und nach SortOrder, Bezeichnung und ID
+    sortiert. Pro Eintrag werden Bewerb-ID/-Bezeichnung, Rang,
+    `active|withdrawn`, die principalbezogenen Booleans `canChallenge` und
+    `canWithdraw` sowie eine etwaige offene Forderung mit Gegner und
+    Forderungszeit projiziert. Bei Rang `0` erhalten angemeldete Benutzer
+    Raushaengezeitpunkt und Grund; anonym bleiben diese Werte ausgeschlossen.
+    Nur das Eigenprofil erhaelt innerhalb der zwoelfmonatigen Rueckkehrfrist
+    zusaetzlich den vorherigen Rang fuer die Rueckkehrforderung. Fremde Profile
+    und Listen projizieren ihn nicht.
 
 Beim eigenen Passwortwechsel, Reset, direkten Admin-Passwortsetzen und der
 erstmaligen Passwortvergabe werden alle Sessions der Zielperson vorsorglich vor
@@ -265,7 +278,12 @@ Bewerb:
   ID, BewerbsartID, MatchtypID Standard, Bezeichnung, Entrystart,
   Entrydeadline, Bewerbsbeginn, Bewerbsende, Geschlecht, Alterskategorie und
   SortOrder. Datumsgrenzen akzeptieren `YYMMDD`, `YYYYMMDD` und optional
-  `-HHMM`. Kleinere numerische SortOrder-Werte stehen zuerst.
+  `-HHMM`. Kleinere numerische SortOrder-Werte stehen zuerst. `Geschlecht` ist
+  leer oder eine eindeutige kommaseparierte Liste aus `1`, `2` und `3`.
+  `Alterskategorie` ist leer oder `N+`/`N-` mit N von 0 bis 999; leer und `0+`
+  bedeuten ohne Altersgrenze. Fuer die Teilnahmepruefung gilt das Wiener
+  Kalenderjahr minus Geburtsjahr. Eine vorhandene Einschraenkung wird bei
+  fehlenden oder ungueltigen Personendaten nicht umgangen.
 
 Bewerbsart:
   ID, Bezeichnung, EntryListAvailable, Rasterfunktion, RoundRobin und Spezifikum.
@@ -311,8 +329,17 @@ Neuzuweisung. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
 spaetere semantische Ergebnispruefung ist fachlich vorgesehen.
 
 RL-Platzierung:
-  Optional ID, BewerbID, PersonID und Rang. Ranglistenwrites pruefen die aktuelle
-  Mitgliedschaft und den aktuellen Rang serverseitig.
+  Optional ID; verpflichtend sind BewerbID, PersonID, Rang, RausgehangenAm,
+  RausgehangenLetztePlatzierung und RausgehangenGrund. Pro Bewerb und Person darf
+  hoechstens eine Zeile existieren; jeder positive aktive Rang ist innerhalb des
+  Bewerbs ebenfalls eindeutig. Ein positiver ganzzahliger Rang bezeichnet eine
+  aktive Platzierung. Rang `0` bezeichnet eine temporaer rausgehaengte
+  Person und verlangt gleichzeitig RausgehangenAm im Format `YYMMDD-HHMM`, eine
+  reale lokale Datums-/Uhrzeit, eine positive ganzzahlige letzte Platzierung
+  sowie einen getrimmten Grund mit 3 bis
+  500 Zeichen. Die drei Raushaengefelder duerfen bei aktiven Zeilen fuer eine
+  spaetere kontrollierte Rueckkehr erhalten bleiben, werden aber nicht oeffentlich
+  projiziert. Ranglistenwrites pruefen Mitgliedschaft und Rang serverseitig.
 
 Navigator:
   Optional ID, Name, Ziel und Profil. Profil ist standardmaessig "1". Ziele
@@ -469,6 +496,16 @@ Alt-/Neuwerten, `CD-ID` und die anderen erlaubten Felder ausschliesslich mit ihr
 Feldnamen und `geaendert`. Freie oder fachliche Feldwerte werden nicht gespiegelt.
 `AUDIT_ACTIONS` kann Aktionsklassen einschraenken; Standard `*` aktiviert alle
 implementierten Aktionen.
+
+Forderungen verwenden die Auditaktion `addMatch`. Der Forderer ist der
+serverseitige Akteur, der Geforderte das Personenziel mit ID und Namenssnapshot.
+Bereits `started` speichert den kontrollierten Kontext aus Bewerb- und
+Gegner-ID, damit auch ein nicht angelegter oder unklarer Versuch fachlich
+zugeordnet bleibt. Bei Erfolg ergaenzt `after_json` die stabile Match-ID. Der
+Journalspiegel `audit_recorded` gibt fuer diese Aktion zusaetzlich nur Bewerb-
+und Match-ID aus; Kontaktwerte, freie Texte und sonstige Personendaten bleiben
+ausgeschlossen. `failed` bezeichnet dabei einen Versuch, bei dem keine
+Forderung angelegt wurde, niemals eine Ablehnung durch den Geforderten.
 
 
 ================================================================================

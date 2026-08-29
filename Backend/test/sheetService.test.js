@@ -8,6 +8,7 @@ const dataPoller = require("../dataPoller.js");
 const { TABLE_CONFIG } = require("../config.js");
 const { SheetService } = require("../sheetService.js");
 const { StateRepository } = require("../stateRepository.js");
+const metrics = require("../metrics.js");
 const { projectPeopleNormalization } = require("../peopleNormalization.js");
 const { projectPeopleReconciliation } = require("../memberReconciliation.js");
 const { acquireExclusiveSheetActivity, resetSheetReadCoordinatorForTests } = require("../sheetsReadCoordinator.js");
@@ -87,7 +88,7 @@ test("Gesamtimport ueberholt keine bereits angenommene Write-Queue", async () =>
 
 function fakeSheets(initialTables) {
   const tables = structuredClone(initialTables);
-  const calls = { append: [], delete: [], valueUpdates: [], valueGets: 0, metadataRows: 0, metadataSearches: 0, spreadsheetGets: 0, metadataCreates: 0 };
+  const calls = { append: [], delete: [], valueUpdates: [], valueGets: 0, metadataRows: 0, metadataSearches: 0, spreadsheetGets: 0, spreadsheetUpdates: 0, metadataCreates: 0 };
   const metadata = new Map();
   let nextMetadataId = 1;
   const tableNames = () => Object.keys(tables);
@@ -134,7 +135,7 @@ function fakeSheets(initialTables) {
                 const birthDateIndex = tables.Personen[0].indexOf("GeburtsDatum");
                 if (/^\d{2}\.\d{2}\.\d{4}$/.test(String(row[birthDateIndex] || ""))) row[birthDateIndex] = "32875";
               }
-              valueRanges.push({ valueRange: { values: [row] } });
+              valueRanges.push({ dataFilters: [structuredClone(filter)], valueRange: { values: [row] } });
             }
           }
           return { data: { valueRanges } };
@@ -189,6 +190,12 @@ function fakeSheets(initialTables) {
                 metadataKey: entry.metadataKey,
                 metadataValue: entry.metadataValue,
                 visibility: entry.visibility,
+                location: { dimensionRange: {
+                  sheetId: tableNames().indexOf(entry.title) + 1,
+                  dimension: "ROWS",
+                  startIndex: tables[entry.title].indexOf(entry.rowRef),
+                  endIndex: tables[entry.title].indexOf(entry.rowRef) + 1,
+                } },
               }) });
             }
           }
@@ -196,6 +203,7 @@ function fakeSheets(initialTables) {
         },
       },
       async batchUpdate({ requestBody }) {
+        calls.spreadsheetUpdates++;
         const replies = [];
         for (const request of requestBody.requests || []) {
           if (request.createDeveloperMetadata) {
@@ -262,18 +270,20 @@ function fixtures() {
   );
   people[0].push("Login");
   people.slice(1).forEach((row) => row.push(`${row[1]}.${row[2]}`.toLowerCase()));
+  const ranking = [
+    ["ID", "BewerbID", "PersonID", "Rang", "RausgehangenAm", "RausgehangenLetztePlatzierung", "RausgehangenGrund"],
+    ["r1", "cup-1", "p2", "1", "", "", ""], ["r2", "cup-1", "p1", "2", "", "", ""],
+    ["r3", "cup-2", "p4", "1", "", "", ""], ["r4", "cup-2", "p3", "2", "", "", ""],
+  ];
   return {
     Personen: people,
-    Bewerb: [["ID", "Bezeichnung", "BewerbsartID"], ["cup-1", "Cup", "type-1"], ["cup-2", "Cup 2", "type-1"]],
+    Bewerb: [["ID", "Bezeichnung", "BewerbsartID"], ["cup-1", "Cup", "2"], ["cup-2", "Cup 2", "2"]],
     Matches1: [[
       "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
       "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis",
     ]],
-    Rangliste: [
-      ["ID", "BewerbID", "PersonID", "Rang"],
-      ["r1", "cup-1", "p2", "1"], ["r2", "cup-1", "p1", "2"],
-      ["r3", "cup-2", "p4", "1"], ["r4", "cup-2", "p3", "2"],
-    ],
+    Rangliste: ranking,
+    "RL-Platzierung": ranking,
     EntryList: [["ID", "BewerbID", "PersonenID", "Entrydate"]],
     Logging: [["Timestamp", "Type", "Message"]],
   };
@@ -966,6 +976,9 @@ test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () =
   assert.notEqual(first.newMatchId, second.newMatchId);
   assert.equal(fake.calls.append.filter((call) => call.range === "Matches1").length, 2);
   assert.equal(dataStore.get("matches1").length, 3);
+  const firstMatch = fake.tables.Matches1.find((row) => row[1] === first.newMatchId);
+  assert.equal(firstMatch[6], "p1");
+  assert.equal(firstMatch[8], "p2");
 
   const repeated = await service.addMatch(principal, { operationId: firstOperation, bewerbId: "cup-1", opponentId: "p2" });
   assert.equal(repeated.newMatchId, first.newMatchId);
@@ -1390,6 +1403,177 @@ test("Matchregeln verwenden die unmittelbar zuvor gelesene Tabelle", async () =>
   repository.close();
 });
 
+test("Profilprojektion kann Forderbarkeit mit denselben Serverregeln pruefen", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  seedStore(initial);
+  const service = new SheetService({ repository, clientFactory: async () => fakeSheets(initial).client });
+
+  assert.deepEqual(
+    service.challengeEligibility({ type: "user", id: "p1" }, "cup-1", "p2"),
+    { allowed: true, code: "" },
+  );
+  assert.deepEqual(
+    service.challengeEligibility({ type: "user", id: "p2" }, "cup-1", "p1"),
+    { allowed: false, code: "CHALLENGE_NOT_ALLOWED" },
+  );
+  assert.deepEqual(
+    service.challengeEligibility({ type: "user", id: "p1" }, "cup-1", "p1"),
+    { allowed: false, code: "MATCH_SELF" },
+  );
+  const invalidMatches = structuredClone(initial.Matches1);
+  invalidMatches.push(["", "m-invalid", "", "260829-1200", "cup-1", "", "p2", "", "p1", "", "6-4/6-4"]);
+  dataStore.set("matches1", invalidMatches, { source: "test-invalid" });
+  assert.deepEqual(
+    service.challengeEligibility({ type: "user", id: "p1" }, "cup-1", "p2"),
+    { allowed: false, code: "MATCH_DATA_INVALID" },
+  );
+
+  await service.stop();
+  repository.close();
+});
+
+test("rausgehaengte Spieler fordern ab ihrem gespeicherten Rang und dahinter", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  initial.Rangliste[2] = ["r2", "cup-1", "p1", "0", "260829-1200", "2", "Pause"];
+  initial.Rangliste.push(["r5", "cup-1", "p3", "2", "", "", ""]);
+  initial.Rangliste.push(["r6", "cup-1", "p4", "3", "", "", ""]);
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "CHALLENGE_NOT_ALLOWED" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p3"), { allowed: true, code: "" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p4"), { allowed: true, code: "" });
+  const match = await service.addMatch(principal, {
+    operationId: "00000000-0000-4000-8000-000000000125",
+    bewerbId: "cup-1",
+    opponentId: "p4",
+  });
+  assert.equal(match.success, true);
+  assert.equal(fake.tables.Matches1.at(-1)[6], "p1");
+  assert.equal(fake.tables.Matches1.at(-1)[8], "p4");
+  const expiredRankings = structuredClone(dataStore.get("rlPlatzierung"));
+  expiredRankings.find((row) => row[2] === "p1")[4] = "250829-1059";
+  dataStore.set("rlPlatzierung", expiredRankings, { source: "test-expired" });
+  dataStore.set("matches1", [initial.Matches1[0]], { source: "test-expired" });
+  assert.deepEqual(service.rankingChallengeState(principal, "cup-1"), {
+    success: true, mode: "newcomer", rank: null, returnFromRank: null,
+  });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: true, code: "" });
+
+  await service.stop();
+  repository.close();
+});
+
+test("Neueinsteiger fordern jeden freien Rang ohne automatische Einreihung", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const principal = { type: "user", id: "p3", name: "Chris Challenger" };
+  const rankingBefore = structuredClone(fake.tables["RL-Platzierung"]);
+
+  assert.deepEqual(service.rankingChallengeState(principal, "cup-1"), {
+    success: true, mode: "newcomer", rank: null, returnFromRank: null,
+  });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: true, code: "" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p1"), { allowed: true, code: "" });
+  const match = await service.addMatch(principal, {
+    operationId: "00000000-0000-4000-8000-000000000127",
+    bewerbId: "cup-1",
+    opponentId: "p1",
+  });
+  assert.equal(match.success, true);
+  assert.deepEqual(fake.tables["RL-Platzierung"], rankingBefore);
+  assert.equal(fake.tables.Matches1.at(-1)[6], "p3");
+  assert.equal(fake.tables.Matches1.at(-1)[8], "p1");
+
+  await service.stop();
+  repository.close();
+});
+
+test("Neueinsteiger muessen Geschlecht und Alterskategorie des Bewerbs erfuellen", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  initial.Bewerb[0].push("Geschlecht", "Alterskategorie");
+  initial.Bewerb[1].push("2", "60+");
+  initial.Bewerb[2].push("", "");
+  const playerHeader = initial.Personen[0];
+  const legacyGenderIndex = playerHeader.indexOf("Geschlecht");
+  playerHeader.push("GeschlechtID");
+  const genderIndex = playerHeader.indexOf("GeschlechtID");
+  const birthDateIndex = playerHeader.indexOf("GeburtsDatum");
+  const newcomer = initial.Personen.find((row) => row[0] === "p3");
+  newcomer[legacyGenderIndex] = "1";
+  newcomer[genderIndex] = "2";
+  newcomer[birthDateIndex] = "31.12.1966";
+  seedStore(initial);
+  const service = new SheetService({ repository, clientFactory: async () => fakeSheets(initial).client, now: () => Date.UTC(2026, 0, 1, 0, 30) });
+  const principal = { type: "user", id: "p3", name: "Chris Challenger" };
+
+  assert.deepEqual(service.rankingChallengeState(principal, "cup-1"), {
+    success: true, mode: "newcomer", rank: null, returnFromRank: null,
+  });
+  newcomer[genderIndex] = "3";
+  dataStore.set("players", structuredClone(initial.Personen), { source: "test-gender" });
+  assert.deepEqual(service.rankingChallengeState(principal, "cup-1"), {
+    success: true, mode: "ineligible", rank: null, returnFromRank: null,
+  });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "RANKING_ENTRY_NOT_ELIGIBLE" });
+
+  newcomer[genderIndex] = "2";
+  newcomer[birthDateIndex] = "01.01.1967";
+  dataStore.set("players", structuredClone(initial.Personen), { source: "test-age" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "RANKING_ENTRY_NOT_ELIGIBLE" });
+  newcomer[birthDateIndex] = "";
+  dataStore.set("players", structuredClone(initial.Personen), { source: "test-missing-age" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "RANKING_ENTRY_NOT_ELIGIBLE" });
+
+  initial.Bewerb[1][initial.Bewerb[0].indexOf("Alterskategorie")] = "18-";
+  newcomer[birthDateIndex] = "31.12.2008";
+  dataStore.set("players", structuredClone(initial.Personen), { source: "test-youth" });
+  dataStore.set("bewerbe", structuredClone(initial.Bewerb), { source: "test-youth" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: true, code: "" });
+  newcomer[birthDateIndex] = "01.01.2027";
+  dataStore.set("players", structuredClone(initial.Personen), { source: "test-future-birth" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "RANKING_ENTRY_NOT_ELIGIBLE" });
+
+  initial.Bewerb[1][initial.Bewerb[0].indexOf("Alterskategorie")] = "Senioren";
+  dataStore.set("bewerbe", structuredClone(initial.Bewerb), { source: "test-invalid-age-rule" });
+  assert.throws(() => service.rankingChallengeState(principal, "cup-1"), { code: "SHEET_SCHEMA" });
+
+  await service.stop();
+  repository.close();
+});
+
+test("Neueinsteiger behalten offene-Forderung-, Sperr- und Schonzeitregeln", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  seedStore(initial);
+  const service = new SheetService({ repository, clientFactory: async () => fakeSheets(initial).client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const principal = { type: "user", id: "p3", name: "Chris Challenger" };
+  const header = initial.Matches1[0];
+
+  dataStore.set("matches1", [header, ["", "open", "", "260829-1000", "cup-1", "", "p3", "", "p1", "", ""]], { source: "test-busy" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "PLAYER_BUSY" });
+  dataStore.set("matches1", [header, ["", "lost", "260828-1000", "", "cup-1", "", "p3", "", "p4", "", "4-6/4-6"]], { source: "test-blocked" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "PLAYER_BLOCKED" });
+  dataStore.set("matches1", [header, ["", "won", "260828-1000", "", "cup-1", "", "p2", "", "p4", "", "6-4/6-4"]], { source: "test-protected" });
+  assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "OPPONENT_PROTECTED" });
+
+  await service.stop();
+  repository.close();
+});
+
 test("abgelehnte Selbstforderung behaelt einen geplanten Matchrefresh", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -1430,12 +1614,14 @@ test("Shutdown fuehrt bereits angenommene Queue-Eintraege noch aus", async () =>
   repository.close();
 });
 
-test("Ranglistenrueckzug wird lokal dedupliziert und schreibt kein Logging-Sheet", async () => {
+test("Ranglistenrueckzug schreibt die Mitgliedschaft und wird lokal dedupliziert", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
-  const fake = fakeSheets(fixtures());
+  const initial = fixtures();
+  initial.Rangliste.push(["r5", "cup-1", "p3", "3", "", "", ""]);
+  const fake = fakeSheets(initial);
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = {
     operationId: "00000000-0000-4000-8000-000000000117",
@@ -1445,16 +1631,196 @@ test("Ranglistenrueckzug wird lokal dedupliziert und schreibt kein Logging-Sheet
   };
 
   const first = await service.withdrawFromRanking(principal, params);
-  assert.deepEqual(first, { success: true });
-  assert.deepEqual(first._audit, {
-    before: { bewerbId: "cup-1", rank: 2, membership: true },
-    after: { withdrawalRequested: true, reason: "Test rueckzug" },
+  assert.deepEqual(first, {
+    success: true,
+    withdrawnAt: "260829-1230",
+    previousRank: 2,
+    shiftedCount: 1,
   });
+  assert.deepEqual(first._audit, {
+    before: { bewerbId: "cup-1", rank: 2 },
+    after: { rank: 0, withdrawnAt: "260829-1230", shiftedCount: 1, reasonRecorded: true },
+  });
+  assert.deepEqual(fake.tables["RL-Platzierung"][2].slice(3), [0, "260829-1230", 2, "Test rueckzug"]);
+  assert.equal(fake.tables["RL-Platzierung"].find((row) => row[2] === "p3" && row[1] === "cup-1")[3], 2);
+  assert.equal(fake.calls.metadataCreates, 2);
+  assert.equal(fake.calls.spreadsheetUpdates, 1);
+  assert.equal(fake.calls.metadataRows, 1);
   assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 0);
 
   const repeated = await service.withdrawFromRanking(principal, params);
   assert.equal(repeated.repeated, true);
   assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 0);
+
+  await service.stop();
+  repository.close();
+});
+
+test("Ranglistenrueckzug wird bei einer offenen Forderung abgelehnt", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  initial.Matches1.push(["", "m-open", "", "260829-1200", "cup-1", "F", "p1", "", "p2", "", ""]);
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(service.withdrawFromRanking(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000121", bewerbId: "cup-1", rank: 2, reason: "Test rueckzug" },
+  ), { code: "RANKING_WITHDRAWAL_MATCH_OPEN" });
+  assert.equal(fake.calls.valueUpdates.length, 0);
+
+  await service.stop();
+  repository.close();
+});
+
+test("Ranglistenrueckzug buendelt vierundzwanzig Metadatenzeilen in konstante API-Aufrufe", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  const header = initial.Rangliste[0];
+  initial.Rangliste.splice(0, initial.Rangliste.length, header);
+  for (let rank = 1; rank <= 24; rank++) {
+    initial.Rangliste.push([`bulk-${rank}`, "cup-1", rank === 1 ? "p1" : `bulk-p${rank}`, String(rank), "", "", ""]);
+  }
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+
+  const result = await service.withdrawFromRanking(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000123", bewerbId: "cup-1", rank: 1, reason: "Test rueckzug" },
+  );
+
+  assert.equal(result.shiftedCount, 23);
+  assert.equal(fake.calls.valueGets, 2);
+  assert.equal(fake.calls.metadataSearches, 1);
+  assert.equal(fake.calls.spreadsheetUpdates, 1);
+  assert.equal(fake.calls.metadataCreates, 24);
+  assert.equal(fake.calls.metadataRows, 1);
+
+  await service.stop();
+  repository.close();
+});
+
+test("Ranglistenrueckzug bereinigt Metadatendubletten aller Zielzeilen in einem Batch", async (t) => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  const header = initial.Rangliste[0];
+  initial.Rangliste.splice(0, initial.Rangliste.length, header);
+  for (let rank = 1; rank <= 24; rank++) {
+    initial.Rangliste.push([`duplicate-${rank}`, "cup-1", rank === 1 ? "p1" : `duplicate-p${rank}`, String(rank), "", "", ""]);
+  }
+  const fake = fakeSheets(initial);
+  for (let rowIndex = 1; rowIndex <= 24; rowIndex++) {
+    const personId = rowIndex === 1 ? "p1" : `duplicate-p${rowIndex}`;
+    fake.seedRecordMetadata("RL-Platzierung", rowIndex, `membership:cup-1:${personId}`);
+    fake.seedRecordMetadata("RL-Platzierung", rowIndex, `membership:cup-1:${personId}`);
+  }
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const cleanupAttempts = [];
+  const cleanupResults = [];
+  t.mock.method(metrics, "recordSheetApiAttempt", (entry) => {
+    if (entry.method === "metadata_cleanup") cleanupAttempts.push(entry);
+  });
+  t.mock.method(metrics, "recordSheetApiRequest", (entry) => {
+    if (entry.method === "metadata_cleanup") cleanupResults.push(entry);
+  });
+
+  const result = await service.withdrawFromRanking(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000126", bewerbId: "cup-1", rank: 1, reason: "Test rueckzug" },
+  );
+
+  assert.equal(result.shiftedCount, 23);
+  assert.equal(fake.calls.metadataSearches, 2);
+  assert.equal(fake.calls.spreadsheetUpdates, 1);
+  assert.equal(fake.calls.metadataCreates, 0);
+  assert.equal(fake.calls.metadataRows, 1);
+  assert.deepEqual(cleanupAttempts, [{ method: "metadata_cleanup", purpose: "metadata_cleanup", kind: "initial" }]);
+  assert.equal(cleanupResults.length, 1);
+  assert.deepEqual({
+    method: cleanupResults[0].method,
+    purpose: cleanupResults[0].purpose,
+    result: cleanupResults[0].result,
+  }, { method: "metadata_cleanup", purpose: "metadata_cleanup", result: "success" });
+
+  await service.stop();
+  repository.close();
+});
+
+test("gebuendelte Metadatensuche lehnt denselben Schluessel auf verschiedenen Zeilen ab", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  fake.seedRecordMetadata("RL-Platzierung", 1, "membership:cup-1:p2");
+  fake.seedRecordMetadata("RL-Platzierung", 2, "membership:cup-1:p2");
+  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+
+  await assert.rejects(
+    service.searchRecordMetadataBatch(fake.client, "rlPlatzierung", ["membership:cup-1:p2"]),
+    { code: "SHEET_SCHEMA" },
+  );
+  assert.equal(fake.calls.spreadsheetUpdates, 0);
+
+  await service.stop();
+  repository.close();
+});
+
+test("unklarer Ranglistenrueckzug wird ueber den gespeicherten Plan bestaetigt", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const originalUpdate = fake.client.spreadsheets.values.batchUpdateByDataFilter;
+  const originalRead = fake.client.spreadsheets.values.batchGetByDataFilter;
+  let writeAttempted = false;
+  fake.client.spreadsheets.values.batchUpdateByDataFilter = async (request) => {
+    const result = await originalUpdate(request);
+    writeAttempted = true;
+    throw new Error("response lost");
+  };
+  fake.client.spreadsheets.values.batchGetByDataFilter = async (request) => {
+    if (writeAttempted) throw new Error("confirmation unavailable");
+    return originalRead(request);
+  };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = { operationId: "00000000-0000-4000-8000-000000000122", bewerbId: "cup-1", rank: 2, reason: "Test rueckzug" };
+
+  await assert.rejects(service.withdrawFromRanking(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  fake.client.spreadsheets.values.batchGetByDataFilter = originalRead;
+  const recovered = await service.withdrawFromRanking(principal, params);
+  assert.equal(recovered.success, true);
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.repeated, true);
+  assert.equal(fake.calls.valueUpdates.filter((update) => update.index === 3 && update.value === 0).length, 1);
+
+  await service.stop();
+  repository.close();
+});
+
+test("Ranglistenrueckzug setzt nach unklarer Bulk-Metadatenerstellung mit demselben Plan fort", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const originalMetadataUpdate = fake.client.spreadsheets.batchUpdate;
+  fake.client.spreadsheets.batchUpdate = async () => { throw new Error("metadata unavailable"); };
+  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = { operationId: "00000000-0000-4000-8000-000000000124", bewerbId: "cup-1", rank: 2, reason: "Test rueckzug" };
+
+  await assert.rejects(service.withdrawFromRanking(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  assert.equal(fake.calls.valueUpdates.length, 0);
+  fake.client.spreadsheets.batchUpdate = originalMetadataUpdate;
+  const recovered = await service.withdrawFromRanking(principal, params);
+  assert.equal(recovered.success, true);
+  assert.equal(recovered.repeated, true);
+  assert.equal(fake.tables["RL-Platzierung"].find((row) => row[2] === "p1")[3], 0);
 
   await service.stop();
   repository.close();
@@ -1475,7 +1841,9 @@ test("Ranglistenrueckzug ist unabhaengig vom entfernten Logging-Sheet", async ()
     reason: "Test rueckzug",
   };
 
-  assert.deepEqual(await service.withdrawFromRanking(principal, params), { success: true });
+  const result = await service.withdrawFromRanking(principal, params);
+  assert.equal(result.success, true);
+  assert.equal(result.previousRank, 2);
   const repeated = await service.withdrawFromRanking(principal, params);
   assert.equal(repeated.repeated, true);
 
@@ -1503,12 +1871,16 @@ test("Entry- und Ranking-Writes erzwingen serverseitige Fachregeln", async () =>
     bewerbId: "cup-1",
     opponentId: "p3",
   }), { code: "RANKING_MEMBERSHIP_REQUIRED" });
+  const rankingRefresh = setTimeout(() => {}, 60000);
+  rankingRefresh.unref();
+  service.refreshTimers.set("rlPlatzierung", rankingRefresh);
   await assert.rejects(service.withdrawFromRanking(principal, {
     operationId: "00000000-0000-4000-8000-000000000109",
     bewerbId: "cup-1",
     rank: 99,
     reason: "Test rueckzug",
   }), { code: "RANK_CONFLICT" });
+  assert.equal(service.refreshTimers.get("rlPlatzierung"), rankingRefresh);
   assert.equal(fake.calls.append.length, 0);
 
   await service.stop();

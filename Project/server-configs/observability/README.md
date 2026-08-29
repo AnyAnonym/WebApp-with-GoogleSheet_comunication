@@ -73,9 +73,9 @@ Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
 
 ## Dashboards und Alerts
 
-Sechs Dashboards werden provisioniert: Uebersicht, Hostressourcen,
-Loggingpipeline, Fehler/Recovery, Personennormalisierung sowie Platz- und
-Scoreverlauf.
+Sieben Dashboards werden provisioniert: Uebersicht, Hostressourcen,
+Loggingpipeline, Fehler/Recovery, Personennormalisierung, Ranglistenaktivitaeten
+sowie Platz- und Scoreverlauf.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
@@ -97,6 +97,16 @@ Diese Werte bleiben JSON-Felder; Match-, Bewerbs- und Personenwerte werden keine
 Labels. Kontakt-, Adress-, Geburts-, Geschlechts- und freie Werte sind
 ausgeschlossen. Die Ansicht reicht hoechstens 14 Tage zurueck und ersetzt nicht
 die dauerhafte Scorefachhistorie in `scorelog.sqlite`.
+
+Das Dashboard `ePiber Ranglistenaktivitaeten` zeigt verbindlich ausgesprochene
+Forderungen getrennt von Versuchen, bei denen keine Forderung angelegt wurde,
+und von unklaren Schreibausgaengen. Ein nicht angelegter Versuch ist keine
+Ablehnung durch den Geforderten. Der Auditverlauf enthaelt auf ausdruecklichen
+Wunsch Forderer- und Zielname samt stabilen IDs, Bewerb-ID, bei Erfolg die
+Match-ID, kontrollierten Fehlercode und Support-ID. Diese Werte bleiben
+JSON-Felder und werden keine Loki-Labels. Kontaktwerte und freie Inhalte sind
+ausgeschlossen; die Ansicht reicht hoechstens 14 Tage zurueck und ersetzt nicht
+die dauerhafte Historie in `audit.sqlite`.
 
 Die Uebersicht zeigt zusaetzlich den verbleibenden Google-Sheets-Read-Cooldown,
 die tatsaechlichen API-Versuche sowie logische Readrequests nach festem Zweck und

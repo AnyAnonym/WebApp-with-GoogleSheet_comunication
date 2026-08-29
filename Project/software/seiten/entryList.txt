@@ -8,6 +8,8 @@ Eintragungsliste - Anmeldung / Nennung fuer einen Bewerb
   Nummer, Personen-ID, geschlechtsbezogenem Ranglistenrang, Name und Entrydate.
   `GebuehrBezahlt` gehoert nicht zur oeffentlichen Projektion und wird daher nicht
   dargestellt.
+  Organisatorische Verantwortlichkeiten stehen in
+  `Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`.
 
 -- Daten und Aktualisierung --
   Oeffentliche Reads `entryList`, `players`, `bewerbe`, `rlPlatzierung`;

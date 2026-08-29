@@ -4,7 +4,8 @@ FACHKONZEPT.txt - Produktvision und fachliches Lastenheft
 Dieses Dokument beschreibt ePiber aus Sicht der Benutzer und des Vereins. Es
 beantwortet, wofuer das System eingesetzt wird und welche fachlichen Aufgaben es
 abbilden soll. Technische Architektur, konkrete Datenformate und Implementierung
-sind nicht Gegenstand dieses Dokuments.
+sind nicht Gegenstand dieses Dokuments. Verbindliche fachliche Detailregeln fuer
+Spielbetrieb und Organisation stehen unter `Project/Regelwerk/`.
 
 Das Fachkonzept wird schrittweise gemeinsam mit dem Auftraggeber vervollstaendigt.
 Bestaetigte Aussagen, Arbeitsannahmen und offene Punkte bleiben ausdruecklich
@@ -31,6 +32,11 @@ Die Aussagen werden nach ihrem Status unterschieden:
 Neue Erkenntnisse werden nicht stillschweigend als bestaetigte Anforderungen
 eingetragen. Vor ihrer Aufnahme wird der konkrete Eintrag vorgeschlagen und mit
 dem Auftraggeber abgestimmt.
+
+Das Fachkonzept bleibt das uebergeordnete Lastenheft. Das Regelwerk konkretisiert
+bestaetigte Anforderungen unabhaengig vom aktuellen Implementierungsstand. Bei
+fachlichen Detailfragen ist zuerst `Project/Regelwerk/README.txt` und danach die
+dort zugeordnete Regeldatei zu verwenden.
 
 
 ================================================================================
@@ -79,16 +85,20 @@ vom Auftraggeber bestaetigt.
       Verfolgen Bewerbe, Matches und Live-Spielstaende ohne organisatorische
       Aufgaben im System.
 
-  Spieler [Arbeitsannahme]
-      Informieren sich ueber Bewerbe, Anmeldungen, Ranglisten, Auslosungen und
-      eigene oder andere Matches.
+  Spieler [Bestaetigt]
+      Informieren sich ueber Bewerbe, Ranglisten, Auslosungen und Matches. Sie
+      fuehren eigene Bewerbsanmeldungen, Ranglistenforderungen,
+      Terminvereinbarungen und das eigene temporaere Raushaengen aus.
 
-  Operatoren [Arbeitsannahme]
-      Bedienen Courts, Anzeigen und Live-Funktionen waehrend des Spielbetriebs.
+  Operatoren [Bestaetigt]
+      Bedienen Courts, Scoreboard und Monitoranzeigen waehrend des
+      Spielbetriebs. Sie sind nicht die sportliche Leitung.
 
-  Administratoren und Turnierleitung [Arbeitsannahme]
-      Organisieren den Spielbetrieb und verwalten die dafuer erforderlichen
-      fachlichen Einstellungen und Daten.
+  Administratoren und sportliche Leitung [Bestaetigt]
+      Administratoren besitzen die umfassende Verwaltungsrolle. Die sportliche
+      Leitung ist keine eigene technische Rolle und muss im System immer
+      Administrator sein. Sie entscheidet insbesondere bei ueberfaelligen
+      Ranglistenforderungen und vollzieht derzeit Ergebnis- und Rangpflege.
       Administratoren pruefen und normalisieren vorhandene Personendaten und
       gleichen ClubDesk-Mitglieder kontrolliert mit dem Personenbestand ab.
       [Bestaetigt]
@@ -97,8 +107,8 @@ vom Auftraggeber bestaetigt.
       Sind keine menschliche Benutzergruppe, bilden aber einen eigenen
       Nutzungskontext fuer automatisch oder ferngesteuert dargestellte Inhalte.
 
-Offen: Rollenbezeichnungen, Verantwortungsgrenzen und die tatsaechlichen
-Arbeitsablaeufe jeder Benutzergruppe muessen noch fachlich bestaetigt werden.
+Die verbindliche Rollenabgrenzung steht in
+`Project/Regelwerk/Organisation/ROLLEN-UND-VERANTWORTUNGEN.txt`.
 
 
 ================================================================================
@@ -132,12 +142,12 @@ Ranglisten sowie offene und abgeschlossene Matches einsehen.
 Die Turnierleitung ordnet Matches und Plaetze zu und behaelt den laufenden sowie
 bereits abgeschlossenen Spielbetrieb im Blick.
 
-5.4 Anzeigen am Veranstaltungsort steuern [Arbeitsannahme]
+5.4 Anzeigen am Veranstaltungsort steuern [Bestaetigt hinsichtlich Rollenverantwortung]
 
 Zustaendige Bediener waehlen aus, welche Informationen auf einem Monitor gezeigt
 werden. Die Anzeige selbst soll ohne laufende Bedienung am Monitor funktionieren.
 
-5.5 Fuer Bewerbe anmelden [Arbeitsannahme]
+5.5 Fuer Bewerbe anmelden [Bestaetigt hinsichtlich Eigenverantwortung]
 
 Spieler koennen die fuer einen Bewerb vorgesehene Eintragungsliste einsehen und
 die angebotenen Anmeldefunktionen verwenden.
@@ -184,6 +194,18 @@ Administrator ausgefuehrt. Der Abgleich kann Personen anlegen, eine `CD-ID`
 zuordnen sowie Mitgliedsklassifikation und Aktivstatus pflegen. Bestehende Logins
 werden durch den Import niemals geaendert. Login und optionale Kontakt-E-Mail sind
 voneinander getrennte Angaben.
+
+5.9 Ranglistenbetrieb [Bestaetigt]
+
+Spieler koennen nach den sportlichen Ranglistenregeln verbindliche Forderungen
+aussprechen, Termine vereinbaren und sich temporaer aus einer Rangliste
+raushaengen. Forderungs-, Schutz-, Sperr-, Neueinsteiger- und Rueckkehrregeln
+stehen vollstaendig in `Project/Regelwerk/Spielbetrieb/RANGLISTE.txt`.
+
+Die sportliche Leitung entscheidet ueber Forderungen, die nicht innerhalb der
+vorgegebenen Fristen abgeschlossen werden. Ergebnisbedingte Rangverschiebungen
+werden derzeit manuell vollzogen; eine Fristueberschreitung erzeugt keine
+automatische Wertung.
 
 
 ================================================================================
@@ -306,6 +328,17 @@ voneinander getrennte Angaben.
   LF-41 Der genaue Pruefumfang, der Zeitpunkt der Pruefung und der Umgang mit
         Sonderfaellen oder ungueltigen Ergebnissen sind noch festzulegen. [Offen]
 
+6.6 Ranglistenbetrieb
+
+  LF-50 Ranglistenforderungen sollen nach dem verbindlichen sportlichen
+        Regelwerk ausgesprochen, terminiert, abgeschlossen und in ihren
+        Schutz-/Sperrfolgen dargestellt werden. [Bestaetigt]
+
+  LF-51 Spieler sollen sich ohne Genehmigung temporaer raushaengen und innerhalb
+        von zwoelf Kalendermonaten regelkonform zurueckkehren koennen. Eine beim
+        Raushaengen laufende Sperrzeit bleibt bis zu ihrem urspruenglichen Ende
+        erhalten; eine Schutzzeit erlischt. [Bestaetigt]
+
 
 ================================================================================
 7. ABGRENZUNG
@@ -347,7 +380,6 @@ Status: Arbeitsannahme. Umfang und Aufteilung sind noch festzulegen.
 ================================================================================
 
   F-01 Welche Aufgaben soll ePiber insgesamt verbindlich abdecken?
-  F-02 Welche Benutzerrollen gibt es fachlich, und wer darf was ausfuehren?
   F-03 Welche Informationen sind im mobilen Liveticker am wichtigsten?
   F-04 Welche Informationen muessen auf dem Fernseher aus der Entfernung sichtbar
        sein, und welche duerfen dort entfallen?
@@ -364,6 +396,10 @@ Status: Arbeitsannahme. Umfang und Aufteilung sind noch festzulegen.
 Weitere Informationen des Auftraggebers werden schrittweise den Zielen,
 Benutzergruppen, Szenarien und Anforderungen zugeordnet. Dabei werden
 widerspruechliche oder unklare Angaben als offene Fragen sichtbar gehalten.
+
+Detailregeln werden im passenden Dokument unter `Project/Regelwerk/` gepflegt;
+das Fachkonzept enthaelt davon nur die uebergeordnete Anforderung und verweist auf
+die kanonische Detailquelle.
 
 Neue dauerhaft relevante Erkenntnisse werden mit Zieldatei und konkretem Inhalt
 vorgeschlagen und erst nach Ruecksprache eingepflegt.

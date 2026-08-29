@@ -1,0 +1,64 @@
+================================================================================
+BEWERBSORGANISATION
+================================================================================
+
+1. BEWERBSANMELDUNG
+===================
+
+Ein Spieler meldet ausschliesslich sich selbst zu einem Bewerb an oder wieder ab.
+[Bestaetigt]
+
+Anmeldung und Abmeldung erfolgen innerhalb der fuer den Bewerb festgelegten
+Regeln und Fristen. [Arbeitsannahme]
+
+Wer Bewerbe anlegt, sportliche Teilnahmevoraussetzungen freigibt und
+Eintragungsfristen verbindlich festlegt, ist organisatorisch noch genauer zu
+bestimmen. [Offen]
+
+
+2. RANGLISTENFORDERUNGEN UND TERMINE
+====================================
+
+Die beteiligten Spieler sind fuer die Vereinbarung ihres Spieltermins
+verantwortlich. Einer der beiden haelt den gemeinsam vereinbarten Termin im
+System fest. Die sportliche Leitung vermittelt erst, wenn innerhalb der
+sportlichen Frist keine Einigung erreicht wird oder eine Seite die Terminfindung
+behindert. [Bestaetigt]
+
+
+3. AUSLOSUNG
+============
+
+Die Turnierleitung fuehrt die manuelle Auslosung eines KO-Bewerbs durch. Sie
+kennzeichnet die jeweils zu besetzende Position temporaer mit `PRE` und ersetzt
+den Marker nach der Ziehung durch die gezogene Person. [Bestaetigt]
+
+Die organisatorische Festlegung gesetzter Spieler, Freilose und Gruppen ist noch
+nicht vollstaendig beschrieben. [Offen]
+
+
+4. ERGEBNISSE UND SONDERABSCHLUESSE
+===================================
+
+Regulaere Ergebnisse, Walkover und Retirement werden derzeit durch den
+Administrator beziehungsweise die sportliche Leitung gepflegt. Eine spaetere
+systemweite Ergebniseingabe wird gesondert fachlich und funktional festgelegt.
+[Bestaetigt]
+
+Bei einem Walkover traegt die sportliche Leitung den Zeitpunkt der WO-Erklaerung
+als fachlichen Abschlusszeitpunkt ein. Fuer die Regel zu freien Gruenden gilt
+`Project/Regelwerk/Spielbetrieb/ALLGEMEINE-MATCHREGELN.txt`. [Bestaetigt]
+
+
+5. RANGLISTENPFLEGE
+===================
+
+Ergebnisbedingte Rangverschiebungen werden derzeit von der sportlichen Leitung
+manuell entsprechend den verbindlichen Regeln in
+`Project/Regelwerk/Spielbetrieb/RANGLISTE.txt` vollzogen. Fristueberschreitungen
+bewirken keine automatische Wertung; die sportliche Leitung entscheidet den
+Einzelfall. [Bestaetigt]
+
+Spieler duerfen sich ohne Genehmigung selbst temporaer raushaengen. Die
+sportliche Leitung muss den Grund weder genehmigen noch fachlich bewerten.
+[Bestaetigt]

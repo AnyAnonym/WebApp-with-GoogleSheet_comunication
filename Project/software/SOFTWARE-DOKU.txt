@@ -14,6 +14,14 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   -----------------------------|-----------------------------------------------
   Project/FACHKONZEPT.txt      | Produktvision, Zielgruppen, Nutzungsszenarien,
                                | fachliche Anforderungen und offene Fragen.
+  Project/Regelwerk/README.txt | Index der verbindlichen fachlichen Detailregeln
+                               | fuer Spielbetrieb und Organisation.
+  Project/Regelwerk/Spielbetrieb/README.txt
+                               | Tennis-, Match-, Ranglisten-, KO- und
+                               | Gruppenbewerbsregeln.
+  Project/Regelwerk/Organisation/README.txt
+                               | Rollen, Verantwortlichkeiten, Bewerbs-,
+                               | Personen- sowie Platz-/Anzeigebetrieb.
   Project/Scoreboard-          | Externe Scoreboard-Einheit, Receiverbetrieb,
   Funktion.md                  | JSON-Datenfluss und Matchtyp-Auswertung.
   software/SOFTWARE-DOKU.txt   | Dieser Index.

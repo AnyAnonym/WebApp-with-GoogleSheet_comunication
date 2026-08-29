@@ -6,3 +6,90 @@ Commit: 4.6.1-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.6.1-paj-1-1` gesetzt.
+
+[4.6.1-paj-1-2] - 2026-08-29
+Commit: 4.6.1-paj-1-2 | Fachliches Regelwerk strukturiert
+
+  Added
+  - [Dokumentation] `Project/Regelwerk/` als kanonische fachliche Detailquelle
+    mit verbindlicher Abgrenzung gegen technische Software-, Daten-, Betriebs-
+    und Infrastrukturdokumentation angelegt.
+  - [Dokumentation] Unter `Project/Regelwerk/Spielbetrieb/` gemeinsame
+    Matchregeln, die Tennisabgrenzung von Walkover `[wo]` und Retirement `[ret]`,
+    vollstaendige bestaetigte Ranglistenregeln sowie getrennte KO- und
+    Gruppenbewerbsregeln mit sichtbaren Arbeitsannahmen und offenen Punkten
+    dokumentiert.
+  - [Dokumentation] Die Ranglistenregeln umfassen Forderungsgeometrie,
+    Unwiderruflichkeit, minutengenaue 7-x-24-/14-x-24-Stunden-Fristen,
+    Schutz-/Sperrzeiten, Wertung, Neueinsteiger, Zehn-Raenge-Regel,
+    Raushaengen, Rangverdichtung und Rueckkehr innerhalb von zwoelf
+    Kalendermonaten.
+  - [Dokumentation] Beim Raushaengen erlischt eine Schutzzeit endgueltig; eine
+    laufende Sperrzeit bleibt mit ihrem urspruenglichen Endzeitpunkt bestehen und
+    verhindert bis dahin Rueckkehrforderung sowie automatische Wiedereinreihung.
+  - [Dokumentation] Unter `Project/Regelwerk/Organisation/` die bestaetigte
+    Rollenmatrix, Bewerbsorganisation, Personen-/Mitgliederregeln und fachliche
+    Regeln fuer Platz-, Scoreboard- und Monitorbetrieb getrennt vom sportlichen
+    Spielbetrieb dokumentiert.
+
+  Changed
+  - [Dokumentation] `Project/FACHKONZEPT.txt` auf das Regelwerk als fachliche
+    Detailquelle ausgerichtet, Spieler-, Operator-, Admin- und
+    Sportleitungsrollen bestaetigt sowie Ranglistenbetrieb und
+    Raushaengen/Rueckkehr als Anforderungen aufgenommen.
+  - [Dokumentation] `AGENTS.md` und `Project/software/SOFTWARE-DOKU.txt` um
+    gezieltes Routing fuer Spielbetriebs- und Organisationsregeln erweitert.
+  - [Dokumentation] Die Seitenbeschreibungen fuer Bewerbe, Eintragungsliste,
+    Matches, KO-Raster, Round Robin, Rangliste, Navigator, Scoreboard,
+    Personennormalisierung und Mitgliederabgleich verweisen auf die jeweils
+    kanonische Regelquelle. Die Ranglistenseite benennt ihre noch nicht
+    umgesetzten Sollregeln ausdruecklich.
+  - [Repository] Paketversion in `Backend/package.json` und
+    `Backend/package-lock.json` auf `4.6.1-paj-1-2` finalisiert.
+
+  Pruefungen
+  - [Dokumentation] Neue Regeldateien auf ASCII-Konformitaet geprueft.
+  - [Repository] `npm run check` erfolgreich.
+  - [Repository] `git diff --check` ohne Fehler.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/ChangeLogs/ChangeLog-main.txt
+    - Das neue kanonische Regelwerk, die bestaetigte Rollenmatrix und den
+      detaillierten Ranglistenvertrag einschliesslich Fristen, Neueinsteiger,
+      Raushaengen, erhaltener Sperrzeit und Rueckkehr zusammengefasst uebernehmen.
+
+    Project/Regelwerk/README.txt
+    - Als dauerhaften Regelwerkindex mit Status-, Vorrang- und
+      Abgrenzungsvertrag uebernehmen.
+
+    Project/Regelwerk/Spielbetrieb/*.txt
+    - Match-, Ranglisten-, KO- und Gruppenbewerbsregeln samt bestaetigtem,
+      angenommenem und offenem Status vollstaendig uebernehmen.
+
+    Project/Regelwerk/Organisation/*.txt
+    - Rollen, Verantwortlichkeiten, Bewerbsorganisation, Personenpflege sowie
+      Platz-/Anzeigebetrieb vollstaendig uebernehmen.
+
+    Project/FACHKONZEPT.txt
+    - Regelwerkverbindlichkeit, bestaetigte Rollen, Ranglistenszenario und
+      Anforderungen LF-50/LF-51 beibehalten und gegen die Regeldateien pruefen.
+
+    AGENTS.md
+    - Doku-Routing fuer Spielbetriebs- und Organisationsregeln beibehalten.
+
+    Project/software/SOFTWARE-DOKU.txt
+    - Regelwerkindizes als fachliche Kern-Dokumente beibehalten.
+
+    Project/software/seiten/bewerbe.txt
+    Project/software/seiten/bewerbsRaster.txt
+    Project/software/seiten/entryList.txt
+    Project/software/seiten/matches1.txt
+    Project/software/seiten/mitgliederAbgleichen.txt
+    Project/software/seiten/navigator.txt
+    Project/software/seiten/personenNormalisieren.txt
+    Project/software/seiten/rangliste.txt
+    Project/software/seiten/roundRobin.txt
+    Project/software/seiten/scoreboard.txt
+    - Verweise auf die jeweils zugeordnete kanonische Regeldatei und bei der
+      Rangliste die benannte Soll-/Ist-Abweichung beibehalten.

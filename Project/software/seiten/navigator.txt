@@ -7,6 +7,9 @@ Navigator-Steuerung - Regie fuer mehrere Monitorgeraete
   Standalone-Regie mit Navigator-Buttonraster, Monitorauswahl, Statusleiste,
   Court-Overlays und Scrolltasten. `?profil=<id>` filtert die serverseitig
   validierte Navigator-Konfiguration, Standard `1`.
+  Fachliche Rollen und Betriebsverantwortung stehen in
+  `Project/Regelwerk/Organisation/ROLLEN-UND-VERANTWORTUNGEN.txt` und
+  `Project/Regelwerk/Organisation/PLATZ-UND-ANZEIGEBETRIEB.txt`.
 
 -- Zugriff und Aktualisierung --
   Die serverseitige Sitzung muss Rolle operator oder admin besitzen; anonyme und

@@ -6,6 +6,8 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   JS:   Frontend/JS/rangliste.js sowie Profil-/Aktionsmodale in modals.js
   Parameter `?id=<bewerbId>`, Standard aus dem Container oder `2`. Zeigt die
   Rangliste als Pyramide mit Legende und minutenaktualisierten Sperrzeit-Timern.
+  Verbindlicher fachlicher Sollstand:
+  `Project/Regelwerk/Spielbetrieb/RANGLISTE.txt`.
 
 -- Daten und Aktualisierung --
   Reads: `rlPlatzierung`, minimale `players`-Projektion, `preMatches`, `bewerbe`
@@ -42,3 +44,7 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   technisch vorhanden, werden derzeit aber nicht angeboten. Namen und Pyramide
   entstehen als sichere DOM-Knoten; das statische Legenden-Markup enthaelt keine
   externen Werte.
+
+  Damit weicht der aktuelle Softwarestand vom bestaetigten Regelwerk ab: Das
+  fachlich vorgesehene Raushaengen, der Neueinsteiger- und Rueckkehrablauf sowie
+  die Forderungsfristen sind noch nicht vollstaendig umgesetzt.

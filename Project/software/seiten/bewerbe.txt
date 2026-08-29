@@ -6,6 +6,10 @@ Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
   JS:   Frontend/JS/bewerbeList.js
   Zeigt Bewerbe als Karten in "Aktive", "Bevorstehende" und "Beendete Bewerbe";
   leere Gruppen entfallen. Sortierung: SortOrder, danach das relevante Datum.
+  Organisatorische Verantwortlichkeiten stehen in
+  `Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`; sportliche
+  Bewerbsregeln werden ueber `Project/Regelwerk/Spielbetrieb/README.txt`
+  zugeordnet.
 
 -- Daten und Aktualisierung --
   Oeffentliche Endpoints `bewerbe` und `bewerbsart`. Die Seite abonniert die

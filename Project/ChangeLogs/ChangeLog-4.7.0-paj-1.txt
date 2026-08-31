@@ -6,3 +6,12 @@ Commit: 4.7.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.7.0-paj-1-1` gesetzt.
+
+[4.7.0-paj-1-2] - 2026-08-31
+Commit: 4.7.0-paj-1-2 | Rausgehängte Ranglistenposition angezeigt
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.7.0-paj-1-1-x` gesetzt.
+  - [Backend] `withdrawnRankingPlayers` liefert fuer rausgehaengte Spieler auch die gespeicherte letzte Ranglistenposition.
+  - [Frontend] Das Overlay zeigt die Position beim Raushaengen und setzt `Rausgehängt aus` sowie den Bewerbsnamen in zwei Titelzeilen.
+  - [Tests] Integrations- und Browsertests decken die Positionsprojektion und die neue Overlaydarstellung ab.

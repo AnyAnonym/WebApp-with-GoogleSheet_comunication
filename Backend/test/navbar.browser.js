@@ -74,7 +74,7 @@ export function createEndpoint(name) {
       returnFromRank: withdrawn ? 4 : null,
     } };
     if (name === "withdrawnRankingPlayers") return { data: { success: true, competitionName: "Wintercup", players: [
-      { personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", reason: "Verletzt" },
+      { personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", previousRank: 4, reason: "Verletzt" },
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
@@ -340,7 +340,9 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(await playerPage.locator("#profileModal").isHidden(), true);
     await playerPage.evaluate(() => window.openWithdrawnRankingPlayers("r5"));
     await playerPage.locator("#withdrawnPlayersModal").waitFor({ state: "visible" });
+    assert.equal(await playerPage.locator("#withdrawnPlayersTitle").innerText(), "Rausgehängt aus\nWintercup");
     assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Own Player/);
+    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Position beim Raushängen:\s*4/);
     assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Verletzt/);
     assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /29\.08\.2026, 12:30 Uhr/);
     await playerPage.keyboard.press("Escape");

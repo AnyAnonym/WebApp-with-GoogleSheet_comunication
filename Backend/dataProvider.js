@@ -275,6 +275,7 @@ function withdrawnRankingPlayers(competitionId) {
     person: headerIndex(header, "personid"),
     rank: headerIndex(header, "rang"),
     withdrawnAt: headerIndex(header, "rausgehangenam"),
+    previousRank: headerIndex(header, "rausgehangenletzteplatzierung"),
     reason: headerIndex(header, "rausgehangengrund"),
   };
   const names = playerNameMap();
@@ -285,6 +286,7 @@ function withdrawnRankingPlayers(competitionId) {
       personId,
       name: names.get(personId) || "Unbekannter Spieler",
       withdrawnAt: String(row[indexes.withdrawnAt] || "").trim(),
+      previousRank: Number(row[indexes.previousRank]),
       reason: String(row[indexes.reason] || "").trim(),
     }];
   }).sort((left, right) => right.withdrawnAt.localeCompare(left.withdrawnAt) || left.name.localeCompare(right.name, "de"));

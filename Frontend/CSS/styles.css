@@ -1200,6 +1200,10 @@ input[type="date"] {
   font-size: 0.9rem;
 }
 
+.withdrawn-player .withdrawn-player-position {
+  grid-column: 1 / -1;
+}
+
 .withdrawn-player p {
   grid-column: 1 / -1;
   margin: 4px 0 0;

@@ -650,7 +650,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     success: true, mode: "ranked", rank: 1, returnFromRank: null,
   });
   const withdrawnPlayers = await playerClient.request("withdrawnRankingPlayers", { bewerbId: "ranking-seniors" });
-  assert.deepEqual(withdrawnPlayers.data.players, [{ personId: "p1", name: "Ada Admin", withdrawnAt: "260829-1200", reason: "Verletzt" }]);
+  assert.deepEqual(withdrawnPlayers.data.players, [{
+    personId: "p1", name: "Ada Admin", withdrawnAt: "260829-1200", previousRank: 4, reason: "Verletzt",
+  }]);
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
   assert.equal((await fetch(`${httpBase}/api/admin/frontend-logging`, {

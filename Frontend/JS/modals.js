@@ -682,7 +682,15 @@ window.openWithdrawnRankingPlayers = async (bewerbId) => {
     const result = await readWithdrawnRankingPlayers({ bewerbId: normalizedBewerbId });
     const data = result.data;
     if (!data?.success) throw new Error(errorMessage(data, "Liste konnte nicht geladen werden."));
-    title.textContent = data.competitionName ? `Rausgehängt · ${data.competitionName}` : "Rausgehängte Spieler";
+    if (data.competitionName) {
+      title.replaceChildren(
+        document.createTextNode("Rausgehängt aus"),
+        document.createElement("br"),
+        document.createTextNode(data.competitionName),
+      );
+    } else {
+      title.textContent = "Rausgehängte Spieler";
+    }
     body.replaceChildren();
     if (!data.players?.length) {
       body.textContent = "Derzeit ist niemand rausgehängt.";
@@ -695,9 +703,12 @@ window.openWithdrawnRankingPlayers = async (bewerbId) => {
       heading.textContent = player.name;
       const date = document.createElement("span");
       date.textContent = formatCompactDate(player.withdrawnAt);
+      const previousRank = document.createElement("span");
+      previousRank.className = "withdrawn-player-position";
+      previousRank.textContent = `Position beim Raushängen: ${player.previousRank}`;
       const reason = document.createElement("p");
       reason.textContent = player.reason;
-      entry.append(heading, date, reason);
+      entry.append(heading, date, previousRank, reason);
       body.appendChild(entry);
     }
   } catch (error) {

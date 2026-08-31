@@ -15,3 +15,11 @@ Commit: 4.7.0-paj-1-2 | Rausgehängte Ranglistenposition angezeigt
   - [Backend] `withdrawnRankingPlayers` liefert fuer rausgehaengte Spieler auch die gespeicherte letzte Ranglistenposition.
   - [Frontend] Das Overlay zeigt die Position beim Raushaengen und setzt `Rausgehängt aus` sowie den Bewerbsnamen in zwei Titelzeilen.
   - [Tests] Integrations- und Browsertests decken die Positionsprojektion und die neue Overlaydarstellung ab.
+
+[4.7.0-paj-1-3] - 2026-08-31
+Commit: 4.7.0-paj-1-3 | Forderbare Ranglistenspieler grün umrandet
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.7.0-paj-1-2-x` gesetzt.
+  - [Frontend] Forderbare Ranglistenspieler erhalten zusaetzlich zur Statusfuellfarbe einen gruenen Rahmen; dadurch bleibt die Forderbarkeit auch bei lila Sperrzeit sichtbar. Die Legende fuehrt `Forderbar` entsprechend unter `Rahmen`.
+  - [Tests] Der Browsertest prueft lila Sperrzeitfuellung, gruenen Forderbar-Rahmen, die Legendenzuordnung und die weiterhin verfuegbare Forderungsaktion gemeinsam.

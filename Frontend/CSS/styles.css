@@ -1128,6 +1128,7 @@ input[type="date"] {
 
 .ranking-legend .legend-swatch.challengeable {
   background: #e6f9e8;
+  border: 1px solid #198754;
 }
 
 .ranking-legend .legend-swatch.challenged {
@@ -1273,6 +1274,7 @@ input[type="date"] {
 
 .box.challengeable {
   background: #e6f9e8;
+  border-color: #198754;
 }
 
 .box.challenged {

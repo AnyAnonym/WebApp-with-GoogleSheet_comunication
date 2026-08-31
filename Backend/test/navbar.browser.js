@@ -54,6 +54,7 @@ export function createEndpoint(name) {
     const newcomer = new URLSearchParams(window.location.search).get("newcomer") === "1";
     const ineligible = new URLSearchParams(window.location.search).get("ineligible") === "1";
     const inactivePlayer = new URLSearchParams(window.location.search).get("inactivePlayer") === "1";
+    const blockedTarget = new URLSearchParams(window.location.search).get("blockedTarget") === "1";
     if (name === "rlPlatzierung") return { data: { success: true, values: [
       ["BewerbID", "PersonID", "Rang"],
       ...Array.from({ length: 28 }, (_, index) => ["2", withdrawn || newcomer || ineligible ? "p" + (index + 1) : (index === 0 ? "player-1" : "p" + (index + 1)), String(index + 1)]),
@@ -66,7 +67,10 @@ export function createEndpoint(name) {
     if (name === "preMatches") return { data: { success: true, values: [[
       "BewerbID", "Ergebnis", "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID",
     ]] } };
-    if (name === "readMatchRestrictions") return { data: { success: true, complete: true, schonzeit: [], sperrzeit: [] } };
+    if (name === "readMatchRestrictions") return { data: {
+      success: true, complete: true, schonzeit: [],
+      sperrzeit: blockedTarget ? [{ id: "p1", until: "2099-01-01T00:00:00.000Z" }] : [],
+    } };
     if (name === "bewerbe") return { data: { success: true, values: [["ID", "Bezeichnung"], ["2", "Mobile Rangliste"]] } };
     if (name === "rankingChallengeState") return { data: { success: true,
       mode: ineligible ? "ineligible" : (newcomer ? "newcomer" : (withdrawn ? "returning" : "ranked")),
@@ -452,10 +456,29 @@ test("Mobiles Ranglistenprofil bleibt nach horizontalem Scrollen im sichtbaren V
     await returnPage.close();
 
     const newcomerPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await newcomerPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&newcomer=1`, { waitUntil: "domcontentloaded" });
+    await newcomerPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&newcomer=1&blockedTarget=1`, { waitUntil: "domcontentloaded" });
     await newcomerPage.locator("#rankingContainer .box.challengeable").first().waitFor({ state: "visible" });
+    const legendSections = await newcomerPage.locator("#rankingLegend").evaluate((legend) => {
+      const headings = [...legend.querySelectorAll(".legend-subheading")];
+      return Object.fromEntries(headings.map((heading) => [
+        heading.textContent,
+        heading.nextElementSibling?.textContent || "",
+      ]));
+    });
+    assert.doesNotMatch(legendSections.Kästchen, /Forderbar/);
+    assert.match(legendSections.Rahmen, /Forderbar/);
     assert.equal(await newcomerPage.locator("#rankingContainer .box.challengeable").count(), 28);
-    await newcomerPage.locator("#rankingContainer .box.challengeable").first().click();
+    const blockedTarget = newcomerPage.locator("#rankingContainer .box.challengeable.sperrzeit");
+    assert.equal(await blockedTarget.count(), 1);
+    assert.deepEqual(await blockedTarget.evaluate((box) => {
+      const style = getComputedStyle(box);
+      return { backgroundColor: style.backgroundColor, borderColor: style.borderColor, cursor: style.cursor };
+    }), {
+      backgroundColor: "rgb(220, 199, 232)",
+      borderColor: "rgb(25, 135, 84)",
+      cursor: "grab",
+    });
+    await blockedTarget.click();
     await newcomerPage.getByRole("tab", { name: "Mobile Rangliste" }).click();
     await newcomerPage.getByRole("button", { name: "Fordern" }).waitFor({ state: "visible" });
     await newcomerPage.close();

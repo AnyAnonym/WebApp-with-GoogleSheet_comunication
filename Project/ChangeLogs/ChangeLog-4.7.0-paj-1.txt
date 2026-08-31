@@ -23,3 +23,13 @@ Commit: 4.7.0-paj-1-3 | Forderbare Ranglistenspieler grün umrandet
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.7.0-paj-1-2-x` gesetzt.
   - [Frontend] Forderbare Ranglistenspieler erhalten zusaetzlich zur Statusfuellfarbe einen gruenen Rahmen; dadurch bleibt die Forderbarkeit auch bei lila Sperrzeit sichtbar. Die Legende fuehrt `Forderbar` entsprechend unter `Rahmen`.
   - [Tests] Der Browsertest prueft lila Sperrzeitfuellung, gruenen Forderbar-Rahmen, die Legendenzuordnung und die weiterhin verfuegbare Forderungsaktion gemeinsam.
+
+[4.7.0-paj-1-4] - 2026-08-31
+Commit: 4.7.0-paj-1-4 | Ranglistenprofile und Rückkehranzeige erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.7.0-paj-1-3-x` gesetzt.
+  - [Backend] `withdrawnRankingPlayers` projiziert die juengste Einforderung nach dem Raushaengen mit Zeitpunkt, Gegner und dessen aktueller Ranglistenposition.
+  - [Backend] Offene Forderungen in Profilen enthalten bei einem bereits festgelegten Spieltermin zusaetzlich `matchDate`.
+  - [Frontend] Rausgehaengte Spieler erscheinen zeilenweise mit Name, Datum, Position und Grund sowie bei erfolgter Einforderung mit Zeitpunkt, Gegner und Gegnerposition. Alle Detailzeilen verwenden denselben Schriftstil. Profilreiter zeigen bei einem fixierten Termin Gegner, Forderungszeit und Spieltermin gemeinsam.
+  - [Tests] Integrations- und Browsertests decken Einforderungs- und Spielterminprojektion, das fuenfzeilige Layout samt einheitlicher Typografie, die Profilanzeige und das Weglassen der optionalen Zeile ab.

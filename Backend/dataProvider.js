@@ -183,6 +183,7 @@ function profileRankings(personId, principal = null) {
     ignore: headerIndex(matchHeader, "ignore"),
     id: headerIndex(matchHeader, "id"),
     competition: headerIndex(matchHeader, "bewerbid"),
+    matchDate: headerIndex(matchHeader, "matchdate"),
     challengedAt: headerIndex(matchHeader, "forderungdate"),
     result: headerIndex(matchHeader, "ergebnis"),
     p1: headerIndex(matchHeader, "spieler1id"),
@@ -213,6 +214,9 @@ function profileRankings(personId, principal = null) {
       opponentId,
       opponentName: names.get(opponentId) || "Unbekannter Spieler",
       challengedAt: String(row[matchIndexes.challengedAt] || "").trim(),
+      ...(String(row[matchIndexes.matchDate] || "").trim() ? {
+        matchDate: String(row[matchIndexes.matchDate] || "").trim(),
+      } : {}),
     };
   };
   return rankings.slice(1).flatMap((row) => {
@@ -261,7 +265,7 @@ function profileRankings(personId, principal = null) {
 }
 
 function withdrawnRankingPlayers(competitionId) {
-  requireCurrentTables("bewerbe", "players", "rlPlatzierung");
+  requireCurrentTables("bewerbe", "matches1", "players", "rlPlatzierung");
   const competitions = dataStore.get("bewerbe");
   const competitionHeader = headerOf(competitions);
   const competitionRow = competitions.slice(1).find((row) => String(row[headerIndex(competitionHeader, "id")] || "").trim() === competitionId);
@@ -279,6 +283,41 @@ function withdrawnRankingPlayers(competitionId) {
     reason: headerIndex(header, "rausgehangengrund"),
   };
   const names = playerNameMap();
+  const activeRanks = new Map(values.slice(1).flatMap((row) => {
+    if (String(row[indexes.competition] || "").trim() !== competitionId) return [];
+    const rank = Number(row[indexes.rank]);
+    const personId = String(row[indexes.person] || "").trim();
+    return personId && Number.isInteger(rank) && rank > 0 ? [[personId, rank]] : [];
+  }));
+  const matches = dataStore.get("matches1");
+  const matchHeader = headerOf(matches);
+  const matchIndexes = {
+    ignore: headerIndex(matchHeader, "ignore"),
+    competition: headerIndex(matchHeader, "bewerbid"),
+    challengedAt: headerIndex(matchHeader, "forderungdate"),
+    challenger: headerIndex(matchHeader, "spieler1id"),
+    opponent: headerIndex(matchHeader, "spieler3id"),
+  };
+  const returnChallenge = (personId, withdrawnAt) => {
+    const withdrawnTime = parseMatchDate(withdrawnAt)?.getTime();
+    const match = matches.slice(1).filter((row) => {
+      if (matchIndexes.ignore >= 0 && String(row[matchIndexes.ignore] || "").trim() === "1") return false;
+      if (String(row[matchIndexes.competition] || "").trim() !== competitionId) return false;
+      if (parseParticipant(row[matchIndexes.challenger]).id !== personId) return false;
+      const challengedTime = parseMatchDate(row[matchIndexes.challengedAt])?.getTime();
+      return Number.isFinite(challengedTime) && Number.isFinite(withdrawnTime) && challengedTime > withdrawnTime;
+    }).sort((left, right) => (
+      String(right[matchIndexes.challengedAt] || "").localeCompare(String(left[matchIndexes.challengedAt] || ""))
+    ))[0];
+    if (!match) return null;
+    const opponentId = parseParticipant(match[matchIndexes.opponent]).id;
+    return {
+      challengedAt: String(match[matchIndexes.challengedAt] || "").trim(),
+      opponentId,
+      opponentName: names.get(opponentId) || "Unbekannter Spieler",
+      opponentRank: activeRanks.get(opponentId) || null,
+    };
+  };
   const players = values.slice(1).flatMap((row) => {
     if (String(row[indexes.competition] || "").trim() !== competitionId || Number(row[indexes.rank]) !== 0) return [];
     const personId = String(row[indexes.person] || "").trim();
@@ -288,6 +327,7 @@ function withdrawnRankingPlayers(competitionId) {
       withdrawnAt: String(row[indexes.withdrawnAt] || "").trim(),
       previousRank: Number(row[indexes.previousRank]),
       reason: String(row[indexes.reason] || "").trim(),
+      returnChallenge: returnChallenge(personId, String(row[indexes.withdrawnAt] || "").trim()),
     }];
   }).sort((left, right) => right.withdrawnAt.localeCompare(left.withdrawnAt) || left.name.localeCompare(right.name, "de"));
   return {

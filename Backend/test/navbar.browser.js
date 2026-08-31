@@ -42,7 +42,7 @@ export const releaseOperationId = () => {};
 export const subscribeInvalidations = () => () => {};
 const rankings = [
   { competitionId: "r1", competitionName: "Herren", rank: 1, status: "active", canChallenge: true, canWithdraw: true },
-  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { opponentName: "Test Gegner", challengedAt: "260829-1200" } },
+  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { opponentName: "Test Gegner", challengedAt: "260829-1200", matchDate: "260905-1600" } },
   { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false },
   { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false },
   { competitionId: "r5", competitionName: "Wintercup", rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
@@ -78,7 +78,11 @@ export function createEndpoint(name) {
       returnFromRank: withdrawn ? 4 : null,
     } };
     if (name === "withdrawnRankingPlayers") return { data: { success: true, competitionName: "Wintercup", players: [
-      { personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", previousRank: 4, reason: "Verletzt" },
+      {
+        personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", previousRank: 4, reason: "Verletzt",
+        returnChallenge: { challengedAt: "260830-1400", opponentName: "Test Gegner", opponentRank: 6 },
+      },
+      { personId: "p2", name: "Other Player", withdrawnAt: "260828-1100", previousRank: 7, reason: "Pause", returnChallenge: null },
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
@@ -339,16 +343,38 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     assert.equal(await playerPage.getByRole("button", { name: "Fordern" }).isVisible(), true);
+    await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
+    assert.match(
+      await playerPage.locator("#profileRankingPanel1").textContent(),
+      /Offene Forderung:\s*Test Gegner · Forderung vom 29\.08\.2026, 12:00 Uhr · fixierter Spieltermin am 05\.09\.2026, 16:00 Uhr/,
+    );
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel1").textContent(), /Keine Aktion verfügbar/i);
     await playerPage.keyboard.press("Escape");
     assert.equal(await playerPage.locator("#profileModal").isHidden(), true);
     await playerPage.evaluate(() => window.openWithdrawnRankingPlayers("r5"));
     await playerPage.locator("#withdrawnPlayersModal").waitFor({ state: "visible" });
     assert.equal(await playerPage.locator("#withdrawnPlayersTitle").innerText(), "Rausgehängt aus\nWintercup");
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Own Player/);
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Position beim Raushängen:\s*4/);
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Verletzt/);
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /29\.08\.2026, 12:30 Uhr/);
+    const withdrawnEntries = playerPage.locator("#withdrawnPlayersBody .withdrawn-player");
+    assert.equal(await withdrawnEntries.count(), 2);
+    assert.deepEqual(await withdrawnEntries.nth(0).locator(":scope > *").allTextContents(), [
+      "Own Player",
+      "Datum: 29.08.2026, 12:30 Uhr",
+      "Position: 4",
+      "Grund: Verletzt",
+      "Eingefordert am 30.08.2026, 14:00 Uhr gegen Test Gegner (Position 6)",
+    ]);
+    assert.deepEqual(await withdrawnEntries.nth(1).locator(":scope > *").allTextContents(), [
+      "Other Player",
+      "Datum: 28.08.2026, 11:00 Uhr",
+      "Position: 7",
+      "Grund: Pause",
+    ]);
+    assert.deepEqual(await withdrawnEntries.nth(0).locator(":scope > span, :scope > p").evaluateAll((lines) => (
+      lines.map((line) => {
+        const style = getComputedStyle(line);
+        return { color: style.color, fontSize: style.fontSize };
+      })
+    )), Array.from({ length: 4 }, () => ({ color: "rgb(85, 85, 85)", fontSize: "14.4px" })));
     await playerPage.keyboard.press("Escape");
     await playerPage.close();
 

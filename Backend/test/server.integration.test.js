@@ -649,9 +649,29 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual((await playerClient.request("rankingChallengeState", { bewerbId: "ranking-men" })).data, {
     success: true, mode: "ranked", rank: 1, returnFromRank: null,
   });
+  const rankingsWithReturnChallenge = structuredClone(dataStore.get("rlPlatzierung"));
+  rankingsWithReturnChallenge.push(["r4", "ranking-seniors", "p2", "4", "", "", ""]);
+  dataStore.set("rlPlatzierung", rankingsWithReturnChallenge, { source: "test-return-challenge" });
+  const matchesWithReturnChallenge = structuredClone(dataStore.get("matches1"));
+  matchesWithReturnChallenge.push([
+    "", "m-return", "260831-1600", "260830-1400", "ranking-seniors", "F", "p1", "", "p2", "", "", "1", "",
+  ]);
+  dataStore.set("matches1", matchesWithReturnChallenge, { source: "test-return-challenge" });
+  const profileWithScheduledReturn = await playerClient.request("publicProfile", { id: "p1" });
+  assert.deepEqual(profileWithScheduledReturn.data.profile.rankings[1].openChallenge, {
+    matchId: "m-return",
+    direction: "challenger",
+    opponentId: "p2",
+    opponentName: "Peter Player",
+    challengedAt: "260830-1400",
+    matchDate: "260831-1600",
+  });
   const withdrawnPlayers = await playerClient.request("withdrawnRankingPlayers", { bewerbId: "ranking-seniors" });
   assert.deepEqual(withdrawnPlayers.data.players, [{
     personId: "p1", name: "Ada Admin", withdrawnAt: "260829-1200", previousRank: 4, reason: "Verletzt",
+    returnChallenge: {
+      challengedAt: "260830-1400", opponentId: "p2", opponentName: "Peter Player", opponentRank: 4,
+    },
   }]);
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");

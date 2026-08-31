@@ -1188,26 +1188,22 @@ input[type="date"] {
 
 .withdrawn-player {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 16px;
+  grid-template-columns: 1fr;
+  gap: 4px;
   padding: 12px;
   border-left: 4px solid #8b2f45;
   border-radius: 4px;
   background: #f8f8f8;
 }
 
-.withdrawn-player span {
+.withdrawn-player span,
+.withdrawn-player p {
   color: #555;
   font-size: 0.9rem;
 }
 
-.withdrawn-player .withdrawn-player-position {
-  grid-column: 1 / -1;
-}
-
 .withdrawn-player p {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
+  margin: 0;
   white-space: pre-wrap;
 }
 

@@ -512,10 +512,13 @@ window.openProfileModal = async (options = {}) => {
       panel.hidden = true;
       if (ranking.status === "active") appendProfileField(panel, "Ranglistenposition", ranking.rank, "", actionSignal);
       if (ranking.openChallenge) {
+        const challengeText = ranking.openChallenge.matchDate
+          ? `${ranking.openChallenge.opponentName} · Forderung vom ${formatCompactDate(ranking.openChallenge.challengedAt)} · fixierter Spieltermin am ${formatCompactDate(ranking.openChallenge.matchDate)}`
+          : `${ranking.openChallenge.opponentName} · ${formatCompactDate(ranking.openChallenge.challengedAt)}`;
         appendProfileField(
           panel,
           "Offene Forderung",
-          `${ranking.openChallenge.opponentName} · ${formatCompactDate(ranking.openChallenge.challengedAt)}`,
+          challengeText,
           "",
           actionSignal,
         );
@@ -702,13 +705,21 @@ window.openWithdrawnRankingPlayers = async (bewerbId) => {
       const heading = document.createElement("strong");
       heading.textContent = player.name;
       const date = document.createElement("span");
-      date.textContent = formatCompactDate(player.withdrawnAt);
+      date.textContent = `Datum: ${formatCompactDate(player.withdrawnAt)}`;
       const previousRank = document.createElement("span");
-      previousRank.className = "withdrawn-player-position";
-      previousRank.textContent = `Position beim Raushängen: ${player.previousRank}`;
+      previousRank.textContent = `Position: ${player.previousRank}`;
       const reason = document.createElement("p");
-      reason.textContent = player.reason;
+      reason.textContent = `Grund: ${player.reason}`;
       entry.append(heading, date, previousRank, reason);
+      if (player.returnChallenge) {
+        const challenge = document.createElement("p");
+        const opponentRank = Number.isInteger(Number(player.returnChallenge.opponentRank))
+          && Number(player.returnChallenge.opponentRank) > 0
+          ? ` (Position ${player.returnChallenge.opponentRank})`
+          : "";
+        challenge.textContent = `Eingefordert am ${formatCompactDate(player.returnChallenge.challengedAt)} gegen ${player.returnChallenge.opponentName}${opponentRank}`;
+        entry.appendChild(challenge);
+      }
       body.appendChild(entry);
     }
   } catch (error) {

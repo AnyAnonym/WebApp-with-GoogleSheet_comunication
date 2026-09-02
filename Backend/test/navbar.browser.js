@@ -37,23 +37,44 @@ export function subscribeAuth(callback) {
 `;
 
 const dataClientStub = `
-export const getOperationId = () => "operation";
+let messageRevision = 7;
+let messages = [
+  { messageId: "unread-new", createdAt: "2026-08-30T10:00:00.000Z", competitionName: "Sommercup", roundName: "Viertelfinale", subject: "Neue Platzinformation", eventType: "result", actorName: "Ergebnis Erfasser", acknowledged: false },
+  { messageId: "unread-old", createdAt: "2026-08-29T08:30:00.000Z", competitionName: "Wintercup", roundName: "1. Gruppe", subject: "Turnierhinweis", eventType: "notice", actorName: "Turnierleitung", acknowledged: false },
+  { messageId: "read-new", createdAt: "2026-08-31T11:00:00.000Z", competitionName: "", roundName: "", subject: "Bereits bestätigt", actorName: "System", acknowledged: true, acknowledgedAt: "2026-08-31T11:30:00.000Z" },
+];
+const messageBodies = {
+  "unread-new": Array.from({ length: 80 }, (_, index) => "Lange Meldungszeile " + (index + 1)).join("\\n"),
+  "unread-old": "Bitte den Turnierhinweis beachten.",
+  "read-new": "Diese Meldung wurde bereits bestätigt.",
+};
+window.__acknowledgeCalls = [];
+window.__matchDateCalls = [];
+const operationIds = new Map();
+export const getOperationId = (key) => {
+  if (!operationIds.has(key)) operationIds.set(key, "operation-" + key);
+  return operationIds.get(key);
+};
 export const releaseOperationId = () => {};
 export const subscribeInvalidations = () => () => {};
+export const subscribe = () => () => {};
 const rankings = [
   { competitionId: "r1", competitionName: "Herren", rank: 1, status: "active", canChallenge: true, canWithdraw: true },
-  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { opponentName: "Test Gegner", challengedAt: "260829-1200" } },
-  { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false },
-  { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false },
+  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r2", direction: "challenger", opponentName: "Test Gegner", opponentRank: 5, challengedAt: "260829-1200", matchDate: "260905-1600" } },
+  { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false, openChallenge: { matchId: "match-r3", direction: "challenged", opponentName: "Andere Gegnerin", opponentRank: 7, challengedAt: "260830-0900" } },
+  { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r4", direction: "challenger", opponentName: "Mixed Gegner", opponentRank: 2, challengedAt: "260828-1200" } },
   { competitionId: "r5", competitionName: "Wintercup", rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
+  { competitionId: "r6", competitionName: "Damen Herbst", rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
 ];
 export function createEndpoint(name) {
-  return async () => {
+  return async (params = {}) => {
     const role = new URLSearchParams(window.location.search).get("role");
     const withdrawn = new URLSearchParams(window.location.search).get("withdrawn") === "1";
     const newcomer = new URLSearchParams(window.location.search).get("newcomer") === "1";
     const ineligible = new URLSearchParams(window.location.search).get("ineligible") === "1";
     const inactivePlayer = new URLSearchParams(window.location.search).get("inactivePlayer") === "1";
+    const blockedTarget = new URLSearchParams(window.location.search).get("blockedTarget") === "1";
+    const noNotifications = new URLSearchParams(window.location.search).get("noNotifications") === "1";
     if (name === "rlPlatzierung") return { data: { success: true, values: [
       ["BewerbID", "PersonID", "Rang"],
       ...Array.from({ length: 28 }, (_, index) => ["2", withdrawn || newcomer || ineligible ? "p" + (index + 1) : (index === 0 ? "player-1" : "p" + (index + 1)), String(index + 1)]),
@@ -66,7 +87,10 @@ export function createEndpoint(name) {
     if (name === "preMatches") return { data: { success: true, values: [[
       "BewerbID", "Ergebnis", "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID",
     ]] } };
-    if (name === "readMatchRestrictions") return { data: { success: true, complete: true, schonzeit: [], sperrzeit: [] } };
+    if (name === "readMatchRestrictions") return { data: {
+      success: true, complete: true, schonzeit: [],
+      sperrzeit: blockedTarget ? [{ id: "p1", until: "2099-01-01T00:00:00.000Z" }] : [],
+    } };
     if (name === "bewerbe") return { data: { success: true, values: [["ID", "Bezeichnung"], ["2", "Mobile Rangliste"]] } };
     if (name === "rankingChallengeState") return { data: { success: true,
       mode: ineligible ? "ineligible" : (newcomer ? "newcomer" : (withdrawn ? "returning" : "ranked")),
@@ -74,11 +98,15 @@ export function createEndpoint(name) {
       returnFromRank: withdrawn ? 4 : null,
     } };
     if (name === "withdrawnRankingPlayers") return { data: { success: true, competitionName: "Wintercup", players: [
-      { personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", reason: "Verletzt" },
+      {
+        personId: "p1", name: "Own Player", withdrawnAt: "260829-1230", previousRank: 4, reason: "Verletzt",
+        returnChallenge: { challengedAt: "260830-1400", opponentName: "Test Gegner", opponentRank: 6 },
+      },
+      { personId: "p2", name: "Other Player", withdrawnAt: "260828-1100", previousRank: 7, reason: "Pause", returnChallenge: null },
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
-       email: "contact@example.test", phone: "", birthDate: "", rankings: withdrawn ? [{
+       email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], rankings: withdrawn ? [{
          competitionId: "2", competitionName: "Mobile Rangliste", rank: 0, status: "withdrawn",
          withdrawal: { withdrawnAt: "260829-1200", previousRank: 4, reason: "Pause" },
        }] : rankings,
@@ -89,7 +117,41 @@ export function createEndpoint(name) {
        email: "directory@example.test", phone: "", birthDate: "", rankings: newcomer ? [{
          competitionId: "2", competitionName: "Mobile Rangliste", rank: 2, status: "active", canChallenge: true,
        }] : rankings,
-    } } };
+      } } };
+    if (name === "myMessageSummary") return { data: {
+      success: true,
+      unreadCount: messages.filter((message) => !message.acknowledged).length,
+      revision: messageRevision,
+    } };
+    if (name === "myMessages") return { data: {
+      success: true,
+      messages: messages.map(({ ...message }) => message),
+      unreadCount: messages.filter((message) => !message.acknowledged).length,
+      revision: messageRevision,
+    } };
+    if (name === "myMessage") {
+      const message = messages.find((entry) => entry.messageId === params.messageId);
+      return { data: { success: Boolean(message), message: message ? { ...message, body: messageBodies[message.messageId] } : null } };
+    }
+    if (name === "acknowledgeMessage") {
+      window.__acknowledgeCalls.push({ ...params });
+      messages = messages.map((message) => message.messageId === params.messageId
+        ? { ...message, acknowledged: true, acknowledgedAt: "2026-08-31T12:00:00.000Z" }
+        : message).sort((left, right) => {
+          if (left.acknowledged !== right.acknowledged) return left.acknowledged ? 1 : -1;
+          return new Date(right.createdAt) - new Date(left.createdAt);
+        });
+      messageRevision += 1;
+      return { data: {
+        success: true,
+        unreadCount: messages.filter((message) => !message.acknowledged).length,
+        revision: messageRevision,
+      } };
+    }
+    if (name === "setRankingMatchDate") {
+      window.__matchDateCalls.push({ ...params });
+      return { data: { success: true, matchId: params.matchId, matchDate: params.matchDate } };
+    }
     return { data: { success: true } };
   };
 }
@@ -115,6 +177,11 @@ function startServer() {
       response.end('<!doctype html><html lang="de"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/CSS/styles.css"></head><body><main><section id="rankingSection" class="full-width-section"><h2>Rangliste</h2><div id="rankingContainer" class="pyramid"></div></section></main><script type="module" src="/JS/modals-under-test.js"></script><script type="module" src="/JS/rangliste-under-test.js"></script></body></html>');
       return;
     }
+    if (pathname === "/messages-test.html") {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end('<!doctype html><html lang="de"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/CSS/styles.css"></head><body><div id="header-container"></div><div id="mobile-nav-container"></div><script type="module" src="/JS/navbar-under-test.js"></script><script type="module" src="/JS/modals-under-test.js"></script></body></html>');
+      return;
+    }
     if (pathname === "/JS/modals-under-test.js") {
       const source = fs.readFileSync(path.join(FRONTEND_ROOT, "JS/modals.js"), "utf8")
         .replace('"./dataClient.js"', '"/test/dataClient.js"')
@@ -132,6 +199,14 @@ function startServer() {
         .replace('"./monitorReady.js"', '"/test/monitorReady.js"')
         .replace('"./diagnostics.js"', '"/test/diagnostics.js"')
         .replace('"./rankingMatchState.js"', '"/JS/rankingMatchState.js"');
+      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      response.end(source);
+      return;
+    }
+    if (pathname === "/JS/navbar-under-test.js" || pathname === "/JS/navbar.js") {
+      const source = fs.readFileSync(path.join(FRONTEND_ROOT, "JS/navbar.js"), "utf8")
+        .replace('"./dataClient.js"', '"/test/dataClient.js"')
+        .replace('"./authClient.js"', '"/test/authClient.js"');
       response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
       response.end(source);
       return;
@@ -289,6 +364,9 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
   const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
   try {
     const playerPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await playerPage.addInitScript(() => {
+      Date.now = () => new Date(2026, 8, 2, 12, 0).getTime();
+    });
     await playerPage.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player`, { waitUntil: "domcontentloaded" });
 
     const loginInput = playerPage.locator("#login");
@@ -304,9 +382,10 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.match(await playerPage.locator("#profileText").textContent(), /Login: player-login/);
     assert.match(await playerPage.locator("#profileText").textContent(), /E-Mail: contact@example\.test/);
     assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").allTextContents(), [
-      "System", "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Wintercup",
+      "System", "Meldungen (2)", "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Wintercup", "Damen Herbst",
     ]);
-    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0, 0, 0]);
+    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.match(await playerPage.locator("#profileSystemPanel").textContent(), /Benachrichtigungen:\s*Email \| Whatsapp/);
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     const withdrawButton = playerPage.getByRole("button", { name: "Raushängen" });
@@ -315,6 +394,85 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.doesNotMatch(await playerPage.locator("#withdrawModal").textContent(), /Position wird freigegeben|Schonzeit|Sperrzeit/);
     assert.equal(await playerPage.getByRole("button", { name: "Verbindlich raushängen" }).isVisible(), true);
     await playerPage.locator("#withdrawModal .close").click();
+    await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
+    const blockedWithdrawButton = playerPage.getByRole("button", { name: "Raushängen" });
+    assert.equal(await blockedWithdrawButton.isDisabled(), false);
+    await blockedWithdrawButton.click();
+    const blockedWithdrawalDialog = playerPage.getByRole("dialog", { name: "Raushängen nicht möglich" });
+    assert.equal(await blockedWithdrawalDialog.isVisible(), true);
+    assert.equal(
+      await blockedWithdrawalDialog.locator("p").textContent(),
+      "Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.",
+    );
+    assert.equal(await blockedWithdrawalDialog.getByRole("button").count(), 1);
+    assert.equal(await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).isVisible(), true);
+    assert.equal(await playerPage.locator("#withdrawModal").isVisible(), false);
+    await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).click();
+    assert.equal(await blockedWithdrawalDialog.isVisible(), false);
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-actions > button").allTextContents(), [
+      "Termin abändern",
+      "Raushängen",
+    ]);
+    await playerPage.getByRole("button", { name: "Termin abändern" }).click();
+    const changeDateDialog = playerPage.getByRole("dialog", { name: "Termin abändern" });
+    assert.equal(await changeDateDialog.locator("#rankingMatchDay").inputValue(), "2026-09-05");
+    assert.equal(await changeDateDialog.locator("select").inputValue(), "16");
+    assert.equal(await changeDateDialog.locator("#matchDateCalendarMonth").textContent(), "September 2026");
+    await changeDateDialog.getByRole("button", { name: "Nächster Monat" }).click();
+    assert.equal(await changeDateDialog.locator("#matchDateCalendarMonth").textContent(), "Oktober 2026");
+    assert.equal(await changeDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^1$/ }).isDisabled(), false);
+    await changeDateDialog.getByRole("button", { name: "Terminauswahl schließen" }).click();
+    await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
+    const greenCountdown = playerPage.locator("#profileRankingPanel2 .profile-match-date-countdown");
+    assert.match(await greenCountdown.textContent(), /^Terminfrist: -\d+ Tage, \d+ Stunden, \d+ Minuten$/);
+    assert.equal(await greenCountdown.evaluate((element) => element.classList.contains("warning") || element.classList.contains("overdue")), false);
+    assert.equal(await greenCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(24, 114, 68)");
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-actions > button").allTextContents(), [
+      "Spieltermin festlegen",
+      "Raushängen",
+    ]);
+    await playerPage.getByRole("button", { name: "Spieltermin festlegen" }).click();
+    const matchDateDialog = playerPage.getByRole("dialog", { name: "Spieltermin festlegen" });
+    assert.equal(await matchDateDialog.isVisible(), true);
+    assert.equal(await matchDateDialog.locator("#matchDateCalendarMonth").textContent(), "August 2026");
+    const challengeDay = matchDateDialog.locator(".match-date-calendar-day.challenge-start");
+    assert.equal(await challengeDay.textContent(), "30");
+    assert.equal(await challengeDay.isDisabled(), false);
+    await matchDateDialog.getByRole("button", { name: "Nächster Monat" }).click();
+    assert.equal(await matchDateDialog.locator("#matchDateCalendarMonth").textContent(), "September 2026");
+    const finalDay = matchDateDialog.locator(".match-date-calendar-day.challenge-end");
+    assert.equal(await finalDay.textContent(), "13");
+    assert.equal(await finalDay.isDisabled(), false);
+    assert.equal(await matchDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^14$/ }).isDisabled(), true);
+    assert.deepEqual(await matchDateDialog.locator("select option").allTextContents(), Array.from({ length: 18 }, (_, index) => `${String(index + 6).padStart(2, "0")}:00 Uhr`));
+    const selectableMiddleDay = matchDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^5$/ });
+    assert.equal(await selectableMiddleDay.evaluate((element) => element.classList.contains("in-window")), true);
+    await selectableMiddleDay.click();
+    assert.equal(await matchDateDialog.locator("#rankingMatchDay").inputValue(), "2026-09-05");
+    await matchDateDialog.locator("select").selectOption("18");
+    await matchDateDialog.getByRole("button", { name: "Übernehmen" }).click();
+    await playerPage.waitForFunction(() => window.__matchDateCalls.length === 1);
+    assert.deepEqual(await playerPage.evaluate(() => window.__matchDateCalls[0]), {
+      operationId: "operation-ranking:match-date:match-r3:260905-1800",
+      matchId: "match-r3",
+      matchDate: "260905-1800",
+    });
+    assert.equal(await matchDateDialog.isVisible(), false);
+    await playerPage.waitForFunction(() => document.querySelector("#profileName")?.textContent === "Own Player");
+    await playerPage.getByRole("tab", { name: "Mixed Sommer", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel3 .profile-actions > button").allTextContents(), [
+      "Spieltermin festlegen",
+      "Raushängen",
+    ]);
+    const orangeCountdown = playerPage.locator("#profileRankingPanel3 .profile-match-date-countdown");
+    assert.equal(await orangeCountdown.textContent(), "Terminfrist: -2 Tage, 0 Stunden, 0 Minuten");
+    assert.equal(await orangeCountdown.evaluate((element) => element.classList.contains("warning")), true);
+    assert.equal(await orangeCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 83, 9)");
+    await playerPage.getByRole("tab", { name: "Damen Herbst", exact: true }).click();
+    const redCountdown = playerPage.locator("#profileRankingPanel5 .profile-match-date-countdown");
+    assert.equal(await redCountdown.textContent(), "Terminfrist: +8 Tage, 0 Stunden, 0 Minuten");
+    assert.equal(await redCountdown.evaluate((element) => element.classList.contains("overdue")), true);
+    assert.equal(await redCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 35, 24)");
     await playerPage.getByRole("tab", { name: "Wintercup" }).click();
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel4").textContent(), /Ranglistenposition:\s*0/);
     assert.match(await playerPage.locator("#profileRankingPanel4").textContent(), /Rausgehängt am:\s*29\.08\.2026, 12:30 Uhr/);
@@ -332,17 +490,49 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     await playerPage.locator("#profileModal").waitFor({ state: "visible" });
     assert.doesNotMatch(await playerPage.locator("#profileText").textContent(), /Login:/);
     assert.match(await playerPage.locator("#profileText").textContent(), /E-Mail: directory@example\.test/);
+    assert.equal(await playerPage.getByRole("tab", { name: /Meldungen/ }).count(), 0);
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     assert.equal(await playerPage.getByRole("button", { name: "Fordern" }).isVisible(), true);
+    await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-open-challenge > p").allTextContents(), [
+      "Offene Forderung gegen Test Gegner (5)",
+      "Forderung vom 29.08.2026, 12:00 Uhr",
+      "Spieltermin fixiert: 05.09.2026, 16:00 Uhr",
+    ]);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel1").textContent(), /Keine Aktion verfügbar/i);
+    await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-open-challenge > p").allTextContents(), [
+      "Offene Forderung von Andere Gegnerin (7)",
+      "Forderung vom 30.08.2026, 09:00 Uhr",
+    ]);
+    assert.doesNotMatch(await playerPage.locator("#profileRankingPanel2").textContent(), /Spieltermin/);
     await playerPage.keyboard.press("Escape");
     assert.equal(await playerPage.locator("#profileModal").isHidden(), true);
     await playerPage.evaluate(() => window.openWithdrawnRankingPlayers("r5"));
     await playerPage.locator("#withdrawnPlayersModal").waitFor({ state: "visible" });
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Own Player/);
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /Verletzt/);
-    assert.match(await playerPage.locator("#withdrawnPlayersModal").textContent(), /29\.08\.2026, 12:30 Uhr/);
+    assert.equal(await playerPage.locator("#withdrawnPlayersTitle").innerText(), "Rausgehängt aus\nWintercup");
+    const withdrawnEntries = playerPage.locator("#withdrawnPlayersBody .withdrawn-player");
+    assert.equal(await withdrawnEntries.count(), 2);
+    assert.deepEqual(await withdrawnEntries.nth(0).locator(":scope > *").allTextContents(), [
+      "Own Player",
+      "Datum: 29.08.2026, 12:30 Uhr",
+      "Position: 4",
+      "Grund: Verletzt",
+      "Eingefordert am 30.08.2026, 14:00 Uhr gegen Test Gegner (Position 6)",
+    ]);
+    assert.deepEqual(await withdrawnEntries.nth(1).locator(":scope > *").allTextContents(), [
+      "Other Player",
+      "Datum: 28.08.2026, 11:00 Uhr",
+      "Position: 7",
+      "Grund: Pause",
+    ]);
+    assert.deepEqual(await withdrawnEntries.nth(0).locator(":scope > span, :scope > p").evaluateAll((lines) => (
+      lines.map((line) => {
+        const style = getComputedStyle(line);
+        return { color: style.color, fontSize: style.fontSize };
+      })
+    )), Array.from({ length: 4 }, () => ({ color: "rgb(85, 85, 85)", fontSize: "14.4px" })));
     await playerPage.keyboard.press("Escape");
     await playerPage.close();
 
@@ -369,6 +559,168 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(layout.bodyScrollable, true);
     assert.equal(layout.pageLocked, true);
     await adminPage.close();
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestaetigt", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 720 } });
+    await page.goto(`http://127.0.0.1:${address.port}/messages-test.html?role=player`, { waitUntil: "domcontentloaded" });
+    await page.locator("#profileButton .message-count-badge").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#profileButton .message-count-badge").textContent(), "2");
+
+    await page.locator("#profileButton").click();
+    await page.getByRole("tab", { name: "Meldungen (2)", exact: true }).click();
+    const rows = page.locator("#profileMessagesPanel .message-row");
+    await rows.first().waitFor({ state: "visible" });
+    assert.deepEqual(await rows.evaluateAll((items) => items.map((row) => (
+      [...row.children].map((child) => ({ className: child.className, text: child.textContent }))
+    ))), [
+      [
+        { className: "message-row-date", text: "30.08.2026, 12:00 Uhr" },
+        { className: "message-row-competition", text: "Sommercup" },
+        { className: "message-row-round", text: "Viertelfinale" },
+        { className: "message-row-subject", text: "Neue Platzinformation" },
+        { className: "message-row-actor", text: "Durch: Ergebnis Erfasser" },
+      ],
+      [
+        { className: "message-row-date", text: "29.08.2026, 10:30 Uhr" },
+        { className: "message-row-competition", text: "Wintercup" },
+        { className: "message-row-round", text: "1. Gruppe" },
+        { className: "message-row-subject", text: "Turnierhinweis" },
+        { className: "message-row-actor", text: "Durch: Turnierleitung" },
+      ],
+      [
+        { className: "message-row-date", text: "31.08.2026, 13:00 Uhr" },
+        { className: "message-row-competition", text: "Allgemeine Meldung" },
+        { className: "message-row-subject", text: "Bereits bestätigt" },
+        { className: "message-row-actor", text: "Durch: System" },
+      ],
+    ]);
+    assert.deepEqual(await rows.first().locator(":scope > *").evaluateAll((lines) => lines.map((line) => {
+      const style = getComputedStyle(line);
+      return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight };
+    })), [
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+    ]);
+    assert.equal(await rows.nth(0).evaluate((row) => row.classList.contains("unread")), true);
+    assert.equal(await rows.nth(1).evaluate((row) => row.classList.contains("unread")), true);
+    assert.equal(await rows.nth(2).evaluate((row) => row.classList.contains("unread")), false);
+
+    await rows.first().focus();
+    await page.keyboard.press("Enter");
+    await page.locator("#messageDetailModal").waitFor({ state: "visible" });
+    assert.equal(await page.evaluate(() => window.__acknowledgeCalls.length), 0);
+    assert.equal(await page.locator("#messageDetailSubject").textContent(), "Neue Platzinformation");
+    assert.deepEqual(await page.locator("#messageDetailSubject, #messageDetailDate, #messageDetailCompetition, #messageDetailActor, #messageDetailBody").evaluateAll((elements) => elements.map((element) => element.id)), [
+      "messageDetailSubject",
+      "messageDetailDate",
+      "messageDetailCompetition",
+      "messageDetailActor",
+      "messageDetailBody",
+    ]);
+    assert.equal(await page.locator("#messageDetailDate").evaluate((line) => getComputedStyle(line).color), "rgb(0, 0, 0)");
+    assert.equal(await page.locator("#messageDetailCompetition").textContent(), "Sommercup");
+    assert.equal(await page.locator("#messageDetailActor").textContent(), "Durch: Ergebnis Erfasser");
+    assert.equal(await page.locator("#messageDetailActor").isVisible(), true);
+    assert.equal(await page.locator("#messageDetailActor").evaluate((line) => (
+      line.previousElementSibling?.id === "messageDetailCompetition" && line.nextElementSibling?.id === "messageDetailBody"
+    )), true);
+    const detailLayout = await page.locator("#messageDetailBody").evaluate((body) => ({
+      scrollable: body.scrollHeight > body.clientHeight,
+      profileVisible: !document.getElementById("profileModal").classList.contains("hidden"),
+      pageLocked: getComputedStyle(document.body).overflow === "hidden",
+    }));
+    assert.deepEqual(detailLayout, { scrollable: true, profileVisible: true, pageLocked: true });
+    await page.keyboard.press("Tab");
+    assert.equal(await page.getByRole("button", { name: "Zur Kenntnis genommen", exact: true }).evaluate((button) => document.activeElement === button), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await page.locator("#messageDetailModal .close").evaluate((button) => document.activeElement === button), true);
+
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#messageDetailModal").isHidden(), true);
+    assert.equal(await page.locator("#profileModal").isVisible(), true);
+    assert.equal(await rows.first().evaluate((row) => document.activeElement === row), true);
+
+    await rows.nth(1).click();
+    assert.equal(await page.locator("#messageDetailSubject").textContent(), "Turnierhinweis");
+    assert.equal(await page.locator("#messageDetailActor").textContent(), "Durch: Turnierleitung");
+    assert.equal(await page.locator("#messageDetailActor").isVisible(), true);
+    await page.locator("#messageDetailModal .close").click();
+
+    await rows.nth(2).click();
+    await page.locator("#acknowledgeMessageButton").waitFor({ state: "hidden" });
+    assert.equal(await page.getByRole("button", { name: "Zur Kenntnis genommen", exact: true }).isHidden(), true);
+    await page.keyboard.press("Tab");
+    assert.equal(await page.locator("#messageDetailModal .close").evaluate((button) => document.activeElement === button), true);
+    await page.locator("#messageDetailModal .close").click();
+
+    await rows.first().click();
+    await page.getByRole("button", { name: "Zur Kenntnis genommen", exact: true }).click();
+    await page.locator("#acknowledgeMessageButton").waitFor({ state: "hidden" });
+    assert.equal(await page.locator("#messageDetailStatus").isVisible(), false);
+    assert.equal(await page.locator("#messageDetailAnnouncement").textContent(), "Zur Kenntnis genommen.");
+    assert.equal(await page.locator("#messageDetailModal .close").evaluate((button) => document.activeElement === button), true);
+    assert.deepEqual(await page.evaluate(() => window.__acknowledgeCalls), [{
+      operationId: "operation-message:acknowledge:unread-new",
+      messageId: "unread-new",
+    }]);
+    assert.equal(await page.locator("#profileMessagesPanelTab").textContent(), "Meldungen (1)");
+    assert.equal(await page.locator("#profileMessagesPanel .message-row.unread").count(), 1);
+    assert.equal(await page.locator("#profileButton .message-count-badge").textContent(), "1");
+    assert.equal(await page.locator("#profileButtonMobile .message-count-badge").textContent(), "1");
+    await page.close();
+
+    const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await mobilePage.goto(`http://127.0.0.1:${address.port}/messages-test.html?role=player`, { waitUntil: "domcontentloaded" });
+    await mobilePage.locator("#hamburgerBtn.has-unread-messages").waitFor({ state: "visible" });
+    assert.equal(await mobilePage.locator("#hamburgerBtn").getAttribute("aria-label"), "Menü öffnen, 2 ungelesene Meldungen");
+    assert.equal(await mobilePage.locator("#hamburgerBtn").evaluate((button) => getComputedStyle(button).color), "rgb(255, 77, 79)");
+    await mobilePage.locator("#hamburgerBtn").click();
+    await mobilePage.locator("#profileButtonMobile").waitFor({ state: "visible" });
+    assert.equal(await mobilePage.locator("#profileButtonMobile .message-count-badge").textContent(), "2");
+    await mobilePage.locator("#profileButtonMobile").click();
+    await mobilePage.getByRole("tab", { name: "Meldungen (2)", exact: true }).click();
+    assert.deepEqual(await mobilePage.locator("#profileMessagesPanel .message-row").first().locator(":scope > *").evaluateAll((lines) => lines.map((line) => {
+      const style = getComputedStyle(line);
+      return { color: style.color, fontSize: style.fontSize, fontWeight: style.fontWeight };
+    })), [
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+    ]);
+    for (let unread = 2; unread > 0; unread--) {
+      await mobilePage.locator("#profileMessagesPanel .message-row.unread").first().click();
+      await mobilePage.getByRole("button", { name: "Zur Kenntnis genommen", exact: true }).click();
+      await mobilePage.locator("#acknowledgeMessageButton").waitFor({ state: "hidden" });
+      await mobilePage.locator("#messageDetailModal .close").click();
+    }
+    await mobilePage.waitForFunction(() => !document.getElementById("hamburgerBtn").classList.contains("has-unread-messages"));
+    assert.equal(await mobilePage.locator("#hamburgerBtn").getAttribute("aria-label"), "Menü öffnen");
+    assert.equal(await mobilePage.locator("#hamburgerBtn").evaluate((button) => getComputedStyle(button).color), "rgb(255, 255, 255)");
+    await mobilePage.close();
+
+    const noChannelsPage = await browser.newPage({ viewport: { width: 600, height: 600 } });
+    await noChannelsPage.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player&noNotifications=1`, { waitUntil: "domcontentloaded" });
+    await noChannelsPage.evaluate(() => window.openProfileModal());
+    await noChannelsPage.getByRole("tab", { name: "System", exact: true }).waitFor({ state: "visible" });
+    assert.match(await noChannelsPage.locator("#profileSystemPanel").textContent(), /Benachrichtigungen:\s*---/);
+    await noChannelsPage.close();
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -450,10 +802,29 @@ test("Mobiles Ranglistenprofil bleibt nach horizontalem Scrollen im sichtbaren V
     await returnPage.close();
 
     const newcomerPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await newcomerPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&newcomer=1`, { waitUntil: "domcontentloaded" });
+    await newcomerPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&newcomer=1&blockedTarget=1`, { waitUntil: "domcontentloaded" });
     await newcomerPage.locator("#rankingContainer .box.challengeable").first().waitFor({ state: "visible" });
+    const legendSections = await newcomerPage.locator("#rankingLegend").evaluate((legend) => {
+      const headings = [...legend.querySelectorAll(".legend-subheading")];
+      return Object.fromEntries(headings.map((heading) => [
+        heading.textContent,
+        heading.nextElementSibling?.textContent || "",
+      ]));
+    });
+    assert.doesNotMatch(legendSections.Kästchen, /Forderbar/);
+    assert.match(legendSections.Rahmen, /Forderbar/);
     assert.equal(await newcomerPage.locator("#rankingContainer .box.challengeable").count(), 28);
-    await newcomerPage.locator("#rankingContainer .box.challengeable").first().click();
+    const blockedTarget = newcomerPage.locator("#rankingContainer .box.challengeable.sperrzeit");
+    assert.equal(await blockedTarget.count(), 1);
+    assert.deepEqual(await blockedTarget.evaluate((box) => {
+      const style = getComputedStyle(box);
+      return { backgroundColor: style.backgroundColor, borderColor: style.borderColor, cursor: style.cursor };
+    }), {
+      backgroundColor: "rgb(220, 199, 232)",
+      borderColor: "rgb(25, 135, 84)",
+      cursor: "grab",
+    });
+    await blockedTarget.click();
     await newcomerPage.getByRole("tab", { name: "Mobile Rangliste" }).click();
     await newcomerPage.getByRole("button", { name: "Fordern" }).waitFor({ state: "visible" });
     await newcomerPage.close();

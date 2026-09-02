@@ -33,6 +33,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
       court: { source: { stale: false, ageMs: 1000 } },
       scoreLog: { open: true, ready: true, lastSequenceByCourt: { "1": 2, "2": 0 } },
       auditLog: { open: true, ready: true, count: 3 },
+      messaging: { open: true, ready: true, failureCount: 2 },
     },
     ws: { connections: { user: 1 }, activeRequests: 0 },
     sheetPoller: { inProgress: { startedAt: 1 }, bootstrapRecoveryActive: false, dataAgeMs: 500 },
@@ -42,6 +43,7 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
     peopleNormalization: {
       current: true,
       peopleCount: 42,
+      activeMemberCounts: { player: 12, player_a: 18, player_b: 9 },
       affectedCount: 7,
       issueCount: 9,
       issueCounts: { LOGIN_DUPLICATE: 2, PHONE_FORMAT_INVALID: 3 },
@@ -65,9 +67,15 @@ test("Prometheusmetriken begrenzen Labels und rendern kumulative Histogramme", (
   assert.match(output, /epiber_sheet_refresh_in_progress 1/);
   assert.match(output, /epiber_sheet_read_cooldown_seconds 2.5/);
   assert.match(output, /epiber_sheet_refreshes_scheduled 1/);
+  assert.match(output, /epiber_readiness_component_ready\{component="messaging_sqlite"\} 0/);
+  assert.match(output, /epiber_sqlite_ready\{database="messaging"\} 1/);
+  assert.match(output, /epiber_sqlite_failures_total\{database="messaging"\} 2/);
   assert.match(output, /epiber_http_request_duration_seconds_bucket\{le="\+Inf",method="GET",route="\/api\/session"\} 1/);
   assert.match(output, /epiber_people_normalization_current 1/);
   assert.match(output, /epiber_people_normalization_people 42/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player"\} 12/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player_a"\} 18/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player_b"\} 9/);
   assert.match(output, /epiber_people_normalization_affected_people 7/);
   assert.match(output, /epiber_people_normalization_issues 9/);
   assert.match(output, /epiber_people_normalization_issue_count\{code="LOGIN_DUPLICATE"\} 2/);
@@ -88,6 +96,9 @@ test("Prometheusmetriken ignorieren ungueltige Beobachtungen", () => {
   assert.match(output, /epiber_http_response_bytes_total\{route="\/version"\} 0/);
   assert.match(output, /epiber_people_normalization_current 0/);
   assert.match(output, /epiber_people_normalization_people 0/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player"\} 0/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player_a"\} 0/);
+  assert.match(output, /epiber_people_normalization_active_members\{classification="player_b"\} 0/);
   assert.match(output, /epiber_people_normalization_affected_people 0/);
   assert.match(output, /epiber_people_normalization_issues 0/);
 });

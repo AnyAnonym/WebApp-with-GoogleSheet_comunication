@@ -174,7 +174,7 @@ async function fetchMyState() {
 //   2. In offener Forderung → gelb  (.challenged)
 //   3. Hat Schonzeit        → lila  (.protected) + Timer
 //   4. Ich habe Sperrzeit   → lila  (.protected) + Timer
-//   5. Normal forderbar     → grün  (.challengeable)
+//   5. Normal forderbar     → grüne Füllung und grüner Rahmen (.challengeable)
 //   6. Nicht forderbar      → keine Klasse (grau)
 //      Ausnahme: hat Schonzeit → lila (sichtbar für alle)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -378,7 +378,7 @@ async function applyAllRules(container, pyramid, rankedList) {
         box.title = `Du hast Sperrzeit – läuft ab am ${myBlockedUntil.toLocaleString("de-AT")}`;
 
       } else {
-        // Alles OK → grün, kann gefordert werden
+        // Alles OK → grüne Forderbar-Markierung, kann gefordert werden
         box.classList.add("challengeable");
         box.style.cursor = "grab";
         box.title = "Diesen Spieler fordern";
@@ -501,8 +501,8 @@ function renderRankingLegend() {
   const itemsFrame = [];
   // "Forderbar" und "Ich" nur sichtbar für eingeloggte Nutzer
   if (authenticated) {
-    itemsBox.push('<div class="legend-item"><span class="legend-swatch challengeable"></span><span>Forderbar</span></div>');
     itemsBox.push('<div class="legend-item"><span class="legend-swatch selected"></span><span>Ich</span></div>');
+    itemsFrame.push('<div class="legend-item"><span class="legend-swatch challengeable"></span><span>Forderbar</span></div>');
   }
   // Diese Einträge sind für alle sichtbar
   itemsBox.push('<div class="legend-item"><span class="legend-swatch challenged"></span><span>In offener Forderung</span></div>');

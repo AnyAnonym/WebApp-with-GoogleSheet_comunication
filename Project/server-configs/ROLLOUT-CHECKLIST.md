@@ -33,7 +33,7 @@ Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -
 - [ ] Keine leeren oder ungueltigen Rollen als Migrationsrest akzeptiert. Die technische Normalisierung zu `player` mit einmaliger Warnung ist nur ein Sicherheitsfallback.
 - [ ] `EntryList` verwendet die Spalten `ID`, `BewerbID`, `PersonenID`, `Entrydate`; neue Werte haben das Format `YYMMDD-HHMM` (Wiener Zeit).
 - [ ] Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend nicht mehr gelesen oder beschrieben. Ihre bisherigen Inhalte sind vor einer optionalen Entfernung separat gesichert archiviert; ein automatischer Import in SQLite findet nicht statt.
-- [ ] `scorelog.sqlite` und `audit.sqlite` sind als getrennte Fachhistorien angelegt und nicht mit `state.sqlite` zusammengelegt.
+- [ ] `scorelog.sqlite`, `audit.sqlite` und `messaging.sqlite` sind getrennt angelegt und nicht mit `state.sqlite` oder untereinander zusammengelegt.
 - [ ] ScoreLog-Event-IDs, Court-Folgenummern sowie Audit-Request-/Operation-IDs sind eindeutig und nach Neustart fortsetzbar.
 - [ ] Eindeutige, nichtleere IDs und kanonisch eindeutige belegte Personen-Logins stichprobenartig beziehungsweise automatisiert geprueft; leere Logins sind fuer Personen ohne Zugang zulaessig.
 - [ ] `E-Mail` bleibt eine optionale Kontaktadresse. Leere, ungueltige oder bei Familien mehrfach verwendete Kontakt-E-Mails blockieren weder den Tabellenload noch den unabhaengigen eindeutigen Login.
@@ -88,10 +88,10 @@ Diese Checkliste ist das verbindliche Gate fuer die aktuelle Reihenfolge **PAJ -
 - [ ] `LISTEN_HOST=127.0.0.1`; Node lauscht Live auf 8080, PAJ auf 8083 und PK auf 8084 nur an Loopback.
 - [ ] `PUBLIC_ORIGIN` ist Live `https://epiber.at`, PAJ `https://epiber.at:8081`, PK `https://epiber.at:8082`.
 - [ ] `STATE_FILE` ist `/var/lib/epiber-<system>/state.sqlite`.
-- [ ] `SCORELOG_FILE` ist `/var/lib/epiber-<system>/scorelog.sqlite`; `AUDITLOG_FILE` ist `/var/lib/epiber-<system>/audit.sqlite`.
+- [ ] `SCORELOG_FILE` ist `/var/lib/epiber-<system>/scorelog.sqlite`; `AUDITLOG_FILE` ist `/var/lib/epiber-<system>/audit.sqlite`; `MESSAGING_FILE` ist `/var/lib/epiber-<system>/messaging.sqlite`.
 - [ ] `StateDirectory=epiber-<system>`, Verzeichnismodus 0700, SQLite-Modus 0600 und `UMask=0077` bestaetigt.
-- [ ] Alle drei SQLite-Dateien verwenden Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat fuer die unbegrenzte Fachhistorie ausreichend freien Platz.
-- [ ] Konsistente Backups aller drei SQLite-Dateien erstellt. Bei gestopptem Dienst wurden jeweilige DB, WAL und SHM gemeinsam behandelt; alternativ wurden SQLite-Onlinebackups verwendet.
+- [ ] Alle vier SQLite-Dateien verwenden Foreign Keys, WAL und `synchronous=FULL`; Dateisystem hat fuer die unbegrenzten Fach- und Messagingdaten ausreichend freien Platz.
+- [ ] Konsistente Backups aller vier SQLite-Dateien erstellt. Bei gestopptem Dienst wurden jeweilige DB, WAL und SHM gemeinsam behandelt; alternativ wurden SQLite-Onlinebackups verwendet.
 - [ ] journald-Drop-in ist installiert: persistente Speicherung, maximal 1 GiB und 14 Tage; die Werte passen zur Hostkapazitaet.
 - [ ] Jede ePiber-Unit besitzt eindeutigen `SyslogIdentifier`, explizite Journal-Ausgabe und Rate-Limit 1000/30s.
 - [ ] Sandbox und leere Capability-Sets entsprechen der Vorlage; es wurden keine pauschalen Schreib- oder Home-Ausnahmen hinzugefuegt.
@@ -152,7 +152,7 @@ Gesamtfreigabe.
 ## 8. Rollen und Fachfunktionen auf PAJ
 
 - [ ] Anonymous sieht nur oeffentliche Daten/Profile und kann keine geschuetzten Writes ausfuehren.
-- [ ] `player` kann sich anmelden/abmelden, eigenes Profil und Mitgliederprofil sehen, eigenes Passwort aendern, Forderung und EntryList fachregelkonform bedienen.
+- [ ] `player` kann sich anmelden/abmelden, eigenes Profil und Mitgliederprofil sehen, eigenes Passwort aendern, Forderung, Spieltermin, eigene Meldungen und EntryList fachregelkonform bedienen.
 - [ ] `operator` kann zusaetzlich Navigator und Courtsteuerung bedienen, aber keine Admin-Monitorverwaltung oder fremde Passwortsetzung.
 - [ ] `admin` kann Resetnachweis erzeugen, Passwort direkt setzen sowie Monitore provisionieren, rotieren und widerrufen.
 - [ ] Nur `admin` sieht `adminLogging.html`, kann globale Frontend-Level/Sampling/Batch/Flushwerte und temporaere Zielpersonen setzen oder entfernen und sieht die festen Retentionwerte 14/7 Tage; alle drei Mutationstypen erscheinen im Auditlog.
@@ -174,6 +174,9 @@ Gesamtfreigabe.
 - [ ] Wiederverwendete oder aktionsfremde Audit-Event-IDs werden mit `AUDIT_LOG_EVENT_CONFLICT` abgewiesen und koennen terminale Zeilen nicht zurueckstufen.
 - [ ] Login-, Passwortaenderungs-, Reset-, Erstvergabe- und Admin-Passwortmodale schliessen nicht durch Backdropklick oder Escape, sondern nur explizit ueber Abbrechen/Schliessen; waehrend eines Requests sind Schliessen und Doppel-Submit gesperrt, danach werden Formulare und sichtbare Passwoerter zurueckgesetzt.
 - [ ] Matches/Forderungen, EntryList Add/Remove und Ranglistenrestriktionen wurden mit realistischen Daten geprueft; jede Mutation erzeugt den vorgesehenen SQLite-Auditeintrag.
+- [ ] Beide Beteiligten koennen den ersten Ranglistentermin nur im Vierzehntageskorridor und spaetere Termine ab aktueller Zeit setzen; Fremde, geschlossene Forderungen, halbe Stunden und unveraenderte Termine werden abgewiesen. Audit, Abschlusslog, Matchinvalidierung und `appointment|appointment_changed` sind vollstaendig.
+- [ ] Persoenliche Meldungen und der private `messages:<eigene-ID>`-Snapshot sind nur fuer den Empfaenger sichtbar; Kenntnisnahme ist idempotent und aktualisiert Ungelesenanzahl und Revision. Einzel-/Gesamthistorie enthalten keine privaten Texte, Receipts oder Zustellstaende, und ihre Cursor sind nicht austauschbar.
+- [ ] Email- und Whatsapp-Adapter versenden noch nichts und enden kontrolliert mit `not_configured`; die Inbox bleibt `delivered`. Ungueltige `Notification`-Werte deaktivieren externe Kanaele ohne Meldungsverlust und ohne freien Wert im Log.
 - [ ] Unklare fachliche Writes werden als `unknown` behandelt und nicht automatisch erneut ausgefuehrt.
 - [ ] `mitgliederAbgleichen.html` ist nur mit einer aktuellen Adminsession erreichbar; Anonymous, Player und Operator sehen weder Bestandsprojektion noch Importdaten und koennen keine Abgleichsaktion ausfuehren.
 - [ ] Eine ClubDesk-CSV wird auf PAJ ausschliesslich lokal im Browser eingelesen und verglichen. CSV-Rohdaten werden weder an das Backend gesendet noch in Logs, Diagnoseevents, Storage oder Freigabeprotokolle uebernommen; Dateigroesse, Pflichtheader, Kodierung, Spaltenzahl, IDs und fehlerhaftes Quoting werden kontrolliert geprueft.
@@ -247,8 +250,8 @@ Gesamtfreigabe.
 - [ ] Courtquelle, Google-Sheets-Fehler/Timeout und Wiederherstellung getestet; Readiness und sichtbare Stale-/Fehlerzustaende sind korrekt.
 - [ ] Ein kompletter Veranstaltungstag Dauerbetrieb auf PAJ ohne wachsende Ressourcen, Reconnectsturm, ungeklaerte Writes oder Datenabweichung absolviert.
 - [ ] Kontrolliertes `systemctl stop epiber-paj` sendet SIGTERM, setzt `/live` auf stopping/503, lehnt neue Arbeit ab und schliesst WebSockets mit 1012.
-- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, alle drei SQLite-Datenbanken schliessen sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
-- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen, ScoreLog-Folgenummern und Audit-Historie gemaess Vertrag.
+- [ ] Poller/Timer stoppen, HTTP- und Sheets-Arbeit drainiert, alle vier SQLite-Datenbanken schliessen sauber und der Prozess endet innerhalb 90 Sekunden mit Exitcode 0.
+- [ ] Neustart erhaelt vorgesehenen SQLite-State, Sessions/Monitore/Operationen, ScoreLog-Folgenummern, Audit-Historie sowie Messaging-Ereignisse, Receipts und Revisionen gemaess Vertrag.
 - [ ] Erzwungener Shutdown-Timeout wurde als Fehlerfall erkannt und nicht als erfolgreiche Abnahme gewertet.
 
 ## 12. `pendingMetadataIntents` manuell klaeren

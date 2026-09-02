@@ -8,6 +8,8 @@ function setTestEnvironment() {
   process.env.STATE_FILE = ":memory:";
   process.env.SCORELOG_FILE = ":memory:";
   process.env.AUDITLOG_FILE = ":memory:";
+  process.env.MESSAGING_FILE = ":memory:";
+  process.env.WS_REQUEST_BURST = "100";
   process.env.LOG_LEVEL = "error";
   process.env.SHEET_ID = "test-sheet";
   process.env.COURT_URL = "https://court.invalid/data.json";

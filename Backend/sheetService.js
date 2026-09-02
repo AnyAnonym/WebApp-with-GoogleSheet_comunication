@@ -4,7 +4,7 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const dataPoller = require("./dataPoller.js");
 const { AppError } = require("./errors.js");
-const { analyzeMatchRules, parseMatchDate } = require("./matchRules.js");
+const { analyzeMatchRules, parseMatchDate, parseParticipant } = require("./matchRules.js");
 const {
   FIELD_DEFINITIONS,
   fieldIndexes,
@@ -126,7 +126,7 @@ function parseCompetitionDate(raw, endOfDay) {
 }
 
 class SheetService {
-  constructor({ repository, clientFactory = null, now = Date.now, refreshDelayMs = process.env.NODE_ENV === "test" ? 60000 : WRITE_REFRESH_DELAY_MS } = {}) {
+  constructor({ repository, messagingService = null, clientFactory = null, now = Date.now, refreshDelayMs = process.env.NODE_ENV === "test" ? 60000 : WRITE_REFRESH_DELAY_MS } = {}) {
     this.repository = repository;
     this.clientFactory = clientFactory;
     this.client = null;
@@ -142,6 +142,161 @@ class SheetService {
     this.recordMetadataLoad = null;
     this.recordMetadataUnresolved = new Set();
     this.refreshTimers = new Map();
+    this.messagingService = messagingService;
+  }
+
+  async ensureChallengeMessage(principal, params, matchId, matchRow, matchHeader) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const matchIndexes = {
+      competition: headerIndex(matchHeader, "bewerbid"),
+      challengedAt: headerIndex(matchHeader, "forderungdate"),
+      challenger: headerIndex(matchHeader, "spieler1id"),
+      opponent: headerIndex(matchHeader, "spieler3id"),
+    };
+    if (
+      String(matchRow[matchIndexes.competition] || "").trim() !== params.bewerbId
+      || parseParticipant(matchRow[matchIndexes.challenger]).id !== principal.id
+      || parseParticipant(matchRow[matchIndexes.opponent]).id !== params.opponentId
+    ) {
+      throw new AppError("OPERATION_ID_CONFLICT", "operationId wurde bereits fuer eine andere Forderung verwendet", 409);
+    }
+    const challengedAt = parseMatchDate(matchRow[matchIndexes.challengedAt]);
+    const competition = this.competition(params.bewerbId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    const players = dataStore.get("players");
+    const playerHeader = headerOf(players);
+    const idIndex = headerIndex(playerHeader, "id");
+    const firstNameIndex = headerIndex(playerHeader, "vorname");
+    const lastNameIndex = headerIndex(playerHeader, "nachname");
+    const challenger = players.slice(1).find((row) => String(row[idIndex] || "").trim() === principal.id);
+    const opponent = players.slice(1).find((row) => String(row[idIndex] || "").trim() === params.opponentId);
+    const challengerName = challenger
+      ? [challenger[firstNameIndex], challenger[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
+      : principal.id;
+    const opponentName = opponent
+      ? [opponent[firstNameIndex], opponent[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
+      : params.opponentId;
+    const rankings = dataStore.get("rlPlatzierung");
+    const rankingHeader = headerOf(rankings);
+    const rankingCompetitionIndex = headerIndex(rankingHeader, "bewerbid");
+    const rankingPersonIndex = headerIndex(rankingHeader, "personid");
+    const rankingRankIndex = headerIndex(rankingHeader, "rang");
+    const rankOf = (personId) => {
+      const ranking = rankings.slice(1).find((row) => (
+        String(row[rankingCompetitionIndex] || "").trim() === params.bewerbId
+        && String(row[rankingPersonIndex] || "").trim() === personId
+      ));
+      const rank = ranking ? Number(ranking[rankingRankIndex]) : NaN;
+      return Number.isInteger(rank) && rank >= 0 ? rank : null;
+    };
+    try {
+      await this.messagingService.ensureChallengeMessages({
+        matchId,
+        recipientId: params.opponentId,
+        competitionId: params.bewerbId,
+        competitionName,
+        challengerId: principal.id,
+        challengerName,
+        challengerRank: rankOf(principal.id),
+        opponentId: params.opponentId,
+        opponentName,
+        opponentRank: rankOf(params.opponentId),
+        createdAt: challengedAt?.getTime() || this.now(),
+      });
+    } catch (error) {
+      logger.log("error", "challenge_messages_persistence_failed", {
+        matchId,
+        challengerId: principal.id,
+        opponentId: params.opponentId,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Forderung ist angelegt, Nachrichten konnten nicht bestaetigt werden", 503, {
+        operationId: params.operationId,
+        recordId: matchId,
+      });
+    }
+  }
+
+  async ensureRankingWithdrawalEvent(principal, params, plan) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const competition = this.competition(params.bewerbId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    try {
+      await this.messagingService.ensureRankingWithdrawalEvent({
+        competitionId: params.bewerbId,
+        competitionName,
+        participantId: principal.id,
+        participantName: principal.name || principal.id,
+        actorId: principal.id,
+        actorName: principal.name || principal.id,
+        operationId: params.operationId,
+        reason: params.reason,
+        createdAt: parseMatchDate(plan.withdrawnAt)?.getTime() || this.now(),
+      });
+    } catch (error) {
+      logger.log("error", "ranking_withdrawal_event_persistence_failed", {
+        competitionId: params.bewerbId,
+        participantId: principal.id,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Spieler ist rausgehaengt, Meldung konnte nicht bestaetigt werden", 503, {
+        operationId: params.operationId,
+        phase: "ranking-withdrawal-event",
+        ...plan,
+      });
+    }
+  }
+
+  async ensureRankingMatchDateEvent(principal, params, row, header, previousDate = "") {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const competitionId = String(row[headerIndex(header, "bewerbid")] || "").trim();
+    const challengerId = parseParticipant(row[headerIndex(header, "spieler1id")]).id;
+    const opponentId = parseParticipant(row[headerIndex(header, "spieler3id")]).id;
+    const competition = this.competition(competitionId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    const players = dataStore.get("players");
+    const playerHeader = headerOf(players);
+    const playerIdIndex = headerIndex(playerHeader, "id");
+    const firstNameIndex = headerIndex(playerHeader, "vorname");
+    const lastNameIndex = headerIndex(playerHeader, "nachname");
+    const nameOf = (personId) => {
+      const person = players.slice(1).find((entry) => String(entry[playerIdIndex] || "").trim() === personId);
+      return person
+        ? [person[firstNameIndex], person[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ") || personId
+        : personId;
+    };
+    try {
+      await this.messagingService.ensureMatchAppointmentEvent({
+        operationId: params.operationId,
+        matchId: params.matchId,
+        matchDate: params.matchDate,
+        previousDate,
+        competitionId,
+        competitionName,
+        challengerId,
+        challengerName: nameOf(challengerId),
+        opponentId,
+        opponentName: nameOf(opponentId),
+        actorId: principal.id,
+        actorName: principal.name || nameOf(principal.id),
+        createdAt: this.now(),
+      });
+    } catch (error) {
+      logger.log("error", "ranking_match_date_event_persistence_failed", {
+        matchId: params.matchId,
+        competitionId,
+        actorId: principal.id,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Spieltermin ist eingetragen, Meldungen konnten nicht bestaetigt werden", 503, {
+        operationId: params.operationId,
+        matchId: params.matchId,
+        matchDate: params.matchDate,
+        previousDate,
+        phase: "appointment-event",
+      });
+    }
+    return { competitionId };
   }
 
   competition(competitionId) {
@@ -1457,8 +1612,10 @@ class SheetService {
       const header = headerOf(values);
       const idIndex = headerIndex(header, "id");
       const newId = stableRecordId("m", principal, params.operationId);
-      if (values.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
+      const existingRow = values.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
+      if (existingRow) {
         dataStore.set("matches1", values, { source: "write" });
+        await this.ensureChallengeMessage(principal, params, newId, existingRow, header);
         return { success: true, newMatchId: newId, recovered: true };
       }
       if (recoveryOnly) {
@@ -1481,14 +1638,17 @@ class SheetService {
           requestBody: { values: [newRow] },
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
+        let confirmation = null;
         try {
-          const confirmation = await this.readTable("matches1", "confirmation");
-          if (confirmation.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
-            dataStore.set("matches1", confirmation, { source: "write" });
-            return { success: true, newMatchId: newId, recovered: true };
-          }
+          confirmation = await this.readTable("matches1", "confirmation");
         } catch (confirmationError) {
           logger.log("error", "sheet_match_confirmation_read_failed", { recordId: newId, error: confirmationError });
+        }
+        const confirmedRow = confirmation?.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
+        if (confirmedRow) {
+          dataStore.set("matches1", confirmation, { source: "write" });
+          await this.ensureChallengeMessage(principal, params, newId, confirmedRow, headerOf(confirmation));
+          return { success: true, newMatchId: newId, recovered: true };
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
@@ -1496,8 +1656,121 @@ class SheetService {
       candidate.push(newRow);
       dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
       this.scheduleRefresh("matches1");
+      await this.ensureChallengeMessage(principal, params, newId, newRow, header);
       return { success: true, newMatchId: newId };
     })));
+  }
+
+  async setRankingMatchDate(principal, params) {
+    const payload = { matchId: params.matchId, matchDate: params.matchDate };
+    return this.runIdempotent(principal, "setRankingMatchDate", params.operationId, payload, ({ recoveryOnly, recoveryDetails, checkpointUnknown }) => this.enqueue("matches1", async () => {
+      requireCurrentData("bewerbe", "players");
+      this.cancelScheduledRefresh("matches1");
+      const values = await this.readTable("matches1");
+      dataStore.set("matches1", values, { source: "write-read" });
+      let stable;
+      try {
+        stable = await this.resolveStableRow("matches1", params.matchId, values, "FORMATTED_VALUE");
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") throw new AppError("MATCH_NOT_FOUND", "Forderung wurde nicht gefunden", 404);
+        throw error;
+      }
+      const { sheets, metadata, row, header } = stable;
+      const indexes = {
+        ignore: headerIndex(header, "ignore"),
+        date: headerIndex(header, "matchdate"),
+        challengedAt: headerIndex(header, "forderungdate"),
+        competition: headerIndex(header, "bewerbid"),
+        challenger: headerIndex(header, "spieler1id"),
+        opponent: headerIndex(header, "spieler3id"),
+        result: headerIndex(header, "ergebnis"),
+      };
+      if ([indexes.date, indexes.challengedAt, indexes.competition, indexes.challenger, indexes.opponent, indexes.result].some((index) => index < 0)) {
+        throw new AppError("SHEET_SCHEMA", "Matches1-Spalten fuer Spieltermine fehlen", 503);
+      }
+      const competitionId = String(row[indexes.competition] || "").trim();
+      const competition = this.competition(competitionId);
+      const competitionTypeIndex = headerIndex(competition.header, "bewerbsartid");
+      if (competitionTypeIndex < 0) throw new AppError("SHEET_SCHEMA", "Bewerbsart-Spalte fehlt", 503);
+      if (String(competition.row[competitionTypeIndex] || "").trim() !== "2") {
+        throw new AppError("RANKING_MATCH_REQUIRED", "Spieltermine koennen hier nur fuer Ranglistenforderungen festgelegt werden", 409);
+      }
+      const challenger = parseParticipant(row[indexes.challenger]);
+      const opponent = parseParticipant(row[indexes.opponent]);
+      if (![challenger.id, opponent.id].includes(principal.id)) {
+        throw new AppError("MATCH_PARTICIPANT_REQUIRED", "Nur die Beteiligten duerfen den Spieltermin festlegen", 403);
+      }
+      if ((indexes.ignore >= 0 && String(row[indexes.ignore] || "").trim() === "1")
+        || !String(row[indexes.challengedAt] || "").trim()
+        || String(row[indexes.result] || "").trim()
+        || challenger.retired
+        || opponent.retired) {
+        throw new AppError("RANKING_CHALLENGE_CLOSED", "Die Forderung ist nicht mehr offen", 409);
+      }
+      const appointment = parseMatchDate(params.matchDate);
+      const challengedAt = parseMatchDate(row[indexes.challengedAt]);
+      if (!appointment) throw new AppError("MATCH_DATE_INVALID", "Spieltermin ist ungueltig", 400);
+      if (!challengedAt) throw new AppError("MATCH_DATA_INVALID", "Forderungszeitpunkt ist ungueltig", 503);
+      const currentDate = String(row[indexes.date] || "").trim();
+      const previousDate = recoveryOnly ? String(recoveryDetails?.previousDate || "") : currentDate;
+      if (appointment.getMinutes() !== 0 || appointment.getHours() < 6 || appointment.getHours() > 23) {
+        throw new AppError("MATCH_DATE_TIME_INVALID", "Spieltermine sind nur zur vollen Stunde zwischen 06:00 und 23:00 Uhr moeglich", 409);
+      }
+      const now = this.now();
+      if (previousDate) {
+        if (appointment.getTime() < now) throw new AppError("MATCH_DATE_PAST", "Ein geaenderter Spieltermin muss in der Zukunft liegen", 409);
+      } else {
+        const deadline = challengedAt.getTime() + 14 * 24 * 60 * 60 * 1000;
+        if (appointment.getTime() < challengedAt.getTime() || appointment.getTime() > deadline) {
+          throw new AppError("MATCH_DATE_AFTER_DEADLINE", "Der erste Spieltermin muss im vierzehntaegigen Zeitkorridor ab der Forderung liegen", 409);
+        }
+      }
+      if (recoveryOnly) {
+        if (currentDate !== params.matchDate) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Spieltermin ist noch nicht nachweisbar", 503, { operationId: params.operationId, matchId: params.matchId, matchDate: params.matchDate, previousDate });
+        }
+        await this.ensureRankingMatchDateEvent(principal, params, row, header, previousDate);
+        logger.log("info", "ranking_match_date_update_completed", { matchId: params.matchId, competitionId, actorId: principal.id, matchDate: params.matchDate, recovered: true });
+        return withAudit({ success: true, matchId: params.matchId, matchDate: params.matchDate, recovered: true }, {
+          before: { matchId: params.matchId, matchDate: previousDate },
+          after: { matchId: params.matchId, matchDate: params.matchDate },
+        });
+      }
+      if (currentDate === params.matchDate) throw new AppError("MATCH_DATE_UNCHANGED", "Der ausgewaehlte Spieltermin ist bereits eingetragen", 409);
+      checkpointUnknown({ phase: "match-date-write", matchId: params.matchId, matchDate: params.matchDate, previousDate });
+      const updates = Array(indexes.date + 1).fill(null);
+      updates[indexes.date] = params.matchDate;
+      let recovered = false;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{ dataFilter: { developerMetadataLookup: { metadataId: metadata.metadataId } }, majorDimension: "ROWS", values: [updates] }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        const confirmationRow = await this.readMetadataRow(sheets, metadata.metadataId, "FORMATTED_VALUE", "confirmation").catch(() => null);
+        if (!confirmationRow || String(confirmationRow[indexes.date] || "").trim() !== params.matchDate) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Spielterminsetzung ist unklar", 503, { operationId: params.operationId, matchId: params.matchId, matchDate: params.matchDate, previousDate });
+        }
+        recovered = true;
+      }
+      const candidate = structuredClone(values);
+      const candidateRow = candidate.slice(1).find((entry) => String(entry[headerIndex(headerOf(candidate), "id")] || "").trim() === params.matchId);
+      if (candidateRow) candidateRow[indexes.date] = params.matchDate;
+      dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("matches1");
+      const eventRow = [...row];
+      eventRow[indexes.date] = params.matchDate;
+      const eventContext = await this.ensureRankingMatchDateEvent(principal, params, eventRow, header, previousDate);
+      logger.log("info", "ranking_match_date_update_completed", { matchId: params.matchId, competitionId: eventContext.competitionId, actorId: principal.id, matchDate: params.matchDate, recovered });
+      return withAudit({ success: true, matchId: params.matchId, matchDate: params.matchDate, ...(recovered ? { recovered: true } : {}) }, {
+        before: { matchId: params.matchId, matchDate: previousDate },
+        after: { matchId: params.matchId, matchDate: params.matchDate },
+      });
+    }));
   }
 
   async addEntry(principal, params) {
@@ -1743,6 +2016,7 @@ class SheetService {
         const beforeMatches = (entry) => Number(entry.row[indexes.rank]) === entry.beforeRank;
         if (recoveryOnly && stable.every(targetMatches)) {
           dataStore.set("rlPlatzierung", values, { source: "write-read" });
+          await this.ensureRankingWithdrawalEvent(principal, params, plan);
           return withAudit({
             success: true,
             recovered: true,
@@ -1804,6 +2078,7 @@ class SheetService {
 
         dataStore.set("rlPlatzierung", candidate, { source: "write-local", authoritative: false });
         this.scheduleRefresh("rlPlatzierung");
+        await this.ensureRankingWithdrawalEvent(principal, params, plan);
         return withAudit({
           success: true,
           withdrawnAt: plan.withdrawnAt,

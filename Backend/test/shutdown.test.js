@@ -55,4 +55,5 @@ test("Shutdown lehnt neue Operationen ab und schliesst akzeptierte Drains vor de
   releaseStop();
   await shutdown;
   assert.equal(repository.status().open, false);
+  assert.equal(application.messagingRepository.status().open, false);
 });

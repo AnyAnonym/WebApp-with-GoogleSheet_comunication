@@ -48,6 +48,7 @@ test("Normalisierungsprojektion zeigt nur freigegebene Werte und konkrete Proble
   const summary = summarizePeopleNormalization(table);
   assert.deepEqual(summary, {
     peopleCount: 2,
+    activeMemberCounts: { player: 0, player_a: 0, player_b: 0 },
     affectedCount: 2,
     issueCount: 13,
     issueCounts: {
@@ -67,6 +68,22 @@ test("Normalisierungsprojektion zeigt nur freigegebene Werte und konkrete Proble
       ROLE_NONCANONICAL: 1,
     },
   });
+});
+
+test("Normalisierungszusammenfassung zaehlt nur aktive Playerklassifikationen", () => {
+  const summary = summarizePeopleNormalization([
+    ["ID", "Nachname", "Aktiv", "Role"],
+    ["p1", "Player", "1", "player"],
+    ["p2", "Player A", "1", "PLAYER A"],
+    ["p3", "Player B", " 1 ", "player B"],
+    ["p4", "Inaktiv", "", "player A"],
+    ["p5", "Admin", "1", "admin"],
+    ["p6", "Operator", "1", "operator"],
+    ["p7", "Ungueltig", "1", "member"],
+  ]);
+
+  assert.deepEqual(summary.activeMemberCounts, { player: 1, player_a: 1, player_b: 1 });
+  assert.equal(Object.values(summary.activeMemberCounts).reduce((sum, count) => sum + count, 0), 3);
 });
 
 test("Normalisierung bietet nur serverseitig gueltige Vorschlaege an", () => {

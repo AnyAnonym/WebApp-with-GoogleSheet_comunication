@@ -55,8 +55,10 @@ Abweichung muss vor der naechsten Betriebsfreigabe geklaert werden.
 - `state.sqlite` enthaelt lokalen Sicherheits-, Steuerungs-, Idempotenz- und
   Recovery-State.
 - `scorelog.sqlite` und `audit.sqlite` sind getrennte Systems of Record fuer die
-  dauerhafte Score- beziehungsweise Audithistorie.
-- Alle drei ePiber-SQLite-Datenbanken verwenden WAL, Foreign Keys,
+  dauerhafte Score- beziehungsweise Audithistorie; `messaging.sqlite` ist das
+  System of Record fuer Bewerbsereignisse, persoenliche Meldungen, Zustellungen
+  und Quittierungen.
+- Alle vier ePiber-SQLite-Datenbanken verwenden WAL, Foreign Keys,
   `synchronous=FULL` und restriktive Dateirechte.
 - Der Backend-Shutdown stoppt neue Arbeit, drainiert HTTP-, WebSocket- und
   Google-Sheets-Arbeit und schliesst danach die SQLite-Datenbanken.
@@ -74,7 +76,7 @@ Abweichung muss vor der naechsten Betriebsfreigabe geklaert werden.
   Off-host- oder Disaster-Recovery-Backup.
 - Es sind keine verbindlichen RPO-/RTO-Werte abgenommen.
 - Es gibt keinen automatisierten Restoretest und keine Backupalter-Ueberwachung.
-- Google Sheets und die drei SQLite-Datenbanken besitzen keine gemeinsame
+- Google Sheets und die vier SQLite-Datenbanken besitzen keine gemeinsame
   Transaktion.
 - `scorelog.sqlite` und `audit.sqlite` wachsen ohne automatische fachliche
   Bereinigung.
@@ -108,6 +110,7 @@ Abweichung muss vor der naechsten Betriebsfreigabe geklaert werden.
 | Developer Metadata | In den Spreadsheets | `epiberRecord`-Zuordnung fuer sichere Updates und Deletes; muss zusammen mit den Sheetdaten wiederherstellbar sein |
 | `audit.sqlite` | `/var/lib/epiber-<system>/audit.sqlite` | Dauerhafte Fach-, Security-, Court- und Monitoraudits, einschliesslich vollstaendiger normalisierter gueltiger Loginversuche und Quell-IPs sowie weiterer geschuetzter personenbezogener Daten |
 | `scorelog.sqlite` | `/var/lib/epiber-<system>/scorelog.sqlite` | Dauerhafte Court-Scorehistorie und Folgenummern |
+| `messaging.sqlite` | `/var/lib/epiber-<system>/messaging.sqlite` | Dauerhafte Bewerbsereignisse, persoenliche Inboxtexte, Zustellstatus, Kenntnisnahmen und Revisionen |
 
 ### 4.2 Klasse B: Kritischer Betriebs- und Recovery-State
 
@@ -180,8 +183,9 @@ Kontrolle unentdeckt bleiben.
 
 #### Fehlende verteilte Transaktion
 
-Google Sheets, `state.sqlite`, `scorelog.sqlite` und `audit.sqlite` werden nicht
-atomar als Gesamtsystem geschrieben. Ein unkoordiniertes Backup kann einen
+Google Sheets, `state.sqlite`, `scorelog.sqlite`, `audit.sqlite` und
+`messaging.sqlite` werden nicht atomar als Gesamtsystem geschrieben. Ein
+unkoordiniertes Backup kann einen
 Sheetwrite enthalten, waehrend die zugehoerige Operation, ein Metadata-Intent
 oder der Auditabschluss aus einem anderen Zeitpunkt stammt.
 
@@ -298,7 +302,7 @@ praktisch getestet werden.
 
 #### Haeufiges Hot-Backup
 
-- `state.sqlite`, `scorelog.sqlite` und `audit.sqlite` alle 15 Minuten mit einer
+- `state.sqlite`, `scorelog.sqlite`, `audit.sqlite` und `messaging.sqlite` alle 15 Minuten mit einer
   unterstuetzten SQLite-Onlinebackup-Funktion sichern;
 - Google Spreadsheet waehrend Veranstaltungen stuendlich, sonst alle vier
   Stunden als vollstaendige native Kopie sichern;
@@ -349,7 +353,7 @@ ohne zwingenden Grund gleichzeitig angehalten.
 4. Sicherstellen, dass kein anderer Prozess das Spreadsheet schreibt.
 5. Vollstaendige native Spreadsheet-Kopie erstellen.
 6. Sheets-API-Export einschliesslich Developer Metadata erstellen.
-7. Jede der drei SQLite-Datenbanken ueber SQLite-Onlinebackup in eine eigene
+7. Jede der vier SQLite-Datenbanken ueber SQLite-Onlinebackup in eine eigene
    normalisierte Sicherungsdatei kopieren. Bei einer Rohkopie muessen Hauptdatei,
    `-wal` und `-shm` ausschliesslich bei gestopptem Dienst gemeinsam behandelt
    werden.
@@ -449,9 +453,10 @@ Je aktiver Instanz gehoeren zum fachlichen Satz:
 
 - `state.sqlite`;
 - `scorelog.sqlite`;
-- `audit.sqlite`.
+- `audit.sqlite`;
+- `messaging.sqlite`.
 
-Die drei Datenbanken bleiben als getrennte Dateien erhalten. Sie werden weder in
+Die vier Datenbanken bleiben als getrennte Dateien erhalten. Sie werden weder in
 eine gemeinsame Datenbank zusammengefuehrt noch durch Journalspiegel ersetzt.
 
 ### 10.2 Konsistenzverfahren
@@ -480,6 +485,8 @@ mindestens ausgefuehrt:
 - letzte Court-Folgenummern im ScoreLog;
 - Audit-Ergebnisverteilung und neuester Zeitstempel ohne Ausgabe von PII;
 - Anzahl pending Metadata-Intents im State;
+- Messaging-Schemaversion, Ereignis-/Teilnehmerzaehler, Revisionsbereich und
+  neuester Ereigniszeitpunkt ohne Ausgabe von Betreff, Text oder Personennamen;
 - Dateigroesse und Aenderung gegenueber dem vorherigen Lauf.
 
 Ein Ergebnis ungleich `ok`, unerwartet fehlende Tabellen, deutlich fallende

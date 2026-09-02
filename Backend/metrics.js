@@ -185,6 +185,7 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
     "epiber_ws_connections", "epiber_ws_requests_active", "epiber_sqlite_open", "epiber_sqlite_ready",
     "epiber_sqlite_writes_total", "epiber_sqlite_failures_total", "epiber_audit_records", "epiber_scorelog_sequence",
     "epiber_people_normalization_current", "epiber_people_normalization_people",
+    "epiber_people_normalization_active_members",
     "epiber_people_normalization_affected_people", "epiber_people_normalization_issues",
     "epiber_people_normalization_issue_count",
   ]) metricType(lines, name, name.endsWith("_total") ? "counter" : "gauge");
@@ -194,7 +195,7 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
   gauge(lines, "epiber_ready", readiness?.ready ? 1 : 0);
 
   const components = readiness?.components || {};
-  for (const component of ["initialized", "accepting_requests", "state_sqlite", "scorelog_sqlite", "auditlog_sqlite", "sheet_data", "court_source", "court_display_rules"]) {
+  for (const component of ["initialized", "accepting_requests", "state_sqlite", "scorelog_sqlite", "auditlog_sqlite", "messaging_sqlite", "sheet_data", "court_source", "court_display_rules"]) {
     gauge(lines, "epiber_readiness_component_ready", components[component] ? 1 : 0, { component });
   }
   for (const [table, tableStatus] of Object.entries(readiness?.data?.tables || {}).sort(([left], [right]) => left.localeCompare(right))) {
@@ -214,6 +215,9 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
 
   gauge(lines, "epiber_people_normalization_current", peopleNormalization?.current ? 1 : 0);
   gauge(lines, "epiber_people_normalization_people", Math.max(0, number(peopleNormalization?.peopleCount)));
+  for (const classification of ["player", "player_a", "player_b"]) {
+    gauge(lines, "epiber_people_normalization_active_members", Math.max(0, number(peopleNormalization?.activeMemberCounts?.[classification])), { classification });
+  }
   gauge(lines, "epiber_people_normalization_affected_people", Math.max(0, number(peopleNormalization?.affectedCount)));
   gauge(lines, "epiber_people_normalization_issues", Math.max(0, number(peopleNormalization?.issueCount)));
   for (const code of ISSUE_CODES) {
@@ -236,6 +240,7 @@ function render({ appVersion, processStartedAt, activeHttpRequests, readiness, w
     state,
     scorelog: readiness?.scoreLog,
     audit: readiness?.auditLog,
+    messaging: readiness?.messaging,
   };
   for (const [database, status] of Object.entries(databases)) {
     gauge(lines, "epiber_sqlite_open", status?.open ? 1 : 0, { database });

@@ -27,9 +27,9 @@ maschinenpruefbare Vertraege bleiben die technische Wahrheit.
   software/SOFTWARE-DOKU.txt   | Dieser Index.
   software/DATENBANK.txt       | Google-Sheets-Schema und -Projektionen,
                                | SQLite-State, Idempotenz sowie getrennte
-                               | ScoreLog- und Auditlog-Fachhistorien.
+                               | Messaging-, ScoreLog- und Auditlog-Fachdaten.
   software/ARCHITEKTUR.txt     | Backend-/Frontendmodule, Cookie-/Rollenauth,
-                               | Cache, SheetService, Court, Monitor,
+                               | Cache, SheetService, Messaging, Court, Monitor,
                                | WebSocket v2, Logging/Observability, Readiness
                                | und Shutdown.
   software/ENDPOINTS.txt       | Aktuelle HTTP-Routen, WebSocket-v2-Vertrag,

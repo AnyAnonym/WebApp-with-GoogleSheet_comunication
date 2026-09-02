@@ -76,6 +76,20 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
         after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
       };
+    case "setRankingMatchDate":
+      return {
+        targetType: "match",
+        targetId: params.matchId,
+        before: internal?.before || { matchId: params.matchId, matchDate: "" },
+        after: internal?.after || { matchId: params.matchId, matchDate: params.matchDate },
+      };
+    case "acknowledgeMessage":
+      return {
+        targetType: "message",
+        targetId: params.messageId,
+        before: result.success ? { acknowledged: !result.changed } : null,
+        after: result.success ? { acknowledged: true } : null,
+      };
     case "addEntryList":
       return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
     case "removeEntryList":
@@ -177,12 +191,21 @@ function profileRankings(personId, principal = null) {
     previousRank: headerIndex(rankingHeader, "rausgehangenletzteplatzierung"),
     reason: headerIndex(rankingHeader, "rausgehangengrund"),
   };
+  const activeRanks = new Map(rankings.slice(1).flatMap((row) => {
+    const competitionId = String(row[rankingIndexes.competition] || "").trim();
+    const rankedPersonId = String(row[rankingIndexes.person] || "").trim();
+    const rank = Number(row[rankingIndexes.rank]);
+    return competitionId && rankedPersonId && Number.isInteger(rank) && rank > 0
+      ? [[`${competitionId}\0${rankedPersonId}`, rank]]
+      : [];
+  }));
   const matches = dataStore.get("matches1");
   const matchHeader = headerOf(matches);
   const matchIndexes = {
     ignore: headerIndex(matchHeader, "ignore"),
     id: headerIndex(matchHeader, "id"),
     competition: headerIndex(matchHeader, "bewerbid"),
+    matchDate: headerIndex(matchHeader, "matchdate"),
     challengedAt: headerIndex(matchHeader, "forderungdate"),
     result: headerIndex(matchHeader, "ergebnis"),
     p1: headerIndex(matchHeader, "spieler1id"),
@@ -212,7 +235,11 @@ function profileRankings(personId, principal = null) {
       direction,
       opponentId,
       opponentName: names.get(opponentId) || "Unbekannter Spieler",
+      opponentRank: activeRanks.get(`${competitionId}\0${opponentId}`) || null,
       challengedAt: String(row[matchIndexes.challengedAt] || "").trim(),
+      ...(String(row[matchIndexes.matchDate] || "").trim() ? {
+        matchDate: String(row[matchIndexes.matchDate] || "").trim(),
+      } : {}),
     };
   };
   return rankings.slice(1).flatMap((row) => {
@@ -261,7 +288,7 @@ function profileRankings(personId, principal = null) {
 }
 
 function withdrawnRankingPlayers(competitionId) {
-  requireCurrentTables("bewerbe", "players", "rlPlatzierung");
+  requireCurrentTables("bewerbe", "matches1", "players", "rlPlatzierung");
   const competitions = dataStore.get("bewerbe");
   const competitionHeader = headerOf(competitions);
   const competitionRow = competitions.slice(1).find((row) => String(row[headerIndex(competitionHeader, "id")] || "").trim() === competitionId);
@@ -275,9 +302,45 @@ function withdrawnRankingPlayers(competitionId) {
     person: headerIndex(header, "personid"),
     rank: headerIndex(header, "rang"),
     withdrawnAt: headerIndex(header, "rausgehangenam"),
+    previousRank: headerIndex(header, "rausgehangenletzteplatzierung"),
     reason: headerIndex(header, "rausgehangengrund"),
   };
   const names = playerNameMap();
+  const activeRanks = new Map(values.slice(1).flatMap((row) => {
+    if (String(row[indexes.competition] || "").trim() !== competitionId) return [];
+    const rank = Number(row[indexes.rank]);
+    const personId = String(row[indexes.person] || "").trim();
+    return personId && Number.isInteger(rank) && rank > 0 ? [[personId, rank]] : [];
+  }));
+  const matches = dataStore.get("matches1");
+  const matchHeader = headerOf(matches);
+  const matchIndexes = {
+    ignore: headerIndex(matchHeader, "ignore"),
+    competition: headerIndex(matchHeader, "bewerbid"),
+    challengedAt: headerIndex(matchHeader, "forderungdate"),
+    challenger: headerIndex(matchHeader, "spieler1id"),
+    opponent: headerIndex(matchHeader, "spieler3id"),
+  };
+  const returnChallenge = (personId, withdrawnAt) => {
+    const withdrawnTime = parseMatchDate(withdrawnAt)?.getTime();
+    const match = matches.slice(1).filter((row) => {
+      if (matchIndexes.ignore >= 0 && String(row[matchIndexes.ignore] || "").trim() === "1") return false;
+      if (String(row[matchIndexes.competition] || "").trim() !== competitionId) return false;
+      if (parseParticipant(row[matchIndexes.challenger]).id !== personId) return false;
+      const challengedTime = parseMatchDate(row[matchIndexes.challengedAt])?.getTime();
+      return Number.isFinite(challengedTime) && Number.isFinite(withdrawnTime) && challengedTime > withdrawnTime;
+    }).sort((left, right) => (
+      String(right[matchIndexes.challengedAt] || "").localeCompare(String(left[matchIndexes.challengedAt] || ""))
+    ))[0];
+    if (!match) return null;
+    const opponentId = parseParticipant(match[matchIndexes.opponent]).id;
+    return {
+      challengedAt: String(match[matchIndexes.challengedAt] || "").trim(),
+      opponentId,
+      opponentName: names.get(opponentId) || "Unbekannter Spieler",
+      opponentRank: activeRanks.get(opponentId) || null,
+    };
+  };
   const players = values.slice(1).flatMap((row) => {
     if (String(row[indexes.competition] || "").trim() !== competitionId || Number(row[indexes.rank]) !== 0) return [];
     const personId = String(row[indexes.person] || "").trim();
@@ -285,7 +348,9 @@ function withdrawnRankingPlayers(competitionId) {
       personId,
       name: names.get(personId) || "Unbekannter Spieler",
       withdrawnAt: String(row[indexes.withdrawnAt] || "").trim(),
+      previousRank: Number(row[indexes.previousRank]),
       reason: String(row[indexes.reason] || "").trim(),
+      returnChallenge: returnChallenge(personId, String(row[indexes.withdrawnAt] || "").trim()),
     }];
   }).sort((left, right) => right.withdrawnAt.localeCompare(left.withdrawnAt) || left.name.localeCompare(right.name, "de"));
   return {
@@ -691,6 +756,34 @@ const endpoints = {
       profile: { ...context.auth.user, rankings: profileRankings(context.principal.id, context.principal) },
     }),
   },
+  myMessageSummary: {
+    access: "authenticated",
+    handler: (_params, context) => dependencies.messagingService.summary(context.principal),
+  },
+  myMessages: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.messages(context.principal, {
+      cursor: params.cursor || null,
+      limit: params.limit || 20,
+    }),
+  },
+  myMessage: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.message(context.principal, params.messageId),
+  },
+  acknowledgeMessage: {
+    access: "authenticated",
+    write: true,
+    handler: (params, context) => dependencies.messagingService.acknowledge(context.principal, params),
+  },
+  competitionHistory: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.competitionHistory(context.principal, {
+      bewerbId: params.bewerbId,
+      cursor: params.cursor || null,
+      limit: params.limit || 50,
+    }),
+  },
   rankingChallengeState: {
     access: "authenticated",
     handler: (params, context) => dependencies.sheetService.rankingChallengeState(
@@ -727,6 +820,15 @@ const endpoints = {
       operationId: operationId(params?.operationId),
       bewerbId: idValue(params?.bewerbId, "bewerbId"),
       opponentId: idValue(params?.opponentId, "opponentId"),
+    }),
+  },
+  setRankingMatchDate: {
+    access: "authenticated",
+    write: true,
+    handler: (params, context) => dependencies.sheetService.setRankingMatchDate(context.principal, {
+      operationId: operationId(params?.operationId),
+      matchId: idValue(params?.matchId, "matchId"),
+      matchDate: stringValue(params?.matchDate, "matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
     }),
   },
   addEntryList: {
@@ -900,6 +1002,9 @@ function canSubscribe(info, topic) {
     return info.principal.type === "user" && ["operator", "admin"].includes(info.principal.role);
   }
   if (topic === "monitor-command") return info.principal.type === "device";
+  if (topic.startsWith("messages:")) {
+    return info.principal.type === "user" && topic === `messages:${info.principal.id}`;
+  }
   if (topic.startsWith("monitor-status:")) {
     return info.principal.type === "user" && ["operator", "admin"].includes(info.principal.role);
   }
@@ -983,6 +1088,10 @@ function sendSubscriptionSnapshot(info, topic) {
   if (topic === "scores") send(info, { type: "event", topic, data: scoreboardScores() });
   if (topic === "scoreboard-state") send(info, { type: "event", topic, data: { courts: stateStore.getScoreboardCourts() } });
   if (topic === "monitors") send(info, { type: "event", topic, data: { monitors: dependencies.monitorBroker.listMonitors() } });
+  if (topic.startsWith("messages:") && canSubscribe(info, topic)) {
+    const { revision, unreadCount } = dependencies.messagingService.summary(info.principal);
+    send(info, { type: "event", topic, data: { revision, unreadCount } });
+  }
   const tableTopics = { matches: "matches1", players: "players", bewerbe: "bewerbe", bewerbsart: "bewerbsart", matchtyp: "matchtyp", entryList: "entryList", ranking: "rlPlatzierung", navigator: "navigator" };
   if (tableTopics[topic]) send(info, { type: "event", topic, data: { table: tableTopics[topic], ...dataStore.getMeta(tableTopics[topic]) } });
   if (topic.startsWith("monitor-status:")) {

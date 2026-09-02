@@ -305,6 +305,33 @@ test("commit staging rejects potential secret files", () => {
   }
 });
 
+test("commit staging allows secret-free env example templates", () => {
+  const { base, repo } = createRepository();
+  try {
+    workflow(repo, "branch-start", "--system", "paj", "--apply");
+    fs.writeFileSync(path.join(repo, "Backend/.env.example"), "SHEET_ID=CHANGE_ME\n");
+    workflow(repo, "branch-finalize", "--subject", "Vorlage ergaenzt", "--apply");
+    const result = workflow(
+      repo,
+      "branch-commit",
+      "--subject",
+      "Vorlage ergaenzt",
+      "--path",
+      "Backend/.env.example",
+      "--path",
+      "Backend/package.json",
+      "--path",
+      "Backend/package-lock.json",
+      "--path",
+      "Project/ChangeLogs/ChangeLog-1.2.3-paj-1.txt",
+    );
+    assert.match(result.stdout, /PLAN: Branch-Commit 1\.2\.3-paj-1-2 \| Vorlage ergaenzt/);
+    assert.equal(git(repo, "diff", "--cached", "--name-only"), "");
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test("renames require explicit approval of old and new paths", () => {
   const { base, repo } = createRepository();
   try {

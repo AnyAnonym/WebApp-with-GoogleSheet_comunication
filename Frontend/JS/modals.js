@@ -19,14 +19,23 @@ import { clearProfileModalContent } from "./profileModalState.js";
 
 const readPublicProfile = createEndpoint("publicProfile");
 const readMyProfile = createEndpoint("myProfile");
+const readMyMessageSummary = createEndpoint("myMessageSummary");
+const readMyMessages = createEndpoint("myMessages");
+const readMyMessage = createEndpoint("myMessage");
+const acknowledgeMessage = createEndpoint("acknowledgeMessage");
 const addMatch = createEndpoint("addMatch");
+const setRankingMatchDate = createEndpoint("setRankingMatchDate");
 const withdrawFromRanking = createEndpoint("withdrawFromRanking");
 const readWithdrawnRankingPlayers = createEndpoint("withdrawnRankingPlayers");
 let withdrawContext = null;
+let matchDateContext = null;
+let matchCalendarMonth = null;
 let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
 let profileActionController = null;
 let modalAuthIdentity = null;
+let messageState = null;
+let messageDetailReturnFocus = null;
 
 function errorMessage(value, fallback) {
   if (value instanceof Error && value.message) return value.message;
@@ -100,10 +109,21 @@ function closeModal(modal) {
     });
   }
   if (modal?.id === "withdrawModal") withdrawContext = null;
+  if (modal?.id === "matchDateModal") matchDateContext = null;
   if (modal?.id === "profileModal") {
+    closeModal(matchDateModal);
+    closeModal(messageDetailModal);
     profileRequestGeneration += 1;
     clearProfileModalContent(modal, profileActionController);
     profileActionController = null;
+    messageState = null;
+  }
+  if (modal?.id === "messageDetailModal") {
+    const returnFocus = messageDetailReturnFocus;
+    messageDetailReturnFocus = null;
+    profileModal.inert = false;
+    profileModal.removeAttribute("aria-hidden");
+    if (returnFocus?.isConnected && !profileModal.classList.contains("hidden")) returnFocus.focus();
   }
   if (modal?.id === "resetPasswordModal") document.getElementById("resetPasswordForm")?.reset();
   if (modal?.id === "passwordSetupModal") document.getElementById("passwordSetupForm")?.reset();
@@ -226,6 +246,7 @@ const profileModal = createModal("profileModal", `
       <div id="profileText">Lade Profildaten...</div>
       <div id="profileSystemActions" class="profile-actions"></div>
     </section>
+    <section id="profileMessagesPanel" class="profile-panel" role="tabpanel" hidden></section>
     <div id="profileRankingPanels"></div>
     <section id="profileAdminPanel" class="profile-panel" role="tabpanel" hidden>
       <div id="profileAdminActions" class="profile-actions"></div>
@@ -239,6 +260,23 @@ profileModal.setAttribute("aria-labelledby", "profileName");
 profileModal.querySelector(".modal-content")?.classList.add("profile-dialog");
 profileModal.querySelector(".close")?.setAttribute("aria-label", "Profil schließen");
 
+const messageDetailModal = createModal("messageDetailModal", `
+  <h2 id="messageDetailSubject">Meldung</h2>
+  <p id="messageDetailDate" class="message-detail-date"></p>
+  <p id="messageDetailCompetition" class="message-detail-competition"></p>
+  <p id="messageDetailActor" class="message-detail-actor" hidden></p>
+  <div id="messageDetailBody" class="message-detail-body"></div>
+  <button type="button" id="acknowledgeMessageButton" class="btn-login">Zur Kenntnis genommen</button>
+  <p id="messageDetailStatus" class="message-detail-status" role="status" aria-live="polite"></p>
+  <p id="messageDetailAnnouncement" class="sr-only" role="status" aria-live="polite"></p>
+`);
+messageDetailModal.classList.add("message-detail-modal");
+messageDetailModal.setAttribute("role", "dialog");
+messageDetailModal.setAttribute("aria-modal", "true");
+messageDetailModal.setAttribute("aria-labelledby", "messageDetailSubject");
+messageDetailModal.querySelector(".modal-content")?.classList.add("message-detail-dialog");
+messageDetailModal.querySelector(".close")?.setAttribute("aria-label", "Meldung schließen");
+
 const withdrawModal = createModal("withdrawModal", `
   <h2>Raushängen</h2>
   <form id="withdrawForm">
@@ -250,6 +288,51 @@ const withdrawModal = createModal("withdrawModal", `
     </div>
   </form>
 `, { explicitDismiss: true });
+
+const withdrawalBlockedModal = createModal("withdrawalBlockedModal", `
+  <h2 id="withdrawalBlockedTitle">Raushängen nicht möglich</h2>
+  <p>Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.</p>
+`);
+withdrawalBlockedModal.setAttribute("role", "dialog");
+withdrawalBlockedModal.setAttribute("aria-modal", "true");
+withdrawalBlockedModal.setAttribute("aria-labelledby", "withdrawalBlockedTitle");
+withdrawalBlockedModal.querySelector(".close")?.setAttribute("aria-label", "Hinweis schließen");
+
+const matchDateModal = createModal("matchDateModal", `
+  <h2 id="matchDateTitle">Spieltermin festlegen</h2>
+  <form id="matchDateForm">
+    <span class="match-date-label">Datum:</span>
+    <input type="hidden" id="rankingMatchDay" name="rankingMatchDay">
+    <div class="match-date-calendar" aria-label="Spieltermin-Datum auswählen">
+      <div class="match-date-calendar-header">
+        <button type="button" id="matchDatePreviousMonth" class="match-date-month-button" aria-label="Vorheriger Monat">‹</button>
+        <strong id="matchDateCalendarMonth" aria-live="polite"></strong>
+        <button type="button" id="matchDateNextMonth" class="match-date-month-button" aria-label="Nächster Monat">›</button>
+      </div>
+      <div class="match-date-weekdays" aria-hidden="true"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div>
+      <div id="matchDateCalendarDays" class="match-date-calendar-days" role="grid"></div>
+    </div>
+    <label for="rankingMatchHour">Uhrzeit:</label>
+    <select id="rankingMatchHour" name="rankingMatchHour" required>
+      ${Array.from({ length: 18 }, (_, index) => `<option value="${String(index + 6).padStart(2, "0")}">${String(index + 6).padStart(2, "0")}:00 Uhr</option>`).join("")}
+    </select>
+    <button type="submit" class="btn-login">Übernehmen</button>
+  </form>
+`, { explicitDismiss: true });
+matchDateModal.setAttribute("role", "dialog");
+matchDateModal.setAttribute("aria-modal", "true");
+matchDateModal.setAttribute("aria-labelledby", "matchDateTitle");
+matchDateModal.querySelector(".close")?.setAttribute("aria-label", "Terminauswahl schließen");
+document.getElementById("matchDatePreviousMonth").addEventListener("click", () => {
+  if (!matchCalendarMonth) return;
+  matchCalendarMonth = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() - 1, 1);
+  renderMatchDateCalendar();
+});
+document.getElementById("matchDateNextMonth").addEventListener("click", () => {
+  if (!matchCalendarMonth) return;
+  matchCalendarMonth = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() + 1, 1);
+  renderMatchDateCalendar();
+});
 
 const withdrawnPlayersModal = createModal("withdrawnPlayersModal", `
   <h2 id="withdrawnPlayersTitle">Rausgehängte Spieler</h2>
@@ -273,6 +356,176 @@ function formatCompactDate(value) {
   const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
   if (!match) return String(value || "").trim() || "---";
   return `${match[3]}.${match[2]}.20${match[1]}, ${match[4]}:${match[5]} Uhr`;
+}
+
+function compactDateValue(value) {
+  const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(2000 + Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateInputValue(date) {
+  const part = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}`;
+}
+
+function compactMatchDate(dayValue, hourValue) {
+  const day = String(dayValue || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const hour = String(hourValue || "").match(/^(0[6-9]|1\d|2[0-3])$/);
+  return day && hour ? `${day[1].slice(2)}${day[2]}${day[3]}-${hour[1]}00` : "";
+}
+
+function calendarDayValue(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function renderMatchDateCalendar() {
+  if (!matchCalendarMonth || !matchDateContext) return;
+  const monthLabel = document.getElementById("matchDateCalendarMonth");
+  const daysElement = document.getElementById("matchDateCalendarDays");
+  const selectedValue = document.getElementById("rankingMatchDay").value;
+  monthLabel.textContent = new Intl.DateTimeFormat("de-AT", { month: "long", year: "numeric" }).format(matchCalendarMonth);
+  daysElement.replaceChildren();
+  const firstDay = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth(), 1);
+  const leadingDays = (firstDay.getDay() + 6) % 7;
+  for (let index = 0; index < leadingDays; index++) {
+    const spacer = document.createElement("span");
+    spacer.className = "match-date-calendar-spacer";
+    daysElement.appendChild(spacer);
+  }
+  const dayCount = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() + 1, 0).getDate();
+  for (let day = 1; day <= dayCount; day++) {
+    const date = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth(), day);
+    const value = dateInputValue(date);
+    const timestamp = calendarDayValue(date);
+    const inOriginalWindow = timestamp >= matchDateContext.challengeDay && timestamp <= matchDateContext.finalDay;
+    const selectable = matchDateContext.previousDate
+      ? timestamp >= matchDateContext.today
+      : inOriginalWindow;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "match-date-calendar-day";
+    button.textContent = String(day);
+    button.disabled = !selectable;
+    button.setAttribute("role", "gridcell");
+    button.setAttribute("aria-label", new Intl.DateTimeFormat("de-AT", { dateStyle: "long" }).format(date));
+    button.classList.toggle("in-window", inOriginalWindow);
+    button.classList.toggle("challenge-start", timestamp === matchDateContext.challengeDay);
+    button.classList.toggle("challenge-end", timestamp === matchDateContext.finalDay);
+    button.classList.toggle("selected", value === selectedValue);
+    if (selectable) button.addEventListener("click", () => {
+      document.getElementById("rankingMatchDay").value = value;
+      renderMatchDateCalendar();
+      updateMatchDateHours();
+    });
+    daysElement.appendChild(button);
+  }
+}
+
+function updateMatchDateHours() {
+  const dayInput = document.getElementById("rankingMatchDay");
+  const hourInput = document.getElementById("rankingMatchHour");
+  const selectedDay = String(dayInput.value || "");
+  let firstEnabled = "";
+  for (const option of hourInput.options) {
+    const candidate = new Date(`${selectedDay}T${option.value}:00`);
+    option.disabled = !selectedDay
+      || Number.isNaN(candidate.getTime())
+      || candidate.getTime() < Number(matchDateContext?.earliestAt || 0)
+      || (matchDateContext?.latestAt && candidate.getTime() > matchDateContext.latestAt);
+    if (!option.disabled && !firstEnabled) firstEnabled = option.value;
+  }
+  if (!firstEnabled) hourInput.value = "";
+  else if (!hourInput.value || hourInput.selectedOptions[0]?.disabled) hourInput.value = firstEnabled;
+  document.querySelector('#matchDateForm button[type="submit"]').disabled = !firstEnabled;
+}
+
+function openMatchDateModal(challenge) {
+  const matchId = String(challenge?.matchId || "").trim();
+  if (!matchId) {
+    window.showToast("Die offene Forderung konnte nicht eindeutig zugeordnet werden.", "error");
+    return;
+  }
+  const currentDate = compactDateValue(challenge.matchDate);
+  const dayInput = document.getElementById("rankingMatchDay");
+  const hourInput = document.getElementById("rankingMatchHour");
+  const today = new Date(Date.now());
+  const now = today.getTime();
+  today.setHours(0, 0, 0, 0);
+  const challengedAt = compactDateValue(challenge.challengedAt);
+  const finalDay = challengedAt ? new Date(challengedAt.getFullYear(), challengedAt.getMonth(), challengedAt.getDate() + 14) : today;
+  matchDateContext = {
+    matchId,
+    previousDate: String(challenge.matchDate || ""),
+    earliestAt: currentDate ? now : challengedAt?.getTime() || now,
+    latestAt: currentDate || !challengedAt ? null : challengedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
+    today: calendarDayValue(today),
+    challengeDay: challengedAt ? calendarDayValue(challengedAt) : calendarDayValue(today),
+    finalDay: calendarDayValue(finalDay),
+  };
+  if (currentDate) {
+    dayInput.value = currentDate >= today ? dateInputValue(currentDate) : dateInputValue(today);
+    hourInput.value = String(currentDate.getHours()).padStart(2, "0");
+    document.getElementById("matchDateTitle").textContent = "Termin abändern";
+  } else {
+    dayInput.value = challengedAt ? dateInputValue(challengedAt) : "";
+    hourInput.value = "18";
+    document.getElementById("matchDateTitle").textContent = "Spieltermin festlegen";
+  }
+  const visibleDate = compactDateValue(`${dayInput.value.replaceAll("-", "").slice(2)}-0000`) || today;
+  matchCalendarMonth = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1);
+  renderMatchDateCalendar();
+  updateMatchDateHours();
+  openModal(matchDateModal);
+  matchDateModal.querySelector(".match-date-calendar-day.selected:not(:disabled), .match-date-calendar-day:not(:disabled)")?.focus();
+}
+
+function appendMatchDateCountdown(container, challenge, signal) {
+  if (challenge.matchDate) return;
+  const challengedAt = compactDateValue(challenge.challengedAt);
+  if (!challengedAt) return;
+  const countdown = document.createElement("p");
+  countdown.className = "profile-match-date-countdown";
+  const deadline = challengedAt.getTime() + 7 * 24 * 60 * 60 * 1000;
+  const update = () => {
+    const remaining = deadline - Date.now();
+    const totalMinutes = Math.floor(Math.abs(remaining) / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    countdown.textContent = `Terminfrist: ${remaining >= 0 ? "-" : "+"}${days} Tage, ${hours} Stunden, ${minutes} Minuten`;
+    countdown.classList.toggle("warning", remaining >= 0 && remaining <= 2 * 24 * 60 * 60 * 1000);
+    countdown.classList.toggle("overdue", remaining < 0);
+  };
+  update();
+  const timer = setInterval(update, 30000);
+  signal.addEventListener("abort", () => clearInterval(timer), { once: true });
+  container.appendChild(countdown);
+}
+
+function formatMessageDate(value) {
+  const compact = String(value || "").trim();
+  if (/^\d{6}-\d{4}$/.test(compact)) return formatCompactDate(compact);
+  const date = new Date(typeof value === "number" ? value : compact);
+  if (Number.isNaN(date.getTime())) return compact || "---";
+  return new Intl.DateTimeFormat("de-AT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Vienna",
+  }).format(date).replace(",", ",") + " Uhr";
+}
+
+function messageId(message) {
+  return String(message?.messageId || message?.id || "").trim();
+}
+
+function messageDate(message) {
+  return message?.createdAt || message?.sentAt || message?.date || "";
+}
+
+function isMessageAcknowledged(message) {
+  return message?.acknowledged === true || Boolean(message?.acknowledgedAt);
 }
 
 function profileName(profile) {
@@ -360,7 +613,7 @@ function activateProfileTab(tab) {
   tab.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
 }
 
-function appendProfileTab(container, label, panel, selected, signal) {
+function appendProfileTab(container, label, panel, selected, signal, onActivate = null) {
   const tab = document.createElement("button");
   tab.type = "button";
   tab.className = "profile-tab";
@@ -370,8 +623,190 @@ function appendProfileTab(container, label, panel, selected, signal) {
   tab.textContent = label;
   panel.setAttribute("aria-labelledby", `${panel.id}Tab`);
   tab.id = `${panel.id}Tab`;
-  tab.addEventListener("click", () => activateProfileTab(tab), { signal });
+  tab.addEventListener("click", () => {
+    activateProfileTab(tab);
+    onActivate?.();
+  }, { signal });
   container.appendChild(tab);
+  return tab;
+}
+
+function updateMessagesTabLabel() {
+  if (!messageState?.tab) return;
+  messageState.tab.textContent = `Meldungen (${messageState.unreadCount})`;
+}
+
+function renderMessageList({ append = false } = {}) {
+  if (!messageState) return;
+  const panel = document.getElementById("profileMessagesPanel");
+  if (!append) panel.replaceChildren();
+  if (!messageState.messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "message-list-empty";
+    empty.textContent = "Keine Meldungen vorhanden.";
+    panel.appendChild(empty);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "message-list";
+  for (const message of messageState.messages) {
+    const id = messageId(message);
+    if (!id) continue;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `message-row${isMessageAcknowledged(message) ? "" : " unread"}`;
+    row.dataset.messageId = id;
+    const competitionName = String(message.competitionName || "Allgemeine Meldung");
+    const subjectText = String(message.subject || "Ohne Betreff");
+    row.setAttribute("aria-label", `${isMessageAcknowledged(message) ? "Gelesene" : "Ungelesene"} Meldung, ${competitionName}: ${subjectText}`);
+    const date = document.createElement("time");
+    date.className = "message-row-date";
+    date.textContent = formatMessageDate(messageDate(message));
+    const competition = document.createElement("span");
+    competition.className = "message-row-competition";
+    competition.textContent = competitionName;
+    const roundName = String(message.roundName || "").trim();
+    const subject = document.createElement("span");
+    subject.className = "message-row-subject";
+    subject.textContent = subjectText;
+    row.append(date, competition);
+    if (roundName) {
+      const round = document.createElement("span");
+      round.className = "message-row-round";
+      round.textContent = roundName;
+      row.appendChild(round);
+    }
+    row.appendChild(subject);
+    const actorName = String(message.actorName || "").trim();
+    if (actorName) {
+      const actor = document.createElement("span");
+      actor.className = "message-row-actor";
+      actor.textContent = `Durch: ${actorName}`;
+      row.appendChild(actor);
+    }
+    row.addEventListener("click", () => openMessageDetail(id, row), { signal: profileActionController?.signal });
+    list.appendChild(row);
+  }
+  panel.appendChild(list);
+  if (messageState.nextCursor) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "btn-login message-load-more";
+    more.textContent = "Weitere Meldungen laden";
+    more.addEventListener("click", () => loadMessages({ append: true }), { once: true, signal: profileActionController?.signal });
+    panel.appendChild(more);
+  }
+}
+
+async function loadMessages({ append = false } = {}) {
+  if (!messageState || messageState.loading) return;
+  messageState.loading = true;
+  const generation = profileRequestGeneration;
+  const panel = document.getElementById("profileMessagesPanel");
+  if (!append) panel.textContent = "Lade Meldungen...";
+  try {
+    const params = { limit: 50 };
+    if (append && messageState.nextCursor) params.cursor = messageState.nextCursor;
+    const result = await readMyMessages(params);
+    if (generation !== profileRequestGeneration || !messageState || !result.data?.success) return;
+    const messages = Array.isArray(result.data.messages) ? result.data.messages : [];
+    messageState.messages = append ? [...messageState.messages, ...messages] : messages;
+    messageState.nextCursor = result.data.nextCursor || null;
+    if (result.data.unreadCount !== undefined) {
+      messageState.unreadCount = Math.max(0, Number(result.data.unreadCount) || 0);
+    }
+    messageState.revision = result.data.revision ?? messageState.revision;
+    messageState.loaded = true;
+    updateMessagesTabLabel();
+    renderMessageList();
+  } catch (error) {
+    if (generation === profileRequestGeneration && messageState) {
+      panel.textContent = errorMessage(error, "Meldungen konnten nicht geladen werden.");
+    }
+  } finally {
+    if (messageState) messageState.loading = false;
+  }
+}
+
+async function openMessageDetail(id, returnFocus) {
+  const generation = profileRequestGeneration;
+  messageDetailReturnFocus = returnFocus;
+  document.getElementById("messageDetailSubject").textContent = "Meldung wird geladen...";
+  document.getElementById("messageDetailDate").textContent = "";
+  document.getElementById("messageDetailCompetition").textContent = "";
+  const actorElement = document.getElementById("messageDetailActor");
+  actorElement.textContent = "";
+  actorElement.hidden = true;
+  document.getElementById("messageDetailBody").textContent = "";
+  document.getElementById("messageDetailStatus").textContent = "";
+  document.getElementById("messageDetailAnnouncement").textContent = "";
+  const acknowledgeButton = document.getElementById("acknowledgeMessageButton");
+  acknowledgeButton.hidden = false;
+  acknowledgeButton.disabled = true;
+  acknowledgeButton.onclick = null;
+  profileModal.inert = true;
+  profileModal.setAttribute("aria-hidden", "true");
+  openModal(messageDetailModal);
+  messageDetailModal.querySelector(".close")?.focus();
+  try {
+    const result = await readMyMessage({ messageId: id });
+    if (generation !== profileRequestGeneration || messageDetailModal.classList.contains("hidden")) return;
+    const message = result.data?.message;
+    if (!result.data?.success || !message) throw new Error("Meldung konnte nicht geladen werden.");
+    document.getElementById("messageDetailSubject").textContent = String(message.subject || "Ohne Betreff");
+    document.getElementById("messageDetailDate").textContent = formatMessageDate(messageDate(message));
+    document.getElementById("messageDetailCompetition").textContent = String(message.competitionName || "Allgemeine Meldung");
+    const actorName = String(message.actorName || "").trim();
+    if (actorName) {
+      actorElement.textContent = `Durch: ${actorName}`;
+      actorElement.hidden = false;
+    }
+    document.getElementById("messageDetailBody").textContent = String(message.body || "");
+    acknowledgeButton.hidden = isMessageAcknowledged(message);
+    acknowledgeButton.disabled = false;
+    acknowledgeButton.onclick = () => acknowledgeOpenMessage(id, message, acknowledgeButton);
+  } catch (error) {
+    document.getElementById("messageDetailSubject").textContent = "Fehler beim Laden";
+    document.getElementById("messageDetailStatus").textContent = errorMessage(error, "Meldung konnte nicht geladen werden.");
+  }
+}
+
+async function acknowledgeOpenMessage(id, message, button) {
+  const operationKey = `message:acknowledge:${id}`;
+  button.hidden = false;
+  button.disabled = true;
+  const status = document.getElementById("messageDetailStatus");
+  const announcement = document.getElementById("messageDetailAnnouncement");
+  announcement.textContent = "";
+  status.textContent = "Wird gespeichert...";
+  try {
+    const result = await acknowledgeMessage({ operationId: getOperationId(operationKey), messageId: id });
+    if (!result.data?.success) throw new Error(errorMessage(result.data, "Meldung konnte nicht bestätigt werden."));
+    releaseOperationId(operationKey);
+    message.acknowledged = true;
+    status.textContent = "";
+    button.hidden = true;
+    messageDetailModal.querySelector(".close")?.focus();
+    announcement.textContent = "Zur Kenntnis genommen.";
+    if (messageState) {
+      messageState.messages = messageState.messages.map((entry) => (
+        messageId(entry) === id ? { ...entry, acknowledged: true } : entry
+      ));
+      messageState.unreadCount = Math.max(0, Number(result.data.unreadCount ?? messageState.unreadCount - 1));
+      messageState.revision = result.data.revision ?? messageState.revision;
+      updateMessagesTabLabel();
+      renderMessageList();
+      await loadMessages();
+      messageDetailReturnFocus = [...document.querySelectorAll("#profileMessagesPanel .message-row")]
+        .find((row) => row.dataset.messageId === id) || null;
+    }
+    window.dispatchEvent(new CustomEvent("epiber-message-summary-refresh"));
+  } catch (error) {
+    releaseOperationId(operationKey, error);
+    status.textContent = errorMessage(error, "Meldung konnte nicht bestätigt werden.");
+    button.hidden = false;
+    button.disabled = false;
+  }
 }
 
 function appendChallengeButton(container, profile, ranking, signal) {
@@ -455,6 +890,7 @@ window.openProfileModal = async (options = {}) => {
   const nameElement = document.getElementById("profileName");
   const textElement = document.getElementById("profileText");
   const tabsElement = document.getElementById("profileTabs");
+  const messagesPanel = document.getElementById("profileMessagesPanel");
   const rankingPanelsElement = document.getElementById("profileRankingPanels");
   const systemActionsElement = document.getElementById("profileSystemActions");
   const adminPanel = document.getElementById("profileAdminPanel");
@@ -466,6 +902,7 @@ window.openProfileModal = async (options = {}) => {
   nameElement.textContent = "Lade Profil...";
   textElement.textContent = "";
   tabsElement.replaceChildren();
+  messagesPanel.replaceChildren();
   rankingPanelsElement.replaceChildren();
   systemActionsElement.replaceChildren();
   adminActionsElement.replaceChildren();
@@ -490,6 +927,11 @@ window.openProfileModal = async (options = {}) => {
     if (ownProfile) {
       appendProfileField(textElement, "Login", profile.login, "", actionSignal);
       appendContactFields(textElement, profile, actionSignal);
+      const configuredNotifications = profile.notifications ?? profile.notificationChannels;
+      const notifications = Array.isArray(configuredNotifications)
+        ? configuredNotifications.map((channel) => String(channel || "").trim()).filter(Boolean)
+        : [];
+      appendProfileField(textElement, "Benachrichtigungen", notifications.join(" | ") || "---", "", actionSignal);
 
       const passwordButton = document.createElement("button");
       passwordButton.type = "button";
@@ -512,13 +954,23 @@ window.openProfileModal = async (options = {}) => {
       panel.hidden = true;
       if (ranking.status === "active") appendProfileField(panel, "Ranglistenposition", ranking.rank, "", actionSignal);
       if (ranking.openChallenge) {
-        appendProfileField(
-          panel,
-          "Offene Forderung",
-          `${ranking.openChallenge.opponentName} · ${formatCompactDate(ranking.openChallenge.challengedAt)}`,
-          "",
-          actionSignal,
-        );
+        const challenge = ranking.openChallenge;
+        const opponentName = String(challenge.opponentName || "Unbekannt");
+        const opponentRank = String(challenge.opponentRank ?? "").trim();
+        const challengeBlock = document.createElement("div");
+        challengeBlock.className = "profile-open-challenge";
+        const directionLine = document.createElement("p");
+        directionLine.textContent = `Offene Forderung ${challenge.direction === "challenged" ? "von" : "gegen"} ${opponentName}${opponentRank ? ` (${opponentRank})` : ""}`;
+        const challengedAtLine = document.createElement("p");
+        challengedAtLine.textContent = `Forderung vom ${formatCompactDate(challenge.challengedAt)}`;
+        challengeBlock.append(directionLine, challengedAtLine);
+        if (challenge.matchDate) {
+          const matchDateLine = document.createElement("p");
+          matchDateLine.textContent = `Spieltermin fixiert: ${formatCompactDate(challenge.matchDate)}`;
+          challengeBlock.appendChild(matchDateLine);
+        }
+        if (ownProfile) appendMatchDateCountdown(challengeBlock, challenge, actionSignal);
+        panel.appendChild(challengeBlock);
       }
       if (ranking.status === "withdrawn" && ranking.withdrawal) {
         appendProfileField(panel, "Rausgehängt am", formatCompactDate(ranking.withdrawal.withdrawnAt), "", actionSignal);
@@ -528,13 +980,25 @@ window.openProfileModal = async (options = {}) => {
       actions.className = "profile-actions";
       panel.appendChild(actions);
       if (ownProfile && ranking.status === "active") {
+        if (ranking.openChallenge) {
+          const matchDateButton = document.createElement("button");
+          matchDateButton.type = "button";
+          matchDateButton.className = "btn-login";
+          matchDateButton.textContent = ranking.openChallenge.matchDate ? "Termin abändern" : "Spieltermin festlegen";
+          matchDateButton.addEventListener("click", () => openMatchDateModal(ranking.openChallenge), { signal: actionSignal });
+          actions.appendChild(matchDateButton);
+        }
         const withdrawButton = document.createElement("button");
         withdrawButton.type = "button";
         withdrawButton.className = "btn-login";
         withdrawButton.textContent = "Raushängen";
-        withdrawButton.disabled = ranking.canWithdraw !== true;
-        withdrawButton.title = ranking.openChallenge ? "Während einer offenen Forderung ist Raushängen nicht möglich." : "";
-        if (ranking.canWithdraw === true) {
+        withdrawButton.disabled = ranking.canWithdraw !== true && !ranking.openChallenge;
+        if (ranking.openChallenge) {
+          withdrawButton.addEventListener("click", () => {
+            openModal(withdrawalBlockedModal);
+            withdrawalBlockedModal.querySelector(".close")?.focus();
+          }, { once: true, signal: actionSignal });
+        } else if (ranking.canWithdraw === true) {
           withdrawButton.addEventListener("click", () => {
             window.openWithdrawModal({ rank: ranking.rank, bewerbId: ranking.competitionId });
           }, { once: true, signal: actionSignal });
@@ -612,6 +1076,37 @@ window.openProfileModal = async (options = {}) => {
 
     const systemPanel = document.getElementById("profileSystemPanel");
     appendProfileTab(tabsElement, "System", systemPanel, true, actionSignal);
+    if (ownProfile) {
+      let unreadCount = 0;
+      let revision = null;
+      try {
+        const summaryResult = await readMyMessageSummary();
+        if (requestGeneration !== profileRequestGeneration) return;
+        if (summaryResult.data?.success) {
+          unreadCount = Math.max(0, Number(summaryResult.data.unreadCount) || 0);
+          revision = summaryResult.data.revision;
+        }
+      } catch {}
+      messageState = {
+        loaded: false,
+        loading: false,
+        messages: [],
+        nextCursor: null,
+        revision,
+        tab: null,
+        unreadCount,
+      };
+      messageState.tab = appendProfileTab(
+        tabsElement,
+        `Meldungen (${unreadCount})`,
+        messagesPanel,
+        false,
+        actionSignal,
+        () => {
+          if (!messageState?.loaded) loadMessages();
+        },
+      );
+    }
     [...rankingPanelsElement.children].forEach((panel, index) => {
       appendProfileTab(tabsElement, rankings[index].competitionName, panel, false, actionSignal);
     });
@@ -627,6 +1122,14 @@ window.openProfileModal = async (options = {}) => {
   }
 };
 
+window.addEventListener("epiber-message-summary", (event) => {
+  if (!messageState || profileModal.dataset.profileScope !== "private") return;
+  const nextRevision = event.detail?.revision;
+  messageState.unreadCount = Math.max(0, Number(event.detail?.unreadCount) || 0);
+  updateMessagesTabLabel();
+  if (messageState.loaded && nextRevision !== messageState.revision) loadMessages();
+});
+
 subscribeAuth((user) => {
   const identity = user ? `${user.id || ""}:${user.role || ""}` : "anonymous";
   if (modalAuthIdentity !== null && modalAuthIdentity !== identity) {
@@ -640,6 +1143,7 @@ subscribeAuth((user) => {
   closeModal(passwordModal);
   closeModal(adminPasswordModal);
   closeModal(resetProofModal);
+  closeModal(matchDateModal);
   closeModal(withdrawModal);
   closeModal(profileModal);
 });
@@ -682,7 +1186,15 @@ window.openWithdrawnRankingPlayers = async (bewerbId) => {
     const result = await readWithdrawnRankingPlayers({ bewerbId: normalizedBewerbId });
     const data = result.data;
     if (!data?.success) throw new Error(errorMessage(data, "Liste konnte nicht geladen werden."));
-    title.textContent = data.competitionName ? `Rausgehängt · ${data.competitionName}` : "Rausgehängte Spieler";
+    if (data.competitionName) {
+      title.replaceChildren(
+        document.createTextNode("Rausgehängt aus"),
+        document.createElement("br"),
+        document.createTextNode(data.competitionName),
+      );
+    } else {
+      title.textContent = "Rausgehängte Spieler";
+    }
     body.replaceChildren();
     if (!data.players?.length) {
       body.textContent = "Derzeit ist niemand rausgehängt.";
@@ -694,10 +1206,21 @@ window.openWithdrawnRankingPlayers = async (bewerbId) => {
       const heading = document.createElement("strong");
       heading.textContent = player.name;
       const date = document.createElement("span");
-      date.textContent = formatCompactDate(player.withdrawnAt);
+      date.textContent = `Datum: ${formatCompactDate(player.withdrawnAt)}`;
+      const previousRank = document.createElement("span");
+      previousRank.textContent = `Position: ${player.previousRank}`;
       const reason = document.createElement("p");
-      reason.textContent = player.reason;
-      entry.append(heading, date, reason);
+      reason.textContent = `Grund: ${player.reason}`;
+      entry.append(heading, date, previousRank, reason);
+      if (player.returnChallenge) {
+        const challenge = document.createElement("p");
+        const opponentRank = Number.isInteger(Number(player.returnChallenge.opponentRank))
+          && Number(player.returnChallenge.opponentRank) > 0
+          ? ` (Position ${player.returnChallenge.opponentRank})`
+          : "";
+        challenge.textContent = `Eingefordert am ${formatCompactDate(player.returnChallenge.challengedAt)} gegen ${player.returnChallenge.opponentName}${opponentRank}`;
+        entry.appendChild(challenge);
+      }
       body.appendChild(entry);
     }
   } catch (error) {
@@ -950,6 +1473,36 @@ document.getElementById("withdrawForm").addEventListener("submit", async (event)
   }
 });
 
+document.getElementById("matchDateForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const matchDate = compactMatchDate(form.elements.rankingMatchDay.value, form.elements.rankingMatchHour.value);
+  if (!matchDateContext || !matchDate) {
+    window.showToast("Bitte wähle einen gültigen Spieltermin aus.", "error");
+    return;
+  }
+  const context = { ...matchDateContext };
+  const operationKey = `ranking:match-date:${context.matchId}:${matchDate}`;
+  setModalBusy(form, true);
+  submitButton.textContent = "Wird übernommen...";
+  try {
+    const result = await setRankingMatchDate({ operationId: getOperationId(operationKey), matchId: context.matchId, matchDate });
+    if (!result.data?.success) throw new Error(errorMessage(result.data, "Spieltermin konnte nicht gespeichert werden."));
+    releaseOperationId(operationKey);
+    closeModal(matchDateModal);
+    window.showToast(context.previousDate ? "Der Spieltermin wurde geändert." : "Der Spieltermin wurde festgelegt.", "success");
+    window.openProfileModal();
+  } catch (error) {
+    releaseOperationId(operationKey, error);
+    diagnostic.error("ranking_match_date_failed", error);
+    window.showToast(errorMessage(error, "Spieltermin konnte nicht gespeichert werden."), "error");
+  } finally {
+    setModalBusy(form, false);
+    submitButton.textContent = "Übernehmen";
+  }
+});
+
 let logoutInProgress = false;
 
 document.addEventListener("click", async (event) => {
@@ -1024,6 +1577,19 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab" && !messageDetailModal.classList.contains("hidden")) {
+    const focusable = [...messageDetailModal.querySelectorAll("button:not([hidden]):not(:disabled)")];
+    if (!focusable.length) return;
+    const currentIndex = focusable.indexOf(document.activeElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusable[nextIndex].focus();
+    return;
+  }
   if (event.key !== "Escape") return;
-  document.querySelectorAll(".modal:not(.hidden):not(.explicit-dismiss)").forEach(closeModal);
+  const openModals = [...document.querySelectorAll(".modal:not(.hidden):not(.explicit-dismiss)")];
+  const topModal = openModals.at(-1);
+  if (topModal) closeModal(topModal);
 });

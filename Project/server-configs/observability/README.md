@@ -70,6 +70,9 @@ bei Erreichen der Groessenbegrenzung kuerzer.
 Score- und Auditfachhistorien bleiben ausschliesslich in ihren ePiber-SQLite-
 Dateien System of Record. Grafana speichert Benutzer, Dashboards und 30 Tage
 Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
+Messaging-Ereignisse, persoenliche Projektionen, Zustellungen und Quittierungen
+bleiben ausschliesslich in `messaging.sqlite`; Journal und Prometheus enthalten
+nur kontrollierte IDs beziehungsweise aggregierte technische Zaehler.
 
 ## Dashboards und Alerts
 
@@ -79,12 +82,26 @@ sowie Platz- und Scoreverlauf.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
-Personenbezug. Nur sein ausdruecklicher Auditverlauf enthaelt den ausfuehrenden
+Personenbezug. Es zeigt zusaetzlich die aktiven Mitglieder insgesamt und getrennt
+nach `player`, `player A` und `player B`; die Gesamtzahl ist die Summe dieser drei
+Klassifikationen und schliesst Admins sowie Operatoren aus. Das Gauge
+`epiber_people_normalization_active_members` verwendet dafuer ausschliesslich das
+kontrollierte Label `classification=player|player_a|player_b` und keine
+Personenwerte. Nur der ausdrueckliche Auditverlauf enthaelt den ausfuehrenden
 Adminnamen samt Admin-ID sowie Ziel-Personen-ID und resultierenden Vor-/Nachnamen.
 Fuer `Aktiv` und `Rolle` erscheinen kontrollierte Alt-/Neuwerte; bei allen
 anderen Normalisierungsfeldern nur der Feldname. Kontakt-, Adress-, Geburts-,
 Geschlechts-, sonstige Vorher-/Nachher- und freie Fachdaten werden dort nicht
 dargestellt.
+
+Das Hostressourcen-Dashboard formatiert CPU, RAM, freien Speicher, Inodes und
+Netzwerkdurchsatz mit passenden dynamischen Einheiten und zeigt die aktuellen
+Werte zusaetzlich in den Tabellenlegenden. Readiness und SQLite-Panels fuehren
+Messaging als eigene kontrollierte Komponente beziehungsweise Datenbank. Die
+Metriken `epiber_readiness_component_ready{component="messaging_sqlite"}`,
+`epiber_sqlite_ready{database="messaging"}` und
+`epiber_sqlite_failures_total{database="messaging"}` besitzen keine Personen-,
+Ereignis-, Meldungs- oder Textlabels.
 
 Das Dashboard `ePiber Platz- und Scoreverlauf` zeigt fuer das ausgewaehlte
 Deployment und optional einen einzelnen Platz die neuesten Ereignisse zuerst.

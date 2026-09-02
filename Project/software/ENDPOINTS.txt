@@ -465,8 +465,9 @@ PUBLIC:
       Variante enthaelt `rankings:[{ competitionId, competitionName, rank,
       status:"active|withdrawn", canChallenge, canWithdraw, openChallenge }]`.
       `openChallenge` enthaelt bei einer offenen Forderung Match-ID, Richtung,
-      Gegner-ID/-Name und Forderungszeit. `canChallenge` und `canWithdraw` sind
-      auf den aktuellen serverseitigen Principal bezogen. Angemeldete Benutzer
+      Gegner-ID/-Name, Gegnerrang `opponentRank` und Forderungszeit.
+      `canChallenge` und `canWithdraw` sind auf den aktuellen serverseitigen
+      Principal bezogen. Angemeldete Benutzer
       erhalten bei Rang `0` zusaetzlich
       `withdrawal:{ withdrawnAt, reason }`. Nur im Eigenprofil enthaelt
       `withdrawal` ausserdem `previousRank`; anonym und in fremden Profilen wird
@@ -519,10 +520,56 @@ AUTHENTICATED (player, operator oder admin):
 
   `myProfile {}`
       `{ success, profile:{ id, firstName, lastName, email, login, phone,
-      birthDate, gender, role, rankings:[...] } }`; `rankings` folgt dem Vertrag
+      birthDate, gender, role, notificationChannels:[...], rankings:[...] } }`;
+      `notificationChannels` enthaelt nur gueltige administrativ gepflegte Werte
+      `Email|Whatsapp`. `rankings` folgt dem Vertrag
       von `publicProfile`. Kontakt-E-Mail und Login sind getrennt; Passwort- und
       Resetwerte erscheinen nie. Raushaengezeit und -grund folgen dem
       angemeldeten Profilvertrag.
+
+  `myMessageSummary {}`
+      Liefert fuer den aktuellen Benutzer `{ success, revision, totalCount,
+      unreadCount }`. Es werden weder fremde Zaehler noch Meldungsinhalte
+      projiziert.
+
+  `myMessages { cursor?, limit? }`
+      Liefert die eigenen Meldungen mit serverseitiger Revision, Gesamt- und
+      Ungelesenanzahl sowie `nextCursor`. Listeneintraege enthalten ID,
+      Erstellungszeit, `competitionName`, den optional aus `BewerbRunde`
+      kontrolliert bezeichneten `roundName`, `actorName`, Betreff und
+      Bestaetigungszeit. Der kontrollierte `competitionName` lautet bei keiner
+      Bewerbszuordnung `Allgemeine Meldung`. Ungelesene Meldungen stehen vor
+      gelesenen; innerhalb beider Gruppen gilt Erstellungszeit und ID absteigend.
+      Ein Cursor ist an den aktuellen Empfaenger gebunden.
+
+  `myMessage { messageId }`
+      Liefert ausschliesslich die eigene Meldung als Detailprojektion; diese
+      enthaelt ID, Ereignis-/Bewerbszuordnung, Teilnehmerrolle, Erstellungszeit,
+      Typ, Quelle, Betreff, Text, Akteur, Bestaetigungszeit, kontrollierte
+      Zustellstatus sowie `competitionName` und `actorName`.
+      Die Detailansicht ordnet Betreff, Datum, Bewerb, bei bekanntem Akteur
+      `Durch: <Name>` und danach den Meldungstext an.
+
+  `acknowledgeMessage { operationId, messageId }`
+      Bestaetigt die eigene Meldung idempotent. Die serverseitige
+      Antwort: `{ success:true, messageId, acknowledgedAt, repeated, changed }`.
+      Bestaetigungszeit sowie Revision und Ungelesenanzahl bleiben autoritativ.
+      Nach erfolgreicher Bestaetigung und bei einer bereits bestaetigten Meldung
+      wird in der Detailansicht keine Bestaetigungsaktion mehr angeboten.
+
+  `competitionHistory { bewerbId?, cursor?, limit? }`
+      Liefert die absteigend sortierte, cursorpaginierte Bewerbshistorie fuer
+      einen Bewerb oder global fuer alle Bewerbe. Eintraege enthalten unter
+      anderem Bewerb-ID/-Bezeichnung, Zeitpunkt, Titel, optionales Ergebnis und
+      optionalen Akteur. Die Einzelhistorie darf die im Dialog bereits genannte
+      Bewerbsbezeichnung je Eintrag auslassen; die globale Historie zeigt sie je
+      Eintrag. Matchgebundene Eintraege enthalten optional `roundName`; Codes wie
+      `AF-P3`, `VF-P2` oder `G1` werden ohne Paarungsnummer als `Achtelfinale`,
+      `Viertelfinale` beziehungsweise `1. Gruppe` bezeichnet. Ranglistenbewerbe
+      (`BewerbsartID=2`) projizieren keine Runde. Einzel- und Gesamtansicht
+      verwenden unterschiedliche scope-gebundene Cursor; ein Cursor der anderen
+      Ansicht ergibt `COMPETITION_HISTORY_CURSOR_INVALID`. Private Inboxtexte,
+      Receipts und fremde Zustellstaende werden nicht ausgegeben.
 
   `rankingChallengeState { bewerbId }`
       Liefert fuer den angemeldeten Spieler den serverseitig bestimmten Modus
@@ -553,6 +600,29 @@ AUTHENTICATED (player, operator oder admin):
       Neueinsteiger ohne Ranglistenzeile sowie ein Spieler nach Ablauf der
       Rueckkehrfrist darf jeden aktiven Rang fordern. Der Write legt nur das Match
       an; Einreihung und Rangverschiebung nach einem Ergebnis bleiben manuell.
+
+  `setRankingMatchDate { operationId, matchId, matchDate }`
+      Idempotenter Write fuer eine offene Ranglistenforderung. `matchDate` hat
+      exakt das Format `YYMMDD-HHMM`; nur Forderer oder Geforderter duerfen
+      schreiben. Der erste Termin muss zwischen Forderungszeitpunkt und exakt
+      vierzehn Tagen danach liegen. Ein vorhandener Termin darf von beiden
+      Beteiligten auf einen Zeitpunkt ab der aktuellen Serverzeit ohne obere
+      Datumsgrenze geaendert werden. Erlaubt sind ausschliesslich volle Stunden
+      von 06:00 bis 23:00 Uhr. Ignore-Zeilen, Matches ohne Forderungszeitpunkt,
+      Ergebnisse und `[wo]`-/`[ret]`-Abschluesse sind geschlossen.
+      Erfolg liefert `{ success:true, matchId, matchDate, recovered? }`, projiziert
+      den Write lokal, invalidiert `matches` und erzeugt recovery-sicher ein
+      `appointment`- beziehungsweise `appointment_changed`-Ereignis mit Akteur,
+      neuem und gegebenenfalls altem Termin sowie je einer persoenlichen Meldung
+      fuer beide Beteiligte. Der Betreff nennt den jeweiligen Mitspieler und
+      wiederholt den separat sichtbaren Bewerbsnamen nicht. Audit umfasst
+      `started` und `success|failed|unknown`; das strukturierte Abschlusslog
+      enthaelt nur kontrollierte IDs, Termin und Recoverystatus.
+      Relevante Fehler: `MATCH_NOT_FOUND`, `RANKING_MATCH_REQUIRED`,
+      `MATCH_PARTICIPANT_REQUIRED`, `RANKING_CHALLENGE_CLOSED`,
+      `MATCH_DATE_INVALID`, `MATCH_DATA_INVALID`, `MATCH_DATE_TIME_INVALID`,
+      `MATCH_DATE_PAST`, `MATCH_DATE_AFTER_DEADLINE`, `MATCH_DATE_UNCHANGED`,
+      `OPERATION_ID_CONFLICT`, `SHEET_SCHEMA` und `WRITE_OUTCOME_UNKNOWN`.
 
   `addEntryList { operationId, bewerbId }`
       Person und `Entrydate` aus Session/Serverzeit.
@@ -785,6 +855,11 @@ Operator/Admin Topics:
   `navigator`                    Navigator-Invalidierung
   `monitors`                     Monitorliste/Presence
   `monitor-status:<monitorId>`   adressierter Presence-/Commandstatus
+
+Authenticated private Topic:
+  `messages:<Personen-ID>`       Nur fuer die eigene aktuelle Principal-ID;
+                                 Snapshot `{ revision, unreadCount }` nach neuer
+                                 Meldung oder erstmaliger Kenntnisnahme.
 
 Device Topic:
   `monitor-command`      adressierte Navigate-/Scrollcommands. Navigate enthaelt

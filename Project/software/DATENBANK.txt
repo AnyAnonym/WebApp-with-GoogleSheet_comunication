@@ -3,12 +3,14 @@
   Projekt: ePiber / ASKOE Piberbach Tennis
 ================================================================================
 
-Dieses Dokument beschreibt Google Sheets und die drei getrennten ePiber-SQLite-
+Dieses Dokument beschreibt Google Sheets und die vier getrennten ePiber-SQLite-
 Datenbanken. Google Sheets ist die autoritative Quelle fuer operative Fach- und
 Stammdaten. `state.sqlite` enthaelt lokalen Sicherheits-, Steuerungs-,
 Idempotenz- und Recovery-State und ist keine zweite autoritative Quelle fuer
 diese Daten. `scorelog.sqlite` und `audit.sqlite` sind dagegen die jeweiligen
-Systeme-of-Record fuer ihre dauerhaften Fachhistorien. Spaltennamen werden im
+Systeme-of-Record fuer ihre dauerhaften Fachhistorien; `messaging.sqlite` ist das
+System-of-Record fuer Bewerbsereignisse, persoenliche Meldungen, Zustellungen und
+Quittierungen. Spaltennamen werden im
 Backend getrimmt und fuer den Vergleich kleingeschrieben. Zusaetzliche Sheet-
 Spalten duerfen vorhanden sein; oeffentliche Antworten enthalten nur explizit
 freigegebene Projektionen.
@@ -59,7 +61,13 @@ Matches1 enthaelt offene und gespielte Matches.
   Ignore          | "1" blendet den Datensatz in fachlichen Anzeigen aus.
   ID              | Eindeutige Match-ID. Neue Forderungen erhalten eine aus
                   | Principal und operationId stabil abgeleitete ID `m-...`.
-  MatchDate       | Geplanter Termin, ueblich `YYMMDD-HHMM`.
+  MatchDate       | Geplanter Termin im Format `YYMMDD-HHMM`. Bei einer offenen
+                  | Ranglistenforderung duerfen nur die beiden in Spieler1ID und
+                  | Spieler3ID gefuehrten Beteiligten das Feld schreiben. Der
+                  | Ersttermin liegt zwischen ForderungDate und exakt 14 Tage
+                  | danach; ein vorhandener Termin darf auf einen Zeitpunkt ab
+                  | der aktuellen Serverzeit ohne obere Datumsgrenze geaendert
+                  | werden. Zulaessig sind nur volle Stunden 06:00 bis 23:00.
   ForderungDate   | Serverzeit Europe/Vienna im Format `YYMMDD-HHMM`.
   Dauer           | Reservierte Matchdauer.
   BewerbID        | Referenz auf Bewerb.ID.
@@ -121,6 +129,9 @@ Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
   CD-ID              | Optionale externe ClubDesk-Kennung. Die reine Personen-
                      | normalisierung schliesst sie aus; der Mitgliederabgleich
                      | projiziert, verknuepft und schreibt sie kontrolliert.
+  Notification       | Optionale externe Kanaele `Email` und `Whatsapp`, exakt
+                     | mit `|` getrennt. Leere oder ungueltige Werte deaktivieren
+                     | externe Kanaele fuer diese Person; die Inbox bleibt aktiv.
   Aktiv              | "1" = aktiv. Inaktive Personen koennen sich nicht
                      | anmelden und erscheinen nicht im Mitgliederverzeichnis.
   Role               | Pflichtspalte: player, player A, player B, operator oder
@@ -246,8 +257,9 @@ Personenprojektionen:
     `Matches1` und Personen gebildet und nach SortOrder, Bezeichnung und ID
     sortiert. Pro Eintrag werden Bewerb-ID/-Bezeichnung, Rang,
     `active|withdrawn`, die principalbezogenen Booleans `canChallenge` und
-    `canWithdraw` sowie eine etwaige offene Forderung mit Gegner und
-    Forderungszeit projiziert. Bei Rang `0` erhalten angemeldete Benutzer
+    `canWithdraw` sowie eine etwaige offene Forderung mit Match-ID, Gegner,
+    dessen aktuellem Rang, `challenger|challenged`-Richtung, Forderungszeit und
+    optionalem Spieltermin projiziert. Bei Rang `0` erhalten angemeldete Benutzer
     Raushaengezeitpunkt und Grund; anonym bleiben diese Werte ausgeschlossen.
     Nur das Eigenprofil erhaelt innerhalb der zwoelfmonatigen Rueckkehrfrist
     zusaetzlich den vorherigen Rang fuer die Rueckkehrforderung. Fremde Profile
@@ -393,16 +405,70 @@ Diese Semantik betrifft die weiterhin in Google Sheets ausgefuehrten Fachwrites.
 
 
 ================================================================================
-  7. SQLITE-FACHHISTORIEN SCORELOG UND AUDITLOG
+  7. SQLITE-FACHDATEN MESSAGING, SCORELOG UND AUDITLOG
 ================================================================================
 
 Die Google-Sheets-Tabs `Logging` und `ScoreLog` werden vom Backend weder gelesen
 noch beschrieben. Es gibt keinen automatischen Import ihrer historischen Zeilen;
 vor einer Entfernung muessen die bisherigen Inhalte gesichert archiviert und die
 neuen SQLite-Systeme erfolgreich in Betrieb genommen sein.
-Fachhistorien liegen getrennt vom Anwendungsstate in zwei systemspezifischen
-SQLite-Dateien. Beide verwenden Modus 0600, WAL und `synchronous=FULL`; es gibt
-keine automatische fachliche Bereinigung.
+Fachhistorien und Messaging liegen getrennt vom Anwendungsstate in drei
+systemspezifischen SQLite-Dateien. Alle verwenden Modus 0600, Foreign Keys, WAL
+und `synchronous=FULL`; es gibt keine automatische fachliche Bereinigung.
+
+`MESSAGING_FILE`, standardmaessig `messaging.sqlite` im Verzeichnis von
+`STATE_FILE`, produktiv `/var/lib/epiber-<system>/messaging.sqlite`, verwendet
+Schema 4:
+
+Tabelle `competition_events`:
+  event_id PRIMARY KEY, competition_id, created_at, event_type, source,
+  source_id, actor_id, actor_name, summary, detail, result, inserted_at.
+  `result` ist ein optionaler kontrollierter Ergebnissnapshot. Akteur, Name,
+  Zusammenfassung, Detail und Ergebnis halten den zum Ereigniszeitpunkt bekannten
+  Stand fest und werden nicht nachtraeglich aus veraenderten Sheetwerten erzeugt.
+
+Tabelle `event_participants`:
+  event_id + user_id PRIMARY KEY, participant_role, display_name, eindeutige
+  message_id, projection_type, subject, body. Ein Ereignis besitzt mindestens
+  einen eindeutigen Teilnehmer; Betreff und Text sind dessen private Projektion
+  und werden nicht in fremde Inboxen oder die neutrale Bewerbshistorie uebernommen.
+
+Tabelle `event_receipts`:
+  event_id + user_id PRIMARY KEY, acknowledged_at. Die Kenntnisnahme ist
+  personengebunden und veraendert den neutralen Bewerbsverlauf nicht.
+
+Tabelle `event_deliveries`:
+  event_id + user_id + channel PRIMARY KEY, status, updated_at. Status ist
+  `pending`, `delivered`, `failed` oder `not_configured`; die Inbox wird als
+  `delivered` gespeichert, die noch nicht implementierten Kanaele Email und
+  Whatsapp enden kontrolliert mit `not_configured`.
+
+Tabelle `event_ack_operations`:
+  user_id + operation_id PRIMARY KEY, event_id, message_id, acknowledged_at.
+  Sie bindet eine Quittierung idempotent an genau eine eigene Meldung.
+
+Tabelle `messaging_revisions`:
+  user_id PRIMARY KEY, revision. Neue persoenliche Projektionen und erstmalige
+  Quittierungen erhoehen die Revision und den privaten WebSocket-Snapshot.
+
+Stabile Ereignis-, Meldungs- und Operation-IDs verhindern Dubletten. Ein bereits
+vorhandenes Ereignis darf nur kompatibel um fehlende Teilnehmer oder eine zuvor
+fehlende Bewerbszuordnung ergaenzt werden; eine abweichende Wiederverwendung wird
+als Konflikt abgewiesen. Das fruehere Meldungsschema wird tabellenbasiert nach
+Schema 4 migriert, ohne Betreff oder Nachrichtentext auszuwerten. Eine einmalige
+Legacy-Zuordnung ergaenzt bei matchgebundenen Ereignissen fehlende Bewerb-IDs aus
+`Matches1`; beliebige manuelle Sheet-Aenderungen erzeugen dagegen keine
+Bewerbsereignisse.
+
+Eine nachweislich angelegte Ranglistenforderung erzeugt ein zentrales Ereignis
+mit zwei Teilnehmerprojektionen. Ein bestaetigtes Raushaengen erzeugt ein
+Einteilnehmerereignis; der freie Grund steht nur im privaten Meldungstext und
+nicht in neutraler Historie, Audit oder Betriebslog. Eine erfolgreiche erste
+Terminsetzung erzeugt `appointment`, eine Aenderung `appointment_changed`; beide
+speichern den Akteur, neuen und bei Aenderung alten Termin und je eine private
+Projektion fuer Forderer und Geforderten. Scheitert diese recovery-sichere
+Ereignispersistenz nach dem Sheetwrite, wird der Fachwrite nicht als eindeutig
+erfolgreich bestaetigt.
 
 `SCORELOG_FILE`, standardmaessig
 `Backend/.state/<INSTANCE_ID>-scorelog.sqlite`, produktiv
@@ -506,6 +572,12 @@ Journalspiegel `audit_recorded` gibt fuer diese Aktion zusaetzlich nur Bewerb-
 und Match-ID aus; Kontaktwerte, freie Texte und sonstige Personendaten bleiben
 ausgeschlossen. `failed` bezeichnet dabei einen Versuch, bei dem keine
 Forderung angelegt wurde, niemals eine Ablehnung durch den Geforderten.
+
+Terminwrites verwenden die Auditaktion `setRankingMatchDate`. Bereits `started`
+enthaelt nur Match-ID und neuen kontrollierten Termin. `success`, `failed` oder
+`unknown` schliessen denselben Auditdatensatz; Erfolg speichert alten und neuen
+Termin. Der strukturierte Journalabschluss enthaelt ausschliesslich Match-,
+Bewerbs- und Akteur-ID, neuen Termin und Recoverykennzeichen, keine freien Texte.
 
 
 ================================================================================

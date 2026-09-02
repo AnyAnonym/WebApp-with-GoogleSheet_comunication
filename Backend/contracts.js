@@ -84,6 +84,18 @@ const requestContracts = {
   scoreboardSnapshot: empty,
   memberDirectory: empty,
   myProfile: empty,
+  myMessageSummary: empty,
+  myMessages: (params) => objectShape(params, {
+    cursor: optional(id("cursor")),
+    limit: optional(integer("limit", { min: 1, max: 100 })),
+  }),
+  myMessage: (params) => objectShape(params, { messageId: id("messageId") }),
+  acknowledgeMessage: (params) => objectShape(params, { operationId: operation, messageId: id("messageId") }),
+  competitionHistory: (params) => objectShape(params, {
+    bewerbId: optional(id("bewerbId")),
+    cursor: optional(text("cursor", { max: 256, pattern: /^[A-Za-z0-9_-]+$/ })),
+    limit: optional(integer("limit", { min: 1, max: 100 })),
+  }),
   rankingChallengeState: (params) => objectShape(params, { bewerbId: id("bewerbId") }),
   operationStatus: (params) => objectShape(params, { operationId: operation }),
   normalizePerson: (params) => objectShape(params, {
@@ -97,6 +109,11 @@ const requestContracts = {
     operationId: operation,
     bewerbId: id("bewerbId"),
     opponentId: id("opponentId"),
+  }),
+  setRankingMatchDate: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    matchDate: text("matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
   }),
   addEntryList: competitionWrite,
   removeEntryList: competitionWrite,

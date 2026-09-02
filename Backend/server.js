@@ -13,6 +13,7 @@ const {
   HTTP_REQUEST_TIMEOUT_MS,
   INSTANCE_ID,
   LISTEN_HOST,
+  MESSAGING_FILE,
   MONITOR_COOKIE,
   PORT,
   SESSION_COOKIE,
@@ -45,6 +46,10 @@ const { SheetService } = require("./sheetService.js");
 const { StateRepository } = require("./stateRepository.js");
 const { ScoreLogRepository } = require("./scoreLogRepository.js");
 const { AuditLogRepository } = require("./auditLogRepository.js");
+const { MessagingRepository } = require("./messagingRepository.js");
+const { MessagingService } = require("./messagingService.js");
+const { EmailMessagingAdapter } = require("./emailMessagingAdapter.js");
+const { WhatsappMessagingAdapter } = require("./whatsappMessagingAdapter.js");
 const logger = require("./logger.js");
 const metrics = require("./metrics.js");
 const { booleanValue, canonicalizeMonitorPath, idValue, loginValue, passwordHashValue, stringValue } = require("./validators.js");
@@ -103,7 +108,7 @@ function authIdentifier(body, passwordField) {
   return loginValue(matches(canonical) ? body.login : body.email);
 }
 
-function readiness({ repository, scoreLogRepository = null, auditLogRepository = null, sheetService = null, initialized, shuttingDown }) {
+function readiness({ repository, scoreLogRepository = null, auditLogRepository = null, messagingRepository = null, sheetService = null, initialized, shuttingDown }) {
   const data = dataStore.getReadiness();
   const refresh = dataPoller.getStatus();
   const court = courtPoller.getStatus();
@@ -118,13 +123,14 @@ function readiness({ repository, scoreLogRepository = null, auditLogRepository =
   const state = repository.status();
   const scoreLog = scoreLogRepository?.status?.() || null;
   const auditLog = auditLogRepository?.status?.() || null;
-  const persistenceReady = (!scoreLog || (scoreLog.open && scoreLog.ready)) && (!auditLog || (auditLog.open && auditLog.ready));
+  const messaging = messagingRepository?.status?.() || null;
   const components = {
     initialized: Boolean(initialized),
     accepting_requests: !shuttingDown,
     state_sqlite: Boolean(state.open && state.ready),
     scorelog_sqlite: !scoreLog || Boolean(scoreLog.open && scoreLog.ready),
     auditlog_sqlite: !auditLog || Boolean(auditLog.open && auditLog.ready),
+    messaging_sqlite: !messaging || Boolean(messaging.open && messaging.ready),
     sheet_data: Boolean(data.ready),
     court_source: Boolean(courtReady),
     court_display_rules: Boolean(displayRulesReady),
@@ -144,6 +150,7 @@ function readiness({ repository, scoreLogRepository = null, auditLogRepository =
     sheets: sheetService?.status?.() || null,
     scoreLog,
     auditLog,
+    messaging,
   };
 }
 
@@ -155,11 +162,19 @@ function createApplication(overrides = {}) {
     instanceId: INSTANCE_ID,
     journal: AUDIT_LOG_JOURNAL,
   });
+  const messagingRepository = overrides.messagingRepository || new MessagingRepository(MESSAGING_FILE);
   scoreLogRepository.init?.();
   auditLogRepository.init?.();
+  messagingRepository.init?.();
   stateStore.init(repository);
   courtPoller.configure({ scoreLog: scoreLogRepository, courtContext: (court) => stateStore.getCourt(court) });
-  const sheetService = overrides.sheetService || new SheetService({ repository });
+  const messagingService = overrides.messagingService || new MessagingService({
+    repository: messagingRepository,
+    emailAdapter: new EmailMessagingAdapter(),
+    whatsappAdapter: new WhatsappMessagingAdapter(),
+    publish: (topic, data) => dataProvider.publish(topic, data),
+  });
+  const sheetService = overrides.sheetService || new SheetService({ repository, messagingService });
   const authService = overrides.authService || new AuthService({ repository, sheetService });
   const frontendLoggingService = overrides.frontendLoggingService || new FrontendLoggingService({
     repository,
@@ -294,13 +309,13 @@ function createApplication(overrides = {}) {
 
       if (pathname === "/ready" || pathname === "/health") {
         if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
-        const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
+        const status = readiness({ repository, scoreLogRepository, auditLogRepository, messagingRepository, sheetService, initialized, shuttingDown });
         return sendJson(response, status.ready ? 200 : 503, { status: status.ready ? "ready" : "not-ready", version: APP_VERSION });
       }
 
       if (pathname === "/metrics") {
         if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
-        const status = readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown });
+        const status = readiness({ repository, scoreLogRepository, auditLogRepository, messagingRepository, sheetService, initialized, shuttingDown });
         return sendText(response, 200, metrics.render({
           appVersion: APP_VERSION,
           processStartedAt: PROCESS_STARTED_AT,
@@ -351,12 +366,13 @@ function createApplication(overrides = {}) {
             role: statusAuth.principal.role,
             roleSource: statusAuth.principal.roleSource || "current",
           },
-          status: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }),
+          status: readiness({ repository, scoreLogRepository, auditLogRepository, messagingRepository, sheetService, initialized, shuttingDown }),
           provider: dataProvider.getStatus(),
           monitor: monitorBroker.status(),
           sheets: sheetService.status(),
           scoreLog: scoreLogRepository.status(),
           auditLog: auditLogRepository.status(),
+          messaging: messagingRepository.status(),
           state: stateStore.getStatus(),
         });
       }
@@ -681,6 +697,7 @@ function createApplication(overrides = {}) {
     authService,
     canonicalizeMonitorPath,
     monitorBroker,
+    messagingService,
     repository,
     sheetService,
   });
@@ -691,6 +708,7 @@ function createApplication(overrides = {}) {
     initializePromise = (async () => {
       const result = await dataPoller.initialLoad();
       if (shuttingDown) return { ...result, aborted: true };
+      messagingService.enrichLegacyCompetitionAssignments?.();
       stateStore.migrateLegacyCourtDisplayRules(dataStore.get("matchtyp"));
       dataPoller.start(result);
       const courts = stateStore.getScoreboardCourts();
@@ -700,7 +718,7 @@ function createApplication(overrides = {}) {
       );
       for (const court of ["1", "2"]) courtPoller.logCourtSnapshot(court, "startup");
       initialized = true;
-      logger.log("info", "server_initialization_completed", { initialLoadSuccess: result.success, ready: readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }).ready, durationMs: Date.now() - startedAt });
+      logger.log("info", "server_initialization_completed", { initialLoadSuccess: result.success, ready: readiness({ repository, scoreLogRepository, auditLogRepository, messagingRepository, sheetService, initialized, shuttingDown }).ready, durationMs: Date.now() - startedAt });
       cleanupTimer = setInterval(() => repository.cleanup(), 300000);
       cleanupTimer.unref?.();
       return result;
@@ -749,6 +767,7 @@ function createApplication(overrides = {}) {
       ]);
       auditLogRepository.close?.();
       scoreLogRepository.close?.();
+      messagingRepository.close?.();
       repository.close();
       logger.log("info", "server_shutdown_completed", { signal, durationMs: Date.now() - startedAt });
     } catch (error) {
@@ -756,6 +775,7 @@ function createApplication(overrides = {}) {
       drains.finally(() => {
         auditLogRepository.close?.();
         scoreLogRepository.close?.();
+        messagingRepository.close?.();
         repository.close();
       });
       throw error;
@@ -771,12 +791,14 @@ function createApplication(overrides = {}) {
     handler,
     initialize,
     monitorBroker,
+    messagingRepository,
+    messagingService,
     repository,
     scoreLogRepository,
     server,
     sheetService,
     shutdown,
-    status: () => readiness({ repository, scoreLogRepository, auditLogRepository, sheetService, initialized, shuttingDown }),
+    status: () => readiness({ repository, scoreLogRepository, auditLogRepository, messagingRepository, sheetService, initialized, shuttingDown }),
   };
 }
 

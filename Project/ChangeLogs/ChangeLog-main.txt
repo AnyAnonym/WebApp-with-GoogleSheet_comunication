@@ -1,7 +1,7 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.7.0
+Stand: 4.8.0
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
@@ -17,6 +17,95 @@ Backend/package.json uebernommen; das Paketfeld blieb historisch auf 3.0.2.
 
 Eintraege vor 3.0.3 behalten teilweise das alte, softwarebezogene Format. Nicht
 mit einem Scope gekennzeichnete historische Punkte sind Software-Aenderungen.
+
+[4.8.0] - 2026-09-02
+Commit: 4.8.0 | Messaging, Historien und Ranglistentermine bereitgestellt
+Quelle: 4.7.0-paj-1
+
+  Added
+  - [Datenbank] Eigene `messaging.sqlite` mit Schema 4 fuer zentrale
+    Bewerbsereignisse, normalisierte Teilnehmer, persoenliche Meldungen,
+    Zustellstatus, Receipts, idempotente Quittierungen und Revisionen eingefuehrt.
+    Kontrollierte Akteurs-, Namens-, Text- und Ergebnissnapshots bleiben vom
+    Google-Sheets-State und von fremden Inboxprojektionen getrennt.
+  - [Software] Authentifizierte RPCs fuer eigene Meldungszusammenfassung, Liste,
+    Detail, Kenntnisnahme sowie cursorpaginierte Einzel-/Gesamtbewerbshistorien
+    und ein personengebundenes privates WebSocket-Thema aufgenommen.
+  - [Software] Bewerbe-Uebersicht um Megafonaktionen und responsive, intern
+    scrollbare Einzel-/Gesamthistorien mit Lade-, Leer-, Fehler- und Retryzustand,
+    kontrollierter Runde, Akteur und Ergebnis erweitert.
+  - [Software] Idempotenten Teilnehmer-RPC fuer Ranglistentermine eingefuehrt.
+    Beide Forderungsparteien koennen den ersten Termin im Vierzehntageskorridor
+    und spaetere Termine ab aktueller Zeit auf volle Stunden zwischen 06:00 und
+    23:00 Uhr setzen; Terminereignisse und persoenliche Meldungen entstehen
+    recovery-sicher fuer beide Beteiligten.
+  - [Software] Eigenprofil um Terminaktionen, unbegrenzt navigierbaren
+    Monatskalender mit Korridormarkierungen und minuetlichen Siebentagescountdown
+    mit Gruen-/Orange-/Rotstatus ergaenzt.
+  - [Software] Kontrolliertes PAJ-Testdatenwerkzeug fuer 18 Historienereignisse,
+    42 Inboxprojektionen und 16 ausgeblendete Sheet-Matches mit Dry-Run,
+    idempotentem Apply, exaktem Cleanup und auditiertem Gesamtneuaufbau angelegt.
+  - [Software] Getrennte Email- und Whatsapp-Adapter als noch nicht konfigurierte
+    externe Kanaele aufgenommen; die interne Inbox bleibt immer aktiv.
+  - [Observability] Messaging-Readiness und SQLite-Metriken, strukturierte
+    Ereignis-/Terminabschlusslogs, der vollstaendige Termin-Auditvertrag sowie das
+    allowlist-basierte Browserereignis `ranking_match_date_failed` ergaenzt.
+  - [Dokumentation] Nicht-kanonische Planung fuer direkte E-Mail-Zustellung ohne
+    SMTP-Relay mit DNS-, MTA-, Outbox-, Sicherheits-, Observability-, Test- und
+    Rolloutanforderungen unter `Project/2do/` aufgenommen.
+
+  Changed
+  - [Software] Ranglistenprofile zeigen Forderungsrichtung, aktuellen Gegnerrang,
+    Forderungszeit und optionalen Spieltermin. Rausgehaengte Spieler zeigen
+    gespeicherten letzten Rang und eine juengste Rueckkehrforderung mit Gegner und
+    dessen aktueller Position.
+  - [Software] Forderbare Spieler erhalten einen gruenen Rahmen unabhaengig von
+    Statusfuellfarben; Rausgehaengte erscheinen zeilenweise mit Zeitpunkt,
+    Position, Grund und optionaler Einforderung.
+  - [Software] `Raushängen` bleibt bei einer offenen Forderung anklickbar und
+    erklaert in einem nur per Schliesssymbol beendbaren Hinweis, dass zuerst
+    gespielt werden muss.
+  - [Software] Persoenliche Meldungen sortieren Ungelesenes zuerst, zeigen Bewerb,
+    optionale Runde und Akteur kontrolliert und blenden die Quittierungsaktion
+    nach erfolgreicher oder bereits vorhandener Kenntnisnahme aus. Terminbetreffe
+    nennen den Mitspieler statt den separat sichtbaren Bewerb.
+  - [Datenbank] Die optionale Personenspalte `Notification` akzeptiert exakt
+    `Email` und `Whatsapp` mit `|` als Separator; ungueltige Werte deaktivieren
+    externe Kanaele kontrolliert, ohne die Inbox zu deaktivieren.
+  - [Infrastruktur] Alle drei systemd-Vorlagen konfigurieren `messaging.sqlite`
+    im jeweiligen `StateDirectory`; Readiness, Status, Shutdown, Backup- und
+    Rolloutvertrag behandeln nun vier getrennte Anwendungsdatenbanken.
+  - [Observability] Personennormalisierungsdashboard um aktive Mitglieder
+    insgesamt und getrennt nach `player`, `player A` und `player B` erweitert.
+    Hostressourcen verwenden dynamische Einheiten und aktuelle Tabellenlegenden.
+  - [Repository] Versionsworkflow erlaubt die geheimnisfreie `.env.example` als
+    explizit freigegebenen Pfad und prueft ihren Inhalt weiterhin auf
+    Geheimnismuster.
+  - [Tests] Zentraler Testmodus verwendet einen WebSocket-Requestburst von 100,
+    damit der umfangreiche Rollen-/Vertragsintegrationstest durch seine nun mehr
+    als 40 kontrollierten Nachrichten nicht unbeabsichtigt den unveraenderten
+    produktiven Burst-Limiter ausloest.
+
+  Fixed
+  - [Software] Matchgebundene Historien ordnen kontrollierte Bewerbsrunden ohne
+    Paarungsnummer zu; Ranglisten unterdruecken technische Rundenwerte. Einzel-
+    und Gesamtcursor sind scope-gebunden und koennen nicht vermischt werden.
+  - [Software] Messaging-Writes, Legacy-Bewerbszuordnung, Ranglistenforderung,
+    Raushaengen und Terminsetzung vermeiden ueber stabile IDs und gezielte
+    Bestaetigungsreads Dubletten nach unklaren Ausgaengen.
+
+  Tests
+  - [Backend] 291 Tests fuer Vertraege, Persistenz, Messaging, Terminwrites,
+    Recovery, Audit, Datenschutz, Metriken und Integration erfolgreich.
+  - [Browser] 17 Chromium-Tests fuer Historien, Meldungen, Ranglistenprofile,
+    Administration, Scoreboard, Servicebereich und Sponsorenanzeige erfolgreich.
+  - [Repository] Sechs Workflowtests, statische Pruefung und `git diff --check`
+    erfolgreich.
+
+  Removed
+  - [Repository] Temporaeres Branch-Changelog nach vollstaendiger Uebernahme in
+    Main-Changelog und kanonische Fach-, Seiten- und Betriebsdokumentation
+    entfernt.
 
 [4.7.0] - 2026-08-29
 Commit: 4.7.0 | Ranglistenbetrieb und Anzeigen erweitert

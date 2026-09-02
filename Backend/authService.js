@@ -6,6 +6,7 @@ const { AppError } = require("./errors.js");
 const { hashPayload, timingSafeTextEqual } = require("./security.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const { emailValue, loginValue, passwordHashValue, roleValue } = require("./validators.js");
+const { notificationChannels } = require("./messagingService.js");
 
 const scryptAsync = promisify(crypto.scrypt);
 const SCRYPT_N = 16384;
@@ -97,6 +98,7 @@ class AuthService {
       active: headerIndex(header, "aktiv"),
       role: headerIndex(header, "role"),
       passwordSetup: headerIndex(header, "kennwortvergessen"),
+      notification: headerIndex(header, "notification"),
     };
     if ([indexes.id, indexes.firstName, indexes.lastName].some((index) => index < 0)) {
       throw new AppError("SHEET_SCHEMA", "Pflichtspalten der Personen-Tabelle fehlen", 503);
@@ -115,6 +117,10 @@ class AuthService {
       active: indexes.active < 0 || String(row[indexes.active] || "").trim() === "1",
       role: roleValue(indexes.role < 0 ? "player" : row[indexes.role]),
       passwordSetupAllowed: indexes.passwordSetup >= 0 && String(row[indexes.passwordSetup] || "").trim().toLowerCase() === "x",
+      notificationChannels: indexes.notification < 0 ? [] : notificationChannels(row[indexes.notification], {
+        personId: String(row[indexes.id] || "").trim(),
+        rowNumber: offset + 2,
+      }),
       rowNumber: offset + 2,
     })).filter((person) => person.id);
   }
@@ -183,6 +189,7 @@ class AuthService {
       birthDate: person.birthDate,
       gender: person.gender,
       role: person.role,
+      notificationChannels: person.notificationChannels,
     };
   }
 

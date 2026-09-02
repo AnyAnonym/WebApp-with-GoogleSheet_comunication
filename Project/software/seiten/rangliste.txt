@@ -30,8 +30,15 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Hintergrundscrollen ist waehrend des Dialogs gesperrt, Escape schliesst ihn.
   Die Ranglistenreiter haengen nicht von der aufrufenden Seite ab.
   Ein aktiver Ranglistenreiter zeigt `Ranglistenposition: <Rang>` und gegebenenfalls
-  die offene Forderung mit Gegnername und Forderungszeit. Beim eigenen Profil ist
-  `Raushängen` nur ohne offene Forderung aktiv; bei einem tatsaechlich forderbaren
+  die offene Forderung mit Gegnername, Gegnerrang, Richtung und Forderungszeit.
+  Ausgehende Forderungen werden mit `Offene Forderung gegen`, eingehende mit
+  `Offene Forderung von` bezeichnet. Danach folgen das Forderungsdatum und nur
+  bei vorhandenem Spieltermin optional `Spieltermin fixiert`; eine Zeile fuer
+  einen fehlenden Termin wird nicht angezeigt. Beim eigenen Profil ist
+  `Raushängen` auch mit offener Forderung anklickbar. In diesem Fall erscheint
+  statt des Grundformulars nur der Hinweis, dass die Forderung zuerst gespielt
+  werden muss; er besitzt ausschliesslich das Schliesssymbol `X`. Bei einem
+  tatsaechlich forderbaren
   fremden Profil erscheint `Fordern`. Rang `0` bleibt aus der Pyramide entfernt,
   besitzt aber einen Profilreiter mit Raushaengezeit und Grund fuer angemeldete
   Benutzer; eine Position `0` wird nicht angezeigt. Das Eigenprofil liefert den
@@ -40,6 +47,38 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   prueft Identitaet und Regeln. Bei Erfolg ist die Forderung sofort verbindlich
   und wird mit dem Forderer in `Spieler1ID` sowie dem Geforderten in `Spieler3ID`
   gespeichert. Bestehende Matchzeilen werden nicht umgeordnet.
+  Der Eigenprofilreiter `Meldungen` zeigt jede Meldung auf allen Viewportbreiten
+  in gleich grossen Zeilen fuer Datum, Bewerb, optionale Runde, Betreff und bei
+  bekanntem Akteur `Durch: <Name>`. Ohne Zuordnung lautet die kontrollierte
+  Bewerbszeile `Allgemeine Meldung`; Ranglistenmeldungen enthalten keine Runde.
+  Die Detailansicht ordnet Betreff, Datum,
+  Bewerb, bei bekanntem Akteur `Durch: <Name>` und danach den Text an; eine Runde
+  wird dort nicht wiederholt. Nach erfolgreicher Kenntnisnahme sowie bei bereits
+  bestaetigten Meldungen wird die Aktion ausgeblendet; serverseitige
+  Bestaetigungszeit, Ungelesenanzahl und Revision bleiben autoritativ.
+  Navigation und Profilreiter zeigen die Ungelesenanzahl; auf Mobilgeraeten
+  werden bei ungelesenen Meldungen die Hamburger-Striche rot. Der Systemreiter
+  weist die administrativ gepflegten gueltigen Kanaele Email und Whatsapp aus.
+  Meldungen werden ungelesen vor gelesen und je Gruppe neueste zuerst sortiert.
+
+  Beide Beteiligten einer offenen Forderung sehen vor `Raushängen` bei leerem
+  MatchDate `Spieltermin festlegen`, danach `Termin abändern`. Der Dialog waehlt
+  Datum und volle Stunde getrennt; `Übernehmen` sendet den idempotenten Write.
+  Der erste Termin liegt im Korridor vom Forderungszeitpunkt bis exakt vierzehn
+  Tage danach. Spaetere Aenderungen duerfen ab der aktuellen Serverzeit ohne
+  obere Datumsgrenze liegen. Das Stundenfeld bietet 06:00 bis 23:00 Uhr.
+  Der Monatskalender kann unbegrenzt vor- und zurueck navigiert werden: Der
+  Forderungstag ist blau und fett, der letzte Korridortag rot und fett, alle
+  Korridortage sind fett und auswaehlbar; andere Tage sind ausgegraut und nicht
+  auswaehlbar. Fehler lassen den Dialog offen, zeigen die kontrollierte Meldung
+  samt Support-ID und erzeugen nur das allowlist-basierte Browserereignis
+  `ranking_match_date_failed`.
+
+  Solange kein Termin gesetzt ist, zeigt nur der eigene Ranglistenreiter einen
+  minuetlich aktualisierten Countdown bis sieben Tage nach Forderung. Vor der
+  Frist steht `-`, nachher `+`; bis zwei Tage Restzeit ist er gruen, ab zwei Tagen
+  orange und nach Ueberschreitung rot. Terminsetzung oder Schliessen der
+  Forderung beendet diesen temporaeren Zustand.
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schonzeit;
@@ -64,7 +103,7 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   ein spaeterer Nichtantritt wird als Walkover abgeschlossen.
 
 -- Observability --
-  Jeder Forderungs- und Raushaengewrite besitzt Audit `started` und danach `success`, `failed`
+  Jeder Forderungs-, Termin- und Raushaengewrite besitzt Audit `started` und danach `success`, `failed`
   oder `unknown`. Der Forderer stammt aus der Session, Zielperson und Bewerb aus
   validierten Parametern; Erfolg ergaenzt die stabile Match-ID. Der kontrollierte
   Journalspiegel erlaubt das Filtern im Grafana-Dashboard
@@ -72,6 +111,9 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Operation-IDs bleiben JSON-Felder und werden keine Loki-Labels. Das
   Raushaengeaudit enthaelt Bewerb, alten Rang, Zeitpunkt und Anzahl der
   Rangverschiebungen, aber nie den freien Grund.
+  Das Terminaudit enthaelt Match-ID und kontrollierten alten/neuen Termin; das
+  Abschlusslog ergaenzt Bewerbs- und Akteur-ID sowie Recoverystatus, aber keine
+  freien Texte oder unnoetigen Personendaten.
 
 -- Raushaengen und Sicherheit --
   Der Bestaetigungsdialog verlangt ausschliesslich einen Grund mit 3 bis 500

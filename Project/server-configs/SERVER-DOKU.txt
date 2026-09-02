@@ -117,6 +117,15 @@ LOKALE, NICHT VERSIONIERTE BETRIEBSDATEN
     Dauerhafte Audit-Historie fuer Fach-, Court-, Monitor- und Security-Writes;
     getrennt vom Anwendungsstate, Modus 0600, WAL/FULL und ohne Geheimnisse.
 
+  /var/lib/epiber-<system>/messaging.sqlite
+    Dauerhafte zentrale Bewerbsereignisse, persoenliche Inboxprojektionen,
+    Zustellstatus und Quittierungen; getrennt von State, ScoreLog und Audit,
+    Modus 0600, Foreign Keys, WAL/FULL und ohne automatische Bereinigung.
+    Alle drei systemd-Vorlagen setzen `MESSAGING_FILE` explizit auf diesen Pfad
+    im jeweiligen `StateDirectory`. Oeffnung und Schemaabfrage sind Bestandteil
+    von Readiness; `/status` und Metriken projizieren nur technischen Status und
+    aggregierte Zaehler, keine Meldungsinhalte oder Personennamen.
+
   /etc/epiber-observability/grafana.env
     Root-only, Modus 0600; enthaelt das lokale Break-glass-Passwort, Grafanas
     Secret-Key und die zwingend deaktivierte SMTP-Konfiguration. Keine Werte

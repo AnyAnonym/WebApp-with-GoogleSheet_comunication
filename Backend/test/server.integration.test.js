@@ -8,6 +8,7 @@ const { TABLE_CONFIG } = require("../config.js");
 const dataStore = require("../dataStore.js");
 const { createApplication } = require("../server.js");
 const { StateRepository } = require("../stateRepository.js");
+const { AppError } = require("../errors.js");
 const { version: appVersion } = require("../package.json");
 const logger = require("../logger.js");
 const metrics = require("../metrics.js");
@@ -149,6 +150,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const sheetService = {
     async addMatch(_principal, { operationId }) {
       return { success: true, newMatchId: `m-${operationId.slice(-8)}` };
+    },
+    async setRankingMatchDate(_principal, { matchId, matchDate }) {
+      return { success: true, matchId, matchDate };
     },
     challengeEligibility() {
       return { allowed: true, code: "" };
@@ -509,7 +513,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(seniorRestrictions.data.schonzeit, []);
 
   const protectedEndpoints = [
-    "memberDirectory", "myProfile", "addMatch", "addEntryList", "removeEntryList",
+    "memberDirectory", "myProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
     "withdrawFromRanking", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
     "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
     "monitorTarget", "monitorAck",
@@ -518,6 +522,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     const response = await publicClient.request(endpoint, {});
     assert.equal(response.data.error.code, "AUTH_REQUIRED", endpoint);
   }
+  const anonymousMessagingClient = createSocketClient(`${wsBase}/ws`, { Origin: "http://test.local" });
+  await anonymousMessagingClient.handshake();
+  for (const endpoint of ["myMessageSummary", "myMessages", "myMessage", "acknowledgeMessage", "competitionHistory"]) {
+    assert.equal((await anonymousMessagingClient.request(endpoint, {})).data.error.code, "AUTH_REQUIRED", endpoint);
+  }
+  await anonymousMessagingClient.close();
   const inheritedEndpoint = await publicClient.request("constructor", {});
   assert.equal(inheritedEndpoint.data.error.code, "ENDPOINT_NOT_FOUND");
   publicClient.socket.send(JSON.stringify({ v: 2, type: "request", id: "invalid-contract", endpoint: 123, params: {} }));
@@ -649,8 +659,31 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual((await playerClient.request("rankingChallengeState", { bewerbId: "ranking-men" })).data, {
     success: true, mode: "ranked", rank: 1, returnFromRank: null,
   });
+  const rankingsWithReturnChallenge = structuredClone(dataStore.get("rlPlatzierung"));
+  rankingsWithReturnChallenge.push(["r4", "ranking-seniors", "p2", "4", "", "", ""]);
+  dataStore.set("rlPlatzierung", rankingsWithReturnChallenge, { source: "test-return-challenge" });
+  const matchesWithReturnChallenge = structuredClone(dataStore.get("matches1"));
+  matchesWithReturnChallenge.push([
+    "", "m-return", "260831-1600", "260830-1400", "ranking-seniors", "F", "p1", "", "p2", "", "", "1", "",
+  ]);
+  dataStore.set("matches1", matchesWithReturnChallenge, { source: "test-return-challenge" });
+  const profileWithScheduledReturn = await playerClient.request("publicProfile", { id: "p1" });
+  assert.deepEqual(profileWithScheduledReturn.data.profile.rankings[1].openChallenge, {
+    matchId: "m-return",
+    direction: "challenger",
+    opponentId: "p2",
+    opponentName: "Peter Player",
+    opponentRank: 4,
+    challengedAt: "260830-1400",
+    matchDate: "260831-1600",
+  });
   const withdrawnPlayers = await playerClient.request("withdrawnRankingPlayers", { bewerbId: "ranking-seniors" });
-  assert.deepEqual(withdrawnPlayers.data.players, [{ personId: "p1", name: "Ada Admin", withdrawnAt: "260829-1200", reason: "Verletzt" }]);
+  assert.deepEqual(withdrawnPlayers.data.players, [{
+    personId: "p1", name: "Ada Admin", withdrawnAt: "260829-1200", previousRank: 4, reason: "Verletzt",
+    returnChallenge: {
+      challengedAt: "260830-1400", opponentId: "p2", opponentName: "Peter Player", opponentRank: 4,
+    },
+  }]);
   assert.equal((await playerClient.request("navigator")).data.error.code, "FORBIDDEN");
   assert.equal((await playerClient.request("monitorProvision")).data.error.code, "FORBIDDEN");
   assert.equal((await fetch(`${httpBase}/api/admin/frontend-logging`, {
@@ -689,7 +722,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(operatorGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const authenticatedEndpoints = [
-    "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
+    "memberDirectory", "myProfile", "operationStatus", "addMatch", "setRankingMatchDate", "addEntryList",
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
@@ -714,6 +747,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   const ownProfile = await adminClient.request("myProfile");
   assert.equal(ownProfile.data.profile.email, "ada@example.test");
   assert.equal(ownProfile.data.profile.login, "ada.login");
+  assert.deepEqual(ownProfile.data.profile.notificationChannels, []);
   assert.deepEqual(ownProfile.data.profile.rankings.map(({ competitionId, status }) => ({ competitionId, status })), [
     { competitionId: "ranking-men", status: "active" },
     { competitionId: "ranking-seniors", status: "withdrawn" },
@@ -933,6 +967,89 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     opponentId: "p1",
   });
   assert.equal(challenge.data.newMatchId, "m-00000201");
+  const appointment = await playerClient.request("setRankingMatchDate", {
+    operationId: "00000000-0000-4000-8000-000000000205",
+    matchId: challenge.data.newMatchId,
+    matchDate: "260905-1800",
+  });
+  assert.deepEqual(appointment.data, { success: true, matchId: "m-00000201", matchDate: "260905-1800" });
+  const seededMessages = await application.messagingService.ensureChallengeMessages({
+    matchId: challenge.data.newMatchId,
+    recipientId: "p1",
+    competitionId: "cup-1",
+    competitionName: "Cup",
+    challengerId: "p2",
+    challengerName: "Peter Player",
+    opponentId: "p1",
+    opponentName: "Ada Admin",
+  });
+  const competitionHistory = await playerClient.request("competitionHistory", { bewerbId: "cup-1", limit: 10 });
+  assert.equal(competitionHistory.data.competition.name, "Cup");
+  assert.equal(competitionHistory.data.entries[0].summary, "Peter Player hat Ada Admin gefordert.");
+  assert.equal(competitionHistory.data.entries[0].roundName, "");
+  assert.deepEqual(competitionHistory.data.entries[0].participants, [
+    { role: "opponent", name: "Ada Admin" },
+    { role: "challenger", name: "Peter Player" },
+  ]);
+  assert.equal(JSON.stringify(competitionHistory.data).includes("Bitte vereinbart"), false);
+  const globalCompetitionHistory = await playerClient.request("competitionHistory", { limit: 10 });
+  assert.deepEqual(globalCompetitionHistory.data.competition, { id: "", name: "Alle Bewerbe" });
+  assert.equal(globalCompetitionHistory.data.entries[0].competitionId, "cup-1");
+  assert.equal(globalCompetitionHistory.data.entries[0].competitionName, "Cup");
+  const challengerMessages = await playerClient.request("myMessages", { limit: 10 });
+  assert.equal(challengerMessages.data.unreadCount, 1);
+  assert.equal(challengerMessages.data.messages[0].subject, "Forderung ausgesprochen in Cup");
+  assert.equal(challengerMessages.data.messages[0].competitionName, "Cup");
+  assert.equal(challengerMessages.data.messages[0].roundName, "");
+  assert.equal(challengerMessages.data.messages[0].actorName, "Peter Player");
+  const challengerMessage = await playerClient.request("myMessage", { messageId: challengerMessages.data.messages[0].id });
+  assert.equal(challengerMessage.data.message.actorName, "Peter Player");
+  assert.equal(challengerMessage.data.message.competitionName, "Cup");
+  assert.equal(
+    challengerMessage.data.message.body,
+    "Du hast Ada Admin in Cup gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.",
+  );
+  const seededMessage = seededMessages.recipient;
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "unsubscribe", topics: statusTopics.slice(0, 20) }));
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "unsubscribe", topics: statusTopics.slice(20) }));
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "unsubscribe", topics: ["monitors", "navigator"] }));
+  adminClient.socket.send(JSON.stringify({ v: 2, type: "subscribe", topics: ["messages:p1", "messages:p2"] }));
+  const messageSnapshot = await adminClient.next((message) => message.type === "event" && message.topic === "messages:p1", "message-snapshot");
+  assert.deepEqual(messageSnapshot.data, { revision: 1, unreadCount: 1 });
+  assert.deepEqual((await adminClient.next((message) => message.type === "subscribed", "message-subscription")).topics, ["messages:p1"]);
+  assert.equal((await adminClient.request("myMessageSummary")).data.unreadCount, 1);
+  const myMessages = await adminClient.request("myMessages", { limit: 10 });
+  assert.deepEqual(myMessages.data.messages.map((message) => message.id), [seededMessage.id]);
+  assert.equal((await playerClient.request("myMessage", { messageId: seededMessage.id })).data.error.code, "MESSAGE_NOT_FOUND");
+  const acknowledgmentParams = {
+    operationId: "00000000-0000-4000-8000-000000000202",
+    messageId: seededMessage.id,
+  };
+  await new Promise((resolve) => setTimeout(resolve, 5100));
+  const acknowledgment = await adminClient.request("acknowledgeMessage", acknowledgmentParams);
+  assert.equal(acknowledgment.data.success, true);
+  const messageUpdate = await adminClient.next((message) => message.type === "event" && message.topic === "messages:p1" && message.data.unreadCount === 0, "message-update");
+  assert.equal(Object.hasOwn(messageUpdate.data, "subject"), false);
+  await new Promise((resolve) => setTimeout(resolve, 5100));
+  const repeatedAcknowledgment = await adminClient.request("acknowledgeMessage", acknowledgmentParams);
+  assert.equal(repeatedAcknowledgment.data.repeated, true);
+  await new Promise((resolve) => setTimeout(resolve, 5100));
+  const failedAcknowledgment = await adminClient.request("acknowledgeMessage", {
+    operationId: "00000000-0000-4000-8000-000000000203",
+    messageId: "msg-does-not-exist",
+  });
+  assert.equal(failedAcknowledgment.data.error.code, "MESSAGE_NOT_FOUND");
+  await new Promise((resolve) => setTimeout(resolve, 5100));
+  const acknowledgeOriginal = application.messagingRepository.acknowledge.bind(application.messagingRepository);
+  application.messagingRepository.acknowledge = () => {
+    throw new AppError("WRITE_OUTCOME_UNKNOWN", "simulated unknown", 503);
+  };
+  const unknownAcknowledgment = await adminClient.request("acknowledgeMessage", {
+    operationId: "00000000-0000-4000-8000-000000000204",
+    messageId: seededMessage.id,
+  });
+  application.messagingRepository.acknowledge = acknowledgeOriginal;
+  assert.equal(unknownAcknowledgment.data.error.code, "WRITE_OUTCOME_UNKNOWN");
 
   const realDateNow = Date.now;
   const staleNow = realDateNow() + 120000;
@@ -972,10 +1089,26 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     before: { bewerbId: "cup-1", opponentId: "p1" },
     after: { matchId: "m-00000201", bewerbId: "cup-1", opponentId: "p1" },
   });
+  const appointmentAudit = auditRows.find((row) => row.action === "setRankingMatchDate" && row.result === "success");
+  assert.deepEqual({
+    actorId: appointmentAudit.actorId,
+    targetType: appointmentAudit.targetType,
+    targetId: appointmentAudit.targetId,
+    before: appointmentAudit.before,
+    after: appointmentAudit.after,
+  }, {
+    actorId: "p2",
+    targetType: "match",
+    targetId: "m-00000201",
+    before: { matchId: "m-00000201", matchDate: "" },
+    after: { matchId: "m-00000201", matchDate: "260905-1800" },
+  });
   const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
+  assert.equal(auditRows.some((row) => row.action === "acknowledgeMessage" && row.result === "failed" && row.errorCode === "MESSAGE_NOT_FOUND"), true);
+  assert.equal(auditRows.some((row) => row.action === "acknowledgeMessage" && row.result === "unknown" && row.errorCode === "WRITE_OUTCOME_UNKNOWN"), true);
   for (const action of [
     "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
-    "passwordReset", "addMatch", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "passwordReset", "addMatch", "setRankingMatchDate", "acknowledgeMessage", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
     "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
   ]) {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);

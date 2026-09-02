@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-SETUP.txt - Server-Infrastruktur (ePiber Self-Hosted)
 ================================================================================
-Letzte Aenderung: 23.08.2026
+Letzte Aenderung: 02.09.2026
 
 Dieses Dokument beschreibt die Installation und den Betrieb von Live, PAJ und
 PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
@@ -36,6 +36,8 @@ PK. Die verbindliche Freigabeabfolge steht in ROLLOUT-CHECKLIST.md.
 |   |-- monitorBroker.js        Adressierte Monitorcommands und ACK-Status
 |   |-- stateStore.js           Court- und Monitor-Anwendungsstate
 |   |-- stateRepository.js      Persistenter SQLite-State
+|   |-- messagingRepository.js  Bewerbsereignisse, Inbox und Quittierungen
+|   |-- messagingService.js     Persoenliche und neutrale Ereignisprojektionen
 |   |-- scoreLogRepository.js   Separate dauerhafte Scorehistorie
 |   |-- auditLogRepository.js   Separate dauerhafte Audit-Historie
 |   |-- package.json            Kanonische Version, Node/npm-Anforderungen
@@ -67,7 +69,8 @@ HTTP-Routen:
   GET /ws                      WebSocket-v2-Upgrade und RPC/Subscriptions
 
 Die WebSocket-RPCs decken oeffentliche Daten/Scoreboards, authentifizierte
-Profile/Forderungen/EntryList, Operator-Court-/Navigatorsteuerung,
+Profile, Meldungen, Bewerbshistorien, Forderungen und EntryList,
+Operator-Court-/Navigatorsteuerung,
 Admin-Monitorverwaltung, den Admin-Mitgliederabgleich und Geraete-ACKs ab.
 Cookies, Rollen und Origins werden serverseitig geprueft; localStorage ist keine
 Rollen- oder Sessionautoritaet.
@@ -207,14 +210,18 @@ Empfohlene lokale Rechte pro Instanz:
   state.sqlite:                  <service-user>:<service-user>, 0600
   scorelog.sqlite:               <service-user>:<service-user>, 0600
   audit.sqlite:                  <service-user>:<service-user>, 0600
+  messaging.sqlite:              <service-user>:<service-user>, 0600
 
 `StateDirectory=epiber-<system>` legt `/var/lib/epiber-<system>` mit dem in der
-Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite`, `scorelog.sqlite` und
-`audit.sqlite` getrennt mit WAL, Foreign Keys, `synchronous=FULL` und Modus 0600.
+Unit gesetzten Modus 0700 an. Node erstellt `state.sqlite`, `scorelog.sqlite`,
+`audit.sqlite` und `messaging.sqlite` getrennt mit WAL, Foreign Keys,
+`synchronous=FULL` und Modus 0600.
 Der State enthaelt Sessions, gehashte Tokens,
 Resetnachweise, Monitorgeraete, idempotente Operationen, Loginlimits, Court-/
 Navigator-State und Metadata-Intents. ScoreLog und Auditlog enthalten die
-unbegrenzt aufbewahrte Fachhistorie. Jede SQLite-Datei mit ihrem `-wal` und
+unbegrenzt aufbewahrte Fachhistorie; Messaging enthaelt Bewerbsereignisse,
+persoenliche Meldungen, Zustellungen und Quittierungen. Jede SQLite-Datei mit
+ihrem `-wal` und
 `-shm` nur bei gestopptem Dienst gemeinsam sichern oder je Datenbank ein
 SQLite-Onlinebackup erstellen.
 
@@ -237,8 +244,8 @@ PAJ    | 1auOvEer7i1PW7LO4QX73188Q81Q6QguGyt0zadIIaqo        | 8083
 PK     | vor Deployment festlegen                            | 8084
 
 `COURT_URL` muss HTTPS verwenden. `GOOGLE_APPLICATION_CREDENTIALS`,
-`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID`, `STATE_FILE`, `SCORELOG_FILE` und
-`AUDITLOG_FILE` nicht in `.env` duplizieren; diese Werte setzt die systemd-Unit
+`LISTEN_HOST`, `PUBLIC_ORIGIN`, `INSTANCE_ID`, `STATE_FILE`, `SCORELOG_FILE`,
+`AUDITLOG_FILE` und `MESSAGING_FILE` nicht in `.env` duplizieren; diese Werte setzt die systemd-Unit
 verbindlich. `LOG_LEVEL`, `SCORE_LOG_JOURNAL`, `AUDIT_LOG_JOURNAL` und
 `AUDIT_ACTIONS` koennen lokal anhand der geheimnisfreien Vorlage eingestellt
 werden.
@@ -313,6 +320,7 @@ Die drei Vorlagen setzen je System:
   STATE_FILE                             /var/lib/epiber-<system>/state.sqlite
   SCORELOG_FILE                          /var/lib/epiber-<system>/scorelog.sqlite
   AUDITLOG_FILE                          /var/lib/epiber-<system>/audit.sqlite
+  MESSAGING_FILE                         /var/lib/epiber-<system>/messaging.sqlite
   GOOGLE_APPLICATION_CREDENTIALS         %d/google-service-account
   LoadCredential                         root-kontrollierte Quelldatei
   SHUTDOWN_GRACE_MS                      90000
@@ -639,7 +647,7 @@ und keine Mixed-Content-, CSP-, Zertifikats- oder Originfehler zeigen.
 Die vollstaendige fachliche und technische Abnahme steht in
 ROLLOUT-CHECKLIST.md. Kurzregel:
 
-  1. Sheets sowie alle drei SQLite-Datenbanken je aktivem System sichern, Schema/Credentials pruefen.
+  1. Sheets sowie alle vier SQLite-Datenbanken je aktivem System sichern, Schema/Credentials pruefen.
   2. Exakten Release-Commit und Lockfile auf PAJ installieren und abnehmen.
   3. Exakt denselben Commit zuletzt auf Live installieren und eng beobachten.
   4. PK deaktiviert lassen; seine spaetere Aufnahme separat versionieren und abnehmen.

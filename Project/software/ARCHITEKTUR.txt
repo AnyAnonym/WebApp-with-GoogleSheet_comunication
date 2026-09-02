@@ -20,7 +20,7 @@
     |-- Cookie-/Rollenauthentifizierung und Datenprojektionen
     |-- atomarer Start-/Adminimport + revisionierter Last-good-Cache
     |-- serialisierte/idempotente Google-Sheets-Writes
-    |-- getrennter SQLite-State sowie Score-/Audit-Fachhistorien
+    |-- getrennter SQLite-State, Messaging sowie Score-/Audit-Fachhistorien
     |-- externes Court-Polling + persistentes SQLite-ScoreLog
     |-- strukturierte redigierte JSON-Betriebslogs fuer journald
     |-- adressierter MonitorBroker
@@ -43,8 +43,9 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
 ================================================================================
 
 `server.js`
-  Erstellt SQLite-Repository, StateStore, SheetService, AuthService und
-  MonitorBroker; konfiguriert HTTP und WebSocket. Der Port wird vor dem
+  Erstellt State-, Messaging-, ScoreLog- und Audit-Repository, StateStore,
+  MessagingService, SheetService, AuthService und MonitorBroker; konfiguriert
+  HTTP und WebSocket. Der Port wird vor dem
   asynchronen Initialload geoeffnet, aber Readiness bleibt bis zu aktuellem
   Initialstate false. HTTP kennt korrekte 404/405/503, Body-/Header-/Requestlimits
   und die Session-/Passwort-/Monitor-APIs. Jeder Request erhaelt eine serverseitige
@@ -52,7 +53,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Server-Error-Handler behandelt auch spaetere Listenerfehler.
 
 `config.js`
-  Validiert Instanz, Loopback, Origins, HTTPS-Modus, absolute SQLite-Datei,
+  Validiert Instanz, Loopback, Origins, HTTPS-Modus, vier getrennte absolute
+  SQLite-Dateien,
   Court-HTTPS-URL, Startimport-Backoff, Timeoutrelationen und alle
   Kapazitaetsgrenzen. `TABLE_CONFIG` enthaelt die acht importierten Sheet-Tabs.
 
@@ -105,6 +107,20 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   app_state, Sessions, Resetnachweisen, Monitorgeraeten, Operationsergebnissen
   und Loginlimits. Tokens werden nur gehasht persistiert. Cleanup entfernt
   abgelaufene beziehungsweise alte Eintraege.
+
+`messagingRepository.js`, `messagingService.js`
+  Persistieren das versionierte zentrale Bewerbsereignismodell, normalisierte
+  Teilnehmerprojektionen, Zustellstatus, Receipts, idempotente Quittierungen und
+  personengebundene Revisionen in einer eigenen SQLite-Datei. Der Service erzeugt
+  kontrollierte persoenliche Inboxtexte und neutrale Bewerbshistorien, reichert
+  alte matchgebundene Eintraege einmalig ueber Match-ID mit der Bewerbszuordnung
+  an und projiziert Runden nur fuer Nicht-Ranglisten. Ereignis-, Akteurs-, Namens-,
+  Ergebnis- und Textwerte bleiben Snapshots des Ereigniszeitpunkts.
+
+`emailMessagingAdapter.js`, `whatsappMessagingAdapter.js`
+  Begrenzen die kuenftigen externen Zustellkanaele auf getrennte Adapter. Solange
+  keine direkte Zustellung implementiert ist, senden sie nichts und liefern nur
+  den gespeicherten Status `not_configured`; die interne Inbox bleibt unabhaengig.
 
 `dataPoller.js`
   Laedt beim Start alle acht Tabellen mit einem gemeinsamen `values.batchGet`,
@@ -205,6 +221,8 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   Implementiert WebSocket-Upgrade, v2-Handshake, Principal-Refresh, Rollenmatrix,
   RPC-Routing, Support-ID-Korrelation, Ping/Pong, Kapazitaets-/Rate-/Backpressure-
   Limits, Topiczugriff, initiale Subscription-Snapshots und Shutdown mit 1012.
+  Private Topics `messages:<Personen-ID>` sind ausschliesslich fuer den aktuellen
+  Benutzer abonnierbar und enthalten nur Revision und Ungelesenanzahl.
   Client-Request-ID und serverseitige Support-UUID bleiben getrennt. Jeder
   korrelierbare Abschluss erzeugt einen unveraenderlichen Datensatz; pro Socket
   bleiben hoechstens die letzten 20 Datensaetze erhalten.
@@ -273,6 +291,14 @@ Datenprojektionen:
     anonyme Profile nicht. Der vorherige Rang bleibt grundsaetzlich im
     Persistenzlayer und wird nur dem berechtigten Eigenprofil innerhalb der
     zwoelfmonatigen Rueckkehrfrist kontrolliert projiziert.
+  - Das Eigenprofil projiziert die administrativ gepflegten gueltigen
+    Benachrichtigungskanaele sowie offene Forderungen mit Richtung, aktuellem
+    Gegnerrang, Forderungszeit und optionalem Spieltermin. Persoenliche Meldungen
+    sind nur fuer ihren Empfaenger les- und quittierbar. Listen sortieren
+    ungelesene vor gelesenen Eintraegen und innerhalb beider Gruppen absteigend.
+    Bewerbshistorien enthalten neutrale Ereignisfelder und Teilnehmernamen, aber
+    keine privaten Inboxtexte, fremden Receipts oder Zustellstaende. Einzel- und
+    Gesamtcursor sind an ihren jeweiligen Scope gebunden.
 
 Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
 Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
@@ -308,6 +334,21 @@ Lesepfad:
 Schreibpfad:
   Sessionprincipal + geschlossene Parameter -> Fachregeln -> operationId-Lookup
   -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
+
+Ranglistentermin:
+  Eigenprofil eines Forderungsbeteiligten -> UUID-operationId, Match-ID und
+  `YYMMDD-HHMM` -> aktueller `Matches1`-Read und stabile Metadatenzeile -> offene
+  Ranglistenforderung, Teilnehmer, Erstkorridor beziehungsweise Aenderungszeit
+  und volle Stunde 06:00 bis 23:00 pruefen -> Audit `started` -> MatchDate-
+  Metadatenwrite -> bei Transportfehler zielgenaue Bestaetigung statt Blindretry
+  -> lokale Matchprojektion und Invalidierung -> zentrales `appointment`- oder
+  `appointment_changed`-Ereignis mit zwei privaten Meldungen -> Auditabschluss
+  und strukturiertes `ranking_match_date_update_completed`. Bei unbekanntem
+  Ausgang speichert die Operation alten und neuen Termin; derselbe Request liest
+  nur nach, erzeugt das stabile Ereignis idempotent und antwortet erst danach mit
+  `recovered`. Andere Benutzer, geschlossene Forderungen, unveraenderte Termine,
+  ungueltige Stunden oder ausserhalb des Erstkorridors liegende Ersttermine werden
+  ohne Sheetmutation abgewiesen.
 
 Personennormalisierung:
   Adminprojektion -> dreizehn erlaubte Feldwerte + Problemcodes + SHA-256-
@@ -409,6 +450,12 @@ Verfallsfenster verfuegbar, bis ein neuer vollstaendig validierter Snapshot ihn
 ersetzt.
 
 Fachhistorien und Betriebslogs:
+  - `messaging.sqlite` ist das getrennte System-of-Record fuer zentrale
+    Bewerbsereignisse, persoenliche Inboxprojektionen, Zustellstatus und
+    Quittierungen. Ein Ereigniswrite und alle Teilnehmer entstehen in einer
+    Transaktion; stabile IDs machen Wiederholungen idempotent. Erfolgreiche neue
+    Projektionen publizieren danach private Zusammenfassungen. Externe Adapter
+    aktualisieren ausschliesslich kontrollierte Zustellstatus.
   - `scorelog.sqlite` und `audit.sqlite` sind getrennte SQLite-Systeme-of-Record
     mit WAL, `synchronous=FULL`, Event-IDs und unbegrenzter fachlicher Historie.
     Die frueheren Google-Sheets-Tabs `ScoreLog` und `Logging` werden nicht mehr
@@ -443,6 +490,9 @@ Fachhistorien und Betriebslogs:
     Match-ID; `failed` bedeutet ausschliesslich, dass keine Forderung angelegt
     wurde. Der Journalspiegel stellt diese erlaubten IDs fuer Grafana bereit,
     ohne sie zu Loki-Labels zu machen.
+    `setRankingMatchDate` verwendet denselben Auditvertrag mit Match-ID und
+    kontrolliertem alten/neuen Termin; sein Abschlusslog und das erlaubte
+    Browserereignis `ranking_match_date_failed` enthalten keine freien Payloads.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der
@@ -645,8 +695,8 @@ migrierbar und muessen fuer die Matchtyp-Projektion neu zugewiesen werden.
 
 `/live` prueft nur den Prozess. `/ready` und `/health` verlangen:
   - Initialisierung abgeschlossen und kein Shutdown,
-  - offene State-, ScoreLog- und Auditlog-SQLite-Datenbanken ohne letzten
-    Persistenzfehler,
+  - offene State-, Messaging-, ScoreLog- und Auditlog-SQLite-Datenbanken ohne
+    letzten Persistenzfehler,
   - mindestens einen vollstaendig erfolgreichen Snapshot aller acht Tabellen;
     dessen Alter ist danach nur diagnostisch,
   - bei aktivem Court eine anhand des letzten Erfolgs noch frische externe
@@ -659,7 +709,7 @@ Readiness nicht. Neue Court-Zuweisungen benoetigen weiterhin einen verwendbaren
 Matchtyp-Stand aus dem Last-good-Snapshot.
 
 `/status` ist admin-only und zeigt detaillierte Tabellen-, Provider-, Monitor-,
-SheetService-, State-, ScoreLog- und Auditlogwerte, einschliesslich
+SheetService-, State-, Messaging-, ScoreLog- und Auditlogwerte, einschliesslich
 `pendingMetadataIntents`, Quelle der verwendeten Adminrolle sowie einer
 begrenzten atomaren RPC-Abschlusshistorie je verbundenem Socket, aber keine
 Secrets. Die Provider-Verbindungsdaten werden bei jedem Aufruf nur aus aktuell
@@ -669,7 +719,9 @@ Klarnamen und stabile Client-/Geraetekennungen duerfen nicht ungefiltert in
 oeffentliche Logs oder Tickets gelangen. `/status` wird mit
 `Cache-Control: no-store` ausgeliefert. ScoreLog zeigt nur aggregierten
 Oeffnungs-/Fehlerstatus, Schreibzaehler und letzte Court-Folgenummern; Auditlog
-zeigt nur Oeffnungs-/Fehlerstatus und Zaehler, niemals Ereignisinhalte.
+zeigt nur Oeffnungs-/Fehlerstatus und Zaehler, niemals Ereignisinhalte. Messaging
+zeigt Schema-, Oeffnungs-/Fehlerstatus sowie aggregierte Ereignis- und
+Teilnehmerzaehler, keine Betreffe, Texte, Namen oder Receipts.
 
 Graceful Shutdown:
   1. Neue HTTP-/WS-Operationen werden mit 503 abgelehnt; Upgrades stoppen.
@@ -677,12 +729,12 @@ Graceful Shutdown:
      abgebrochen.
   3. MonitorBroker beendet Geraete und WebSockets schliessen mit 1012.
   4. Aktive WS-Handler, HTTP-Requests und SheetService-Arbeit werden drainiert.
-  5. Audit-, ScoreLog- und State-SQLite schliessen erst danach.
+  5. Audit-, ScoreLog-, Messaging- und State-SQLite schliessen erst danach.
 
 Standard-Grace ist 90 Sekunden. Eine ueberschrittene Deadline ist
 `SHUTDOWN_TIMEOUT`, schliesst Verbindungen hart und fuehrt zu Fehlerexit. Synchrone
-ScoreLog-/Auditwrites sind vor ihrer Erfolgsantwort abgeschlossen; die
-Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
+Messaging-, ScoreLog- und Auditwrites sind vor ihrer Erfolgsantwort abgeschlossen;
+die Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
 
 
 ================================================================================

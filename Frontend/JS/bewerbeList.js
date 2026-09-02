@@ -1,11 +1,238 @@
 import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
+import { ready, subscribeAuth } from "./authClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
 import { diagnostic } from "./diagnostics.js";
 
 const readBewerbe = createEndpoint("bewerbe");
 const readBewerbsart = createEndpoint("bewerbsart");
+const readCompetitionHistory = createEndpoint("competitionHistory");
 let competitionBoundaryTimer = null;
+let historyButtonsVisible = false;
+let historyAuthIdentity = null;
+let historyRequestGeneration = 0;
+const historyState = {
+  open: false,
+  global: false,
+  bewerbId: null,
+  competitionName: "",
+  entries: [],
+  nextCursor: null,
+  loading: false,
+  returnFocus: null,
+};
+
+function historyElement(id) {
+  return document.getElementById(id);
+}
+
+function setHistoryButtonsVisible(visible) {
+  historyButtonsVisible = visible;
+  document.querySelectorAll(".competition-history-button").forEach((button) => {
+    button.hidden = !visible;
+  });
+}
+
+function clearHistoryState() {
+  historyRequestGeneration++;
+  historyState.open = false;
+  historyState.global = false;
+  historyState.bewerbId = null;
+  historyState.competitionName = "";
+  historyState.entries = [];
+  historyState.nextCursor = null;
+  historyState.loading = false;
+  historyElement("competition-history-list")?.replaceChildren();
+  if (historyElement("competition-history-title")) historyElement("competition-history-title").textContent = "Historie";
+  if (historyElement("competition-history-competition-name")) historyElement("competition-history-competition-name").textContent = "";
+  if (historyElement("competition-history-status")) historyElement("competition-history-status").textContent = "";
+  if (historyElement("competition-history-more")) {
+    historyElement("competition-history-more").textContent = "Weitere Einträge laden";
+    historyElement("competition-history-more").hidden = true;
+  }
+}
+
+function closeCompetitionHistory({ restoreFocus = true } = {}) {
+  const modal = historyElement("competition-history-modal");
+  if (!modal || modal.hidden) {
+    clearHistoryState();
+    return;
+  }
+  const returnFocus = historyState.returnFocus;
+  modal.hidden = true;
+  clearHistoryState();
+  historyState.returnFocus = null;
+  if (!document.querySelector('.modal:not(.hidden), .competition-history-modal:not([hidden])')) {
+    document.body.classList.remove("modal-open");
+  }
+  if (restoreFocus && returnFocus?.isConnected && !returnFocus.hidden) returnFocus.focus();
+}
+
+function historyTimestamp(entry) {
+  return entry?.occurredAt ?? entry?.timestamp ?? entry?.createdAt ?? entry?.date ?? "";
+}
+
+function historyTimeValue(entry) {
+  const value = historyTimestamp(entry);
+  const numeric = typeof value === "number" ? value : Date.parse(String(value));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function formatHistoryTimestamp(value) {
+  if (value === "" || value === null || value === undefined) return "Zeitpunkt unbekannt";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("de-AT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function historyEntries(data) {
+  const values = data?.entries ?? data?.history ?? data?.events ?? data?.items;
+  return Array.isArray(values) ? values : [];
+}
+
+function appendHistoryText(container, text, className) {
+  if (text === "" || text === null || text === undefined) return;
+  const line = document.createElement("p");
+  line.className = className;
+  line.textContent = String(text);
+  container.appendChild(line);
+}
+
+function renderCompetitionHistory() {
+  const list = historyElement("competition-history-list");
+  const status = historyElement("competition-history-status");
+  const more = historyElement("competition-history-more");
+  if (!list || !status || !more) return;
+
+  list.replaceChildren();
+  const sortedEntries = [...historyState.entries].sort((left, right) => historyTimeValue(right) - historyTimeValue(left));
+  for (const entry of sortedEntries) {
+    const item = document.createElement("li");
+    item.className = "competition-history-entry";
+    const time = document.createElement("time");
+    const rawTimestamp = historyTimestamp(entry);
+    const parsedTimestamp = new Date(rawTimestamp);
+    if (!Number.isNaN(parsedTimestamp.getTime())) time.dateTime = parsedTimestamp.toISOString();
+    time.textContent = formatHistoryTimestamp(rawTimestamp);
+    item.appendChild(time);
+
+    if (historyState.global) {
+      const competitionName = entry?.competitionName ?? entry?.competition?.name ?? entry?.bewerbName;
+      appendHistoryText(item, competitionName || "Bewerb unbekannt", "competition-history-entry-competition");
+    }
+    appendHistoryText(item, entry?.roundName, "competition-history-entry-round");
+    const title = entry?.summary ?? entry?.label ?? entry?.action ?? entry?.type ?? entry?.event;
+    appendHistoryText(item, title || "Änderung", "competition-history-entry-title");
+    appendHistoryText(item, entry?.result ? `Ergebnis: ${entry.result}` : "", "competition-history-entry-result");
+    const actor = entry?.actorName ?? entry?.actor;
+    appendHistoryText(item, actor ? `Durch: ${actor}` : "", "competition-history-entry-meta");
+    list.appendChild(item);
+  }
+
+  status.textContent = historyState.entries.length ? "" : "Keine Historieneinträge vorhanden.";
+  more.textContent = "Weitere Einträge laden";
+  more.hidden = !historyState.nextCursor;
+  more.disabled = historyState.loading;
+}
+
+async function loadCompetitionHistory({ append = false } = {}) {
+  if (!historyState.open || historyState.loading || !historyButtonsVisible) return;
+  const generation = ++historyRequestGeneration;
+  const status = historyElement("competition-history-status");
+  const more = historyElement("competition-history-more");
+  historyState.loading = true;
+  if (status) status.textContent = append ? "Weitere Einträge werden geladen..." : "Historie wird geladen...";
+  if (more) more.disabled = true;
+
+  try {
+    const params = historyState.global ? {} : { bewerbId: historyState.bewerbId };
+    if (append && historyState.nextCursor) params.cursor = historyState.nextCursor;
+    const response = await readCompetitionHistory(params);
+    if (generation !== historyRequestGeneration || !historyState.open || !historyButtonsVisible) return;
+    if (!response.data?.success) throw new Error(response.data?.error?.message || "Historie konnte nicht geladen werden.");
+    const entries = historyEntries(response.data);
+    const authoritativeName = String(response.data.competition?.name || "").trim();
+    if (!historyState.global && authoritativeName) {
+      historyState.competitionName = authoritativeName;
+      historyElement("competition-history-competition-name").textContent = authoritativeName;
+    }
+    historyState.entries = append ? [...historyState.entries, ...entries] : entries;
+    historyState.nextCursor = response.data.nextCursor || null;
+    renderCompetitionHistory();
+  } catch (error) {
+    if (generation !== historyRequestGeneration) return;
+    diagnostic.error("competition_history_load_failed", error);
+    if (status) status.textContent = "Historie konnte nicht geladen werden. Bitte erneut versuchen.";
+    if (more) {
+      more.hidden = false;
+      more.textContent = append ? "Weitere Einträge erneut laden" : "Erneut versuchen";
+    }
+  } finally {
+    if (generation === historyRequestGeneration) {
+      historyState.loading = false;
+      if (more) more.disabled = false;
+    }
+  }
+}
+
+function openCompetitionHistory(competition, button) {
+  if (!historyButtonsVisible) return;
+  clearHistoryState();
+  historyState.open = true;
+  historyState.global = !competition;
+  historyState.bewerbId = competition ? String(competition.id) : null;
+  historyState.competitionName = competition ? String(competition.bezeichnung || "Bewerb") : "Alle Bewerbe";
+  historyState.returnFocus = button;
+  historyElement("competition-history-title").textContent = "Historie";
+  historyElement("competition-history-competition-name").textContent = historyState.competitionName;
+  const modal = historyElement("competition-history-modal");
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+  historyElement("competition-history-close")?.focus();
+  loadCompetitionHistory().catch(() => {});
+}
+
+function initializeCompetitionHistory() {
+  const modal = historyElement("competition-history-modal");
+  const globalButton = historyElement("all-competition-history-button");
+  globalButton?.appendChild(createHistoryIcon());
+  globalButton?.addEventListener("click", () => openCompetitionHistory(null, globalButton));
+  historyElement("competition-history-close")?.addEventListener("click", () => closeCompetitionHistory());
+  historyElement("competition-history-more")?.addEventListener("click", () => loadCompetitionHistory({
+    append: Boolean(historyState.entries.length && historyState.nextCursor),
+  }));
+  modal?.addEventListener("click", (event) => {
+    if (event.target === modal) closeCompetitionHistory();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!modal || modal.hidden) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCompetitionHistory();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...modal.querySelectorAll("button:not([hidden]):not(:disabled)")];
+    if (!focusable.length) return;
+    const index = focusable.indexOf(document.activeElement);
+    const nextIndex = event.shiftKey
+      ? (index <= 0 ? focusable.length - 1 : index - 1)
+      : (index < 0 || index === focusable.length - 1 ? 0 : index + 1);
+    event.preventDefault();
+    focusable[nextIndex].focus();
+  });
+
+  subscribeAuth((user, state) => {
+    const identity = state.status === "authenticated" && user ? String(user.id || user.login || "authenticated") : null;
+    if (historyAuthIdentity !== null && historyAuthIdentity !== identity) closeCompetitionHistory({ restoreFocus: false });
+    historyAuthIdentity = identity;
+    setHistoryButtonsVisible(Boolean(identity));
+  });
+  ready.catch(() => setHistoryButtonsVisible(false));
+}
 
 function scheduleCompetitionBoundary(competitions) {
   if (competitionBoundaryTimer) clearTimeout(competitionBoundaryTimer);
@@ -75,6 +302,28 @@ function formatSheetDate(raw) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+function createHistoryIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.dataset.icon = "megaphone";
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  for (const pathData of [
+    "M3 10v4a2 2 0 0 0 2 2h2L20 20V4L7 8H5a2 2 0 0 0-2 2Z",
+    "m7 16 2 5h4l-2.4-3.8",
+  ]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathData);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
 // ── Bewerb Cards ────────────────────────────────────────────────────────
 
 function createCard(b) {
@@ -85,12 +334,7 @@ function createCard(b) {
 
   card.className = "bewerb-card";
 
-  if (isRangliste) {
-    card.classList.add("clickable");
-    card.addEventListener("click", () => {
-      window.location.href = `rangliste.html?id=${encodeURIComponent(String(b.id))}`;
-    });
-  }
+  let target = isRangliste ? `rangliste.html?id=${encodeURIComponent(String(b.id))}` : null;
 
   const start = formatSheetDate(b.bewerbsbeginn);
   const end = b.bewerbsende ? formatSheetDate(b.bewerbsende) : "Offen";
@@ -98,9 +342,23 @@ function createCard(b) {
   const entryDeadline = formatSheetDate(b.entrydeadline);
   const hasEntryList = b.entryListAvailable === "1";
 
+  const headingRow = document.createElement("div");
+  headingRow.className = "bewerb-heading";
   const heading = document.createElement("h3");
   heading.textContent = String(b.bezeichnung || "");
-  card.appendChild(heading);
+  const historyButton = document.createElement("button");
+  historyButton.type = "button";
+  historyButton.className = "competition-history-button";
+  historyButton.setAttribute("aria-label", `Historie von ${String(b.bezeichnung || "Bewerb")} öffnen`);
+  historyButton.title = "Bewerbshistorie öffnen";
+  historyButton.appendChild(createHistoryIcon());
+  historyButton.hidden = !historyButtonsVisible;
+  historyButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openCompetitionHistory(b, historyButton);
+  });
+  headingRow.append(heading, historyButton);
+  card.appendChild(headingRow);
 
   const dates = document.createElement("div");
   dates.className = `bewerb-dates${hasEntryList ? " with-entrylist" : ""}`;
@@ -128,7 +386,6 @@ function createCard(b) {
     const hasStarted = bewerbStart ? bewerbStart <= now : false;
 
     // Zielseite bestimmen + Klickbarkeit
-    let target = null;
     const isEntryOpen = !isBeforeEntryStart && !isPastDeadline && hasEntryList;
 
     if (hasStarted) {
@@ -143,12 +400,15 @@ function createCard(b) {
       target = `entryList.html?id=${encodeURIComponent(String(b.id))}`;
     }
 
-    if (target) {
-      card.classList.add("clickable");
-      card.addEventListener("click", () => {
-        window.location.href = target;
-      });
-    }
+  }
+
+  if (target) {
+    card.classList.add("clickable");
+    const link = document.createElement("a");
+    link.className = "bewerb-card-link";
+    link.href = target;
+    link.setAttribute("aria-label", `${String(b.bezeichnung || "Bewerb")} öffnen`);
+    card.appendChild(link);
   }
 
   return card;
@@ -353,6 +613,7 @@ async function loadBewerbe() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initializeCompetitionHistory();
   try {
     await loadBewerbe();
     subscribeInvalidations(["bewerbe", "bewerbsart"], loadBewerbe);

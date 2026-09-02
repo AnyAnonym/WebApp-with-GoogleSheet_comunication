@@ -3,12 +3,12 @@
   "editable": false,
   "graphTooltip": 1,
   "panels": [
-    { "type": "timeseries", "title": "CPU-Auslastung", "id": 1, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }, "targets": [{ "expr": "100 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "refId": "A" }] },
-    { "type": "timeseries", "title": "Verfuegbarer RAM", "id": 2, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }, "targets": [{ "expr": "node_memory_MemAvailable_bytes", "refId": "A" }] },
-    { "type": "timeseries", "title": "Freier Speicher", "id": 3, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }, "targets": [{ "expr": "node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
-    { "type": "timeseries", "title": "Freie Inodes", "id": 4, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }, "targets": [{ "expr": "node_filesystem_files_free{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
-    { "type": "timeseries", "title": "Netzwerkdurchsatz", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }, "targets": [{ "expr": "sum by (device) (rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "RX {{device}}", "refId": "A" }, { "expr": "sum by (device) (rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "TX {{device}}", "refId": "B" }] },
-    { "type": "timeseries", "title": "ePiber-Dienstzustand", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }, "targets": [{ "expr": "node_systemd_unit_state{name=~\"(epiber-(piber|paj|grafana-auth)|grafana)\\\\.service\",state=\"active\"}", "legendFormat": "{{name}}", "refId": "A" }] }
+    { "type": "timeseries", "title": "CPU-Auslastung", "id": 1, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }, "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "100 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100", "legendFormat": "CPU", "refId": "A" }] },
+    { "type": "timeseries", "title": "Verfuegbarer RAM", "id": 2, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }, "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "node_memory_MemAvailable_bytes", "legendFormat": "RAM verfuegbar", "refId": "A" }] },
+    { "type": "timeseries", "title": "Freier Speicher", "id": 3, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }, "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "node_filesystem_avail_bytes{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Freie Inodes", "id": 4, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }, "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "node_filesystem_files_free{fstype!~\"tmpfs|ramfs\"}", "legendFormat": "{{mountpoint}}", "refId": "A" }] },
+    { "type": "timeseries", "title": "Netzwerkdurchsatz", "id": 5, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 }, "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "sum by (device) (rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "RX {{device}}", "refId": "A" }, { "expr": "sum by (device) (rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))", "legendFormat": "TX {{device}}", "refId": "B" }] },
+    { "type": "timeseries", "title": "ePiber-Dienstzustand", "id": 6, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 }, "fieldConfig": { "defaults": { "mappings": [{ "options": { "1": { "text": "Aktiv" } }, "type": "value" }] }, "overrides": [] }, "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true } }, "targets": [{ "expr": "node_systemd_unit_state{name=~\"(epiber-(piber|paj|grafana-auth)|grafana)\\\\.service\",state=\"active\"}", "legendFormat": "{{name}}", "refId": "A" }] }
   ],
   "schemaVersion": 41,
   "tags": ["epiber", "resources"],
@@ -17,5 +17,5 @@
   "timezone": "browser",
   "title": "ePiber Hostressourcen",
   "uid": "epiber-resources",
-  "version": 1
+  "version": 2
 }

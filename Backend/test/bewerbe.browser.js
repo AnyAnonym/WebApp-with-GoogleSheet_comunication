@@ -176,6 +176,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     const globalHistoryButton = page.getByRole("button", { name: "Historie aller Bewerbe öffnen" });
     await globalHistoryButton.waitFor({ state: "visible" });
     assert.equal(await globalHistoryButton.locator("svg").count(), 1);
+    assert.equal(await globalHistoryButton.locator("svg").getAttribute("data-icon"), "megaphone");
     const pageHeadingGap = await page.locator(".bewerbe-page-heading").evaluate((row) => {
       const heading = row.querySelector("h2").getBoundingClientRect();
       const buttonElement = row.querySelector("button");
@@ -247,6 +248,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     const historyButton = page.getByRole("button", { name: /Historie von/ }).first();
     assert.equal(await historyButton.innerText(), "");
     assert.equal(await historyButton.locator("svg").count(), 1);
+    assert.equal(await historyButton.locator("svg").getAttribute("data-icon"), "megaphone");
     const headingGap = await page.locator(".bewerb-card").first().evaluate((card) => {
       const heading = card.querySelector("h3").getBoundingClientRect();
       const button = card.querySelector(".competition-history-button").getBoundingClientRect();

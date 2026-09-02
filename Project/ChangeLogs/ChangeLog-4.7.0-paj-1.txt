@@ -106,3 +106,43 @@ Commit: 4.7.0-paj-1-5 | Messaging, Personendaten und Observability erweitert
 
     Project/server-configs/observability/README.md
     - Aktive Playerklassifikationen, begrenzte Metriklabels und die zugehoerigen Grafana-Panels fuer Personennormalisierung sowie Ressourcenlegenden dokumentieren.
+
+[4.7.0-paj-1-6] - 2026-09-02
+Commit: 4.7.0-paj-1-6 | Ranglistentermine und Historienbedienung erweitert
+
+  Added
+  - [Backend] Der authentifizierte idempotente RPC `setRankingMatchDate` erlaubt ausschliesslich einem der beiden Beteiligten einer offenen Ranglistenforderung, den ersten Spieltermin im exakten Vierzehntageskorridor in `Matches1.MatchDate` festzulegen und einen bestehenden Termin ab dem aktuellen Zeitpunkt ohne obere Datumsgrenze zu aendern.
+  - [Backend] Erfolgreiche Terminsetzungen und -aenderungen erzeugen eigene zentrale `appointment`- beziehungsweise `appointment_changed`-Bewerbsereignisse mit altem und neuem Termin sowie kontrolliertem Akteur und je einer persoenlichen Inboxprojektion fuer Forderer und Geforderten.
+  - [Frontend] Offene Forderungen zeigen im eigenen Ranglistenprofil fuer beide Beteiligten vor `Raushängen` je nach Zustand `Spieltermin festlegen` oder `Termin abändern`; ein frei vor- und rueckwaerts navigierbarer Monatskalender und ein Stundenfeld begrenzen Ersttermine auf den Spielkorridor und Uhrzeiten technisch auf volle Stunden von 06:00 bis 23:00 Uhr.
+  - [Frontend] Der Forderungstag ist im Kalender blau, der letzte Spieltag rot und der gesamte auswählbare Korridor fett; nicht auswählbare Tage bleiben ausgegraut, ohne die Monatsnavigation zu sperren.
+  - [Frontend] Forderungen ohne Termin zeigen im eigenen Ranglistenreiter einen minuetlich aktualisierten Countdown auf die siebentaegige Terminvereinbarungsfrist als `-`-Restzeit beziehungsweise `+`-Ueberziehung; er ist bis zwei Tage vor Fristende gruen, danach orange und nach Fristablauf rot.
+  - [Messaging] Persoenliche Terminbetreffe wiederholen den bereits separat sichtbaren Bewerbsnamen nicht mehr und nennen stattdessen den jeweiligen Mitspieler.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` fuer den Zielcommit auf `4.7.0-paj-1-6` gesetzt.
+  - [Frontend] `Raushängen` bleibt im eigenen Ranglistenprofil bei einer offenen Forderung anklickbar und zeigt statt des Rueckzugsformulars einen ausschliesslich ueber das Schliesssymbol bedienbaren Hinweis, dass die Forderung zuerst gespielt werden muss.
+  - [Frontend] Die Schaltflaechen fuer die Gesamt- und Einzelbewerbshistorie verwenden statt des bisherigen Clipboard-Symbols ein einheitliches Megafon-Symbol; Beschriftung, Tooltip und Bedienverhalten bleiben unveraendert.
+  - [Tests] Der Profil-Browsertest sichert den anklickbaren Button, Hinweistext, einzigen Schliessbutton und das Ausbleiben des Rueckzugsformulars ab.
+  - [Observability] Terminwrites besitzen den vollstaendigen Fachwrite-Auditvertrag und ein strukturiertes Abschlusslog; Browserfehler verwenden das allowlist-basierte Ereignis `ranking_match_date_failed` auf dem bekannten Seitentyp `rangliste`.
+  - [Tests] Vertrags-, Sheet-Service-, Recovery-, Messaging-, Integrations-, Browserdiagnose- und Browsertests sichern beide gleichberechtigten Beteiligten, Fremdzugriff, Erstkorridor, Kalendernavigation und -markierungen, spaetere Aenderungen, volle Stunden, Meldungen, Einzel-/Gesamthistorie, Audit sowie die Siebentagesfrist und alle Countdownfarben ab.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/rangliste.txt
+    - Beim eigenen Profil ist `Raushängen` waehrend einer offenen Forderung anklickbar; statt des Grundformulars erscheint der nur ueber das `X` schliessbare Hinweis, dass Raushängen erst nach gespielter Forderung moeglich ist.
+    - Offene Forderungen bieten beiden Beteiligten zuerst `Spieltermin festlegen` und nach der ersten Speicherung `Termin abändern`; Datum und volle Stunde von 06:00 bis 23:00 Uhr werden getrennt gewaehlt und ueber `Übernehmen` bestaetigt.
+    - Den unbegrenzt navigierbaren Monatskalender mit blauem Forderungstag, rotem letztem Spieltag, fettem Auswahlkorridor und ausgegrauten nicht auswählbaren Tagen beschreiben.
+    - Den nur im eigenen Ranglistenreiter sichtbaren Countdown auf die siebentaegige Terminvereinbarungsfrist mit `-` vor Fristablauf, `+` danach sowie den Schwellwerten gruen, orange ab zwei Tagen Restzeit und rot bei Ueberziehung dokumentieren.
+
+    Project/software/ENDPOINTS.txt
+    - `setRankingMatchDate { operationId, matchId, matchDate }` mit Authentifizierung, Teilnehmerbindung, Erstkorridor, Aenderungsrecht beider Parteien, Stundenvalidierung, Recovery, Invalidierung, Audit sowie Erfolgs- und Fehlerantworten dokumentieren.
+    - Persoenliche Meldungs- und Bewerbshistorienprojektionen fuer `appointment` und `appointment_changed` mit altem/neuem Termin, eintragendem Akteur und mitspielerbezogenem Betreff ohne Bewerbswiederholung ergaenzen.
+
+    Project/software/seiten/bewerbe.txt
+    - Das bisher als Clipboard beschriebene Symbol fuer Einzel- und Gesamthistorien durch das Megafon-Symbol ersetzen; Zugriffs- und Bedienvertrag bleiben unveraendert.
+
+    Project/software/DATENBANK.txt
+    - Den kontrollierten Teilnehmerwrite und spaetere Aenderungen auf `Matches1.MatchDate` im Format `YYMMDD-HHMM` sowie die zugehoerigen zentralen Terminereignisse mit zwei Teilnehmerprojektionen festhalten.
+
+    Project/software/ARCHITEKTUR.txt
+    - Datenfluss der Terminsetzung vom Eigenprofil ueber den idempotenten Sheet-Write bis zu Messaging, Bewerbshistorien, Audit, Abschlusslog und Recovery beschreiben.

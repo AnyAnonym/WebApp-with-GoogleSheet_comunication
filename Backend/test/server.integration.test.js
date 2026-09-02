@@ -151,6 +151,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     async addMatch(_principal, { operationId }) {
       return { success: true, newMatchId: `m-${operationId.slice(-8)}` };
     },
+    async setRankingMatchDate(_principal, { matchId, matchDate }) {
+      return { success: true, matchId, matchDate };
+    },
     challengeEligibility() {
       return { allowed: true, code: "" };
     },
@@ -510,7 +513,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(seniorRestrictions.data.schonzeit, []);
 
   const protectedEndpoints = [
-    "memberDirectory", "myProfile", "addMatch", "addEntryList", "removeEntryList",
+    "memberDirectory", "myProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
     "withdrawFromRanking", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
     "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
     "monitorTarget", "monitorAck",
@@ -719,7 +722,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(operatorGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const authenticatedEndpoints = [
-    "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
+    "memberDirectory", "myProfile", "operationStatus", "addMatch", "setRankingMatchDate", "addEntryList",
     "removeEntryList", "withdrawFromRanking",
   ];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
@@ -964,6 +967,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     opponentId: "p1",
   });
   assert.equal(challenge.data.newMatchId, "m-00000201");
+  const appointment = await playerClient.request("setRankingMatchDate", {
+    operationId: "00000000-0000-4000-8000-000000000205",
+    matchId: challenge.data.newMatchId,
+    matchDate: "260905-1800",
+  });
+  assert.deepEqual(appointment.data, { success: true, matchId: "m-00000201", matchDate: "260905-1800" });
   const seededMessages = await application.messagingService.ensureChallengeMessages({
     matchId: challenge.data.newMatchId,
     recipientId: "p1",
@@ -1080,12 +1089,26 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     before: { bewerbId: "cup-1", opponentId: "p1" },
     after: { matchId: "m-00000201", bewerbId: "cup-1", opponentId: "p1" },
   });
+  const appointmentAudit = auditRows.find((row) => row.action === "setRankingMatchDate" && row.result === "success");
+  assert.deepEqual({
+    actorId: appointmentAudit.actorId,
+    targetType: appointmentAudit.targetType,
+    targetId: appointmentAudit.targetId,
+    before: appointmentAudit.before,
+    after: appointmentAudit.after,
+  }, {
+    actorId: "p2",
+    targetType: "match",
+    targetId: "m-00000201",
+    before: { matchId: "m-00000201", matchDate: "" },
+    after: { matchId: "m-00000201", matchDate: "260905-1800" },
+  });
   const successfulActions = new Set(auditRows.filter((row) => row.result === "success").map((row) => row.action));
   assert.equal(auditRows.some((row) => row.action === "acknowledgeMessage" && row.result === "failed" && row.errorCode === "MESSAGE_NOT_FOUND"), true);
   assert.equal(auditRows.some((row) => row.action === "acknowledgeMessage" && row.result === "unknown" && row.errorCode === "WRITE_OUTCOME_UNKNOWN"), true);
   for (const action of [
     "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
-    "passwordReset", "addMatch", "acknowledgeMessage", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "passwordReset", "addMatch", "setRankingMatchDate", "acknowledgeMessage", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
     "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
   ]) {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);

@@ -76,6 +76,13 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
         after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
       };
+    case "setRankingMatchDate":
+      return {
+        targetType: "match",
+        targetId: params.matchId,
+        before: internal?.before || { matchId: params.matchId, matchDate: "" },
+        after: internal?.after || { matchId: params.matchId, matchDate: params.matchDate },
+      };
     case "acknowledgeMessage":
       return {
         targetType: "message",
@@ -813,6 +820,15 @@ const endpoints = {
       operationId: operationId(params?.operationId),
       bewerbId: idValue(params?.bewerbId, "bewerbId"),
       opponentId: idValue(params?.opponentId, "opponentId"),
+    }),
+  },
+  setRankingMatchDate: {
+    access: "authenticated",
+    write: true,
+    handler: (params, context) => dependencies.sheetService.setRankingMatchDate(context.principal, {
+      operationId: operationId(params?.operationId),
+      matchId: idValue(params?.matchId, "matchId"),
+      matchDate: stringValue(params?.matchDate, "matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
     }),
   },
   addEntryList: {

@@ -49,6 +49,7 @@ const messageBodies = {
   "read-new": "Diese Meldung wurde bereits bestätigt.",
 };
 window.__acknowledgeCalls = [];
+window.__matchDateCalls = [];
 const operationIds = new Map();
 export const getOperationId = (key) => {
   if (!operationIds.has(key)) operationIds.set(key, "operation-" + key);
@@ -59,10 +60,11 @@ export const subscribeInvalidations = () => () => {};
 export const subscribe = () => () => {};
 const rankings = [
   { competitionId: "r1", competitionName: "Herren", rank: 1, status: "active", canChallenge: true, canWithdraw: true },
-  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { direction: "challenger", opponentName: "Test Gegner", opponentRank: 5, challengedAt: "260829-1200", matchDate: "260905-1600" } },
-  { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false, openChallenge: { direction: "challenged", opponentName: "Andere Gegnerin", opponentRank: 7, challengedAt: "260830-0900" } },
-  { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false },
+  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r2", direction: "challenger", opponentName: "Test Gegner", opponentRank: 5, challengedAt: "260829-1200", matchDate: "260905-1600" } },
+  { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false, openChallenge: { matchId: "match-r3", direction: "challenged", opponentName: "Andere Gegnerin", opponentRank: 7, challengedAt: "260830-0900" } },
+  { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r4", direction: "challenger", opponentName: "Mixed Gegner", opponentRank: 2, challengedAt: "260828-1200" } },
   { competitionId: "r5", competitionName: "Wintercup", rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
+  { competitionId: "r6", competitionName: "Damen Herbst", rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
 ];
 export function createEndpoint(name) {
   return async (params = {}) => {
@@ -145,6 +147,10 @@ export function createEndpoint(name) {
         unreadCount: messages.filter((message) => !message.acknowledged).length,
         revision: messageRevision,
       } };
+    }
+    if (name === "setRankingMatchDate") {
+      window.__matchDateCalls.push({ ...params });
+      return { data: { success: true, matchId: params.matchId, matchDate: params.matchDate } };
     }
     return { data: { success: true } };
   };
@@ -358,6 +364,9 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
   const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
   try {
     const playerPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await playerPage.addInitScript(() => {
+      Date.now = () => new Date(2026, 8, 2, 12, 0).getTime();
+    });
     await playerPage.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player`, { waitUntil: "domcontentloaded" });
 
     const loginInput = playerPage.locator("#login");
@@ -373,9 +382,9 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.match(await playerPage.locator("#profileText").textContent(), /Login: player-login/);
     assert.match(await playerPage.locator("#profileText").textContent(), /E-Mail: contact@example\.test/);
     assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").allTextContents(), [
-      "System", "Meldungen (2)", "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Wintercup",
+      "System", "Meldungen (2)", "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Wintercup", "Damen Herbst",
     ]);
-    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0, 0, 0, 0]);
+    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0, 0, 0, 0, 0]);
     assert.match(await playerPage.locator("#profileSystemPanel").textContent(), /Benachrichtigungen:\s*Email \| Whatsapp/);
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
@@ -385,6 +394,85 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.doesNotMatch(await playerPage.locator("#withdrawModal").textContent(), /Position wird freigegeben|Schonzeit|Sperrzeit/);
     assert.equal(await playerPage.getByRole("button", { name: "Verbindlich raushängen" }).isVisible(), true);
     await playerPage.locator("#withdrawModal .close").click();
+    await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
+    const blockedWithdrawButton = playerPage.getByRole("button", { name: "Raushängen" });
+    assert.equal(await blockedWithdrawButton.isDisabled(), false);
+    await blockedWithdrawButton.click();
+    const blockedWithdrawalDialog = playerPage.getByRole("dialog", { name: "Raushängen nicht möglich" });
+    assert.equal(await blockedWithdrawalDialog.isVisible(), true);
+    assert.equal(
+      await blockedWithdrawalDialog.locator("p").textContent(),
+      "Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.",
+    );
+    assert.equal(await blockedWithdrawalDialog.getByRole("button").count(), 1);
+    assert.equal(await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).isVisible(), true);
+    assert.equal(await playerPage.locator("#withdrawModal").isVisible(), false);
+    await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).click();
+    assert.equal(await blockedWithdrawalDialog.isVisible(), false);
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-actions > button").allTextContents(), [
+      "Termin abändern",
+      "Raushängen",
+    ]);
+    await playerPage.getByRole("button", { name: "Termin abändern" }).click();
+    const changeDateDialog = playerPage.getByRole("dialog", { name: "Termin abändern" });
+    assert.equal(await changeDateDialog.locator("#rankingMatchDay").inputValue(), "2026-09-05");
+    assert.equal(await changeDateDialog.locator("select").inputValue(), "16");
+    assert.equal(await changeDateDialog.locator("#matchDateCalendarMonth").textContent(), "September 2026");
+    await changeDateDialog.getByRole("button", { name: "Nächster Monat" }).click();
+    assert.equal(await changeDateDialog.locator("#matchDateCalendarMonth").textContent(), "Oktober 2026");
+    assert.equal(await changeDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^1$/ }).isDisabled(), false);
+    await changeDateDialog.getByRole("button", { name: "Terminauswahl schließen" }).click();
+    await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
+    const greenCountdown = playerPage.locator("#profileRankingPanel2 .profile-match-date-countdown");
+    assert.match(await greenCountdown.textContent(), /^Terminfrist: -\d+ Tage, \d+ Stunden, \d+ Minuten$/);
+    assert.equal(await greenCountdown.evaluate((element) => element.classList.contains("warning") || element.classList.contains("overdue")), false);
+    assert.equal(await greenCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(24, 114, 68)");
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-actions > button").allTextContents(), [
+      "Spieltermin festlegen",
+      "Raushängen",
+    ]);
+    await playerPage.getByRole("button", { name: "Spieltermin festlegen" }).click();
+    const matchDateDialog = playerPage.getByRole("dialog", { name: "Spieltermin festlegen" });
+    assert.equal(await matchDateDialog.isVisible(), true);
+    assert.equal(await matchDateDialog.locator("#matchDateCalendarMonth").textContent(), "August 2026");
+    const challengeDay = matchDateDialog.locator(".match-date-calendar-day.challenge-start");
+    assert.equal(await challengeDay.textContent(), "30");
+    assert.equal(await challengeDay.isDisabled(), false);
+    await matchDateDialog.getByRole("button", { name: "Nächster Monat" }).click();
+    assert.equal(await matchDateDialog.locator("#matchDateCalendarMonth").textContent(), "September 2026");
+    const finalDay = matchDateDialog.locator(".match-date-calendar-day.challenge-end");
+    assert.equal(await finalDay.textContent(), "13");
+    assert.equal(await finalDay.isDisabled(), false);
+    assert.equal(await matchDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^14$/ }).isDisabled(), true);
+    assert.deepEqual(await matchDateDialog.locator("select option").allTextContents(), Array.from({ length: 18 }, (_, index) => `${String(index + 6).padStart(2, "0")}:00 Uhr`));
+    const selectableMiddleDay = matchDateDialog.locator(".match-date-calendar-day").filter({ hasText: /^5$/ });
+    assert.equal(await selectableMiddleDay.evaluate((element) => element.classList.contains("in-window")), true);
+    await selectableMiddleDay.click();
+    assert.equal(await matchDateDialog.locator("#rankingMatchDay").inputValue(), "2026-09-05");
+    await matchDateDialog.locator("select").selectOption("18");
+    await matchDateDialog.getByRole("button", { name: "Übernehmen" }).click();
+    await playerPage.waitForFunction(() => window.__matchDateCalls.length === 1);
+    assert.deepEqual(await playerPage.evaluate(() => window.__matchDateCalls[0]), {
+      operationId: "operation-ranking:match-date:match-r3:260905-1800",
+      matchId: "match-r3",
+      matchDate: "260905-1800",
+    });
+    assert.equal(await matchDateDialog.isVisible(), false);
+    await playerPage.waitForFunction(() => document.querySelector("#profileName")?.textContent === "Own Player");
+    await playerPage.getByRole("tab", { name: "Mixed Sommer", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel3 .profile-actions > button").allTextContents(), [
+      "Spieltermin festlegen",
+      "Raushängen",
+    ]);
+    const orangeCountdown = playerPage.locator("#profileRankingPanel3 .profile-match-date-countdown");
+    assert.equal(await orangeCountdown.textContent(), "Terminfrist: -2 Tage, 0 Stunden, 0 Minuten");
+    assert.equal(await orangeCountdown.evaluate((element) => element.classList.contains("warning")), true);
+    assert.equal(await orangeCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 83, 9)");
+    await playerPage.getByRole("tab", { name: "Damen Herbst", exact: true }).click();
+    const redCountdown = playerPage.locator("#profileRankingPanel5 .profile-match-date-countdown");
+    assert.equal(await redCountdown.textContent(), "Terminfrist: +8 Tage, 0 Stunden, 0 Minuten");
+    assert.equal(await redCountdown.evaluate((element) => element.classList.contains("overdue")), true);
+    assert.equal(await redCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 35, 24)");
     await playerPage.getByRole("tab", { name: "Wintercup" }).click();
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel4").textContent(), /Ranglistenposition:\s*0/);
     assert.match(await playerPage.locator("#profileRankingPanel4").textContent(), /Rausgehängt am:\s*29\.08\.2026, 12:30 Uhr/);

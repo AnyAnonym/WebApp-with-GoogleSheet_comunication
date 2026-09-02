@@ -24,9 +24,12 @@ const readMyMessages = createEndpoint("myMessages");
 const readMyMessage = createEndpoint("myMessage");
 const acknowledgeMessage = createEndpoint("acknowledgeMessage");
 const addMatch = createEndpoint("addMatch");
+const setRankingMatchDate = createEndpoint("setRankingMatchDate");
 const withdrawFromRanking = createEndpoint("withdrawFromRanking");
 const readWithdrawnRankingPlayers = createEndpoint("withdrawnRankingPlayers");
 let withdrawContext = null;
+let matchDateContext = null;
+let matchCalendarMonth = null;
 let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
 let profileActionController = null;
@@ -106,7 +109,9 @@ function closeModal(modal) {
     });
   }
   if (modal?.id === "withdrawModal") withdrawContext = null;
+  if (modal?.id === "matchDateModal") matchDateContext = null;
   if (modal?.id === "profileModal") {
+    closeModal(matchDateModal);
     closeModal(messageDetailModal);
     profileRequestGeneration += 1;
     clearProfileModalContent(modal, profileActionController);
@@ -284,6 +289,51 @@ const withdrawModal = createModal("withdrawModal", `
   </form>
 `, { explicitDismiss: true });
 
+const withdrawalBlockedModal = createModal("withdrawalBlockedModal", `
+  <h2 id="withdrawalBlockedTitle">Raushängen nicht möglich</h2>
+  <p>Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.</p>
+`);
+withdrawalBlockedModal.setAttribute("role", "dialog");
+withdrawalBlockedModal.setAttribute("aria-modal", "true");
+withdrawalBlockedModal.setAttribute("aria-labelledby", "withdrawalBlockedTitle");
+withdrawalBlockedModal.querySelector(".close")?.setAttribute("aria-label", "Hinweis schließen");
+
+const matchDateModal = createModal("matchDateModal", `
+  <h2 id="matchDateTitle">Spieltermin festlegen</h2>
+  <form id="matchDateForm">
+    <span class="match-date-label">Datum:</span>
+    <input type="hidden" id="rankingMatchDay" name="rankingMatchDay">
+    <div class="match-date-calendar" aria-label="Spieltermin-Datum auswählen">
+      <div class="match-date-calendar-header">
+        <button type="button" id="matchDatePreviousMonth" class="match-date-month-button" aria-label="Vorheriger Monat">‹</button>
+        <strong id="matchDateCalendarMonth" aria-live="polite"></strong>
+        <button type="button" id="matchDateNextMonth" class="match-date-month-button" aria-label="Nächster Monat">›</button>
+      </div>
+      <div class="match-date-weekdays" aria-hidden="true"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div>
+      <div id="matchDateCalendarDays" class="match-date-calendar-days" role="grid"></div>
+    </div>
+    <label for="rankingMatchHour">Uhrzeit:</label>
+    <select id="rankingMatchHour" name="rankingMatchHour" required>
+      ${Array.from({ length: 18 }, (_, index) => `<option value="${String(index + 6).padStart(2, "0")}">${String(index + 6).padStart(2, "0")}:00 Uhr</option>`).join("")}
+    </select>
+    <button type="submit" class="btn-login">Übernehmen</button>
+  </form>
+`, { explicitDismiss: true });
+matchDateModal.setAttribute("role", "dialog");
+matchDateModal.setAttribute("aria-modal", "true");
+matchDateModal.setAttribute("aria-labelledby", "matchDateTitle");
+matchDateModal.querySelector(".close")?.setAttribute("aria-label", "Terminauswahl schließen");
+document.getElementById("matchDatePreviousMonth").addEventListener("click", () => {
+  if (!matchCalendarMonth) return;
+  matchCalendarMonth = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() - 1, 1);
+  renderMatchDateCalendar();
+});
+document.getElementById("matchDateNextMonth").addEventListener("click", () => {
+  if (!matchCalendarMonth) return;
+  matchCalendarMonth = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() + 1, 1);
+  renderMatchDateCalendar();
+});
+
 const withdrawnPlayersModal = createModal("withdrawnPlayersModal", `
   <h2 id="withdrawnPlayersTitle">Rausgehängte Spieler</h2>
   <div id="withdrawnPlayersBody" class="withdrawn-players-list" aria-live="polite"></div>
@@ -306,6 +356,152 @@ function formatCompactDate(value) {
   const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
   if (!match) return String(value || "").trim() || "---";
   return `${match[3]}.${match[2]}.20${match[1]}, ${match[4]}:${match[5]} Uhr`;
+}
+
+function compactDateValue(value) {
+  const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(2000 + Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateInputValue(date) {
+  const part = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}`;
+}
+
+function compactMatchDate(dayValue, hourValue) {
+  const day = String(dayValue || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const hour = String(hourValue || "").match(/^(0[6-9]|1\d|2[0-3])$/);
+  return day && hour ? `${day[1].slice(2)}${day[2]}${day[3]}-${hour[1]}00` : "";
+}
+
+function calendarDayValue(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function renderMatchDateCalendar() {
+  if (!matchCalendarMonth || !matchDateContext) return;
+  const monthLabel = document.getElementById("matchDateCalendarMonth");
+  const daysElement = document.getElementById("matchDateCalendarDays");
+  const selectedValue = document.getElementById("rankingMatchDay").value;
+  monthLabel.textContent = new Intl.DateTimeFormat("de-AT", { month: "long", year: "numeric" }).format(matchCalendarMonth);
+  daysElement.replaceChildren();
+  const firstDay = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth(), 1);
+  const leadingDays = (firstDay.getDay() + 6) % 7;
+  for (let index = 0; index < leadingDays; index++) {
+    const spacer = document.createElement("span");
+    spacer.className = "match-date-calendar-spacer";
+    daysElement.appendChild(spacer);
+  }
+  const dayCount = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() + 1, 0).getDate();
+  for (let day = 1; day <= dayCount; day++) {
+    const date = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth(), day);
+    const value = dateInputValue(date);
+    const timestamp = calendarDayValue(date);
+    const inOriginalWindow = timestamp >= matchDateContext.challengeDay && timestamp <= matchDateContext.finalDay;
+    const selectable = matchDateContext.previousDate
+      ? timestamp >= matchDateContext.today
+      : inOriginalWindow;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "match-date-calendar-day";
+    button.textContent = String(day);
+    button.disabled = !selectable;
+    button.setAttribute("role", "gridcell");
+    button.setAttribute("aria-label", new Intl.DateTimeFormat("de-AT", { dateStyle: "long" }).format(date));
+    button.classList.toggle("in-window", inOriginalWindow);
+    button.classList.toggle("challenge-start", timestamp === matchDateContext.challengeDay);
+    button.classList.toggle("challenge-end", timestamp === matchDateContext.finalDay);
+    button.classList.toggle("selected", value === selectedValue);
+    if (selectable) button.addEventListener("click", () => {
+      document.getElementById("rankingMatchDay").value = value;
+      renderMatchDateCalendar();
+      updateMatchDateHours();
+    });
+    daysElement.appendChild(button);
+  }
+}
+
+function updateMatchDateHours() {
+  const dayInput = document.getElementById("rankingMatchDay");
+  const hourInput = document.getElementById("rankingMatchHour");
+  const selectedDay = String(dayInput.value || "");
+  let firstEnabled = "";
+  for (const option of hourInput.options) {
+    const candidate = new Date(`${selectedDay}T${option.value}:00`);
+    option.disabled = !selectedDay
+      || Number.isNaN(candidate.getTime())
+      || candidate.getTime() < Number(matchDateContext?.earliestAt || 0)
+      || (matchDateContext?.latestAt && candidate.getTime() > matchDateContext.latestAt);
+    if (!option.disabled && !firstEnabled) firstEnabled = option.value;
+  }
+  if (!firstEnabled) hourInput.value = "";
+  else if (!hourInput.value || hourInput.selectedOptions[0]?.disabled) hourInput.value = firstEnabled;
+  document.querySelector('#matchDateForm button[type="submit"]').disabled = !firstEnabled;
+}
+
+function openMatchDateModal(challenge) {
+  const matchId = String(challenge?.matchId || "").trim();
+  if (!matchId) {
+    window.showToast("Die offene Forderung konnte nicht eindeutig zugeordnet werden.", "error");
+    return;
+  }
+  const currentDate = compactDateValue(challenge.matchDate);
+  const dayInput = document.getElementById("rankingMatchDay");
+  const hourInput = document.getElementById("rankingMatchHour");
+  const today = new Date(Date.now());
+  const now = today.getTime();
+  today.setHours(0, 0, 0, 0);
+  const challengedAt = compactDateValue(challenge.challengedAt);
+  const finalDay = challengedAt ? new Date(challengedAt.getFullYear(), challengedAt.getMonth(), challengedAt.getDate() + 14) : today;
+  matchDateContext = {
+    matchId,
+    previousDate: String(challenge.matchDate || ""),
+    earliestAt: currentDate ? now : challengedAt?.getTime() || now,
+    latestAt: currentDate || !challengedAt ? null : challengedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
+    today: calendarDayValue(today),
+    challengeDay: challengedAt ? calendarDayValue(challengedAt) : calendarDayValue(today),
+    finalDay: calendarDayValue(finalDay),
+  };
+  if (currentDate) {
+    dayInput.value = currentDate >= today ? dateInputValue(currentDate) : dateInputValue(today);
+    hourInput.value = String(currentDate.getHours()).padStart(2, "0");
+    document.getElementById("matchDateTitle").textContent = "Termin abändern";
+  } else {
+    dayInput.value = challengedAt ? dateInputValue(challengedAt) : "";
+    hourInput.value = "18";
+    document.getElementById("matchDateTitle").textContent = "Spieltermin festlegen";
+  }
+  const visibleDate = compactDateValue(`${dayInput.value.replaceAll("-", "").slice(2)}-0000`) || today;
+  matchCalendarMonth = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1);
+  renderMatchDateCalendar();
+  updateMatchDateHours();
+  openModal(matchDateModal);
+  matchDateModal.querySelector(".match-date-calendar-day.selected:not(:disabled), .match-date-calendar-day:not(:disabled)")?.focus();
+}
+
+function appendMatchDateCountdown(container, challenge, signal) {
+  if (challenge.matchDate) return;
+  const challengedAt = compactDateValue(challenge.challengedAt);
+  if (!challengedAt) return;
+  const countdown = document.createElement("p");
+  countdown.className = "profile-match-date-countdown";
+  const deadline = challengedAt.getTime() + 7 * 24 * 60 * 60 * 1000;
+  const update = () => {
+    const remaining = deadline - Date.now();
+    const totalMinutes = Math.floor(Math.abs(remaining) / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    countdown.textContent = `Terminfrist: ${remaining >= 0 ? "-" : "+"}${days} Tage, ${hours} Stunden, ${minutes} Minuten`;
+    countdown.classList.toggle("warning", remaining >= 0 && remaining <= 2 * 24 * 60 * 60 * 1000);
+    countdown.classList.toggle("overdue", remaining < 0);
+  };
+  update();
+  const timer = setInterval(update, 30000);
+  signal.addEventListener("abort", () => clearInterval(timer), { once: true });
+  container.appendChild(countdown);
 }
 
 function formatMessageDate(value) {
@@ -773,6 +969,7 @@ window.openProfileModal = async (options = {}) => {
           matchDateLine.textContent = `Spieltermin fixiert: ${formatCompactDate(challenge.matchDate)}`;
           challengeBlock.appendChild(matchDateLine);
         }
+        if (ownProfile) appendMatchDateCountdown(challengeBlock, challenge, actionSignal);
         panel.appendChild(challengeBlock);
       }
       if (ranking.status === "withdrawn" && ranking.withdrawal) {
@@ -783,13 +980,25 @@ window.openProfileModal = async (options = {}) => {
       actions.className = "profile-actions";
       panel.appendChild(actions);
       if (ownProfile && ranking.status === "active") {
+        if (ranking.openChallenge) {
+          const matchDateButton = document.createElement("button");
+          matchDateButton.type = "button";
+          matchDateButton.className = "btn-login";
+          matchDateButton.textContent = ranking.openChallenge.matchDate ? "Termin abändern" : "Spieltermin festlegen";
+          matchDateButton.addEventListener("click", () => openMatchDateModal(ranking.openChallenge), { signal: actionSignal });
+          actions.appendChild(matchDateButton);
+        }
         const withdrawButton = document.createElement("button");
         withdrawButton.type = "button";
         withdrawButton.className = "btn-login";
         withdrawButton.textContent = "Raushängen";
-        withdrawButton.disabled = ranking.canWithdraw !== true;
-        withdrawButton.title = ranking.openChallenge ? "Während einer offenen Forderung ist Raushängen nicht möglich." : "";
-        if (ranking.canWithdraw === true) {
+        withdrawButton.disabled = ranking.canWithdraw !== true && !ranking.openChallenge;
+        if (ranking.openChallenge) {
+          withdrawButton.addEventListener("click", () => {
+            openModal(withdrawalBlockedModal);
+            withdrawalBlockedModal.querySelector(".close")?.focus();
+          }, { once: true, signal: actionSignal });
+        } else if (ranking.canWithdraw === true) {
           withdrawButton.addEventListener("click", () => {
             window.openWithdrawModal({ rank: ranking.rank, bewerbId: ranking.competitionId });
           }, { once: true, signal: actionSignal });
@@ -934,6 +1143,7 @@ subscribeAuth((user) => {
   closeModal(passwordModal);
   closeModal(adminPasswordModal);
   closeModal(resetProofModal);
+  closeModal(matchDateModal);
   closeModal(withdrawModal);
   closeModal(profileModal);
 });
@@ -1260,6 +1470,36 @@ document.getElementById("withdrawForm").addEventListener("submit", async (event)
   } finally {
     setModalBusy(form, false);
     submitButton.textContent = "Verbindlich raushängen";
+  }
+});
+
+document.getElementById("matchDateForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const matchDate = compactMatchDate(form.elements.rankingMatchDay.value, form.elements.rankingMatchHour.value);
+  if (!matchDateContext || !matchDate) {
+    window.showToast("Bitte wähle einen gültigen Spieltermin aus.", "error");
+    return;
+  }
+  const context = { ...matchDateContext };
+  const operationKey = `ranking:match-date:${context.matchId}:${matchDate}`;
+  setModalBusy(form, true);
+  submitButton.textContent = "Wird übernommen...";
+  try {
+    const result = await setRankingMatchDate({ operationId: getOperationId(operationKey), matchId: context.matchId, matchDate });
+    if (!result.data?.success) throw new Error(errorMessage(result.data, "Spieltermin konnte nicht gespeichert werden."));
+    releaseOperationId(operationKey);
+    closeModal(matchDateModal);
+    window.showToast(context.previousDate ? "Der Spieltermin wurde geändert." : "Der Spieltermin wurde festgelegt.", "success");
+    window.openProfileModal();
+  } catch (error) {
+    releaseOperationId(operationKey, error);
+    diagnostic.error("ranking_match_date_failed", error);
+    window.showToast(errorMessage(error, "Spieltermin konnte nicht gespeichert werden."), "error");
+  } finally {
+    setModalBusy(form, false);
+    submitButton.textContent = "Übernehmen";
   }
 });
 

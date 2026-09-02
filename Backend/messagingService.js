@@ -40,6 +40,12 @@ function competitionRoundName(value) {
   return "";
 }
 
+function appointmentText(value) {
+  const match = String(value || "").match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) throw new AppError("MATCH_DATE_INVALID", "Spieltermin ist ungueltig", 400);
+  return `${match[3]}.${match[2]}.20${match[1]}, ${match[4]}:${match[5]} Uhr`;
+}
+
 class MessagingService {
   constructor({ repository, emailAdapter, whatsappAdapter, publish = () => {}, now = Date.now, log = logger.log }) {
     this.repository = repository;
@@ -134,6 +140,32 @@ class MessagingService {
 
   ensureChallengeMessages(params) {
     return this.ensureChallengeEvent(params);
+  }
+
+  async ensureMatchAppointmentEvent({ operationId, matchId, matchDate, previousDate = "", competitionId, competitionName, challengerId, challengerName, opponentId, opponentName, actorId, actorName, createdAt = this.now() }) {
+    const identity = `appointment:${matchId}:${operationId}`;
+    const dateText = appointmentText(matchDate);
+    const previousDateText = previousDate ? appointmentText(previousDate) : "";
+    const changed = Boolean(previousDateText);
+    const participants = [
+      this.participant({ identity: `${identity}:${challengerId}`, userId: challengerId, role: "challenger", displayName: challengerName, type: changed ? "appointment_changed" : "appointment", subject: `${changed ? "Spieltermin geändert" : "Spieltermin festgelegt"} mit ${opponentName}`, body: changed ? `Der Termin für dein Match gegen ${opponentName} wurde von ${previousDateText} auf ${dateText} geändert.` : `Dein Match gegen ${opponentName} ist für den ${dateText} geplant.` }),
+      this.participant({ identity: `${identity}:${opponentId}`, userId: opponentId, role: "opponent", displayName: opponentName, type: changed ? "appointment_changed" : "appointment", subject: `${changed ? "Spieltermin geändert" : "Spieltermin festgelegt"} mit ${challengerName}`, body: changed ? `Der Termin für dein Match gegen ${challengerName} wurde von ${previousDateText} auf ${dateText} geändert.` : `Dein Match gegen ${challengerName} ist für den ${dateText} geplant.` }),
+    ];
+    const event = await this.ensureEvent({
+      id: stableId("evt", identity),
+      competitionId,
+      createdAt,
+      type: changed ? "appointment_changed" : "appointment",
+      source: "match",
+      sourceId: matchId,
+      actorId,
+      actorName,
+      summary: changed
+        ? `${actorName} hat den Spieltermin von ${previousDateText} auf ${dateText} geändert.`
+        : `${challengerName} und ${opponentName} haben den Spieltermin für den ${dateText} vereinbart.`,
+      detail: changed ? `Alter Spieltermin: ${previousDateText}; neuer Spieltermin: ${dateText}` : `Spieltermin: ${dateText}`,
+    }, participants);
+    return { event, participants: event.participants };
   }
 
   async ensureRankingWithdrawalEvent({ competitionId, competitionName, participantId, participantName = participantId, actorId = participantId, actorName = participantName, operationId, reason = "", createdAt = this.now() }) {

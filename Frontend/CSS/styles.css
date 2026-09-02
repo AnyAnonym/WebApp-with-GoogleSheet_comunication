@@ -483,6 +483,113 @@ body.modal-open {
   overflow-wrap: anywhere;
 }
 
+.profile-match-date-countdown {
+  color: #187244;
+  font-weight: 700;
+}
+
+.profile-match-date-countdown.warning {
+  color: #b45309;
+}
+
+.profile-match-date-countdown.overdue {
+  color: #b42318;
+}
+
+.match-date-label {
+  display: block;
+  margin-top: 12px;
+  font-weight: 500;
+}
+
+.match-date-calendar {
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #d5dae2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.match-date-calendar-header {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.match-date-month-button {
+  min-height: 36px;
+  border: 1px solid #c9d0da;
+  border-radius: 6px;
+  color: var(--accent);
+  background: #f7f9fc;
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.match-date-weekdays,
+.match-date-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.match-date-weekdays {
+  margin-bottom: 3px;
+  color: #5d6673;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.match-date-calendar-day,
+.match-date-calendar-spacer {
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+.match-date-calendar-day {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #222;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.match-date-calendar-day.in-window {
+  font-weight: 800;
+}
+
+.match-date-calendar-day.challenge-start {
+  border-color: #1d4ed8;
+  color: #fff;
+  background: #2563eb;
+}
+
+.match-date-calendar-day.challenge-end {
+  border-color: #991b1b;
+  color: #fff;
+  background: #dc2626;
+}
+
+.match-date-calendar-day.selected {
+  outline: 3px solid #111;
+  outline-offset: 1px;
+}
+
+.match-date-calendar-day:disabled {
+  border-color: transparent;
+  color: #a3a8b0;
+  background: #eef0f3;
+  cursor: default;
+  opacity: 1;
+}
+
 @media (max-width: 600px) {
   .profile-modal {
     padding-right: max(12px, env(safe-area-inset-right));

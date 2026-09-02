@@ -110,6 +110,11 @@ const requestContracts = {
     bewerbId: id("bewerbId"),
     opponentId: id("opponentId"),
   }),
+  setRankingMatchDate: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    matchDate: text("matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
+  }),
   addEntryList: competitionWrite,
   removeEntryList: competitionWrite,
   withdrawFromRanking: (params) => objectShape(params, {

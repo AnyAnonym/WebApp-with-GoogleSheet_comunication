@@ -126,6 +126,73 @@ test("Forderung erzeugt fuer Gegner und Forderer getrennte Meldungen samt extern
   repository.close();
 });
 
+test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche Meldungen mit Akteur", async () => {
+  dataStore.resetForTests();
+  dataStore.set("players", [["ID", "Notification"], ["p1", ""], ["p2", ""]], { source: "test" });
+  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID"], ["ranking-1", "Herren", "2"]], { source: "test" });
+  dataStore.set("matches1", [["ID", "BewerbID", "BewerbRunde"], ["m-appointment", "ranking-1", "R1"]], { source: "test" });
+  const repository = new MessagingRepository(":memory:");
+  repository.init();
+  const published = [];
+  const service = new MessagingService({
+    repository,
+    emailAdapter: new EmailMessagingAdapter(),
+    whatsappAdapter: new WhatsappMessagingAdapter(),
+    publish: (topic, data) => published.push({ topic, data }),
+    now: () => 2000,
+  });
+  const input = {
+    operationId: "00000000-0000-4000-8000-000000000301",
+    matchId: "m-appointment",
+    matchDate: "260905-1800",
+    competitionId: "ranking-1",
+    competitionName: "Herren",
+    challengerId: "p1",
+    challengerName: "Ada Admin",
+    opponentId: "p2",
+    opponentName: "Peter Player",
+    actorId: "p2",
+    actorName: "Peter Player",
+  };
+
+  const first = await service.ensureMatchAppointmentEvent(input);
+  const repeated = await service.ensureMatchAppointmentEvent(input);
+  assert.equal(first.event.id, repeated.event.id);
+  assert.equal(first.event.summary, "Ada Admin und Peter Player haben den Spieltermin für den 05.09.2026, 18:00 Uhr vereinbart.");
+  assert.equal(first.event.detail, "Spieltermin: 05.09.2026, 18:00 Uhr");
+  assert.equal(first.event.actorName, "Peter Player");
+  assert.deepEqual(service.competitionHistory({ id: "p1" }, { bewerbId: "ranking-1" }).entries[0], {
+    id: first.event.id,
+    competitionId: "ranking-1",
+    competitionName: "Herren",
+    roundName: "",
+    type: "appointment",
+    occurredAt: 2000,
+    summary: "Ada Admin und Peter Player haben den Spieltermin für den 05.09.2026, 18:00 Uhr vereinbart.",
+    detail: "Spieltermin: 05.09.2026, 18:00 Uhr",
+    result: "",
+    actorName: "Peter Player",
+    participants: [{ role: "challenger", name: "Ada Admin" }, { role: "opponent", name: "Peter Player" }],
+  });
+  assert.equal(service.messages({ id: "p1" }, { limit: 10 }).messages[0].subject, "Spieltermin festgelegt mit Peter Player");
+  assert.equal(service.message({ id: "p1" }, first.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Dein Match gegen Peter Player ist für den 05.09.2026, 18:00 Uhr geplant.");
+  const changed = await service.ensureMatchAppointmentEvent({
+    ...input,
+    operationId: "00000000-0000-4000-8000-000000000302",
+    previousDate: input.matchDate,
+    matchDate: "260910-1900",
+    actorId: "p1",
+    actorName: "Ada Admin",
+  });
+  assert.equal(changed.event.type, "appointment_changed");
+  assert.equal(changed.event.summary, "Ada Admin hat den Spieltermin von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");
+  assert.equal(changed.event.detail, "Alter Spieltermin: 05.09.2026, 18:00 Uhr; neuer Spieltermin: 10.09.2026, 19:00 Uhr");
+  assert.equal(changed.participants[0].subject, "Spieltermin geändert mit Peter Player");
+  assert.equal(changed.participants[0].body, "Der Termin für dein Match gegen Peter Player wurde von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");
+  assert.deepEqual(published.map(({ topic }) => topic), ["messages:p1", "messages:p2", "messages:p1", "messages:p2"]);
+  repository.close();
+});
+
 test("wiederholte Sicherstellung versendet externe Kanaele nicht erneut", async () => {
   dataStore.resetForTests();
   dataStore.set("players", [["ID", "Notification"], ["p2", "Email"]], { source: "test" });

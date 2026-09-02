@@ -305,6 +305,7 @@ function formatSheetDate(raw) {
 function createHistoryIcon() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
+  svg.dataset.icon = "megaphone";
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
   svg.setAttribute("fill", "none");
@@ -313,10 +314,8 @@ function createHistoryIcon() {
   svg.setAttribute("stroke-linecap", "round");
   svg.setAttribute("stroke-linejoin", "round");
   for (const pathData of [
-    "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2",
-    "M9 5a3 3 0 0 1 6 0v1H9V5Z",
-    "M9 12h6",
-    "M9 16h6",
+    "M3 10v4a2 2 0 0 0 2 2h2L20 20V4L7 8H5a2 2 0 0 0-2 2Z",
+    "m7 16 2 5h4l-2.4-3.8",
   ]) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", pathData);

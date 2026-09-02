@@ -15,7 +15,7 @@ const { acquireExclusiveSheetActivity, resetSheetReadCoordinatorForTests } = req
 
 test.beforeEach(() => resetSheetReadCoordinatorForTests());
 
-const messagingService = { async ensureChallengeMessages() {}, async ensureRankingWithdrawalEvent() {} };
+const messagingService = { async ensureChallengeMessages() {}, async ensureMatchAppointmentEvent() {}, async ensureRankingWithdrawalEvent() {} };
 
 test("manueller Gesamtimport ist pro Admin und operationId idempotent", async (t) => {
   const repository = new StateRepository(":memory:");
@@ -1345,6 +1345,123 @@ test("Ranglistenforderung uebergibt die aktuellen Positionen als Meldungssnapsho
   assert.equal(messages.length, 1);
   assert.equal(messages[0].challengerRank, 2);
   assert.equal(messages[0].opponentRank, 1);
+  await service.stop();
+  repository.close();
+});
+
+test("beide Beteiligten koennen Ranglistenspieltermine festlegen und spaeter ohne obere Datumsgrenze aendern", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const tables = fixtures();
+  tables.Matches1.push(
+    ["", "match-date-challenger", "", "260902-1000", "cup-1", "", "p1", "", "p2", "", ""],
+    ["", "match-date-opponent", "", "260902-1030", "cup-1", "", "p1", "", "p2", "", ""],
+    ["", "match-date-overdue", "", "260801-1000", "cup-1", "", "p1", "", "p2", "", ""],
+  );
+  const fake = fakeSheets(tables);
+  seedStore(fake.tables);
+  const events = [];
+  const service = new SheetService({
+    repository,
+    messagingService: {
+      async ensureChallengeMessages() {},
+      async ensureRankingWithdrawalEvent() {},
+      async ensureMatchAppointmentEvent(params) { events.push(params); },
+    },
+    clientFactory: async () => fake.client,
+    now: () => new Date(2026, 8, 2, 12, 0).getTime(),
+  });
+
+  await assert.rejects(service.setRankingMatchDate(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000127", matchId: "match-date-challenger", matchDate: "260905-1830" },
+  ), { code: "MATCH_DATE_TIME_INVALID" });
+  await assert.rejects(service.setRankingMatchDate(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000128", matchId: "match-date-challenger", matchDate: "260917-1800" },
+  ), { code: "MATCH_DATE_AFTER_DEADLINE" });
+
+  const challengerResult = await service.setRankingMatchDate(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000129", matchId: "match-date-challenger", matchDate: "260905-1800" },
+  );
+  const opponentResult = await service.setRankingMatchDate(
+    { type: "user", id: "p2", name: "Peter Player" },
+    { operationId: "00000000-0000-4000-8000-000000000130", matchId: "match-date-opponent", matchDate: "260906-1800" },
+  );
+  const overdueResult = await service.setRankingMatchDate(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000135", matchId: "match-date-overdue", matchDate: "260805-1800" },
+  );
+
+  assert.equal(challengerResult.success, true);
+  assert.equal(opponentResult.success, true);
+  assert.equal(overdueResult.success, true);
+  assert.deepEqual(challengerResult._audit, {
+    before: { matchId: "match-date-challenger", matchDate: "" },
+    after: { matchId: "match-date-challenger", matchDate: "260905-1800" },
+  });
+  assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-challenger")[2], "260905-1800");
+  assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-opponent")[2], "260906-1800");
+  assert.deepEqual(events.map(({ matchId, actorId, challengerId, opponentId }) => ({ matchId, actorId, challengerId, opponentId })), [
+    { matchId: "match-date-challenger", actorId: "p1", challengerId: "p1", opponentId: "p2" },
+    { matchId: "match-date-opponent", actorId: "p2", challengerId: "p1", opponentId: "p2" },
+    { matchId: "match-date-overdue", actorId: "p1", challengerId: "p1", opponentId: "p2" },
+  ]);
+  const changed = await service.setRankingMatchDate(
+    { type: "user", id: "p2", name: "Peter Player" },
+    { operationId: "00000000-0000-4000-8000-000000000131", matchId: "match-date-challenger", matchDate: "261020-2000" },
+  );
+  assert.equal(changed.success, true);
+  assert.deepEqual(changed._audit, {
+    before: { matchId: "match-date-challenger", matchDate: "260905-1800" },
+    after: { matchId: "match-date-challenger", matchDate: "261020-2000" },
+  });
+  assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-challenger")[2], "261020-2000");
+  assert.equal(events[3].previousDate, "260905-1800");
+  assert.equal(events[3].actorId, "p2");
+  await assert.rejects(service.setRankingMatchDate(
+    { type: "user", id: "p1", name: "Ada Admin" },
+    { operationId: "00000000-0000-4000-8000-000000000134", matchId: "match-date-challenger", matchDate: "261020-2000" },
+  ), { code: "MATCH_DATE_UNCHANGED" });
+  await assert.rejects(service.setRankingMatchDate(
+    { type: "user", id: "p3", name: "Chris Challenger" },
+    { operationId: "00000000-0000-4000-8000-000000000132", matchId: "match-date-challenger", matchDate: "260907-1900" },
+  ), { code: "MATCH_PARTICIPANT_REQUIRED" });
+  await service.stop();
+  repository.close();
+});
+
+test("Spieltermin repariert nach bestaetigtem Sheet-Write eine fehlgeschlagene Meldung ohne zweiten Write", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const tables = fixtures();
+  tables.Matches1.push(["", "match-date-recovery", "", "260902-1000", "cup-1", "", "p1", "", "p2", "", ""]);
+  const fake = fakeSheets(tables);
+  seedStore(fake.tables);
+  let messageAttempts = 0;
+  const service = new SheetService({
+    repository,
+    messagingService: {
+      async ensureChallengeMessages() {},
+      async ensureRankingWithdrawalEvent() {},
+      async ensureMatchAppointmentEvent() {
+        messageAttempts++;
+        if (messageAttempts === 1) throw Object.assign(new Error("sqlite unavailable"), { code: "MESSAGING_WRITE_FAILED" });
+      },
+    },
+    clientFactory: async () => fake.client,
+    now: () => new Date(2026, 8, 2, 12, 0).getTime(),
+  });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = { operationId: "00000000-0000-4000-8000-000000000133", matchId: "match-date-recovery", matchDate: "260905-1800" };
+
+  await assert.rejects(service.setRankingMatchDate(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  const recovered = await service.setRankingMatchDate(principal, params);
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.repeated, true);
+  assert.equal(messageAttempts, 2);
+  assert.deepEqual(fake.calls.valueUpdates.filter(({ value }) => value === "260905-1800").length, 1);
   await service.stop();
   repository.close();
 });

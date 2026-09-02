@@ -9,8 +9,22 @@ test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
     "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myMessage", "myMessageSummary", "myMessages", "myProfile", "navigator", "normalizePerson", "operationStatus",
     "players", "preMatches", "publicProfile", "rankingChallengeState", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
-    "scoreboardSnapshot", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
+    "scoreboardSnapshot", "setRankingMatchDate", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
   ]);
+});
+
+test("Ranglistenspieltermin akzeptiert nur operationId, Match-ID und kompaktes Datum", () => {
+  const operationId = "00000000-0000-4000-8000-000000000020";
+  assert.deepEqual(validateEndpointRequest("setRankingMatchDate", {
+    operationId,
+    matchId: "match-1",
+    matchDate: "260905-1830",
+  }), { operationId, matchId: "match-1", matchDate: "260905-1830" });
+  assert.throws(() => validateEndpointRequest("setRankingMatchDate", {
+    operationId,
+    matchId: "match-1",
+    matchDate: "2026-09-05T18:30",
+  }), { code: "VALIDATION_ERROR" });
 });
 
 test("Mitgliederabgleich besitzt getrennte geschlossene Aktionsvertraege", () => {

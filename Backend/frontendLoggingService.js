@@ -77,6 +77,7 @@ const EVENT_LEVELS = new Map([
   ["ranking_identity_state_load_failed", "warn"],
   ["ranking_initialization_failed", "error"],
   ["ranking_loaded", "info"],
+  ["ranking_match_date_failed", "error"],
   ["ranking_restrictions_load_failed", "warn"],
   ["ranking_rules_applied", "info"],
   ["ranking_rules_load_started", "info"],

@@ -167,6 +167,32 @@ test("Bewerbshistorienfehler akzeptiert nur kontrollierte Browserdiagnosefelder"
   }), { code: "VALIDATION_ERROR" });
 });
 
+test("Spielterminfehler im Ranglistenprofil ist als kontrollierte Browserdiagnose bekannt", () => {
+  const now = { value: 2350000 };
+  const { logs, service } = fixture(now);
+  service.updateSettings(settings(0));
+  const result = service.recordBatch({
+    sourceIp: "203.0.113.10",
+    identity: { id: "p2", name: "Peter Player", role: "player" },
+    body: {
+      appVersion: "4.7.0-test",
+      clientSessionId: "00000000-0000-4000-8000-000000000022",
+      pageType: "rangliste",
+      events: [{
+        event: "ranking_match_date_failed",
+        level: "error",
+        timestamp: "2026-09-02T10:00:00.000Z",
+        code: "MATCH_DATE_UNCHANGED",
+        supportId: "support-match-date-1",
+      }],
+    },
+  });
+  assert.deepEqual(result, { success: true, accepted: 1, dropped: 0 });
+  assert.equal(logs[0].fields.pageType, "rangliste");
+  assert.equal(logs[0].fields.frontendEvent, "ranking_match_date_failed");
+  assert.equal(logs[0].fields.code, "MATCH_DATE_UNCHANGED");
+});
+
 test("Personennormalisierungsfehler werden mit kontrollierten Feldern angenommen", () => {
   const now = { value: 2500000 };
   const { logs, service } = fixture(now);

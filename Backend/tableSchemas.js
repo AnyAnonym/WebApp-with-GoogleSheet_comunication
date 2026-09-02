@@ -2,6 +2,7 @@ const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 const logger = require("./logger.js");
 const { loginValue } = require("./validators.js");
+const { notificationChannels } = require("./messagingService.js");
 
 const VALID_ROLES = new Set(["player", "player a", "player b", "operator", "admin"]);
 const warnedInvalidRoles = new Set();
@@ -127,6 +128,7 @@ function validateTableValues(tableName, values) {
     if (values.length < 2) throw new AppError("SHEET_SCHEMA", "Personen-Tabelle ist leer", 503);
     const roleIndex = headerIndex(header, "role");
     const loginIndex = headerIndex(header, "login");
+    const notificationIndex = headerIndex(header, "notification");
     const loginIssues = [];
     for (const [offset, row] of values.slice(1).entries()) {
       const role = String(row[roleIndex] || "").trim().toLowerCase();
@@ -134,6 +136,10 @@ function validateTableValues(tableName, values) {
         warnedInvalidRoles.add(role);
         logger.log("warn", "player_role_fallback_applied", { invalidRole: role, fallbackRole: "player" });
       }
+      if (notificationIndex >= 0) notificationChannels(row[notificationIndex], {
+        personId: String(row[idIndex] || "").trim(),
+        rowNumber: offset + 2,
+      });
       const login = String(row[loginIndex] || "");
       if (!login) continue;
       try {

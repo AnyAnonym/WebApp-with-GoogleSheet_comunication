@@ -30,7 +30,11 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Hintergrundscrollen ist waehrend des Dialogs gesperrt, Escape schliesst ihn.
   Die Ranglistenreiter haengen nicht von der aufrufenden Seite ab.
   Ein aktiver Ranglistenreiter zeigt `Ranglistenposition: <Rang>` und gegebenenfalls
-  die offene Forderung mit Gegnername und Forderungszeit. Beim eigenen Profil ist
+  die offene Forderung mit Gegnername, Gegnerrang, Richtung und Forderungszeit.
+  Ausgehende Forderungen werden mit `Offene Forderung gegen`, eingehende mit
+  `Offene Forderung von` bezeichnet. Danach folgen das Forderungsdatum und nur
+  bei vorhandenem Spieltermin optional `Spieltermin fixiert`; eine Zeile fuer
+  einen fehlenden Termin wird nicht angezeigt. Beim eigenen Profil ist
   `Raushängen` nur ohne offene Forderung aktiv; bei einem tatsaechlich forderbaren
   fremden Profil erscheint `Fordern`. Rang `0` bleibt aus der Pyramide entfernt,
   besitzt aber einen Profilreiter mit Raushaengezeit und Grund fuer angemeldete
@@ -40,6 +44,15 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   prueft Identitaet und Regeln. Bei Erfolg ist die Forderung sofort verbindlich
   und wird mit dem Forderer in `Spieler1ID` sowie dem Geforderten in `Spieler3ID`
   gespeichert. Bestehende Matchzeilen werden nicht umgeordnet.
+  Der Eigenprofilreiter `Meldungen` zeigt jede Meldung auf allen Viewportbreiten
+  in gleich grossen Zeilen fuer Datum, Bewerb, optionale Runde, Betreff und bei
+  bekanntem Akteur `Durch: <Name>`. Ohne Zuordnung lautet die kontrollierte
+  Bewerbszeile `Allgemeine Meldung`; Ranglistenmeldungen enthalten keine Runde.
+  Die Detailansicht ordnet Betreff, Datum,
+  Bewerb, bei bekanntem Akteur `Durch: <Name>` und danach den Text an; eine Runde
+  wird dort nicht wiederholt. Nach erfolgreicher Kenntnisnahme sowie bei bereits
+  bestaetigten Meldungen wird die Aktion ausgeblendet; serverseitige
+  Bestaetigungszeit, Ungelesenanzahl und Revision bleiben autoritativ.
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schonzeit;

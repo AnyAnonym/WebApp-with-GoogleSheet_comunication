@@ -387,7 +387,7 @@ function isAllowed(file, allowed) {
 }
 
 function assertNoSecrets(files) {
-  const matchedFile = files.find((file) => SECRET_RE.test(file));
+  const matchedFile = files.find((file) => SECRET_RE.test(file) && path.basename(file) !== ".env.example");
   if (matchedFile) fail(`Potenzielles Geheimnis darf nicht gestaged werden: ${matchedFile}`);
 }
 

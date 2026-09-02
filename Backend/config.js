@@ -64,6 +64,8 @@ const COURT_URL = process.env.COURT_URL;
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}.sqlite`);
 const SCORELOG_FILE = process.env.SCORELOG_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}-scorelog.sqlite`);
 const AUDITLOG_FILE = process.env.AUDITLOG_FILE || path.join(__dirname, ".state", `${INSTANCE_ID}-audit.sqlite`);
+const MESSAGING_FILE = process.env.MESSAGING_FILE
+  || (STATE_FILE === ":memory:" ? ":memory:" : path.join(path.dirname(STATE_FILE), "messaging.sqlite"));
 const SCORE_LOG_JOURNAL = parseBoolean("SCORE_LOG_JOURNAL", true);
 const AUDIT_LOG_JOURNAL = parseBoolean("AUDIT_LOG_JOURNAL", true);
 const AUDIT_ACTIONS = new Set(String(process.env.AUDIT_ACTIONS || "*").split(",").map((value) => value.trim()).filter(Boolean));
@@ -131,11 +133,11 @@ function validateRuntimeConfig() {
   if (!path.isAbsolute(STATE_FILE) && STATE_FILE !== ":memory:") {
     errors.push("STATE_FILE muss absolut sein");
   }
-  for (const [name, filename] of [["SCORELOG_FILE", SCORELOG_FILE], ["AUDITLOG_FILE", AUDITLOG_FILE]]) {
+  for (const [name, filename] of [["SCORELOG_FILE", SCORELOG_FILE], ["AUDITLOG_FILE", AUDITLOG_FILE], ["MESSAGING_FILE", MESSAGING_FILE]]) {
     if (!path.isAbsolute(filename) && filename !== ":memory:") errors.push(`${name} muss absolut sein`);
   }
-  const persistentFiles = [STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE].filter((value) => value !== ":memory:");
-  if (new Set(persistentFiles).size !== persistentFiles.length) errors.push("STATE_FILE, SCORELOG_FILE und AUDITLOG_FILE muessen getrennte Dateien sein");
+  const persistentFiles = [STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE, MESSAGING_FILE].filter((value) => value !== ":memory:");
+  if (new Set(persistentFiles).size !== persistentFiles.length) errors.push("STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE und MESSAGING_FILE muessen getrennte Dateien sein");
   if (SHEET_STARTUP_RETRY_MAX_MS < SHEET_STARTUP_RETRY_BASE_MS) {
     errors.push("SHEET_STARTUP_RETRY_MAX_MS muss mindestens SHEET_STARTUP_RETRY_BASE_MS entsprechen");
   }
@@ -165,6 +167,7 @@ module.exports = {
   INSTANCE_ID,
   LISTEN_HOST,
   LOG_LEVEL,
+  MESSAGING_FILE,
   MONITOR_COOKIE,
   PASSWORD_RESET_TTL_MS,
   PORT,

@@ -15,6 +15,8 @@ const { acquireExclusiveSheetActivity, resetSheetReadCoordinatorForTests } = req
 
 test.beforeEach(() => resetSheetReadCoordinatorForTests());
 
+const messagingService = { async ensureChallengeMessages() {}, async ensureRankingWithdrawalEvent() {} };
+
 test("manueller Gesamtimport ist pro Admin und operationId idempotent", async (t) => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -319,7 +321,7 @@ test("Mitgliederabgleich verknuepft und aktualisiert bestehende Personen konflik
   repository.init();
   const fake = fakeSheets(reconciliationFixtures());
   seedReconciliationStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client });
   t.after(() => service.stop());
   const person = projectPeopleReconciliation(fake.tables.Personen).people.find((entry) => entry.id === "1032");
   const passwordBefore = fake.tables.Personen[2][5];
@@ -962,7 +964,7 @@ test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () =
   repository.init();
   const fake = fakeSheets(fixtures());
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const secondPrincipal = { type: "user", id: "p3", name: "Chris Challenger" };
 
@@ -1302,7 +1304,7 @@ test("ein nach Commit verlorenes Append-Ergebnis wird ueber die stabile ID erkan
       throw new Error("response lost");
     }
   };
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client });
   const params = {
     operationId: "00000000-0000-4000-8000-000000000106",
     bewerbId: "cup-1",
@@ -1319,6 +1321,34 @@ test("ein nach Commit verlorenes Append-Ergebnis wird ueber die stabile ID erkan
   repository.close();
 });
 
+test("Ranglistenforderung uebergibt die aktuellen Positionen als Meldungssnapshot", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  const messages = [];
+  const service = new SheetService({
+    repository,
+    messagingService: {
+      async ensureChallengeMessages(params) { messages.push(params); },
+      async ensureRankingWithdrawalEvent() {},
+    },
+    clientFactory: async () => fake.client,
+  });
+
+  await service.addMatch({ type: "user", id: "p1", name: "Ada Admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000128",
+    bewerbId: "cup-1",
+    opponentId: "p2",
+  });
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].challengerRank, 2);
+  assert.equal(messages[0].opponentRank, 1);
+  await service.stop();
+  repository.close();
+});
+
 test("ein unklarer Append darf bei Wiederholung keinen zweiten Append starten", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -1330,7 +1360,7 @@ test("ein unklarer Append darf bei Wiederholung keinen zweiten Append starten", 
     delayedParams = structuredClone(params);
     throw new Error("timeout before delayed commit");
   };
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = {
     operationId: "00000000-0000-4000-8000-000000000113",
@@ -1348,6 +1378,65 @@ test("ein unklarer Append darf bei Wiederholung keinen zweiten Append starten", 
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.repeated, true);
   assert.equal(fake.calls.append.length, 1);
+
+  await service.stop();
+  repository.close();
+});
+
+test("eine nach Match-Commit fehlgeschlagene Inbox wird ohne doppelten Match repariert", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  let messageAttempts = 0;
+  const failingMessaging = {
+    async ensureChallengeMessages() {
+      messageAttempts++;
+      if (messageAttempts === 1) throw Object.assign(new Error("sqlite unavailable"), { code: "MESSAGING_WRITE_FAILED" });
+    },
+  };
+  const service = new SheetService({ repository, messagingService: failingMessaging, clientFactory: async () => fake.client });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000126",
+    bewerbId: "cup-1",
+    opponentId: "p2",
+  };
+
+  await assert.rejects(service.addMatch(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  const recovered = await service.addMatch(principal, params);
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.repeated, true);
+  assert.equal(fake.calls.append.length, 1);
+  assert.equal(messageAttempts, 2);
+
+  await service.stop();
+  repository.close();
+});
+
+test("wiedergefundene Match-ID wird vor einer Benachrichtigung gegen den Request validiert", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  let messageAttempts = 0;
+  const service = new SheetService({
+    repository,
+    messagingService: { async ensureChallengeMessages() { messageAttempts++; } },
+    clientFactory: async () => fake.client,
+  });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const operationId = "00000000-0000-4000-8000-000000000127";
+  const original = { operationId, bewerbId: "cup-1", opponentId: "p2" };
+  await service.addMatch(principal, original);
+  assert.equal(repository.deleteOperation("user:p1", operationId, "addMatch", { bewerbId: "cup-1", opponentId: "p2" }), true);
+
+  await assert.rejects(
+    service.addMatch(principal, { operationId, bewerbId: "cup-2", opponentId: "p4" }),
+    { code: "OPERATION_ID_CONFLICT" },
+  );
+  assert.equal(fake.calls.append.length, 1);
+  assert.equal(messageAttempts, 1);
 
   await service.stop();
   repository.close();
@@ -1443,7 +1532,7 @@ test("rausgehaengte Spieler fordern ab ihrem gespeicherten Rang und dahinter", a
   initial.Rangliste.push(["r6", "cup-1", "p4", "3", "", "", ""]);
   const fake = fakeSheets(initial);
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
 
   assert.deepEqual(service.challengeEligibility(principal, "cup-1", "p2"), { allowed: false, code: "CHALLENGE_NOT_ALLOWED" });
@@ -1476,7 +1565,7 @@ test("Neueinsteiger fordern jeden freien Rang ohne automatische Einreihung", asy
   const initial = fixtures();
   const fake = fakeSheets(initial);
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
   const principal = { type: "user", id: "p3", name: "Chris Challenger" };
   const rankingBefore = structuredClone(fake.tables["RL-Platzierung"]);
 
@@ -1621,7 +1710,13 @@ test("Ranglistenrueckzug schreibt die Mitgliedschaft und wird lokal dedupliziert
   initial.Rangliste.push(["r5", "cup-1", "p3", "3", "", "", ""]);
   const fake = fakeSheets(initial);
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const withdrawalEvents = [];
+  const service = new SheetService({
+    repository,
+    messagingService: { ...messagingService, async ensureRankingWithdrawalEvent(params) { withdrawalEvents.push(params); } },
+    clientFactory: async () => fake.client,
+    now: () => Date.UTC(2026, 7, 29, 10, 30),
+  });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = {
     operationId: "00000000-0000-4000-8000-000000000117",
@@ -1647,6 +1742,12 @@ test("Ranglistenrueckzug schreibt die Mitgliedschaft und wird lokal dedupliziert
   assert.equal(fake.calls.spreadsheetUpdates, 1);
   assert.equal(fake.calls.metadataRows, 1);
   assert.equal(fake.calls.append.filter((call) => call.range === "Logging").length, 0);
+  assert.deepEqual(withdrawalEvents.map(({ competitionId, participantId, operationId, reason }) => ({ competitionId, participantId, operationId, reason })), [{
+    competitionId: "cup-1",
+    participantId: "p1",
+    operationId: params.operationId,
+    reason: "Test rueckzug",
+  }]);
 
   const repeated = await service.withdrawFromRanking(principal, params);
   assert.equal(repeated.repeated, true);
@@ -1675,6 +1776,42 @@ test("Ranglistenrueckzug wird bei einer offenen Forderung abgelehnt", async () =
   repository.close();
 });
 
+test("eine nach dem Raushängen fehlgeschlagene Meldung wird ohne zweiten Sheet-Write repariert", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const fake = fakeSheets(fixtures());
+  seedStore(fake.tables);
+  let eventAttempts = 0;
+  const service = new SheetService({
+    repository,
+    messagingService: {
+      async ensureRankingWithdrawalEvent() {
+        eventAttempts++;
+        if (eventAttempts === 1) throw Object.assign(new Error("sqlite unavailable"), { code: "MESSAGING_WRITE_FAILED" });
+      },
+    },
+    clientFactory: async () => fake.client,
+    now: () => Date.UTC(2026, 7, 29, 10, 30),
+  });
+  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const params = {
+    operationId: "00000000-0000-4000-8000-000000000128",
+    bewerbId: "cup-1",
+    rank: 2,
+    reason: "Test rueckzug",
+  };
+
+  await assert.rejects(service.withdrawFromRanking(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  const recovered = await service.withdrawFromRanking(principal, params);
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.repeated, true);
+  assert.equal(eventAttempts, 2);
+  assert.equal(fake.calls.spreadsheetUpdates, 1);
+
+  await service.stop();
+  repository.close();
+});
+
 test("Ranglistenrueckzug buendelt vierundzwanzig Metadatenzeilen in konstante API-Aufrufe", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
@@ -1686,7 +1823,7 @@ test("Ranglistenrueckzug buendelt vierundzwanzig Metadatenzeilen in konstante AP
   }
   const fake = fakeSheets(initial);
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
 
   const result = await service.withdrawFromRanking(
     { type: "user", id: "p1", name: "Ada Admin" },
@@ -1720,7 +1857,7 @@ test("Ranglistenrueckzug bereinigt Metadatendubletten aller Zielzeilen in einem 
     fake.seedRecordMetadata("RL-Platzierung", rowIndex, `membership:cup-1:${personId}`);
   }
   seedStore(fake.tables);
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 11, 0) });
   const cleanupAttempts = [];
   const cleanupResults = [];
   t.mock.method(metrics, "recordSheetApiAttempt", (entry) => {
@@ -1787,7 +1924,7 @@ test("unklarer Ranglistenrueckzug wird ueber den gespeicherten Plan bestaetigt",
     if (writeAttempted) throw new Error("confirmation unavailable");
     return originalRead(request);
   };
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = { operationId: "00000000-0000-4000-8000-000000000122", bewerbId: "cup-1", rank: 2, reason: "Test rueckzug" };
 
@@ -1810,7 +1947,7 @@ test("Ranglistenrueckzug setzt nach unklarer Bulk-Metadatenerstellung mit demsel
   seedStore(fake.tables);
   const originalMetadataUpdate = fake.client.spreadsheets.batchUpdate;
   fake.client.spreadsheets.batchUpdate = async () => { throw new Error("metadata unavailable"); };
-  const service = new SheetService({ repository, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 7, 29, 10, 30) });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = { operationId: "00000000-0000-4000-8000-000000000124", bewerbId: "cup-1", rank: 2, reason: "Test rueckzug" };
 
@@ -1832,7 +1969,7 @@ test("Ranglistenrueckzug ist unabhaengig vom entfernten Logging-Sheet", async ()
   const fake = fakeSheets(fixtures());
   seedStore(fake.tables);
   fake.client.spreadsheets.values.append = async () => { throw new Error("Kein Append erwartet"); };
-  const service = new SheetService({ repository, clientFactory: async () => fake.client });
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client });
   const principal = { type: "user", id: "p1", name: "Ada Admin" };
   const params = {
     operationId: "00000000-0000-4000-8000-000000000120",

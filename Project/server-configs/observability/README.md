@@ -79,7 +79,12 @@ sowie Platz- und Scoreverlauf.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
-Personenbezug. Nur sein ausdruecklicher Auditverlauf enthaelt den ausfuehrenden
+Personenbezug. Es zeigt zusaetzlich die aktiven Mitglieder insgesamt und getrennt
+nach `player`, `player A` und `player B`; die Gesamtzahl ist die Summe dieser drei
+Klassifikationen und schliesst Admins sowie Operatoren aus. Das Gauge
+`epiber_people_normalization_active_members` verwendet dafuer ausschliesslich das
+kontrollierte Label `classification=player|player_a|player_b` und keine
+Personenwerte. Nur der ausdrueckliche Auditverlauf enthaelt den ausfuehrenden
 Adminnamen samt Admin-ID sowie Ziel-Personen-ID und resultierenden Vor-/Nachnamen.
 Fuer `Aktiv` und `Rolle` erscheinen kontrollierte Alt-/Neuwerte; bei allen
 anderen Normalisierungsfeldern nur der Feldname. Kontakt-, Adress-, Geburts-,

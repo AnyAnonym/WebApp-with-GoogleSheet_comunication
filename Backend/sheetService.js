@@ -4,7 +4,7 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const dataPoller = require("./dataPoller.js");
 const { AppError } = require("./errors.js");
-const { analyzeMatchRules, parseMatchDate } = require("./matchRules.js");
+const { analyzeMatchRules, parseMatchDate, parseParticipant } = require("./matchRules.js");
 const {
   FIELD_DEFINITIONS,
   fieldIndexes,
@@ -126,7 +126,7 @@ function parseCompetitionDate(raw, endOfDay) {
 }
 
 class SheetService {
-  constructor({ repository, clientFactory = null, now = Date.now, refreshDelayMs = process.env.NODE_ENV === "test" ? 60000 : WRITE_REFRESH_DELAY_MS } = {}) {
+  constructor({ repository, messagingService = null, clientFactory = null, now = Date.now, refreshDelayMs = process.env.NODE_ENV === "test" ? 60000 : WRITE_REFRESH_DELAY_MS } = {}) {
     this.repository = repository;
     this.clientFactory = clientFactory;
     this.client = null;
@@ -142,6 +142,109 @@ class SheetService {
     this.recordMetadataLoad = null;
     this.recordMetadataUnresolved = new Set();
     this.refreshTimers = new Map();
+    this.messagingService = messagingService;
+  }
+
+  async ensureChallengeMessage(principal, params, matchId, matchRow, matchHeader) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const matchIndexes = {
+      competition: headerIndex(matchHeader, "bewerbid"),
+      challengedAt: headerIndex(matchHeader, "forderungdate"),
+      challenger: headerIndex(matchHeader, "spieler1id"),
+      opponent: headerIndex(matchHeader, "spieler3id"),
+    };
+    if (
+      String(matchRow[matchIndexes.competition] || "").trim() !== params.bewerbId
+      || parseParticipant(matchRow[matchIndexes.challenger]).id !== principal.id
+      || parseParticipant(matchRow[matchIndexes.opponent]).id !== params.opponentId
+    ) {
+      throw new AppError("OPERATION_ID_CONFLICT", "operationId wurde bereits fuer eine andere Forderung verwendet", 409);
+    }
+    const challengedAt = parseMatchDate(matchRow[matchIndexes.challengedAt]);
+    const competition = this.competition(params.bewerbId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    const players = dataStore.get("players");
+    const playerHeader = headerOf(players);
+    const idIndex = headerIndex(playerHeader, "id");
+    const firstNameIndex = headerIndex(playerHeader, "vorname");
+    const lastNameIndex = headerIndex(playerHeader, "nachname");
+    const challenger = players.slice(1).find((row) => String(row[idIndex] || "").trim() === principal.id);
+    const opponent = players.slice(1).find((row) => String(row[idIndex] || "").trim() === params.opponentId);
+    const challengerName = challenger
+      ? [challenger[firstNameIndex], challenger[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
+      : principal.id;
+    const opponentName = opponent
+      ? [opponent[firstNameIndex], opponent[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ")
+      : params.opponentId;
+    const rankings = dataStore.get("rlPlatzierung");
+    const rankingHeader = headerOf(rankings);
+    const rankingCompetitionIndex = headerIndex(rankingHeader, "bewerbid");
+    const rankingPersonIndex = headerIndex(rankingHeader, "personid");
+    const rankingRankIndex = headerIndex(rankingHeader, "rang");
+    const rankOf = (personId) => {
+      const ranking = rankings.slice(1).find((row) => (
+        String(row[rankingCompetitionIndex] || "").trim() === params.bewerbId
+        && String(row[rankingPersonIndex] || "").trim() === personId
+      ));
+      const rank = ranking ? Number(ranking[rankingRankIndex]) : NaN;
+      return Number.isInteger(rank) && rank >= 0 ? rank : null;
+    };
+    try {
+      await this.messagingService.ensureChallengeMessages({
+        matchId,
+        recipientId: params.opponentId,
+        competitionId: params.bewerbId,
+        competitionName,
+        challengerId: principal.id,
+        challengerName,
+        challengerRank: rankOf(principal.id),
+        opponentId: params.opponentId,
+        opponentName,
+        opponentRank: rankOf(params.opponentId),
+        createdAt: challengedAt?.getTime() || this.now(),
+      });
+    } catch (error) {
+      logger.log("error", "challenge_messages_persistence_failed", {
+        matchId,
+        challengerId: principal.id,
+        opponentId: params.opponentId,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Forderung ist angelegt, Nachrichten konnten nicht bestaetigt werden", 503, {
+        operationId: params.operationId,
+        recordId: matchId,
+      });
+    }
+  }
+
+  async ensureRankingWithdrawalEvent(principal, params, plan) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const competition = this.competition(params.bewerbId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    try {
+      await this.messagingService.ensureRankingWithdrawalEvent({
+        competitionId: params.bewerbId,
+        competitionName,
+        participantId: principal.id,
+        participantName: principal.name || principal.id,
+        actorId: principal.id,
+        actorName: principal.name || principal.id,
+        operationId: params.operationId,
+        reason: params.reason,
+        createdAt: parseMatchDate(plan.withdrawnAt)?.getTime() || this.now(),
+      });
+    } catch (error) {
+      logger.log("error", "ranking_withdrawal_event_persistence_failed", {
+        competitionId: params.bewerbId,
+        participantId: principal.id,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Spieler ist rausgehaengt, Meldung konnte nicht bestaetigt werden", 503, {
+        operationId: params.operationId,
+        phase: "ranking-withdrawal-event",
+        ...plan,
+      });
+    }
   }
 
   competition(competitionId) {
@@ -1457,8 +1560,10 @@ class SheetService {
       const header = headerOf(values);
       const idIndex = headerIndex(header, "id");
       const newId = stableRecordId("m", principal, params.operationId);
-      if (values.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
+      const existingRow = values.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
+      if (existingRow) {
         dataStore.set("matches1", values, { source: "write" });
+        await this.ensureChallengeMessage(principal, params, newId, existingRow, header);
         return { success: true, newMatchId: newId, recovered: true };
       }
       if (recoveryOnly) {
@@ -1481,14 +1586,17 @@ class SheetService {
           requestBody: { values: [newRow] },
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
+        let confirmation = null;
         try {
-          const confirmation = await this.readTable("matches1", "confirmation");
-          if (confirmation.slice(1).some((row) => String(row[idIndex] || "").trim() === newId)) {
-            dataStore.set("matches1", confirmation, { source: "write" });
-            return { success: true, newMatchId: newId, recovered: true };
-          }
+          confirmation = await this.readTable("matches1", "confirmation");
         } catch (confirmationError) {
           logger.log("error", "sheet_match_confirmation_read_failed", { recordId: newId, error: confirmationError });
+        }
+        const confirmedRow = confirmation?.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
+        if (confirmedRow) {
+          dataStore.set("matches1", confirmation, { source: "write" });
+          await this.ensureChallengeMessage(principal, params, newId, confirmedRow, headerOf(confirmation));
+          return { success: true, newMatchId: newId, recovered: true };
         }
         throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId });
       }
@@ -1496,6 +1604,7 @@ class SheetService {
       candidate.push(newRow);
       dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
       this.scheduleRefresh("matches1");
+      await this.ensureChallengeMessage(principal, params, newId, newRow, header);
       return { success: true, newMatchId: newId };
     })));
   }
@@ -1743,6 +1852,7 @@ class SheetService {
         const beforeMatches = (entry) => Number(entry.row[indexes.rank]) === entry.beforeRank;
         if (recoveryOnly && stable.every(targetMatches)) {
           dataStore.set("rlPlatzierung", values, { source: "write-read" });
+          await this.ensureRankingWithdrawalEvent(principal, params, plan);
           return withAudit({
             success: true,
             recovered: true,
@@ -1804,6 +1914,7 @@ class SheetService {
 
         dataStore.set("rlPlatzierung", candidate, { source: "write-local", authoritative: false });
         this.scheduleRefresh("rlPlatzierung");
+        await this.ensureRankingWithdrawalEvent(principal, params, plan);
         return withAudit({
           success: true,
           withdrawnAt: plan.withdrawnAt,

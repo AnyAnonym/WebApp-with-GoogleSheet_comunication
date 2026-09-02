@@ -4,10 +4,10 @@ const { requestContracts, validateEndpointRequest, validateEndpointResponse } = 
 
 test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
   assert.deepEqual(Object.keys(requestContracts).sort(), [
-    "addEntryList", "addMatch", "adminMemberReconciliation", "adminPeopleNormalization", "bewerbe", "bewerbsart", "courtAssign", "courtScores",
+    "acknowledgeMessage", "addEntryList", "addMatch", "adminMemberReconciliation", "adminPeopleNormalization", "bewerbe", "bewerbsart", "competitionHistory", "courtAssign", "courtScores",
     "courtSetActive", "entryList", "getScoreboardCourts", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
-    "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myProfile", "navigator", "normalizePerson", "operationStatus",
+    "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myMessage", "myMessageSummary", "myMessages", "myProfile", "navigator", "normalizePerson", "operationStatus",
     "players", "preMatches", "publicProfile", "rankingChallengeState", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
     "scoreboardSnapshot", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
   ]);
@@ -76,6 +76,12 @@ test("Personennormalisierung besitzt einen geschlossenen Aenderungsvertrag", () 
 
 test("Endpointvertraege normalisieren Parameter und lehnen unbekannte Felder ab", () => {
   assert.deepEqual(validateEndpointRequest("matches1", { bewerbId: " cup-1 " }), { bewerbId: "cup-1" });
+  assert.deepEqual(validateEndpointRequest("competitionHistory", { limit: 25 }), { limit: 25 });
+  assert.deepEqual(validateEndpointRequest("competitionHistory", { bewerbId: " cup-1 ", cursor: "YWxsAGV2ZW50LTE" }), {
+    bewerbId: "cup-1",
+    cursor: "YWxsAGV2ZW50LTE",
+  });
+  assert.throws(() => validateEndpointRequest("competitionHistory", { cursor: "ungueltig=" }), { code: "VALIDATION_ERROR" });
   assert.throws(
     () => validateEndpointRequest("players", { secret: true }),
     (error) => error.code === "VALIDATION_ERROR",

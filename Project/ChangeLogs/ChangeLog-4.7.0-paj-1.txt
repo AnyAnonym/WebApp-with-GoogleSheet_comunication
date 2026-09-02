@@ -33,3 +33,76 @@ Commit: 4.7.0-paj-1-4 | Ranglistenprofile und Rückkehranzeige erweitert
   - [Backend] Offene Forderungen in Profilen enthalten bei einem bereits festgelegten Spieltermin zusaetzlich `matchDate`.
   - [Frontend] Rausgehaengte Spieler erscheinen zeilenweise mit Name, Datum, Position und Grund sowie bei erfolgter Einforderung mit Zeitpunkt, Gegner und Gegnerposition. Alle Detailzeilen verwenden denselben Schriftstil. Profilreiter zeigen bei einem fixierten Termin Gegner, Forderungszeit und Spieltermin gemeinsam.
   - [Tests] Integrations- und Browsertests decken Einforderungs- und Spielterminprojektion, das fuenfzeilige Layout samt einheitlicher Typografie, die Profilanzeige und das Weglassen der optionalen Zeile ab.
+
+[4.7.0-paj-1-5] - 2026-09-02
+Commit: 4.7.0-paj-1-5 | Messaging, Personendaten und Observability erweitert
+
+  Added
+  - [Backend] Ein eigener persistenter SQLite-Meldungseingang speichert persoenliche Meldungen, Zustellstatus, ungelesene Zaehler und explizite Quittierungen mit idempotenten IDs.
+  - [Backend] Ein versioniertes zentrales Bewerbsereignismodell ordnet ein Ereignis normalisiert einem bis beliebig vielen Teilnehmern sowie deren persoenlichen Quittierungs- und Zustellstaenden zu; bestehende Meldungsdaten werden ohne Textauswertung migriert.
+  - [Backend] Schema 4 speichert ein optionales kontrolliertes Ergebnisfeld fuer Ergebnisereignisse und projiziert es in die authentifizierte Bewerbshistorie.
+  - [Backend] Die authentifizierten RPCs `myMessageSummary`, `myMessages`, `myMessage` und `acknowledgeMessage` sowie ein personengebundenes privates WebSocket-Thema stellen Meldungen kontrolliert bereit.
+  - [Backend] Der authentifizierte RPC `competitionHistory` liefert eine cursor-paginierte Einzel- oder Gesamthistorie ohne persoenliche Inbox-Texte oder fremde Zustellstaende; scope-gebundene Cursor verhindern eine Vermischung beider Ansichten.
+  - [Backend] Getrennte Email- und Whatsapp-Adapter bilden die kuenftigen externen Kanaele ab und melden bis zu deren Implementierung ausschliesslich `not_configured`.
+  - [Frontend] Profilnavigation und eigener Profilreiter zeigen ungelesene Meldungen mit Zaehler; ein scrollbar begrenzter Detaildialog nennt bei bekanntem Akteur `Durch: <Name>` und quittiert eine Meldung erst ueber `Zur Kenntnis genommen`.
+  - [Frontend] Angemeldete Benutzer oeffnen ueber ein kompaktes Clipboard-Symbol unmittelbar neben einem Bewerbsnamen oder der Hauptueberschrift `Bewerbe` einen zugaenglichen, mobilen Einzel- oder Gesamthistorien-Dialog mit Lade-, Leer-, Fehler- und Retry-Zustaenden; das bisherige Kachellayout bleibt unveraendert. Die Gesamtansicht ordnet jeden Eintrag seinem Bewerb zu.
+  - [Observability] Das Personennormalisierungsdashboard zeigt aktive Mitglieder insgesamt sowie getrennt nach `player`, `player A` und `player B`; die neue Metrik exportiert nur aggregierte Zaehler mit drei kontrollierten Klassifikationslabels.
+  - [Dokumentation] Nicht-kanonische Umsetzungsplanung fuer direkte E-Mail-Zustellung ohne SMTP-Relay mit DNS-, MTA-, Outbox-, Sicherheits-, Observability-, Test- und Rolloutanforderungen unter `Project/2do/` angelegt.
+  - [Testdaten] Ein kontrolliertes PAJ-Seed-Werkzeug verwaltet 18 Historienereignisse, 42 persoenliche Inbox-Meldungen und 16 ausgeblendete Sheet-Matches mit exakten `test-history-*`-IDs, Dry-Run, idempotentem Apply, exaktem Cleanup sowie einem expliziten auditierten Gesamtneuaufbau des Messagingbestands.
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` fuer den Zielcommit auf `4.7.0-paj-1-5` gesetzt.
+  - [Backend] Eine nachweislich angelegte Ranglistenforderung erzeugt fuer den Geforderten und den Forderer perspektivisch formulierte, recovery-sichere Meldungen ohne Dubletten und mit dem Hinweis, binnen sieben Tagen einen Spieltermin zu vereinbaren. Der neutrale Historientext speichert beide zu diesem Zeitpunkt bekannten Ranglistenpositionen im Format `Name (Rang)`.
+  - [Backend] Persoenliche Meldungslisten und -details projizieren den kontrollierten Bewerbsnamen; offene Forderungen im Profil enthalten Richtung und aktuellen Gegnerrang.
+  - [Backend] Matchgebundene Bewerbs- und persoenliche Historien projizieren `BewerbRunde` kontrolliert ohne Paarungsnummer als Runde oder Gruppe; persoenliche Listen enthalten zusaetzlich den Ereignisakteur.
+  - [Backend] Ranglistenbewerbe unterdruecken die optionale Rundenprojektion unabhaengig von einem technischen `BewerbRunde`-Wert in `Matches1`.
+  - [Backend] Das serverseitige Raushängen aus einer Rangliste erzeugt nach bestaetigtem Sheet-Write ein recovery-sicheres Einteilnehmerereignis; der freie Grund bleibt auf die persoenliche Meldung begrenzt.
+  - [Backend] Die optionale Personenspalte `Notification` erlaubt `Email` und `Whatsapp` mit `|` als Separator; ungueltige Werte deaktivieren externe Kanaele kontrolliert, waehrend die Inbox aktiv bleibt.
+  - [Infrastruktur] Messaging-SQLite heisst in jedem System `messaging.sqlite`, liegt im jeweiligen `StateDirectory` und wird in allen drei systemd-Vorlagen explizit unter `/var/lib/epiber-<system>/` konfiguriert.
+  - [Frontend] Der Systemreiter weist die administrativ gepflegten Benachrichtigungskanaele aus; Meldungslisten sortieren Ungelesenes vor Gelesenem und innerhalb beider Gruppen absteigend nach Datum. Auf Mobilgeraeten werden die Hamburger-Striche bei ungelesenen Meldungen rot.
+  - [Frontend] Persoenliche Meldungen zeigen auf allen Viewportbreiten gleich grosse Zeilen fuer Datum, Bewerb, optionale Runde, Betreff und Akteur. Details ordnen Datum, Bewerb, optional `Durch: <Name>` und Text; nach erfolgreicher oder bereits erfolgter Kenntnisnahme bleibt die Aktion ausgeblendet.
+  - [Frontend] Der Bewerbshistoriendialog begrenzt seinen Grid-Inhalt auf den Viewport, sodass lange Einzel- und Gesamthistorien innerhalb der Eintragsliste scrollbar bleiben.
+  - [Frontend] Bewerbshistorien verwenden fuer alle Eintragszeilen dieselbe Schriftgroesse; nur der schwarze Meldungstitel bleibt fett. Ranglistenprofile unterscheiden offene Forderungen mehrzeilig als `gegen` oder `von` und zeigen einen fixierten Spieltermin nur bei vorhandenem Datum.
+  - [Frontend] Gesamtbewerbshistorien zeigen die optionale Runde nach dem Bewerb, Einzelhistorien direkt nach dem Datum. Persoenliche Uebersichten zeigen optionale Runde und `Durch:`, Details verwenden `Durch:` fuer jede Meldungsart mit bekanntem Akteur.
+  - [Tests] Repository-, Service-, Recovery-, Audit-, Vertrags-, Integrations- und Browsertests decken Persistenz, beide Forderungsteilnehmer, Privatsphaere, Quittierung, Live-Zaehler, mobile Kennzeichnung, Sortierung und Dummykanaele ab.
+  - [Tests] Zusaetzliche Migrations-, Ein-/Vier-Teilnehmer-, Cursor-, Raushängen-Recovery-, Historienzugriffs-, Browserdiagnose- und Bewerbe-Dialogtests sichern das zentrale Ereignismodell ab.
+  - [Tests] Seed-Tests sichern acht Personen, sieben Ranglisten-, Raster- und Round-Robin-Bewerbe, Rang-Snapshots, alle Ereignisvarianten, die persoenliche 5-bis-6-Verteilung, den Neuaufbau mit 18/42/16 Datensaetzen, Teilwrite-Kompensation, idempotente Wiederholung und exaktes Cleanup ohne Ranglistenaenderung ab.
+  - [Tests] Vertrags-, Repository-, Integrations- und Browsertests sichern globale Bewerbszuordnung, getrennte Einzel-/Gesamtcursor, Authentifizierung sowie kontrollierte Akteurs- und Rundenzeilen ab; Ranglisten unterdruecken Runden auch bei technischem `BewerbRunde`-Wert.
+  - [Tests] Der Bewerbe-Browsertest prueft mit einer ueberlangen Historie die tatsaechliche Scrollhoehe, Scrollbewegung und Viewportbegrenzung des Dialogs.
+  - [Tests] Service-, Integrations- und Browsertests sichern Bewerbsnamen in persoenlichen Projektionen, Gegnerrang und Forderungsrichtung, identische Desktop-/Mobiltypografie sowie das vollstaendige Ausblenden der Quittierungsaktion ab.
+  - [Dokumentation] Endpoint- und Seitendokumente beschreiben die dreizeilige persoenliche Meldung, einheitliche Historientypografie, Quittierungsdarstellung sowie Richtung, Gegnerrang und optionalen Spieltermin offener Forderungen.
+  - [Dokumentation] Endpoint- und Seitendokumente beschreiben zusaetzlich die kontrollierte Rundenbezeichnung und Akteurszeile in Bewerbs- und persoenlichen Historien.
+  - [Observability] Readiness- und SQLite-Metriken weisen Messaging separat aus; Ereignispersistenz und Legacy-Zuordnung protokollieren nur kontrollierte IDs und Zaehler.
+  - [Observability] Das Hostressourcen-Dashboard formatiert CPU, RAM, freien Speicher, Inodes und Netzwerkdurchsatz mit passenden dynamischen Einheiten und zeigt die aktuellen Werte in Tabellenlegenden.
+  - [Tests] Der Dashboardtest sichert Einheiten, Wertlegenden und die lesbare Dienstzustandsanzeige ab.
+  - [Tests] Normalisierungs-, Metrik- und Dashboardtests sichern die aktive Mitgliederzaehlung, den Ausschluss anderer Rollen und die begrenzte Labelmenge ab.
+
+  Fixed
+  - [Workflow] Die Commit-Sicherheitspruefung erlaubt die laut Projektvertrag geheimnisfreie, versionierte Vorlage `.env.example`; deren staged Inhalt wird weiterhin auf Geheimnismuster geprueft.
+  - [Tests] Ein Workflow-Regressionstest sichert das Staging einer geheimnisfreien `.env.example` bei weiterhin leerem echtem Index ab.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/DATENBANK.txt
+    - Messaging-Schema 4 mit zentralen Bewerbsereignissen, normalisierten Teilnehmern, persoenlichen Receipts, Zustellungen, Quittierungsoperationen, Revisionen und optionalem Ergebnisfeld dokumentieren.
+    - Historische Namen, Texte, Ergebnis und Akteur als kontrollierte Ereignissnapshots sowie die bewusste Abgrenzung zu freien Sheet-Aenderungen festhalten.
+
+    Project/software/ARCHITEKTUR.txt
+    - Zentralen Ereigniswrite, persoenliche Inboxprojektionen, WebSocket-Zusammenfassungen, idempotente Quittierung, externe Dummykanaele, Legacy-Zuordnung und Messaging-Readiness beschreiben.
+    - Einzel- und Gesamthistorie mit scope-gebundenen Cursors, kontrollierter Rundenprojektion und Unterdrueckung von Runden bei Ranglisten einordnen.
+
+    Project/software/ENDPOINTS.txt
+    - Authentifizierte Messaging- und Historien-RPCs samt Datenschutzgrenzen, `competitionName`, `roundName`, `actorName`, Ergebnis, Pagination und Quittierungsantworten uebernehmen.
+    - Profilprojektion offener Forderungen um Richtung und aktuellen Gegnerrang ergaenzen.
+
+    Project/software/seiten/bewerbe.txt
+    - Authentifizierte Einzel- und Gesamthistorie, Clipboard-Bedienung, Typografie, Scrollverhalten, optionale Rundenzeile und Ranglistenabgrenzung dokumentieren.
+
+    Project/software/seiten/rangliste.txt
+    - Persoenlichen Meldungsreiter, Ungelesenzaehler, responsive Zeilenfolge, Akteursanzeige, Quittierung sowie offene Forderungen als `gegen` oder `von` mit optionalem Spieltermin dokumentieren.
+
+    Project/server-configs/SERVER-DOKU.txt
+    - Eigene Messaging-SQLite je Instanz im jeweiligen `StateDirectory`, Readiness und Betriebsmetriken in den dokumentierten Sollstand aufnehmen.
+
+    Project/server-configs/observability/README.md
+    - Aktive Playerklassifikationen, begrenzte Metriklabels und die zugehoerigen Grafana-Panels fuer Personennormalisierung sowie Ressourcenlegenden dokumentieren.

@@ -18,6 +18,8 @@ Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
   und Bewerbsende-Grenzen; bei erneut sichtbarer Seite wird ebenfalls neu geladen.
   Ladeoverlay, begrenzte Read-Retries und ein dauerhaftes Fehleroverlay mit Retry
   garantieren einen sichtbaren Ladeabschluss.
+  Angemeldete Benutzer koennen zusaetzlich die cursorpaginierte
+  `competitionHistory` eines einzelnen Bewerbs oder aller Bewerbe laden.
 
 -- Bedienung --
   Keine URL-Parameter. Ranglisten fuehren zu `rangliste.html?id=...`. Gestartete
@@ -33,3 +35,10 @@ Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
   formatiert. Bezeichnungen und Datumszeilen entstehen als DOM-Knoten mit
   textContent, nicht als ungeprueftes HTML. Nach erfolgreichem Erstaufbau wird im
   Monitorbetrieb Ready gemeldet, bei Initialfehler Failed.
+  Historieneintraege zeigen Datum, Bewerb, optionale Runde, Titel, Ergebnis und
+  Akteur in gleicher Schriftgroesse. Das Datum ist schwarz und regulaer, der Titel
+  schwarz und fett, alle anderen Zeilen sind regulaer. Runden werden ohne
+  Paarungsnummer als etwa `Achtelfinale`, `Viertelfinale` oder `1. Gruppe`
+  bezeichnet; Ranglisten zeigen grundsaetzlich keine Runde. Die Einzelhistorie laesst die bereits im Dialogkopf genannte
+  Bewerbsbezeichnung aus und zeigt eine vorhandene Runde direkt unter dem Datum;
+  die globale Historie zeigt zuerst den Bewerb und danach die optionale Runde.

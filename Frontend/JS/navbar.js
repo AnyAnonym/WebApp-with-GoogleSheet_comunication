@@ -1,4 +1,10 @@
 import { ready, subscribeAuth } from "./authClient.js";
+import { createEndpoint, subscribe } from "./dataClient.js";
+
+const readMyMessageSummary = createEndpoint("myMessageSummary");
+let stopMessageSubscription = null;
+let messageIdentity = null;
+let summaryGeneration = 0;
 
 const currentPath = window.location.pathname.split("/").pop() || "index.html";
 
@@ -34,7 +40,7 @@ function renderHeader() {
 
       <nav class="auth-nav desktop-auth">
         <a href="#" id="openLogin" class="loggedOut" hidden style="display: none;">Anmelden</a>
-        <a href="#" id="profileButton" class="loggedIn" hidden style="display: none;">Profil</a>
+        <a href="#" id="profileButton" class="loggedIn profile-link" hidden style="display: none;">Profil<span class="message-count-badge" hidden></span></a>
         <a href="#" id="signOutButton" class="loggedIn" hidden style="display: none;">Abmelden</a>
         <span class="authUnavailable" role="status" hidden></span>
       </nav>
@@ -52,7 +58,7 @@ function renderMobileNav() {
         <span class="close" role="button" aria-label="Schließen" tabindex="0">&times;</span>
         <nav class="mobile-auth-section">
           <a href="#" id="openLoginMobile" class="loggedOut" hidden style="display: none;">Anmelden</a>
-          <a href="#" id="profileButtonMobile" class="loggedIn" hidden style="display: none;">Profil</a>
+          <a href="#" id="profileButtonMobile" class="loggedIn profile-link" hidden style="display: none;">Profil<span class="message-count-badge" hidden></span></a>
           <a href="#" id="signOutButtonMobile" class="loggedIn" hidden style="display: none;">Abmelden</a>
           <span class="authUnavailable" role="status" hidden></span>
         </nav>
@@ -106,6 +112,54 @@ function renderAuthState(user, authState = {}) {
   });
 }
 
+function setMessageCount(rawCount, revision = null) {
+  const count = Math.max(0, Number(rawCount) || 0);
+  const hamburgerButton = document.getElementById("hamburgerBtn");
+  hamburgerButton?.classList.toggle("has-unread-messages", count > 0);
+  hamburgerButton?.setAttribute("aria-label", count ? `Menü öffnen, ${count} ungelesene Meldungen` : "Menü öffnen");
+  document.querySelectorAll(".profile-link").forEach((link) => {
+    const badge = link.querySelector(".message-count-badge");
+    if (badge) {
+      badge.textContent = String(count);
+      badge.hidden = count === 0;
+    }
+    link.setAttribute("aria-label", count ? `Profil, ${count} ungelesene Meldungen` : "Profil");
+  });
+  window.dispatchEvent(new CustomEvent("epiber-message-summary", {
+    detail: { unreadCount: count, revision },
+  }));
+}
+
+async function refreshMessageSummary(identity = messageIdentity) {
+  const generation = ++summaryGeneration;
+  if (!identity) {
+    setMessageCount(0);
+    return;
+  }
+  try {
+    const result = await readMyMessageSummary();
+    if (generation !== summaryGeneration || identity !== messageIdentity || !result.data?.success) return;
+    setMessageCount(result.data.unreadCount, result.data.revision);
+  } catch {
+    // Keep the last known count during a temporary connection failure.
+  }
+}
+
+function updateMessageSubscription(user) {
+  const identity = user?.id ? String(user.id) : null;
+  if (identity === messageIdentity) return;
+  stopMessageSubscription?.();
+  stopMessageSubscription = null;
+  messageIdentity = identity;
+  summaryGeneration += 1;
+  if (!identity) {
+    setMessageCount(0);
+    return;
+  }
+  stopMessageSubscription = subscribe(`messages:${identity}`, () => refreshMessageSummary(identity));
+  refreshMessageSummary(identity);
+}
+
 function initMobileNavigation() {
   const hamburgerButton = document.getElementById("hamburgerBtn");
   const mobileNavModal = document.getElementById("mobileNavModal");
@@ -131,7 +185,11 @@ async function initNavigation() {
   renderMobileNav();
   initMobileNavigation();
 
-  subscribeAuth(renderAuthState);
+  subscribeAuth((user, authState) => {
+    renderAuthState(user, authState);
+    updateMessageSubscription(authState.status === "authenticated" ? user : null);
+  });
+  window.addEventListener("epiber-message-summary-refresh", () => refreshMessageSummary());
 
   await ready;
 }

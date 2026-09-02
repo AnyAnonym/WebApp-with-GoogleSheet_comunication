@@ -36,6 +36,7 @@ const EVENT_LEVELS = new Map([
   ["auth_session_refresh_failed", "error"],
   ["auth_socket_reauthentication_failed", "error"],
   ["competitions_load_failed", "error"],
+  ["competition_history_load_failed", "error"],
   ["data_client_event_listener_failed", "error"],
   ["data_client_live_refresh_failed", "error"],
   ["data_client_protocol_error", "error"],

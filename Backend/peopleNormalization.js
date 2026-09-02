@@ -26,6 +26,11 @@ const ROLE_VALUES = new Map([
   ["player a", "player A"],
   ["player b", "player B"],
 ]);
+const ACTIVE_MEMBER_CLASSIFICATIONS = new Map([
+  ["player", "player"],
+  ["player A", "player_a"],
+  ["player B", "player_b"],
+]);
 const ISSUE_CODES = Object.freeze([
   "EDGE_WHITESPACE",
   "REQUIRED_VALUE_MISSING",
@@ -267,19 +272,26 @@ function projectPeopleNormalization(table) {
 function summarizePeopleNormalization(table) {
   const { header, idIndex, duplicateLogins } = normalizationContext(table);
   const issueCounts = Object.fromEntries(ISSUE_CODES.map((code) => [code, 0]));
+  const activeMemberCounts = { player: 0, player_a: 0, player_b: 0 };
   let peopleCount = 0;
   let affectedCount = 0;
   let issueCount = 0;
   for (const row of table.slice(1)) {
     if (!String(row[idIndex] || "").trim()) continue;
     peopleCount++;
-    const issues = analyzePerson(rawPersonValues(header, row), duplicateLogins);
+    const values = rawPersonValues(header, row);
+    const issues = analyzePerson(values, duplicateLogins);
     if (issues.length) affectedCount++;
     issueCount += issues.length;
     for (const entry of issues) issueCounts[entry.code]++;
+    const classification = values.active.trim() === "1"
+      ? ACTIVE_MEMBER_CLASSIFICATIONS.get(canonicalRole(values.role))
+      : null;
+    if (classification) activeMemberCounts[classification]++;
   }
   return {
     peopleCount,
+    activeMemberCounts,
     affectedCount,
     issueCount,
     issueCounts,

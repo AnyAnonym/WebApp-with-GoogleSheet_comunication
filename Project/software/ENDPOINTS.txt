@@ -465,8 +465,9 @@ PUBLIC:
       Variante enthaelt `rankings:[{ competitionId, competitionName, rank,
       status:"active|withdrawn", canChallenge, canWithdraw, openChallenge }]`.
       `openChallenge` enthaelt bei einer offenen Forderung Match-ID, Richtung,
-      Gegner-ID/-Name und Forderungszeit. `canChallenge` und `canWithdraw` sind
-      auf den aktuellen serverseitigen Principal bezogen. Angemeldete Benutzer
+      Gegner-ID/-Name, Gegnerrang `opponentRank` und Forderungszeit.
+      `canChallenge` und `canWithdraw` sind auf den aktuellen serverseitigen
+      Principal bezogen. Angemeldete Benutzer
       erhalten bei Rang `0` zusaetzlich
       `withdrawal:{ withdrawnAt, reason }`. Nur im Eigenprofil enthaelt
       `withdrawal` ausserdem `previousRank`; anonym und in fremden Profilen wird
@@ -523,6 +524,37 @@ AUTHENTICATED (player, operator oder admin):
       von `publicProfile`. Kontakt-E-Mail und Login sind getrennt; Passwort- und
       Resetwerte erscheinen nie. Raushaengezeit und -grund folgen dem
       angemeldeten Profilvertrag.
+
+  `myMessages { cursor?, limit? }`
+      Liefert die eigenen Meldungen mit serverseitiger Revision, Gesamt- und
+      Ungelesenanzahl sowie `nextCursor`. Listeneintraege enthalten ID,
+      Erstellungszeit, `competitionName`, den optional aus `BewerbRunde`
+      kontrolliert bezeichneten `roundName`, `actorName`, Betreff und
+      Bestaetigungszeit. Der kontrollierte `competitionName` lautet bei keiner
+      Bewerbszuordnung `Allgemeine Meldung`.
+
+  `myMessage { messageId }`
+      Liefert ausschliesslich die eigene Meldung als Detailprojektion; diese
+      enthaelt ebenfalls den kontrollierten `competitionName` und `actorName`.
+      Die Detailansicht ordnet Betreff, Datum, Bewerb, bei bekanntem Akteur
+      `Durch: <Name>` und danach den Meldungstext an.
+
+  `acknowledgeMessage { operationId, messageId }`
+      Bestaetigt die eigene Meldung idempotent. Die serverseitige
+      Bestaetigungszeit sowie Revision und Ungelesenanzahl bleiben autoritativ.
+      Nach erfolgreicher Bestaetigung und bei einer bereits bestaetigten Meldung
+      wird in der Detailansicht keine Bestaetigungsaktion mehr angeboten.
+
+  `competitionHistory { bewerbId?, cursor?, limit? }`
+      Liefert die absteigend sortierte, cursorpaginierte Bewerbshistorie fuer
+      einen Bewerb oder global fuer alle Bewerbe. Eintraege enthalten unter
+      anderem Bewerb-ID/-Bezeichnung, Zeitpunkt, Titel, optionales Ergebnis und
+      optionalen Akteur. Die Einzelhistorie darf die im Dialog bereits genannte
+      Bewerbsbezeichnung je Eintrag auslassen; die globale Historie zeigt sie je
+      Eintrag. Matchgebundene Eintraege enthalten optional `roundName`; Codes wie
+      `AF-P3`, `VF-P2` oder `G1` werden ohne Paarungsnummer als `Achtelfinale`,
+      `Viertelfinale` beziehungsweise `1. Gruppe` bezeichnet. Ranglistenbewerbe
+      (`BewerbsartID=2`) projizieren keine Runde.
 
   `rankingChallengeState { bewerbId }`
       Liefert fuer den angemeldeten Spieler den serverseitig bestimmten Modus

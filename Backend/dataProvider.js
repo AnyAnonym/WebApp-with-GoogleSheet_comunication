@@ -76,6 +76,13 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
         after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
       };
+    case "acknowledgeMessage":
+      return {
+        targetType: "message",
+        targetId: params.messageId,
+        before: result.success ? { acknowledged: !result.changed } : null,
+        after: result.success ? { acknowledged: true } : null,
+      };
     case "addEntryList":
       return { targetType: "entry", targetId: result.entryId || "", after: { entryId: result.entryId || "", bewerbId: params.bewerbId, alreadyPresent: !!result.alreadyPresent } };
     case "removeEntryList":
@@ -177,6 +184,14 @@ function profileRankings(personId, principal = null) {
     previousRank: headerIndex(rankingHeader, "rausgehangenletzteplatzierung"),
     reason: headerIndex(rankingHeader, "rausgehangengrund"),
   };
+  const activeRanks = new Map(rankings.slice(1).flatMap((row) => {
+    const competitionId = String(row[rankingIndexes.competition] || "").trim();
+    const rankedPersonId = String(row[rankingIndexes.person] || "").trim();
+    const rank = Number(row[rankingIndexes.rank]);
+    return competitionId && rankedPersonId && Number.isInteger(rank) && rank > 0
+      ? [[`${competitionId}\0${rankedPersonId}`, rank]]
+      : [];
+  }));
   const matches = dataStore.get("matches1");
   const matchHeader = headerOf(matches);
   const matchIndexes = {
@@ -213,6 +228,7 @@ function profileRankings(personId, principal = null) {
       direction,
       opponentId,
       opponentName: names.get(opponentId) || "Unbekannter Spieler",
+      opponentRank: activeRanks.get(`${competitionId}\0${opponentId}`) || null,
       challengedAt: String(row[matchIndexes.challengedAt] || "").trim(),
       ...(String(row[matchIndexes.matchDate] || "").trim() ? {
         matchDate: String(row[matchIndexes.matchDate] || "").trim(),
@@ -733,6 +749,34 @@ const endpoints = {
       profile: { ...context.auth.user, rankings: profileRankings(context.principal.id, context.principal) },
     }),
   },
+  myMessageSummary: {
+    access: "authenticated",
+    handler: (_params, context) => dependencies.messagingService.summary(context.principal),
+  },
+  myMessages: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.messages(context.principal, {
+      cursor: params.cursor || null,
+      limit: params.limit || 20,
+    }),
+  },
+  myMessage: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.message(context.principal, params.messageId),
+  },
+  acknowledgeMessage: {
+    access: "authenticated",
+    write: true,
+    handler: (params, context) => dependencies.messagingService.acknowledge(context.principal, params),
+  },
+  competitionHistory: {
+    access: "authenticated",
+    handler: (params, context) => dependencies.messagingService.competitionHistory(context.principal, {
+      bewerbId: params.bewerbId,
+      cursor: params.cursor || null,
+      limit: params.limit || 50,
+    }),
+  },
   rankingChallengeState: {
     access: "authenticated",
     handler: (params, context) => dependencies.sheetService.rankingChallengeState(
@@ -942,6 +986,9 @@ function canSubscribe(info, topic) {
     return info.principal.type === "user" && ["operator", "admin"].includes(info.principal.role);
   }
   if (topic === "monitor-command") return info.principal.type === "device";
+  if (topic.startsWith("messages:")) {
+    return info.principal.type === "user" && topic === `messages:${info.principal.id}`;
+  }
   if (topic.startsWith("monitor-status:")) {
     return info.principal.type === "user" && ["operator", "admin"].includes(info.principal.role);
   }
@@ -1025,6 +1072,10 @@ function sendSubscriptionSnapshot(info, topic) {
   if (topic === "scores") send(info, { type: "event", topic, data: scoreboardScores() });
   if (topic === "scoreboard-state") send(info, { type: "event", topic, data: { courts: stateStore.getScoreboardCourts() } });
   if (topic === "monitors") send(info, { type: "event", topic, data: { monitors: dependencies.monitorBroker.listMonitors() } });
+  if (topic.startsWith("messages:") && canSubscribe(info, topic)) {
+    const { revision, unreadCount } = dependencies.messagingService.summary(info.principal);
+    send(info, { type: "event", topic, data: { revision, unreadCount } });
+  }
   const tableTopics = { matches: "matches1", players: "players", bewerbe: "bewerbe", bewerbsart: "bewerbsart", matchtyp: "matchtyp", entryList: "entryList", ranking: "rlPlatzierung", navigator: "navigator" };
   if (tableTopics[topic]) send(info, { type: "event", topic, data: { table: tableTopics[topic], ...dataStore.getMeta(tableTopics[topic]) } });
   if (topic.startsWith("monitor-status:")) {

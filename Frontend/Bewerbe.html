@@ -15,7 +15,10 @@
 
   <main>
     <section>
-      <h2>Bewerbe</h2>
+      <div class="bewerbe-page-heading">
+        <h2>Bewerbe</h2>
+        <button id="all-competition-history-button" class="competition-history-button" type="button" aria-label="Historie aller Bewerbe öffnen" title="Historie aller Bewerbe öffnen" hidden></button>
+      </div>
       <div id="bewerbe-container"></div>
     </section>
 
@@ -23,6 +26,21 @@
   </main>
 
   <div id="footer-container"></div>
+
+  <div id="competition-history-modal" class="competition-history-modal" role="dialog" aria-modal="true" aria-labelledby="competition-history-title competition-history-competition-name" hidden>
+    <div class="competition-history-dialog" tabindex="-1">
+      <div class="competition-history-heading">
+        <div class="competition-history-heading-copy">
+          <h2 id="competition-history-title">Historie</h2>
+          <p id="competition-history-competition-name"></p>
+        </div>
+        <button id="competition-history-close" class="competition-history-close" type="button" aria-label="Historie schließen">&times;</button>
+      </div>
+      <div id="competition-history-status" class="competition-history-status" role="status" aria-live="polite"></div>
+      <ul id="competition-history-list" class="competition-history-list"></ul>
+      <button id="competition-history-more" class="competition-history-more" type="button" hidden>Weitere Einträge laden</button>
+    </div>
+  </div>
 
   <script type="module" src="JS/modals.js"></script>
   <script type="module" src="JS/navbar.js"></script>

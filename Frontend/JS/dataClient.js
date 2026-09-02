@@ -141,7 +141,8 @@ const UNCERTAIN_OPERATION_ERRORS = new Set([
 const READ_ENDPOINTS = new Set([
   "players", "publicProfile", "bewerbe", "bewerbsart", "matches1", "preMatches", "matches",
   "rlPlatzierung", "entryList", "readMatchRestrictions", "withdrawnRankingPlayers", "getScoreboardCourts", "courtScores",
-  "scoreboardSnapshot", "memberDirectory", "myProfile", "operationStatus", "navigator", "monitorList",
+  "scoreboardSnapshot", "memberDirectory", "myProfile", "myMessageSummary", "myMessages", "myMessage", "competitionHistory",
+  "operationStatus", "navigator", "monitorList",
   "monitorTarget", "adminPeopleNormalization", "adminMemberReconciliation", "sheetDataStatus",
 ]);
 const ALLOWED_TRANSITIONS = {

@@ -185,7 +185,7 @@ test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche 
     actorName: "Ada Admin",
   });
   assert.equal(changed.event.type, "appointment_changed");
-  assert.equal(changed.event.summary, "Ada Admin hat den Spieltermin von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");
+  assert.equal(changed.event.summary, "Spieltermin für Ada Admin gegen Peter Player von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");
   assert.equal(changed.event.detail, "Alter Spieltermin: 05.09.2026, 18:00 Uhr; neuer Spieltermin: 10.09.2026, 19:00 Uhr");
   assert.equal(changed.participants[0].subject, "Spieltermin geändert mit Peter Player");
   assert.equal(changed.participants[0].body, "Der Termin für dein Match gegen Peter Player wurde von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");

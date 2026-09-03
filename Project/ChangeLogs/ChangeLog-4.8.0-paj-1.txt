@@ -6,3 +6,11 @@ Commit: 4.8.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.8.0-paj-1-1` gesetzt.
+
+[4.8.0-paj-1-2] - 2026-09-03
+Commit: 4.8.0-paj-1-2 | Terminänderungen nennen Partie
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.8.0-paj-1-1-x` gesetzt.
+  - [Backend] Neue Bewerbshistorieneintraege fuer geaenderte Spieltermine nennen die Partie und den Wechsel vom alten auf den neuen Termin; der Aendernde bleibt ausschliesslich in der separaten Akteurszeile. Bereits persistierte Historieneintraege und persoenliche Meldungstexte bleiben unveraendert.
+  - [Tests] Der Messaging-Service-Test sichert die partienbezogene Zusammenfassung fuer kuenftige Terminaenderungen ab.

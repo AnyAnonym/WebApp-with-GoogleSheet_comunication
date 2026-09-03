@@ -161,7 +161,7 @@ class MessagingService {
       actorId,
       actorName,
       summary: changed
-        ? `${actorName} hat den Spieltermin von ${previousDateText} auf ${dateText} geändert.`
+        ? `Spieltermin für ${challengerName} gegen ${opponentName} von ${previousDateText} auf ${dateText} geändert.`
         : `${challengerName} und ${opponentName} haben den Spieltermin für den ${dateText} vereinbart.`,
       detail: changed ? `Alter Spieltermin: ${previousDateText}; neuer Spieltermin: ${dateText}` : `Spieltermin: ${dateText}`,
     }, participants);

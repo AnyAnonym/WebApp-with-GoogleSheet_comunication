@@ -37,13 +37,43 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   `publicProfile` liefert anonym nur ID/Name, angemeldeten Benutzern auch E-Mail,
   Telefon und Geburtsdatum, jedoch keinen Login; `myProfile` liefert fuer das
   eigene Profil zusaetzlich Login und Passwortaenderung. Das gemeinsame Modal
-  trennt System, jede aktive oder rausgehaengte Ranglistenmitgliedschaft und
-  administrative Aktionen in horizontal scrollbare Reiter; aktive Reiter zeigen
-  Position und offene Forderung, rausgehaengte fuer angemeldete Benutzer Zeitpunkt
-  und Grund. Die Ranglistenreiter sind unabhaengig von der aufrufenden Seite. Nur
+  trennt System, Bewerbe mit Matches, jede aktive oder rausgehaengte
+  Ranglistenmitgliedschaft und administrative Aktionen in horizontal scrollbare
+  Reiter. Ranglisten- und Matchdaten desselben Bewerbs werden zusammengefuehrt;
+  aktive Reiter zeigen Position und offene Forderung, rausgehaengte fuer
+  angemeldete Benutzer Zeitpunkt und Grund. Alle offenen und bis Bewerbsende alle
+  abgeschlossenen Matches der Profilperson werden angezeigt, auch mehrere im
+  selben Bewerb und bei Beteiligung als einer der vier Spieler. Die Reiter sind
+  unabhaengig von der aufrufenden Seite. Nur
   Admins erhalten den Login einer fremden Person in der
   Adminprojektion und sehen im Adminreiter die vom aktuellen Profilstatus
   abhaengige Aktion `Passwortvergabe freigeben` oder
   `Passwortfreigabe aufheben` sowie `Reset-Code erstellen` und `Passwort direkt
   setzen`; direktes Setzen widerruft die Sitzungen der Zielperson. Alle Tabellen-
   und Profilwerte werden per textContent/Textknoten dargestellt.
+
+-- Universelle Ergebniseingabe im gemeinsamen Profilmodal --
+  Beteiligte mit Rolle `player`, `player A` oder `player B` sehen an jedem eigenen
+  offenen oder abgeschlossenen Match eine blaue Aktion zum Eintragen oder
+  Korrigieren. Administratoren sehen dieselbe Aktion fuer jedes Match rot sowie
+  bei abgeschlossenen Matches rote Aktionen fuer Matchende, Ergebnisloeschung und
+  bei Ranglistenmatches eine Korrektur mit vollstaendigem Rangplan. Operatoren
+  besitzen keine Ergebnisaktion. Diese Bedienung gehoert ausschliesslich zum
+  gemeinsamen Profilmodal; die Spielerverzeichnisseite erhaelt keine eigene
+  Ergebnisoberflaeche.
+
+  Der explizit schliessbare Dialog waehlt `Regulär`, `Walkover` oder `Aufgabe`.
+  Regulaer verlangt das Satzresultat, Sonderabschluesse die Verliererseite;
+  Retirement kann ein Teilergebnis behalten. Beim ersten Abschluss ist ein
+  Matchende nach MatchDate, maximal sechs Stunden danach und nicht in der Zukunft
+  erforderlich. Bei spaeterer Teilnehmerkorrektur bleibt es unveraendert.
+  Schaltflaechen `Platz 1` und `Platz 2` laden einen Vorschlag aus dem aktuellen
+  exakt zugeordneten Court oder dem neuesten exakten ScoreLog-Eintrag; der Wert
+  bleibt bearbeitbar und wird beim Speichern nach dem Matchtyp validiert.
+
+  Erfolg oeffnet dasselbe Profil und denselben Bewerbsreiter neu. Die Historie und
+  privaten Meldungen nennen den Akteur; es gibt keine Gegenbestaetigung. Fehler
+  bleiben mit Support-ID im Dialog und verwenden ausschliesslich
+  `match_result_action_failed` beziehungsweise
+  `match_result_suggestion_failed`; Ergebnis und freie Admin-Gruende werden nicht
+  in Browserdiagnose, Audit oder Betriebslog uebertragen.

@@ -4,7 +4,7 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 const { AppError } = require("./errors.js");
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 class MessagingRepository {
   constructor(filename, { now = Date.now } = {}) {
@@ -31,8 +31,12 @@ class MessagingRepository {
     } else if (version === 2) {
       this.migrateV2();
       this.migrateV3();
+      this.migrateV4();
     } else if (version === 3) {
       this.migrateV3();
+      this.migrateV4();
+    } else if (version === 4) {
+      this.migrateV4();
     } else if (version !== SCHEMA_VERSION) {
       throw new AppError("MESSAGING_SCHEMA_UNSUPPORTED", "Nachrichtenschema kann nicht migriert werden", 503);
     }
@@ -56,6 +60,7 @@ class MessagingRepository {
         inserted_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS competition_events_history ON competition_events(competition_id, created_at DESC, event_id DESC);
+      CREATE INDEX IF NOT EXISTS competition_events_created ON competition_events(created_at DESC, event_id DESC);
       CREATE INDEX IF NOT EXISTS competition_events_source ON competition_events(source, source_id);
       CREATE TABLE IF NOT EXISTS event_participants (
         event_id TEXT NOT NULL REFERENCES competition_events(event_id) ON DELETE CASCADE,
@@ -98,7 +103,7 @@ class MessagingRepository {
         user_id TEXT PRIMARY KEY,
         revision INTEGER NOT NULL
       );
-      PRAGMA user_version = 4;
+      PRAGMA user_version = 5;
     `);
   }
 
@@ -130,6 +135,20 @@ class MessagingRepository {
       this.db.exec(`
         ALTER TABLE competition_events ADD COLUMN result TEXT NOT NULL DEFAULT '';
         PRAGMA user_version = 4;
+        COMMIT;
+      `);
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV4() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS competition_events_created ON competition_events(created_at DESC, event_id DESC);
+        PRAGMA user_version = 5;
         COMMIT;
       `);
     } catch (error) {
@@ -398,6 +417,46 @@ class MessagingRepository {
       events: page.map(({ event_id: eventId }) => this.getEvent(eventId)),
       nextCursor: hasMore ? this.historyCursor(scope, page.at(-1).event_id) : null,
     };
+  }
+
+  reportProjections(fromMs, toMs) {
+    this.ensureOpen();
+    const rows = this.db.prepare(`${this.projectionSelect()}
+      WHERE e.created_at >= ? AND e.created_at < ?
+      ORDER BY e.created_at DESC, p.message_id DESC`).all(fromMs, toMs);
+    const deliveries = this.db.prepare(`SELECT d.event_id, d.user_id, d.channel, d.status, d.updated_at
+      FROM event_deliveries d
+      JOIN competition_events e ON e.event_id = d.event_id
+      WHERE e.created_at >= ? AND e.created_at < ?
+      ORDER BY d.event_id, d.user_id, d.channel`).all(fromMs, toMs);
+    const deliveriesByParticipant = new Map();
+    for (const row of deliveries) {
+      const key = `${row.event_id}\0${row.user_id}`;
+      if (!deliveriesByParticipant.has(key)) deliveriesByParticipant.set(key, []);
+      deliveriesByParticipant.get(key).push({ channel: row.channel, status: row.status, updatedAt: Number(row.updated_at) });
+    }
+    return rows.map((row) => ({
+      id: row.message_id,
+      eventId: row.event_id,
+      competitionId: row.competition_id || null,
+      recipientId: row.user_id,
+      recipientName: row.display_name,
+      participantRole: row.participant_role,
+      createdAt: Number(row.created_at),
+      projectionType: row.projection_type,
+      subject: row.subject,
+      body: row.body,
+      acknowledgedAt: row.acknowledged_at === null ? null : Number(row.acknowledged_at),
+      eventType: row.event_type,
+      source: row.source,
+      sourceId: row.source_id,
+      actorId: row.actor_id,
+      actorName: row.actor_name,
+      summary: row.summary,
+      detail: row.detail,
+      result: row.result,
+      deliveries: deliveriesByParticipant.get(`${row.event_id}\0${row.user_id}`) || [],
+    }));
   }
 
   competitionHistory(competitionId, options) {

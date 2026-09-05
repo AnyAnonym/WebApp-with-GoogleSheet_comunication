@@ -51,6 +51,51 @@ test("ScoreLog lehnt inaktive Courts und ungueltige Events ab", () => {
   repository.close();
 });
 
+test("ScoreLog findet nur den neuesten Eintrag fuer exakte Instanz, Match-ID und Court", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epiber-scorelog-latest-"));
+  const filename = path.join(directory, "scorelog.sqlite");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const repository = new ScoreLogRepository(filename, { instanceId: "paj", now: () => 1000 });
+  repository.init();
+  repository.append({
+    eventId: "00000000-0000-4000-8000-000000000010", court: "1", score: "1-0", matchId: "match-1", courtActive: true,
+  });
+  const latest = repository.append({
+    eventId: "00000000-0000-4000-8000-000000000011", court: "1", score: "2-0", matchId: "match-1", courtActive: true,
+  });
+  repository.append({
+    eventId: "00000000-0000-4000-8000-000000000012", court: "1", score: "3-0", matchId: "match-10", courtActive: true,
+  });
+  repository.append({
+    eventId: "00000000-0000-4000-8000-000000000013", court: "2", score: "4-0", matchId: "match-1", courtActive: true,
+  });
+  const otherInstance = new ScoreLogRepository(filename, { instanceId: "pk", now: () => 1000 });
+  otherInstance.init();
+  otherInstance.append({
+    eventId: "00000000-0000-4000-8000-000000000014", court: "1", score: "5-0", matchId: "match-1", courtActive: true,
+  });
+
+  assert.deepEqual(repository.getLatestByMatchIdAndCourt("match-1", "1"), latest);
+  assert.equal(repository.getLatestByMatchIdAndCourt("missing", "1"), null);
+  assert.throws(() => repository.getLatestByMatchIdAndCourt("", "1"), { code: "SCORE_LOG_MATCH_ID_INVALID" });
+  assert.throws(() => repository.getLatestByMatchIdAndCourt("x".repeat(65), "1"), { code: "SCORE_LOG_MATCH_ID_INVALID" });
+  assert.throws(() => repository.getLatestByMatchIdAndCourt("match 1", "1"), { code: "SCORE_LOG_MATCH_ID_INVALID" });
+  assert.throws(() => repository.getLatestByMatchIdAndCourt("match-1", "3"), { code: "SCORE_LOG_CONTEXT_INVALID" });
+  assert.throws(() => repository.getLatestByMatchIdAndCourt("match-1", 1), { code: "SCORE_LOG_CONTEXT_INVALID" });
+
+  const indexColumns = repository.db.prepare("PRAGMA index_xinfo('score_log_match_latest')").all()
+    .filter((column) => Number(column.key) === 1)
+    .map((column) => ({ name: column.name, desc: Number(column.desc) }));
+  assert.deepEqual(indexColumns, [
+    { name: "instance", desc: 0 },
+    { name: "match_id", desc: 0 },
+    { name: "court", desc: 0 },
+    { name: "sequence", desc: 1 },
+  ]);
+  otherInstance.close();
+  repository.close();
+});
+
 test("ScoreLog erholt sich nach einem transienten Statusprobefehler", () => {
   const repository = new ScoreLogRepository(":memory:", { instanceId: "test", now: () => 1000 });
   repository.init();

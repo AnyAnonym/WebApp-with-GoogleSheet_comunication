@@ -202,6 +202,43 @@ test("Forderungsaudit spiegelt kontrollierten Bewerb und Match fuer alle Ausgaen
   repository.close();
 });
 
+test("Ergebnisaudit spiegelt nur kontrollierte Abschlussfelder auf Top-Level", () => {
+  const events = [];
+  const repository = new AuditLogRepository(":memory:", {
+    instanceId: "test", journal: true, now: () => 1000,
+    log: (level, event, fields) => events.push({ level, event, fields }),
+  });
+  repository.init();
+  const common = {
+    eventId: "result-audit-1", actorType: "user", actorId: "p1", actorName: "Ada", role: "player",
+    action: "setMatchResult", targetType: "match", targetId: "m1", requestId: "result-audit-1", operationId: "op-1",
+  };
+  repository.record({ ...common, result: "started", before: { matchId: "m1", competitionId: "cup-1" } });
+  repository.record({
+    ...common,
+    result: "success",
+    after: {
+      matchId: "m1", competitionId: "cup-1", changeType: "result", completionType: "regular",
+      source: "participant", shiftedCount: 2, koTargetMatchId: "m2", koTargetStatus: "ready",
+    },
+  });
+  assert.deepEqual({
+    matchId: events[0].fields.matchId,
+    competitionId: events[0].fields.competitionId,
+    changeType: events[0].fields.changeType,
+    completionType: events[0].fields.completionType,
+    source: events[0].fields.source,
+    shiftedCount: events[0].fields.shiftedCount,
+    koTargetMatchId: events[0].fields.koTargetMatchId,
+    koTargetStatus: events[0].fields.koTargetStatus,
+    reason: events[0].fields.reason,
+  }, {
+    matchId: "m1", competitionId: "cup-1", changeType: "result", completionType: "regular",
+    source: "participant", shiftedCount: 2, koTargetMatchId: "m2", koTargetStatus: "ready", reason: undefined,
+  });
+  repository.close();
+});
+
 test("Normalisierungsjournal zeigt Zielname und kontrollierte Aenderungen ohne Kontaktwerte", () => {
   const events = [];
   const repository = new AuditLogRepository(":memory:", {

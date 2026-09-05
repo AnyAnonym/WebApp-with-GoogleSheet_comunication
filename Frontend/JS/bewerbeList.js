@@ -7,6 +7,11 @@ import { diagnostic } from "./diagnostics.js";
 const readBewerbe = createEndpoint("bewerbe");
 const readBewerbsart = createEndpoint("bewerbsart");
 const readCompetitionHistory = createEndpoint("competitionHistory");
+const ADMIN_RANKING_HISTORY_TYPES = new Set([
+  "ranking_challenge_deleted",
+  "ranking_challenge_date_changed",
+  "ranking_match_date_admin_changed",
+]);
 let competitionBoundaryTimer = null;
 let historyButtonsVisible = false;
 let historyAuthIdentity = null;
@@ -126,6 +131,9 @@ function renderCompetitionHistory() {
     appendHistoryText(item, entry?.roundName, "competition-history-entry-round");
     const title = entry?.summary ?? entry?.label ?? entry?.action ?? entry?.type ?? entry?.event;
     appendHistoryText(item, title || "Änderung", "competition-history-entry-title");
+    if (ADMIN_RANKING_HISTORY_TYPES.has(entry?.type)) {
+      appendHistoryText(item, entry?.detail, "competition-history-entry-detail");
+    }
     appendHistoryText(item, entry?.result ? `Ergebnis: ${entry.result}` : "", "competition-history-entry-result");
     const actor = entry?.actorName ?? entry?.actor;
     appendHistoryText(item, actor ? `Durch: ${actor}` : "", "competition-history-entry-meta");

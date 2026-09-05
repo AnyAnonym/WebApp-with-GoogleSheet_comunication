@@ -227,7 +227,7 @@ function collectPlayers(data, header, bewerbId) {
 
 // ── Statistik aus gespielten Matches ──
 
-function buildStats(matchData, matchHeader, bewerbId) {
+export function buildStats(matchData, matchHeader, bewerbId) {
   const h = matchHeader.map((c) => String(c).trim().toLowerCase());
   const bwIdx = h.indexOf("bewerbid");
   const p1Idx = h.indexOf("spieler1id");
@@ -248,13 +248,24 @@ function buildStats(matchData, matchHeader, bewerbId) {
     const id3 = p3Idx >= 0 ? parsePlayerId(row[p3Idx]) : "";
     const id4 = p4Idx >= 0 ? parsePlayerId(row[p4Idx]) : "";
     const rawResult = ergebnisIdx !== -1 ? String(row[ergebnisIdx] || "").trim() : "";
-    const sets = parseResult(rawResult);
-    const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
-    const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
-    const isPlayed = Boolean(rawResult || firstTeamRetired || secondTeamRetired);
+    const recordedSets = parseResult(rawResult);
+    const firstTeamMarkers = [p1Idx, p2Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index]));
+    const secondTeamMarkers = [p3Idx, p4Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index]));
+    const firstTeamWalkover = firstTeamMarkers.includes("wo");
+    const secondTeamWalkover = secondTeamMarkers.includes("wo");
+    const firstTeamRetired = firstTeamMarkers.includes("ret");
+    const secondTeamRetired = secondTeamMarkers.includes("ret");
+    const hasWalkover = firstTeamWalkover || secondTeamWalkover;
+    const hasRetirement = firstTeamRetired || secondTeamRetired;
+    const sets = firstTeamWalkover
+      ? [{ left: 0, right: 6 }, { left: 0, right: 6 }]
+      : secondTeamWalkover
+        ? [{ left: 6, right: 0 }, { left: 6, right: 0 }]
+        : recordedSets;
+    const isPlayed = Boolean(rawResult || hasWalkover || hasRetirement);
 
     // Gewinner aus Ergebnis berechnen
-    let winner = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
+    let winner = firstTeamWalkover || firstTeamRetired ? id3 : secondTeamWalkover || secondTeamRetired ? id1 : "";
     if (!winner && sets) {
       let setsLeft = 0, setsRight = 0;
       sets.forEach((s) => { if (s.left > s.right) setsLeft++; else if (s.right > s.left) setsRight++; });
@@ -280,12 +291,13 @@ function buildStats(matchData, matchHeader, bewerbId) {
           stats[key].gamesW += mine;
           stats[key].gamesL += opp;
           if (mine > opp) stats[key].saetzeW++;
-          else stats[key].saetzeL++;
+          else if (opp > mine) stats[key].saetzeL++;
         });
       }
       if (oppKey) {
         if (!playerMatches[key]) playerMatches[key] = [];
-        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || (firstTeamRetired || secondTeamRetired ? "wo/ret" : "—") });
+        const markerResult = hasWalkover ? "wo" : hasRetirement ? "ret" : "—";
+        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || markerResult });
       }
     });
   });

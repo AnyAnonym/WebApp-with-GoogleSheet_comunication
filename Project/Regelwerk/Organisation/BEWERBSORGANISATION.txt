@@ -40,22 +40,31 @@ nicht vollstaendig beschrieben. [Offen]
 4. ERGEBNISSE UND SONDERABSCHLUESSE
 ===================================
 
-Regulaere Ergebnisse, Walkover und Retirement werden derzeit durch den
-Administrator beziehungsweise die sportliche Leitung gepflegt. Eine spaetere
-systemweite Ergebniseingabe wird gesondert fachlich und funktional festgelegt.
-[Bestaetigt]
+Jede in einer der vier Spielerpositionen beteiligte Person darf fuer beide Seiten
+ein regulaeres Ergebnis, Walkover oder Retirement ohne Gegenbestaetigung
+eintragen und korrigieren. Administratoren duerfen dies bei jedem Match. Der
+Akteur wird in der Bewerbshistorie und in den persoenlichen Meldungen der
+Beteiligten genannt. Operatoren besitzen keine Ergebnisberechtigung. [Bestaetigt]
 
 Bei einem Walkover traegt die sportliche Leitung den Zeitpunkt der WO-Erklaerung
 als fachlichen Abschlusszeitpunkt ein. Fuer die Regel zu freien Gruenden gilt
 `Project/Regelwerk/Spielbetrieb/ALLGEMEINE-MATCHREGELN.txt`. [Bestaetigt]
 
+Beim ersten Abschluss waehlt der eintragende Beteiligte beziehungsweise
+Administrator das Matchende im erlaubten Korridor. Beteiligte koennen es danach
+nicht mehr aendern. Ein Administrator kann das Matchende mit Pflichtgrund
+korrigieren, ein Ergebnis begruendet loeschen und bei einer Ranglistenkorrektur
+einen vollstaendigen Rangplan vorgeben. [Bestaetigt]
+
 
 5. RANGLISTENPFLEGE
 ===================
 
-Ergebnisbedingte Rangverschiebungen werden derzeit von der sportlichen Leitung
-manuell entsprechend den verbindlichen Regeln in
-`Project/Regelwerk/Spielbetrieb/RANGLISTE.txt` vollzogen. Fristueberschreitungen
+Ergebnisbedingte Rangverschiebungen und Einreihungen werden gemeinsam mit dem
+Matchergebnis automatisch entsprechend den verbindlichen Regeln in
+`Project/Regelwerk/Spielbetrieb/RANGLISTE.txt` vollzogen. Nur bei einer
+zwischenzeitlich veraenderten oder nicht sicher rekonstruierbaren Rangfolge ist
+ein vollstaendiger administrativer Rangplan erforderlich. Fristueberschreitungen
 bewirken keine automatische Wertung; die sportliche Leitung entscheidet den
 Einzelfall. [Bestaetigt]
 

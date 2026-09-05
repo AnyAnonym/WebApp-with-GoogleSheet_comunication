@@ -13,24 +13,29 @@ sind moeglich. [Arbeitsannahme]
 2. TABELLENWERTUNG
 ==================
 
-Der aktuelle fachliche Arbeitsstand vergleicht die Gruppenteilnehmer in dieser
-Reihenfolge: [Arbeitsannahme]
+Die Gruppentabelle vergleicht die Gruppenteilnehmer in dieser Reihenfolge:
+[Bestaetigt]
 
   1. Anzahl der Siege;
   2. Satzdifferenz;
   3. Gamedifferenz.
 
-Die Entscheidung bei danach weiterhin vollstaendig gleichen Werten, ein direkter
-Vergleich, die genaue Behandlung nicht ausgetragener Matches sowie besondere
-Wertungen fuer Match-Tie-Breaks sind noch nicht fachlich festgelegt. [Offen]
+Die bestehende Frontendfunktion `buildStats` ist die einzige Tabellenberechnung.
+Eine zusaetzliche Backend-Rangfolge oder automatische Gruppenwertung existiert
+nicht. Die Entscheidung bei danach weiterhin vollstaendig gleichen Werten, ein
+direkter Vergleich und besondere Wertungen fuer Match-Tie-Breaks sind nicht
+zusaetzlich festgelegt. [Bestaetigt]
 
 
 3. WALKOVER UND RETIREMENT
 ==========================
 
 Walkover und Retirement bestimmen einen Gewinner nach
-`ALLGEMEINE-MATCHREGELN.txt`. Wie ein Match ohne regulaer vollstaendiges Ergebnis
-in Satz- und Gamedifferenz eingeht, ist noch zu entscheiden. [Offen]
+`ALLGEMEINE-MATCHREGELN.txt`. Ein Walkover zaehlt in `buildStats` unabhaengig von
+einem etwaigen gespeicherten Ergebnis fix als `0-6/0-6` aus Sicht der
+Verliererseite. Bei einem Retirement bleiben die gespielten Games erhalten; ein
+gefuehrter unvollstaendiger letzter Satz zaehlt als Satz fuer die fuehrende Seite.
+Gleichstaende in einem Satz erzeugen keinen Satzgewinn. [Bestaetigt]
 
 
 4. AUFSTIEG
@@ -43,3 +48,6 @@ Die konkrete Aufstiegsregel muss fuer den jeweiligen Bewerb festgelegt sein.
 
 Die derzeit verwendeten Spezifikationswerte und ihre vollstaendige fachliche
 Grammatik sind noch zu bestaetigen. [Offen]
+
+Die Anwendung markiert Aufsteiger in der Gruppenansicht, uebernimmt sie aber nicht
+automatisch in eine KO-Phase. [Bestaetigt]

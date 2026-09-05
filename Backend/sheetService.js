@@ -4,7 +4,16 @@ const { GOOGLE_REQUEST_TIMEOUT_MS, SHEET_ID, TABLE_CONFIG } = require("./config.
 const dataStore = require("./dataStore.js");
 const dataPoller = require("./dataPoller.js");
 const { AppError } = require("./errors.js");
-const { analyzeMatchRules, parseMatchDate, parseParticipant } = require("./matchRules.js");
+const { analyzeMatchRules, matchCompletionFingerprint, parseMatchDate, parseParticipant } = require("./matchRules.js");
+const {
+  MatchResultRuleError,
+  encodeCompletion,
+  koRoundSuccessor,
+  parseMatchTypeTable,
+  parseParticipantId,
+  resolveMatchType,
+  validateCompletion,
+} = require("./matchResultRules.js");
 const {
   FIELD_DEFINITIONS,
   fieldIndexes,
@@ -20,7 +29,7 @@ const {
   reconciliationFingerprint,
   validateReconciliationRequest,
 } = require("./memberReconciliation.js");
-const { headerIndex, headerOf } = require("./tableUtils.js");
+const { columnName, headerIndex, headerOf } = require("./tableUtils.js");
 const { assertPlayerLoginConflictsNotWorsened, validateTableValues } = require("./tableSchemas.js");
 const logger = require("./logger.js");
 const metrics = require("./metrics.js");
@@ -84,6 +93,10 @@ function stableRecordId(prefix, principal, operationId) {
   return `${prefix}-${digest}`;
 }
 
+function resultMembershipId(matchId, competitionId, personId) {
+  return `result-${crypto.createHash("sha256").update(`ranking:${matchId}:${competitionId}:${personId}`).digest("hex").slice(0, 32)}`;
+}
+
 function rowForHeader(header, valuesByName) {
   const row = Array(header.length).fill("");
   for (const [name, value] of Object.entries(valuesByName)) {
@@ -123,6 +136,108 @@ function parseCompetitionDate(raw, endOfDay) {
     throw new AppError("COMPETITION_DATE_INVALID", "Bewerbszeitraum ist ungueltig", 503);
   }
   return date;
+}
+
+function validCompactDateTime(value) {
+  const match = String(value || "").match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match || Number(match[4]) > 23 || Number(match[5]) > 59) return false;
+  const year = Number(match[1]) >= 50 ? 1900 + Number(match[1]) : 2000 + Number(match[1]);
+  const date = new Date(Date.UTC(year, Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === Number(match[2]) - 1
+    && date.getUTCDate() === Number(match[3]);
+}
+
+function rowObject(header, row) {
+  return Object.fromEntries(header.map((name, index) => [name, row[index] ?? ""]));
+}
+
+function completionState(row, header) {
+  const resultIndex = headerIndex(header, "ergebnis");
+  const endIndex = headerIndex(header, "matchende");
+  const participants = ["spieler1id", "spieler2id", "spieler3id", "spieler4id"].map((name) => {
+    const index = headerIndex(header, name);
+    return index < 0 ? { id: "", marker: null } : parseParticipantId(row[index]);
+  });
+  const marker = participants.find((participant) => participant.marker)?.marker || null;
+  return {
+    closed: Boolean(String(row[resultIndex] || "").trim() || marker),
+    result: String(row[resultIndex] || "").trim(),
+    matchEnd: String(row[endIndex] || "").trim(),
+    participants,
+    kind: marker === "wo" ? "walkover" : marker === "ret" ? "retirement" : "regular",
+  };
+}
+
+function appResultRuleError(error) {
+  if (!(error instanceof MatchResultRuleError)) return error;
+  return new AppError(error.code || "MATCH_RESULT_INVALID", error.message || "Matchergebnis ist ungueltig", 409);
+}
+
+function assertMatchEnd(matchDateValue, matchEndValue, now) {
+  const matchDate = parseMatchDate(matchDateValue);
+  const matchEnd = parseMatchDate(matchEndValue);
+  if (!matchDate || !matchEnd) throw new AppError("MATCH_END_INVALID", "Matchzeitpunkte sind ungueltig", 409);
+  if (matchEnd <= matchDate) throw new AppError("MATCH_END_BEFORE_START", "Matchende muss nach dem Matchbeginn liegen", 409);
+  if (matchEnd.getTime() > matchDate.getTime() + 6 * 60 * 60 * 1000) {
+    throw new AppError("MATCH_END_AFTER_LIMIT", "Matchende darf hoechstens sechs Stunden nach Matchbeginn liegen", 409);
+  }
+  if (matchEnd.getTime() > now) throw new AppError("MATCH_END_FUTURE", "Matchende darf nicht in der Zukunft liegen", 409);
+  return matchEnd;
+}
+
+function resultRecoveryError(message, params, recoveryDetails) {
+  const error = new AppError("WRITE_OUTCOME_UNKNOWN", message, 503, {
+    operationId: params.operationId,
+    matchId: params.matchId,
+    phase: "match-result",
+  });
+  Object.defineProperty(error, "_recoveryDetails", { value: recoveryDetails, enumerable: false });
+  return error;
+}
+
+function changedCells(header, beforeRow, afterRow, names) {
+  return names.flatMap((name) => {
+    const index = headerIndex(header, name);
+    if (index < 0) return [];
+    const before = beforeRow[index] ?? "";
+    const after = afterRow[index] ?? "";
+    return String(before) === String(after) ? [] : [{ index, name, before, after }];
+  });
+}
+
+function resultUpdateMatches(update, row, side) {
+  if (!row) return false;
+  return (update.identity || []).every(({ index, value }) => String(row[index] ?? "") === String(value))
+    && update.changes.every((change) => String(row[change.index] ?? "") === String(change[side] ?? ""));
+}
+
+function sparseResultRow(update) {
+  const maxIndex = Math.max(-1, ...update.changes.map(({ index }) => index));
+  const values = Array(maxIndex + 1).fill(null);
+  for (const { index, after } of update.changes) values[index] = after;
+  return values;
+}
+
+function assertRemovableInsertedRankingRow(update, row, header) {
+  const controlled = new Set(["id", "bewerbid", "personid", "rang"].map((name) => headerIndex(header, name)));
+  if (row.some((value, index) => !controlled.has(index) && String(value ?? "").trim())) {
+    throw new AppError("RANKING_REPAIR_REQUIRED", "Eingefuegte Ranglistenzeile enthaelt nicht kontrollierte Daten", 409);
+  }
+}
+
+function completionWinnerSide(state) {
+  const markedSide = state.participants[0].marker || state.participants[1].marker ? 1
+    : state.participants[2].marker || state.participants[3].marker ? 2 : 0;
+  if (markedSide) return 3 - markedSide;
+  let side1 = 0;
+  let side2 = 0;
+  for (const token of state.result.split("/").filter(Boolean)) {
+    const scores = token.replace(/\(\d+\)$/, "").split("-").map(Number);
+    if (scores[0] > scores[1]) side1++;
+    if (scores[1] > scores[0]) side2++;
+  }
+  return side1 > side2 ? 1 : side2 > side1 ? 2 : 0;
 }
 
 class SheetService {
@@ -297,6 +412,96 @@ class SheetService {
       });
     }
     return { competitionId };
+  }
+
+  personName(personId) {
+    const players = dataStore.get("players");
+    const header = headerOf(players);
+    const idIndex = headerIndex(header, "id");
+    const firstNameIndex = headerIndex(header, "vorname");
+    const lastNameIndex = headerIndex(header, "nachname");
+    const row = players.slice(1).find((entry) => String(entry[idIndex] || "").trim() === String(personId));
+    return row
+      ? [row[firstNameIndex], row[lastNameIndex]].map((value) => String(value || "").trim()).filter(Boolean).join(" ") || String(personId)
+      : String(personId);
+  }
+
+  adminRankingChallengeContext(row, header) {
+    const indexes = {
+      ignore: headerIndex(header, "ignore"),
+      id: headerIndex(header, "id"),
+      matchDate: headerIndex(header, "matchdate"),
+      challengeDate: headerIndex(header, "forderungdate"),
+      competition: headerIndex(header, "bewerbid"),
+      challenger: headerIndex(header, "spieler1id"),
+      opponent: headerIndex(header, "spieler3id"),
+      result: headerIndex(header, "ergebnis"),
+    };
+    if ([indexes.id, indexes.matchDate, indexes.challengeDate, indexes.competition, indexes.challenger, indexes.opponent, indexes.result].some((index) => index < 0)) {
+      throw new AppError("SHEET_SCHEMA", "Matches1-Spalten fuer administrative Forderungskorrekturen fehlen", 503);
+    }
+    const competitionId = String(row[indexes.competition] || "").trim();
+    const competition = this.competition(competitionId);
+    const competitionTypeIndex = headerIndex(competition.header, "bewerbsartid");
+    if (competitionTypeIndex < 0) throw new AppError("SHEET_SCHEMA", "Bewerbsart-Spalte fehlt", 503);
+    if (String(competition.row[competitionTypeIndex] || "").trim() !== "2") {
+      throw new AppError("RANKING_MATCH_REQUIRED", "Die administrative Korrektur ist nur fuer Ranglistenforderungen erlaubt", 409);
+    }
+    const challenger = parseParticipant(row[indexes.challenger]);
+    const opponent = parseParticipant(row[indexes.opponent]);
+    if ((indexes.ignore >= 0 && String(row[indexes.ignore] || "").trim() === "1")
+      || !String(row[indexes.challengeDate] || "").trim()
+      || String(row[indexes.result] || "").trim()
+      || !challenger.id
+      || !opponent.id
+      || challenger.id === opponent.id
+      || challenger.retired
+      || opponent.retired) {
+      throw new AppError("RANKING_CHALLENGE_CLOSED", "Die Forderung ist nicht mehr offen", 409);
+    }
+    return {
+      indexes,
+      matchId: String(row[indexes.id] || "").trim(),
+      competitionId,
+      challengeDate: String(row[indexes.challengeDate] || "").trim(),
+      matchDate: String(row[indexes.matchDate] || "").trim(),
+      challengerId: challenger.id,
+      opponentId: opponent.id,
+    };
+  }
+
+  async ensureAdminRankingChallengeEvent(principal, params, plan) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    const competition = this.competition(plan.competitionId);
+    const competitionName = String(competition.row[headerIndex(competition.header, "bezeichnung")] || "").trim();
+    try {
+      await this.messagingService.ensureAdminRankingChallengeEvent({
+        action: plan.action,
+        operationId: params.operationId,
+        matchId: params.matchId,
+        competitionId: plan.competitionId,
+        competitionName,
+        challengerId: plan.challengerId,
+        challengerName: this.personName(plan.challengerId),
+        opponentId: plan.opponentId,
+        opponentName: this.personName(plan.opponentId),
+        actorId: principal.id,
+        actorName: principal.name || this.personName(principal.id),
+        reason: params.reason,
+        previousDate: plan.previousDate || "",
+        nextDate: plan.nextDate || "",
+        createdAt: plan.occurredAt,
+      });
+    } catch (error) {
+      logger.log("error", "ranking_admin_event_persistence_failed", {
+        action: plan.action,
+        matchId: params.matchId,
+        competitionId: plan.competitionId,
+        actorId: principal.id,
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw new AppError("WRITE_OUTCOME_UNKNOWN", "Aenderung ist ausgefuehrt, Meldungen konnten nicht bestaetigt werden", 503, plan);
+    }
   }
 
   competition(competitionId) {
@@ -1085,7 +1290,10 @@ class SheetService {
         return repeated ? { ...result, repeated: true } : result;
       } catch (error) {
         if (error.code === "WRITE_OUTCOME_UNKNOWN") {
-          const marker = { operationStatus: "unknown", details: error.details || null };
+          const marker = {
+            operationStatus: "unknown",
+            details: Object.hasOwn(error, "_recoveryDetails") ? error._recoveryDetails : error.details || null,
+          };
           if (repeated) this.repository.replaceOperation(actorKey, operationId, endpoint, payload, marker);
           else this.repository.saveOperation(actorKey, operationId, endpoint, payload, marker);
         } else if (checkpointed) {
@@ -1769,6 +1977,1054 @@ class SheetService {
       return withAudit({ success: true, matchId: params.matchId, matchDate: params.matchDate, ...(recovered ? { recovered: true } : {}) }, {
         before: { matchId: params.matchId, matchDate: previousDate },
         after: { matchId: params.matchId, matchDate: params.matchDate },
+      });
+    }));
+  }
+
+  matchResultCompetition(matchRow, matchHeader) {
+    const competitionId = String(matchRow[headerIndex(matchHeader, "bewerbid")] || "").trim();
+    const competition = this.competition(competitionId);
+    const typeId = String(competition.row[headerIndex(competition.header, "bewerbsartid")] || "").trim();
+    const types = dataStore.get("bewerbsart");
+    const typeHeader = headerOf(types);
+    const typeRow = types.slice(1).find((row) => String(row[headerIndex(typeHeader, "id")] || "").trim() === typeId) || [];
+    const roundRobinIndex = headerIndex(typeHeader, "roundrobin");
+    return {
+      competitionId,
+      competition,
+      typeId,
+      typeHeader,
+      typeRow,
+      ranking: typeId === "2",
+      roundRobin: typeRow.length && roundRobinIndex >= 0
+        ? String(typeRow[roundRobinIndex] || "").trim() === "1"
+        : null,
+      rasterfunktion: String(typeRow[headerIndex(typeHeader, "rasterfunktion")] || "").trim(),
+    };
+  }
+
+  matchResultRules(matchRow, matchHeader, competition) {
+    try {
+      const types = parseMatchTypeTable(dataStore.get("matchtyp"));
+      return resolveMatchType(rowObject(matchHeader, matchRow), rowObject(competition.header, competition.row), types).rules;
+    } catch (error) {
+      throw appResultRuleError(error);
+    }
+  }
+
+  assertResultActor(principal, state) {
+    if (principal.role === "admin") return;
+    if (!["player", "player a", "player b"].includes(String(principal.role || "").toLowerCase())
+      || !state.participants.some(({ id }) => id === String(principal.id))) {
+      throw new AppError("MATCH_PARTICIPANT_REQUIRED", "Nur Matchbeteiligte duerfen Ergebnisse eintragen", 403);
+    }
+  }
+
+  assertResultParticipants(state) {
+    const participants = state.participants;
+    if (!participants[0]?.id || !participants[2]?.id) {
+      throw new AppError("MATCH_PARTICIPANTS_INVALID", "Beide Matchseiten benoetigen einen Hauptspieler", 409);
+    }
+    if (Boolean(participants[1]?.id) !== Boolean(participants[3]?.id)) {
+      throw new AppError("MATCH_PARTICIPANTS_INVALID", "Doppelpartner muessen auf beiden Seiten vorhanden sein", 409);
+    }
+    const players = dataStore.get("players");
+    const playerHeader = headerOf(players);
+    const idIndex = headerIndex(playerHeader, "id");
+    const knownIds = new Set(players.slice(1).map((row) => String(row[idIndex] || "").trim()).filter(Boolean));
+    const ids = participants.map(({ id }) => id).filter(Boolean);
+    if (ids.some((id) => !/^[A-Za-z0-9_.:-]{1,64}$/.test(id) || /^(?:PRE|BYE)$/i.test(id) || !knownIds.has(id))) {
+      throw new AppError("MATCH_PARTICIPANTS_INVALID", "Match enthaelt unbekannte oder ungueltige Teilnehmer", 409);
+    }
+    if (new Set(ids).size !== ids.length) {
+      throw new AppError("MATCH_PARTICIPANTS_INVALID", "Jede Person darf nur einmal im Match vorkommen", 409);
+    }
+    const marked = participants.map(({ marker }, index) => ({ marker, index })).filter(({ marker }) => marker);
+    if (marked.length > 1 || marked.some(({ index }) => index !== 0 && index !== 2)
+      || (!state.closed && marked.length) || (marked[0]?.marker === "wo" && Boolean(state.result))) {
+      throw new AppError("MATCH_PARTICIPANTS_INVALID", "Abschlussmarker des Matches sind nicht eindeutig", 409);
+    }
+  }
+
+  resultRankingTargets(values, competitionId, state, winnerSide, matchId) {
+    const header = headerOf(values);
+    const indexes = {
+      competition: headerIndex(header, "bewerbid"),
+      person: headerIndex(header, "personid"),
+      rank: headerIndex(header, "rang"),
+    };
+    const challengerId = state.participants[0].id;
+    const defenderId = state.participants[2].id;
+    const memberships = values.slice(1).filter((row) => String(row[indexes.competition] || "").trim() === competitionId);
+    const challenger = memberships.find((row) => String(row[indexes.person] || "").trim() === challengerId);
+    const defender = memberships.find((row) => String(row[indexes.person] || "").trim() === defenderId);
+    if (!defender || Number(defender[indexes.rank]) <= 0) throw new AppError("RANKING_REPAIR_REQUIRED", "Ranglistenstand muss administrativ repariert werden", 409);
+    const defenderRank = Number(defender[indexes.rank]);
+    const active = memberships.filter((row) => Number(row[indexes.rank]) > 0);
+    if (!Number.isInteger(defenderRank) || defenderRank < 1) {
+      throw new AppError("RANKING_REPAIR_REQUIRED", "Ranglistenstand muss administrativ repariert werden", 409);
+    }
+    if (!challenger) {
+      const ranksBehind = active.filter((row) => Number(row[indexes.rank]) > defenderRank).length;
+      if (winnerSide !== 1 && ranksBehind >= 10) return [];
+      const afterRank = winnerSide === 1
+        ? defenderRank
+        : Math.max(...active.map((row) => Number(row[indexes.rank]))) + 1;
+      const targets = winnerSide === 1 ? active.flatMap((row) => {
+        const rank = Number(row[indexes.rank]);
+        return rank >= defenderRank
+          ? [{ personId: String(row[indexes.person] || "").trim(), beforeRank: rank, afterRank: rank + 1 }]
+          : [];
+      }) : [];
+      return [...targets, { personId: challengerId, beforeRank: null, afterRank, inserted: true, recordId: resultMembershipId(matchId, competitionId, challengerId) }];
+    }
+    const challengerRank = Number(challenger[indexes.rank]);
+    if (!Number.isInteger(challengerRank) || challengerRank < 0) {
+      throw new AppError("RANKING_REPAIR_REQUIRED", "Ranglistenstand muss administrativ repariert werden", 409);
+    }
+    if (challengerRank === 0) {
+      const withdrawnAtIndex = headerIndex(header, "rausgehangenam");
+      const previousRankIndex = headerIndex(header, "rausgehangenletzteplatzierung");
+      const withdrawnAt = parseMatchDate(challenger[withdrawnAtIndex]);
+      const previousRank = Number(challenger[previousRankIndex]);
+      if (!withdrawnAt || !Number.isInteger(previousRank) || previousRank < 1) {
+        throw new AppError("RANKING_RETURN_INVALID", "Rueckkehranspruch ist ungueltig", 409);
+      }
+      const expiresAt = new Date(withdrawnAt);
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      if (new Date(this.now()) > expiresAt) {
+        const ranksBehind = active.filter((row) => Number(row[indexes.rank]) > defenderRank).length;
+        if (winnerSide !== 1 && ranksBehind >= 10) return [];
+        const afterRank = winnerSide === 1
+          ? defenderRank
+          : Math.max(...active.map((row) => Number(row[indexes.rank]))) + 1;
+        const targets = winnerSide === 1 ? active.flatMap((row) => {
+          const rank = Number(row[indexes.rank]);
+          return rank >= defenderRank
+            ? [{ personId: String(row[indexes.person] || "").trim(), beforeRank: rank, afterRank: rank + 1 }]
+            : [];
+        }) : [];
+        return [...targets, { personId: challengerId, beforeRank: 0, afterRank }];
+      }
+      const insertionRank = winnerSide === 1 ? defenderRank : defenderRank + 1;
+      return memberships.flatMap((row) => {
+        const personId = String(row[indexes.person] || "").trim();
+        const rank = Number(row[indexes.rank]);
+        if (personId === challengerId) return [{ personId, beforeRank: 0, afterRank: insertionRank }];
+        return rank >= insertionRank
+          ? [{ personId, beforeRank: rank, afterRank: rank + 1 }]
+          : [];
+      });
+    }
+    if (winnerSide !== 1) return [];
+    if (challengerRank > 0 && challengerRank <= defenderRank) return [];
+    return memberships.flatMap((row) => {
+      const personId = String(row[indexes.person] || "").trim();
+      const rank = Number(row[indexes.rank]);
+      if (personId === challengerId) return [{ personId, beforeRank: challengerRank, afterRank: defenderRank }];
+      if (rank >= defenderRank && (challengerRank === 0 || rank < challengerRank)) {
+        return [{ personId, beforeRank: rank, afterRank: rank + 1 }];
+      }
+      return [];
+    });
+  }
+
+  customRankingTargets(values, competitionId, rankPlan) {
+    const header = headerOf(values);
+    const competitionIndex = headerIndex(header, "bewerbid");
+    const personIndex = headerIndex(header, "personid");
+    const rankIndex = headerIndex(header, "rang");
+    const rows = values.slice(1).filter((row) => String(row[competitionIndex] || "").trim() === competitionId);
+    const byPerson = new Map(rankPlan.map((entry) => [entry.personId, entry]));
+    if (byPerson.size !== rankPlan.length || rows.length !== rankPlan.length
+      || rows.some((row) => !byPerson.has(String(row[personIndex] || "").trim()))) {
+      throw new AppError("RANK_PLAN_INCOMPLETE", "Rangplan muss alle Ranglistenmitglieder eindeutig enthalten", 409);
+    }
+    const targets = rows.map((row) => {
+      const personId = String(row[personIndex] || "").trim();
+      const currentRank = Number(row[rankIndex]);
+      const entry = byPerson.get(personId);
+      if (currentRank > 0 && entry.newRank === 0) {
+        throw new AppError("RANK_PLAN_INVALID", "Aktive Ranglistenmitglieder koennen ohne Raushaengedaten nicht auf Rang 0 gesetzt werden", 409);
+      }
+      if (currentRank !== entry.expectedRank) throw new AppError("RANK_CONFLICT", "Rang wurde zwischenzeitlich geaendert", 409);
+      return { personId, beforeRank: currentRank, afterRank: entry.newRank };
+    });
+    const ranks = targets.map(({ afterRank }) => afterRank);
+    const positiveRanks = ranks.filter((rank) => rank > 0);
+    if (new Set(positiveRanks).size !== positiveRanks.length || ranks.some((rank) => !Number.isInteger(rank) || rank < 0)) {
+      throw new AppError("RANK_PLAN_INVALID", "Positive Zielraenge muessen eindeutig sein; Rang 0 darf mehrfach vorkommen", 409);
+    }
+    return targets;
+  }
+
+  async resultPlan(principal, params, values, rankingValues, options) {
+    const header = headerOf(values);
+    const idIndex = headerIndex(header, "id");
+    const row = values.slice(1).find((entry) => String(entry[idIndex] || "").trim() === params.matchId);
+    if (!row) throw new AppError("MATCH_NOT_FOUND", "Match wurde nicht gefunden", 404);
+    const state = completionState(row, header);
+    this.assertResultParticipants(state);
+    const adminReason = options.admin ? String(params.reason || "").trim() : "";
+    if (options.admin && (adminReason.length < 1 || adminReason.length > 500)) {
+      throw new AppError("ADMIN_REASON_REQUIRED", "Administrativer Grund muss 1 bis 500 Zeichen lang sein", 400);
+    }
+    const currentFingerprint = matchCompletionFingerprint(row, header);
+    if (currentFingerprint !== params.expectedFingerprint) {
+      throw new AppError("RESULT_CONFLICT", "Matchergebnis wurde zwischenzeitlich geaendert", 409, { currentFingerprint });
+    }
+    const context = this.matchResultCompetition(row, header);
+    if (options.rankPlan && !context.ranking) throw new AppError("RANKING_MATCH_REQUIRED", "Administrativer Rangplan ist nur fuer Ranglistenmatches erlaubt", 409);
+    const matchDateIndex = headerIndex(header, "matchdate");
+    const matchEndIndex = headerIndex(header, "matchende");
+    if (matchDateIndex < 0 || matchEndIndex < 0) throw new AppError("SHEET_SCHEMA", "Matches1-Spalten MatchDate oder MatchEnde fehlen", 503);
+    const participantIds = [...new Set(state.participants.map(({ id }) => id).filter(Boolean))];
+    let changeType;
+    let completionType = state.kind;
+    let targetRow = [...row];
+    let winnerSide = completionWinnerSide(state);
+    const previousWinnerSide = winnerSide;
+    let rankingTargets = [];
+    let rankingProvenanceBefore = null;
+    let rankingProvenanceAfter = null;
+    let rankingProvenanceReplace = false;
+    let koTarget = null;
+    let koTargetStatus = "";
+    let koExpectedRoundCode = "";
+
+    if (options.action === "matchEnd") {
+      if (!state.closed || !state.matchEnd || !winnerSide) throw new AppError("MATCH_RESULT_OPEN", "Match ist noch nicht abgeschlossen", 409);
+      assertMatchEnd(row[matchDateIndex], params.matchEnd, this.now());
+      targetRow[matchEndIndex] = params.matchEnd;
+      changeType = "match_end_corrected";
+    } else if (options.action === "clear") {
+      if (!state.closed || !winnerSide) throw new AppError("MATCH_RESULT_OPEN", "Match ist noch nicht abgeschlossen", 409);
+      targetRow[headerIndex(header, "ergebnis")] = "";
+      targetRow[matchEndIndex] = "";
+      for (const field of ["spieler1id", "spieler2id", "spieler3id", "spieler4id"]) {
+        const index = headerIndex(header, field);
+        if (index >= 0) targetRow[index] = String(targetRow[index] || "").replace(/\s+\[(?:wo|ret)\]$/, "").trim();
+      }
+      changeType = "result_cleared";
+    } else {
+      this.assertResultActor(principal, state);
+      const rules = this.matchResultRules(row, header, context.competition);
+      let validated;
+      try {
+        validated = validateCompletion({ kind: params.kind, result: params.result || "", losingSide: params.losingSide }, rules);
+      } catch (error) {
+        throw appResultRuleError(error);
+      }
+      if (!validated.valid) throw new AppError(validated.error, "Matchergebnis ist ungueltig", 409);
+      const suppliedEnd = params.matchEnd || "";
+      if (!state.closed && !suppliedEnd) throw new AppError("MATCH_END_REQUIRED", "Beim ersten Abschluss ist MatchEnde erforderlich", 409);
+      if (state.closed && suppliedEnd && suppliedEnd !== state.matchEnd) {
+        throw new AppError("MATCH_END_CHANGE_FORBIDDEN", principal.role === "admin"
+          ? "Matchende muss ueber die administrative Zeitkorrektur geaendert werden"
+          : "Beteiligte duerfen MatchEnde bei Korrekturen nicht aendern", principal.role === "admin" ? 409 : 403);
+      }
+      const targetEnd = state.closed ? state.matchEnd : suppliedEnd;
+      assertMatchEnd(row[matchDateIndex], targetEnd, this.now());
+      let encoded;
+      try {
+        encoded = encodeCompletion({
+          Ergebnis: row[headerIndex(header, "ergebnis")] || "",
+          Spieler1ID: row[headerIndex(header, "spieler1id")] || "",
+          Spieler2ID: headerIndex(header, "spieler2id") < 0 ? "" : row[headerIndex(header, "spieler2id")] || "",
+          Spieler3ID: row[headerIndex(header, "spieler3id")] || "",
+          Spieler4ID: headerIndex(header, "spieler4id") < 0 ? "" : row[headerIndex(header, "spieler4id")] || "",
+        }, validated);
+      } catch (error) {
+        throw appResultRuleError(error);
+      }
+      for (const field of ["Ergebnis", "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID"]) {
+        const index = headerIndex(header, field);
+        if (index >= 0 && Object.hasOwn(encoded, field)) targetRow[index] = encoded[field];
+      }
+      targetRow[matchEndIndex] = targetEnd;
+      winnerSide = validated.winnerSide;
+      completionType = validated.kind;
+      changeType = state.closed ? "result_corrected" : "result";
+      if (context.ranking) {
+        if (options.rankPlan) {
+          rankingTargets = this.customRankingTargets(rankingValues, context.competitionId, options.rankPlan);
+          const provenance = this.repository.getState(`match-result-ranking:${params.matchId}`, null).value;
+          if (provenance) {
+            const originalByPerson = new Map(provenance.before.map((entry) => [entry.personId, entry]));
+            rankingProvenanceBefore = [
+              ...provenance.before,
+              ...rankingTargets.filter(({ personId }) => !originalByPerson.has(personId)).map(({ personId, beforeRank, inserted }) => ({
+                personId,
+                beforeRank,
+                ...(inserted ? { inserted: true } : {}),
+              })),
+            ];
+            const insertedIds = new Set(rankingProvenanceBefore.filter(({ inserted }) => inserted).map(({ personId }) => personId));
+            rankingProvenanceAfter = rankingTargets.map(({ personId, afterRank }) => ({
+              personId,
+              afterRank,
+              ...(insertedIds.has(personId) ? { inserted: true } : {}),
+            }));
+            rankingProvenanceReplace = true;
+          }
+        }
+        else {
+          const provenance = this.repository.getState(`match-result-ranking:${params.matchId}`, null).value;
+          if (state.closed && provenance) {
+            rankingProvenanceBefore = provenance.before;
+            const rankMap = new Map(provenance.after.map((entry) => [entry.personId, entry.afterRank]));
+            const rankingHeader = headerOf(rankingValues);
+            const competitionIndex = headerIndex(rankingHeader, "bewerbid");
+            const personIndex = headerIndex(rankingHeader, "personid");
+            const rankIndex = headerIndex(rankingHeader, "rang");
+            const current = rankingValues.slice(1).filter((entry) => String(entry[competitionIndex] || "").trim() === context.competitionId);
+            if (provenance.after.some((entry) => Number(current.find((row) => String(row[personIndex] || "").trim() === entry.personId)?.[rankIndex]) !== rankMap.get(entry.personId))) {
+              throw new AppError("RANKING_REPAIR_REQUIRED", "Ranglistenstand wurde nach dem Ergebnis veraendert", 409);
+            }
+            for (const entry of provenance.after.filter((candidate) => candidate.inserted)) {
+              const currentRow = current.find((candidate) => String(candidate[personIndex] || "").trim() === entry.personId);
+              const rankingIdIndex = headerIndex(rankingHeader, "id");
+              if (!currentRow || String(currentRow[rankingIdIndex] || "").trim() !== resultMembershipId(params.matchId, context.competitionId, entry.personId)) {
+                throw new AppError("RANKING_REPAIR_REQUIRED", "Eingefuegte Ranglistenmitgliedschaft wurde nach dem Ergebnis veraendert", 409);
+              }
+            }
+            const virtual = structuredClone(rankingValues);
+            const virtualRows = virtual.slice(1).filter((entry) => String(entry[competitionIndex] || "").trim() === context.competitionId);
+            for (const entry of provenance.before) {
+              const rowToRestore = virtualRows.find((candidate) => String(candidate[personIndex] || "").trim() === entry.personId);
+              if (entry.inserted && rowToRestore) rowToRestore.fill("");
+              else if (rowToRestore) rowToRestore[rankIndex] = entry.beforeRank;
+            }
+            const nextTargets = this.resultRankingTargets(virtual, context.competitionId, state, winnerSide, params.matchId);
+            rankingProvenanceReplace = true;
+            const originalByPerson = new Map(provenance.before.map((entry) => [entry.personId, entry]));
+            rankingProvenanceBefore = [
+              ...provenance.before,
+              ...nextTargets.filter(({ personId }) => !originalByPerson.has(personId)).map(({ personId, beforeRank, inserted }) => ({
+                personId,
+                beforeRank,
+                ...(inserted ? { inserted: true } : {}),
+              })),
+            ];
+            rankingProvenanceAfter = nextTargets.map(({ personId, afterRank, inserted }) => ({ personId, afterRank, ...(inserted ? { inserted: true } : {}) }));
+            for (const target of nextTargets) {
+              let targetRow = virtualRows.find((candidate) => String(candidate[personIndex] || "").trim() === target.personId);
+              if (!targetRow && target.inserted) {
+                targetRow = rowForHeader(rankingHeader, { ID: target.recordId, BewerbID: context.competitionId, PersonID: target.personId, Rang: target.afterRank });
+                const empty = virtual.slice(1).findIndex((candidate) => !candidate.some((value) => String(value || "").trim()));
+                if (empty >= 0) virtual[empty + 1].splice(0, virtual[empty + 1].length, ...targetRow);
+                else {
+                  virtual.push(targetRow);
+                  virtualRows.push(targetRow);
+                }
+              } else if (targetRow) targetRow[rankIndex] = target.afterRank;
+            }
+            const affected = new Set([...provenance.after.map((entry) => entry.personId), ...nextTargets.map((entry) => entry.personId)]);
+            rankingTargets = [...affected].flatMap((personId) => {
+              const actual = current.find((candidate) => String(candidate[personIndex] || "").trim() === personId);
+              const desired = virtualRows.find((candidate) => String(candidate[personIndex] || "").trim() === personId);
+              const previous = provenance.before.find((entry) => entry.personId === personId);
+              const next = nextTargets.find((entry) => entry.personId === personId);
+              if (actual && !desired) return [{ personId, beforeRank: Number(actual[rankIndex]), afterRank: null, removed: true, inserted: Boolean(previous?.inserted) }];
+              if (!actual && desired) return [{ personId, beforeRank: null, afterRank: Number(desired[rankIndex]), inserted: true, recordId: next?.recordId }];
+              return actual && desired && Number(actual[rankIndex]) !== Number(desired[rankIndex])
+                ? [{ personId, beforeRank: Number(actual[rankIndex]), afterRank: Number(desired[rankIndex]), inserted: Boolean(previous?.inserted) }]
+                : [];
+            });
+          } else if (state.closed && previousWinnerSide === 1) {
+            throw new AppError("RANKING_REPAIR_REQUIRED", "Provenienz der Rangverschiebung fehlt", 409);
+          } else {
+            rankingTargets = this.resultRankingTargets(rankingValues, context.competitionId, state, winnerSide, params.matchId);
+          }
+        }
+      }
+    }
+
+    const raster = Number(context.rasterfunktion);
+    if (!context.ranking && context.roundRobin === false && Number.isInteger(raster) && raster > 0 && (raster & (raster - 1)) === 0) {
+      let successor;
+      try { successor = koRoundSuccessor(row[headerIndex(header, "bewerbrunde")], raster); } catch (error) { throw appResultRuleError(error); }
+      if (successor) {
+        koExpectedRoundCode = successor.roundCode;
+        const roundIndex = headerIndex(header, "bewerbrunde");
+        const successorRows = values.slice(1).filter((entry) => (
+          String(entry[headerIndex(header, "bewerbid")] || "").trim() === context.competitionId
+          && String(entry[roundIndex] || "").trim().toUpperCase() === successor.roundCode
+        ));
+        if (successorRows.length > 1) throw new AppError("KO_TARGET_AMBIGUOUS", "KO-Nachfolgematch ist nicht eindeutig", 409);
+        if (successorRows.length === 0) koTargetStatus = options.action === "clear" ? "" : "missing";
+        else {
+          const [successorRow] = successorRows;
+          const successorState = completionState(successorRow, header);
+          if (successorState.closed) throw new AppError("RESULT_CORRECTION_DEPENDENCY_CONFLICT", "Abhaengiges KO-Match ist bereits abgeschlossen", 409);
+          const oldWinner = completionWinnerSide(state);
+          const oldIds = oldWinner ? (oldWinner === 1 ? state.participants.slice(0, 2) : state.participants.slice(2, 4)).map(({ id }) => id).filter(Boolean) : [];
+          const winningParticipants = winnerSide === 1 ? state.participants.slice(0, 2) : state.participants.slice(2, 4);
+          if (options.action !== "clear" && (!winningParticipants[0]?.id || winningParticipants.some(({ id, marker }) => id && (marker || id === "PRE")))) {
+            throw new AppError("KO_WINNER_INVALID", "KO-Gewinnerseite enthaelt keine sauberen Personen-IDs", 409);
+          }
+          const newIds = options.action === "clear" ? [] : winningParticipants.map(({ id }) => id).filter(Boolean);
+          const slotNames = successor.side === 1 ? ["spieler1id", "spieler2id"] : ["spieler3id", "spieler4id"];
+          const successorTarget = [...successorRow];
+          const existing = slotNames.map((name) => String(successorRow[headerIndex(header, name)] || "").trim()).filter(Boolean);
+          if (state.closed && existing.join("\0") !== oldIds.join("\0")) {
+            throw new AppError("RESULT_CORRECTION_DEPENDENCY_CONFLICT", "KO-Nachfolger wurde zwischenzeitlich veraendert", 409);
+          }
+          if (!state.closed && existing.length && existing.join("\0") !== newIds.join("\0")) {
+            throw new AppError("RESULT_CORRECTION_DEPENDENCY_CONFLICT", "KO-Zielslot ist bereits belegt", 409);
+          }
+          slotNames.forEach((name, index) => { successorTarget[headerIndex(header, name)] = newIds[index] || ""; });
+          koTarget = {
+            recordId: String(successorRow[idIndex] || "").trim(),
+            changes: changedCells(header, successorRow, successorTarget, slotNames),
+            identity: [{ index: idIndex, name: "id", value: String(successorRow[idIndex] || "") }],
+          };
+          koTargetStatus = "ready";
+        }
+      }
+    }
+
+    if (options.action === "clear" && context.ranking) {
+      const provenance = this.repository.getState(`match-result-ranking:${params.matchId}`, null).value;
+      if (provenance) {
+        const rankingHeader = headerOf(rankingValues);
+        const competitionIndex = headerIndex(rankingHeader, "bewerbid");
+        const personIndex = headerIndex(rankingHeader, "personid");
+        const rankIndex = headerIndex(rankingHeader, "rang");
+        rankingTargets = provenance.after.map((entry) => {
+          const current = rankingValues.slice(1).find((candidate) => String(candidate[competitionIndex] || "").trim() === context.competitionId && String(candidate[personIndex] || "").trim() === entry.personId);
+          if (!current || Number(current[rankIndex]) !== entry.afterRank) throw new AppError("RANKING_REPAIR_REQUIRED", "Ranglistenstand wurde nach dem Ergebnis veraendert", 409);
+          const before = provenance.before.find((candidate) => candidate.personId === entry.personId);
+          if (before?.inserted) {
+            const idIndex = headerIndex(rankingHeader, "id");
+            if (String(current[idIndex] || "").trim() !== resultMembershipId(params.matchId, context.competitionId, entry.personId)) {
+              throw new AppError("RANKING_REPAIR_REQUIRED", "Eingefuegte Ranglistenmitgliedschaft wurde nach dem Ergebnis veraendert", 409);
+            }
+          }
+          if (!before) throw new AppError("RANKING_REPAIR_REQUIRED", "Urspruengliche Ranglistenprovenienz ist unvollstaendig", 409);
+          return before?.inserted
+            ? { personId: entry.personId, beforeRank: entry.afterRank, afterRank: null, removed: true, inserted: true }
+            : { personId: entry.personId, beforeRank: entry.afterRank, afterRank: before.beforeRank };
+        });
+      } else if (winnerSide === 1) {
+        throw new AppError("RANKING_REPAIR_REQUIRED", "Provenienz der Rangverschiebung fehlt", 409);
+      }
+    }
+
+    const rankingHeader = headerOf(rankingValues);
+    const rankingCompetitionIndex = headerIndex(rankingHeader, "bewerbid");
+    const rankingPersonIndex = headerIndex(rankingHeader, "personid");
+    const rankingRankIndex = headerIndex(rankingHeader, "rang");
+    const rankUpdates = rankingTargets.flatMap((target) => {
+      const rankingRow = rankingValues.slice(1).find((entry) => String(entry[rankingCompetitionIndex] || "").trim() === context.competitionId && String(entry[rankingPersonIndex] || "").trim() === target.personId);
+      if (target.inserted && target.beforeRank === null) {
+        if (rankingRow) throw new AppError("RANK_CONFLICT", "Ranglistenmitgliedschaft wurde zwischenzeitlich angelegt", 409);
+        const emptyOffset = rankingValues.slice(1).findIndex((entry) => !entry.some((value) => String(value || "").trim()));
+        const rowNumber = emptyOffset >= 0 ? emptyOffset + 2 : rankingValues.length + 1;
+        const afterRow = rowForHeader(rankingHeader, { ID: target.recordId, BewerbID: context.competitionId, PersonID: target.personId, Rang: target.afterRank });
+        const changes = ["id", "bewerbid", "personid", "rang"].map((name) => {
+          const index = headerIndex(rankingHeader, name);
+          return { index, name, before: "", after: afterRow[index] ?? "" };
+        });
+        return [{ table: "rlPlatzierung", recordId: `membership:${context.competitionId}:${target.personId}`, personId: target.personId, beforeRank: null, afterRank: target.afterRank, inserted: true, rowNumber, changes, identity: [] }];
+      }
+      if (!rankingRow || Number(rankingRow[rankingRankIndex]) !== target.beforeRank) throw new AppError("RANK_CONFLICT", "Rang wurde zwischenzeitlich geaendert", 409);
+      const rowNumber = rankingValues.indexOf(rankingRow) + 1;
+      if (!target.removed && target.beforeRank === target.afterRank) return [];
+      const names = target.removed ? ["id", "bewerbid", "personid", "rang"] : ["rang"];
+      const afterRow = [...rankingRow];
+      for (const name of names) afterRow[headerIndex(rankingHeader, name)] = target.removed ? "" : target.afterRank;
+      return [{
+        table: "rlPlatzierung",
+        recordId: `membership:${context.competitionId}:${target.personId}`,
+        personId: target.personId,
+        beforeRank: target.beforeRank,
+        afterRank: target.afterRank,
+        inserted: Boolean(target.inserted),
+        removed: Boolean(target.removed),
+        rowNumber,
+        changes: changedCells(rankingHeader, rankingRow, afterRow, names),
+        identity: target.removed ? [] : [
+          { index: rankingCompetitionIndex, name: "bewerbid", value: context.competitionId },
+          { index: rankingPersonIndex, name: "personid", value: target.personId },
+        ],
+      }];
+    });
+    const matchChanges = changedCells(header, row, targetRow, ["ergebnis", "matchende", "spieler1id", "spieler2id", "spieler3id", "spieler4id"]);
+    const competitionName = String(context.competition.row[headerIndex(context.competition.header, "bezeichnung")] || "").trim();
+    const updates = [
+      ...(matchChanges.length ? [{
+        table: "matches1",
+        recordId: params.matchId,
+        changes: matchChanges,
+        identity: [{ index: idIndex, name: "id", value: params.matchId }],
+      }] : []),
+      ...(koTarget?.changes.length ? [{ table: "matches1", ...koTarget }] : []),
+      ...rankUpdates,
+    ];
+    if (!updates.length) throw new AppError("MATCH_RESULT_UNCHANGED", "Ergebnis und Rangplan sind unveraendert", 409);
+    return {
+      phase: "match-result",
+      endpoint: options.endpoint,
+      matchId: params.matchId,
+      competitionId: context.competitionId,
+      changeType,
+      completionType,
+      source: options.source,
+      participantIds,
+      participantNames: Object.fromEntries(participantIds.map((id) => [id, this.personName(id)])),
+      competitionName,
+      roundCode: String(row[headerIndex(header, "bewerbrunde")] || "").trim(),
+      result: String(targetRow[headerIndex(header, "ergebnis")] || "").trim(),
+      matchEnd: String(targetRow[matchEndIndex] || "").trim(),
+      reason: adminReason,
+      reasonRecorded: Boolean(options.admin),
+      occurredAt: this.now(),
+      updates,
+      matchGuard: {
+        recordId: params.matchId,
+        beforeFingerprint: currentFingerprint,
+        afterFingerprint: matchCompletionFingerprint(targetRow, header),
+      },
+      rankingBefore: rankingProvenanceBefore || rankUpdates.map(({ personId, beforeRank, inserted }) => ({ personId, beforeRank, ...(inserted ? { inserted: true } : {}) })),
+      rankingAfter: rankingProvenanceAfter || rankUpdates.filter(({ removed }) => !removed).map(({ personId, afterRank, inserted }) => ({ personId, afterRank, ...(inserted ? { inserted: true } : {}) })),
+      rankingProvenanceReplace,
+      rankingUpdateCount: rankUpdates.length,
+      koTargetMatchId: koTarget?.recordId || "",
+      koTargetStatus,
+      koExpectedRoundCode,
+    };
+  }
+
+  async resolveResultPlanRows(plan, matches, rankings) {
+    const resolved = [];
+    for (const update of plan.updates) {
+      if (update.table === "matches1") {
+        const stable = await this.resolveStableRow("matches1", update.recordId, matches, "FORMATTED_VALUE");
+        resolved.push({ ...update, metadataId: stable.metadata.metadataId, currentRow: stable.row, sheets: stable.sheets });
+      } else if (update.inserted && update.beforeRank === null) {
+        const rankingHeader = headerOf(rankings);
+        const competitionIndex = headerIndex(rankingHeader, "bewerbid");
+        const personIndex = headerIndex(rankingHeader, "personid");
+        const existing = rankings.slice(1).find((row) => String(row[competitionIndex] || "").trim() === plan.competitionId
+          && String(row[personIndex] || "").trim() === update.personId);
+        if (existing) {
+          const [stable] = await this.resolveStableCompositeRows("rlPlatzierung", [{
+            recordId: update.recordId,
+            identity: (row, header) => String(row[headerIndex(header, "bewerbid")] || "").trim() === plan.competitionId
+              && String(row[headerIndex(header, "personid")] || "").trim() === update.personId,
+          }], rankings);
+          resolved.push({ ...update, metadataId: stable.metadata.metadataId, currentRow: stable.row, sheets: stable.sheets });
+        } else {
+          const rowAtTarget = rankings[update.rowNumber - 1] || [];
+          if (rowAtTarget.some((value) => String(value || "").trim())) {
+            throw new AppError("WRITE_CONFLICT", "Zielzeile der neuen Ranglistenmitgliedschaft ist belegt", 409);
+          }
+          const sheets = await this.getClient();
+          const maxIndex = Math.max(...update.changes.map(({ index }) => index));
+          resolved.push({ ...update, a1Range: `'${TABLE_CONFIG.rlPlatzierung.range}'!A${update.rowNumber}:${columnName(maxIndex)}${update.rowNumber}`, currentRow: rowAtTarget, sheets });
+        }
+      } else if (update.removed && update.inserted) {
+        const rankingHeader = headerOf(rankings);
+        const existing = rankings.slice(1).find((row) => String(row[headerIndex(rankingHeader, "bewerbid")] || "").trim() === plan.competitionId
+          && String(row[headerIndex(rankingHeader, "personid")] || "").trim() === update.personId);
+        if (existing) {
+          const [stable] = await this.resolveStableCompositeRows("rlPlatzierung", [{
+            recordId: update.recordId,
+            identity: (row, header) => String(row[headerIndex(header, "bewerbid")] || "").trim() === plan.competitionId
+              && String(row[headerIndex(header, "personid")] || "").trim() === update.personId,
+          }], rankings);
+          const currentRow = await this.readMetadataRow(stable.sheets, stable.metadata.metadataId, "FORMULA");
+          assertRemovableInsertedRankingRow(update, currentRow || stable.row, stable.header);
+          resolved.push({ ...update, metadataId: stable.metadata.metadataId, currentRow: currentRow || stable.row, sheets: stable.sheets });
+        } else {
+          const sheets = await this.getClient();
+          resolved.push({ ...update, currentRow: rankings[update.rowNumber - 1] || [], sheets });
+        }
+      } else {
+        const [stable] = await this.resolveStableCompositeRows("rlPlatzierung", [{
+          recordId: update.recordId,
+          identity: (row, header) => String(row[headerIndex(header, "bewerbid")] || "").trim() === plan.competitionId
+            && String(row[headerIndex(header, "personid")] || "").trim() === update.personId,
+        }], rankings);
+        resolved.push({ ...update, metadataId: stable.metadata.metadataId, currentRow: stable.row, sheets: stable.sheets });
+      }
+    }
+    return resolved;
+  }
+
+  async ensureResultEvent(principal, params, plan) {
+    if (!this.messagingService) throw new AppError("MESSAGING_UNAVAILABLE", "Nachrichtendienst ist nicht verfuegbar", 503);
+    let notificationType = "result";
+    try {
+      await this.messagingService.ensureMatchResultEvent({
+        operationId: params.operationId,
+        matchId: plan.matchId,
+        competitionId: plan.competitionId,
+        competitionName: plan.competitionName,
+        roundCode: plan.roundCode,
+        participantIds: plan.participantIds,
+        participantNames: plan.participantNames,
+        actorId: principal.id,
+        actorName: principal.name || this.personName(principal.id),
+        changeType: plan.changeType,
+        completionType: plan.completionType,
+        result: plan.result,
+        matchEnd: plan.matchEnd,
+        reason: plan.reason,
+        createdAt: plan.occurredAt,
+      });
+      if (plan.koTargetStatus === "missing") {
+        notificationType = "ko_progression";
+        await this.messagingService.ensureMissingKoTargetEvent({
+          operationId: params.operationId,
+          matchId: plan.matchId,
+          competitionName: plan.competitionName,
+          roundCode: plan.roundCode,
+          expectedRoundCode: plan.koExpectedRoundCode,
+          actorId: principal.id,
+          actorName: principal.name || this.personName(principal.id),
+          createdAt: plan.occurredAt,
+        });
+      }
+    } catch (error) {
+      logger.log("error", notificationType === "ko_progression" ? "ko_progression_admin_notification_failed" : "match_result_event_persistence_failed", {
+        matchId: plan.matchId,
+        competitionId: plan.competitionId,
+        changeType: plan.changeType,
+        ...(notificationType === "ko_progression" ? { expectedRoundCode: plan.koExpectedRoundCode } : {}),
+        errorCode: error.code || "MESSAGING_WRITE_FAILED",
+      });
+      throw resultRecoveryError("Ergebnisaenderung ist ausgefuehrt, Meldungen konnten nicht bestaetigt werden", params, plan);
+    }
+  }
+
+  persistResultProvenance(plan, params) {
+    if (!plan.rankingAfter.length && !plan.rankingBefore.length && !plan.rankingProvenanceReplace) return;
+    try {
+      const key = `match-result-ranking:${plan.matchId}`;
+      const state = this.repository.getState(key, null);
+      this.repository.setState(key, plan.changeType === "result_cleared" || (plan.rankingProvenanceReplace && !plan.rankingAfter.length) ? null : {
+        before: plan.rankingBefore,
+        after: plan.rankingAfter,
+      }, state.revision);
+    } catch (error) {
+      throw resultRecoveryError("Ergebnisaenderung ist ausgefuehrt, Ranglistenprovenienz konnte nicht bestaetigt werden", params, plan);
+    }
+  }
+
+  projectResultPlan(plan, matches, rankings) {
+    const nextMatches = structuredClone(matches);
+    const nextRankings = structuredClone(rankings);
+    for (const update of plan.updates) {
+      const target = update.table === "matches1" ? nextMatches : nextRankings;
+      const targetHeader = headerOf(target);
+      let row = update.table === "matches1"
+        ? target.slice(1).find((entry) => String(entry[headerIndex(targetHeader, "id")] || "").trim() === update.recordId)
+        : target.slice(1).find((entry) => String(entry[headerIndex(targetHeader, "bewerbid")] || "").trim() === plan.competitionId && String(entry[headerIndex(targetHeader, "personid")] || "").trim() === update.personId);
+      if (!row && update.table === "rlPlatzierung" && update.inserted && update.beforeRank === null) {
+        while (target.length < update.rowNumber) target.push([]);
+        row = target[update.rowNumber - 1];
+      }
+      if (!row) throw new AppError("WRITE_CONFLICT", "Geplante Ergebniszeile wurde nicht gefunden", 409);
+      for (const { index, after } of update.changes) row[index] = after;
+    }
+    validateTableValues("matches1", nextMatches);
+    const rankingHeader = headerOf(nextRankings);
+    const competitionIndex = headerIndex(rankingHeader, "bewerbid");
+    const personIndex = headerIndex(rankingHeader, "personid");
+    validateTableValues("rlPlatzierung", nextRankings.map((row, index) => (
+      index === 0 || String(row[competitionIndex] || "").trim() || String(row[personIndex] || "").trim() ? row : []
+    )));
+    return { nextMatches, nextRankings };
+  }
+
+  async applyResultOperation(principal, params, options) {
+    const payload = Object.fromEntries(Object.entries(params).filter(([key]) => key !== "operationId"));
+    return this.runIdempotent(principal, options.endpoint, params.operationId, payload, ({ recoveryOnly, recoveryDetails, checkpointUnknown }) => this.enqueue("matches1", () => this.enqueue("rlPlatzierung", async () => {
+      requireCurrentData("bewerbe", "bewerbsart", "matchtyp", "players");
+      if (options.admin && principal.role !== "admin") throw new AppError("FORBIDDEN", "Administratorberechtigung fehlt", 403);
+      this.cancelScheduledRefresh("matches1");
+      this.cancelScheduledRefresh("rlPlatzierung");
+      const [matches, rankings] = await Promise.all([this.readTable("matches1"), this.readTable("rlPlatzierung")]);
+      dataStore.set("matches1", matches, { source: "write-read" });
+      dataStore.set("rlPlatzierung", rankings, { source: "write-read" });
+      const plan = recoveryOnly ? recoveryDetails : await this.resultPlan(principal, params, matches, rankings, options);
+      if (!plan || plan.phase !== "match-result" || plan.endpoint !== options.endpoint || plan.matchId !== params.matchId || !Array.isArray(plan.updates)
+        || plan.updates.some((update) => !Array.isArray(update.changes) || update.changes.length === 0)
+        || plan.matchGuard?.recordId !== params.matchId) {
+        throw resultRecoveryError("Recovery-Plan der Ergebnisaenderung ist ungueltig", params, plan || {});
+      }
+      const resolved = await this.resolveResultPlanRows(plan, matches, rankings);
+      const stableMatch = await this.resolveStableRow("matches1", plan.matchGuard.recordId, matches, "FORMATTED_VALUE");
+      const matchFingerprint = matchCompletionFingerprint(stableMatch.row, stableMatch.header);
+      const beforeCount = resolved.filter((entry) => resultUpdateMatches(entry, entry.currentRow, "before")).length;
+      const afterCount = resolved.filter((entry) => resultUpdateMatches(entry, entry.currentRow, "after")).length;
+      if (afterCount === resolved.length && matchFingerprint === plan.matchGuard.afterFingerprint) {
+        await this.establishInsertedResultMetadata(plan, rankings, resolved[0]?.sheets || await this.getClient(), params);
+        this.persistResultProvenance(plan, params);
+        await this.ensureResultEvent(principal, params, plan);
+        return this.resultOperationResponse(plan, true);
+      }
+      if (recoveryOnly || beforeCount !== resolved.length || matchFingerprint !== plan.matchGuard.beforeFingerprint) {
+        throw resultRecoveryError(beforeCount === resolved.length ? "Ergebnisaenderung wurde noch nicht ausgefuehrt" : "Ergebnisaenderung besitzt einen gemischten Zustand", params, plan);
+      }
+      let { nextMatches, nextRankings } = this.projectResultPlan(plan, matches, rankings);
+      if (resolved.some(({ a1Range }) => a1Range)) {
+        // A1 inserts have no stable row metadata, so narrow the non-CAS race with one last table read.
+        const immediateRankings = await this.readTable("rlPlatzierung", "write_precondition");
+        for (const entry of resolved.filter(({ table }) => table === "rlPlatzierung")) {
+          const current = entry.a1Range
+            ? immediateRankings[entry.rowNumber - 1] || []
+            : immediateRankings.slice(1).find((row) => {
+              const header = headerOf(immediateRankings);
+              return String(row[headerIndex(header, "bewerbid")] || "").trim() === plan.competitionId
+                && String(row[headerIndex(header, "personid")] || "").trim() === entry.personId;
+            });
+          if (entry.a1Range && current.some((value) => String(value || "").trim())) {
+            throw new AppError("WRITE_CONFLICT", "Zielzeile der neuen Ranglistenmitgliedschaft ist belegt", 409);
+          }
+          if (!resultUpdateMatches(entry, current, "before")) {
+            throw new AppError("RANK_CONFLICT", "Rang wurde unmittelbar vor dem Ergebniswrite geaendert", 409);
+          }
+        }
+        ({ nextMatches, nextRankings } = this.projectResultPlan(plan, matches, immediateRankings));
+      }
+      const immediateMatch = await this.readMetadataRow(stableMatch.sheets, stableMatch.metadata.metadataId, "FORMATTED_VALUE", "write_precondition");
+      if (!immediateMatch
+        || String(immediateMatch[headerIndex(stableMatch.header, "id")] || "").trim() !== plan.matchId
+        || matchCompletionFingerprint(immediateMatch, stableMatch.header) !== plan.matchGuard.beforeFingerprint) {
+        throw new AppError("RESULT_CONFLICT", "Matchergebnis wurde unmittelbar vor dem Write geaendert", 409);
+      }
+      checkpointUnknown(plan);
+      const sheets = resolved[0]?.sheets || await this.getClient();
+      let recovered = false;
+      try {
+        const response = await sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: resolved.map((entry) => ({ dataFilter: entry.a1Range
+              ? { a1Range: entry.a1Range }
+              : { developerMetadataLookup: { metadataId: entry.metadataId } }, majorDimension: "ROWS", values: [sparseResultRow(entry)] })),
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== resolved.length) throw new Error("Ergebnisbatch hat nicht alle Zeilen aktualisiert");
+      } catch (error) {
+        const needsRankingConfirmation = plan.updates.some((entry) => entry.table === "rlPlatzierung" && (entry.inserted && entry.beforeRank === null || entry.removed && entry.inserted));
+        const freshRankings = needsRankingConfirmation
+          ? await this.readTable("rlPlatzierung", "confirmation").catch(() => null)
+          : null;
+        for (const entry of resolved) {
+          if (entry.a1Range) entry.currentRow = freshRankings?.[entry.rowNumber - 1] || null;
+          else entry.currentRow = await this.readMetadataRow(sheets, entry.metadataId, "FORMATTED_VALUE", "confirmation").catch(() => null);
+        }
+        const confirmedMatch = await this.readMetadataRow(stableMatch.sheets, stableMatch.metadata.metadataId, "FORMATTED_VALUE", "confirmation").catch(() => null);
+        const confirmedMatchFingerprint = confirmedMatch ? matchCompletionFingerprint(confirmedMatch, stableMatch.header) : "";
+        const confirmedAfter = resolved.filter((entry) => resultUpdateMatches(entry, entry.currentRow, "after")).length;
+        const confirmedBefore = resolved.filter((entry) => resultUpdateMatches(entry, entry.currentRow, "before")).length;
+        if (confirmedAfter === resolved.length && confirmedMatchFingerprint === plan.matchGuard.afterFingerprint) recovered = true;
+        else throw resultRecoveryError(confirmedBefore === resolved.length && confirmedMatchFingerprint === plan.matchGuard.beforeFingerprint ? "Ergebnisaenderung wurde nicht ausgefuehrt" : "Ausgang der Ergebnisaenderung ist gemischt oder unklar", params, plan);
+      }
+      if (plan.updates.some((entry) => entry.table === "rlPlatzierung" && (entry.inserted && entry.beforeRank === null || entry.removed && entry.inserted))) {
+        const confirmedRankings = await this.readTable("rlPlatzierung", "confirmation").catch(() => null);
+        if (!confirmedRankings) throw resultRecoveryError("Ranglistenmitgliedschaft konnte nicht bestaetigt werden", params, plan);
+        const rankingUpdates = plan.updates.filter((entry) => entry.table === "rlPlatzierung");
+        if (rankingUpdates.some((entry) => {
+          const row = entry.inserted && (entry.beforeRank === null || entry.removed)
+            ? confirmedRankings[entry.rowNumber - 1]
+            : confirmedRankings.slice(1).find((candidate) => String(candidate[headerIndex(headerOf(confirmedRankings), "bewerbid")] || "").trim() === plan.competitionId
+              && String(candidate[headerIndex(headerOf(confirmedRankings), "personid")] || "").trim() === entry.personId);
+          return !resultUpdateMatches(entry, row, "after");
+        })) {
+          throw resultRecoveryError("Ranglistenstand stimmt nicht mit dem Zielplan ueberein", params, plan);
+        }
+        validateTableValues("rlPlatzierung", confirmedRankings);
+        await this.establishInsertedResultMetadata(plan, confirmedRankings, sheets, params);
+      }
+      for (const update of plan.updates.filter((entry) => entry.removed && entry.inserted)) {
+        const resolvedUpdate = resolved.find((entry) => entry.recordId === update.recordId);
+        if (!resolvedUpdate?.metadataId) continue;
+        try {
+          await this.deleteRecordMetadata(sheets, "rlPlatzierung", update.recordId, resolvedUpdate.metadataId);
+        } catch (error) {
+          this.recordMetadata.delete(`rlPlatzierung:${update.recordId}`);
+          logger.log("warn", "sheet_result_membership_metadata_cleanup_failed", { matchId: plan.matchId, personId: update.personId, errorCode: error.code || "METADATA_CLEANUP_FAILED" });
+        }
+      }
+      dataStore.set("matches1", nextMatches, { source: "write-local", authoritative: false });
+      dataStore.set("rlPlatzierung", nextRankings, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("matches1");
+      if (plan.updates.some((entry) => entry.table === "rlPlatzierung")) this.scheduleRefresh("rlPlatzierung");
+      this.persistResultProvenance(plan, params);
+      await this.ensureResultEvent(principal, params, plan);
+      return this.resultOperationResponse(plan, recovered);
+    })));
+  }
+
+  async establishInsertedResultMetadata(plan, rankings, sheets, params) {
+    const inserted = plan.updates.filter((entry) => entry.table === "rlPlatzierung" && entry.inserted && entry.beforeRank === null);
+    if (!inserted.length) return;
+    const header = headerOf(rankings);
+    const competitionIndex = headerIndex(header, "bewerbid");
+    const personIndex = headerIndex(header, "personid");
+    for (const update of inserted) {
+      const matches = rankings.slice(1).filter((row) => String(row[competitionIndex] || "").trim() === plan.competitionId
+        && String(row[personIndex] || "").trim() === update.personId);
+      if (matches.length !== 1 || !resultUpdateMatches(update, matches[0], "after")) {
+        throw resultRecoveryError("Neue Ranglistenmitgliedschaft ist nicht eindeutig bestaetigt", params, plan);
+      }
+    }
+    await this.resolveStableCompositeRows("rlPlatzierung", inserted.map((update) => ({
+      recordId: update.recordId,
+      identity: (row, rowHeader) => String(row[headerIndex(rowHeader, "bewerbid")] || "").trim() === plan.competitionId
+        && String(row[headerIndex(rowHeader, "personid")] || "").trim() === update.personId,
+    })), rankings);
+  }
+
+  resultOperationResponse(plan, recovered = false) {
+    const eventName = plan.changeType === "match_end_corrected" ? "admin_match_end_update_completed"
+      : plan.changeType === "result_cleared" ? "admin_match_result_clear_completed" : "match_result_update_completed";
+    logger.log("info", eventName, {
+      matchId: plan.matchId,
+      competitionId: plan.competitionId,
+      changeType: plan.changeType,
+      completionType: plan.completionType,
+      source: plan.source,
+      shiftedCount: plan.rankingUpdateCount ?? plan.rankingAfter.length,
+      koTargetMatchId: plan.koTargetMatchId,
+      koTargetStatus: plan.koTargetStatus,
+      recovered,
+      reasonRecorded: Boolean(plan.reasonRecorded),
+    });
+    return withAudit({
+      success: true,
+      matchId: plan.matchId,
+      fingerprint: (() => {
+        const matches = dataStore.get("matches1");
+        const header = headerOf(matches);
+        const idIndex = headerIndex(header, "id");
+        const row = matches.slice(1).find((entry) => String(entry[idIndex] || "").trim() === plan.matchId);
+        return matchCompletionFingerprint(row, header);
+      })(),
+      ...(recovered ? { recovered: true } : {}),
+      ...(plan.koTargetStatus === "missing" ? { warningCode: "KO_TARGET_MISSING" } : {}),
+    }, {
+      before: {
+        matchId: plan.matchId,
+        competitionId: plan.competitionId,
+        ...(plan.reasonRecorded ? { reasonRecorded: true } : {}),
+      },
+      after: {
+        matchId: plan.matchId,
+        competitionId: plan.competitionId,
+        changeType: plan.changeType,
+        completionType: plan.completionType,
+        source: plan.source,
+        shiftedCount: plan.rankingUpdateCount ?? plan.rankingAfter.length,
+        koTargetMatchId: plan.koTargetMatchId,
+        koTargetStatus: plan.koTargetStatus,
+        ...(plan.reasonRecorded ? { reasonRecorded: true } : {}),
+      },
+    });
+  }
+
+  setMatchResult(principal, params) {
+    return this.applyResultOperation(principal, params, { endpoint: "setMatchResult", action: "result", source: principal.role === "admin" ? "admin" : "participant" });
+  }
+
+  adminSetMatchEnd(principal, params) {
+    return this.applyResultOperation(principal, params, { endpoint: "adminSetMatchEnd", action: "matchEnd", source: "admin", admin: true });
+  }
+
+  adminClearMatchResult(principal, params) {
+    return this.applyResultOperation(principal, params, { endpoint: "adminClearMatchResult", action: "clear", source: "admin", admin: true });
+  }
+
+  adminCorrectRankingResult(principal, params) {
+    return this.applyResultOperation(principal, params, { endpoint: "adminCorrectRankingResult", action: "result", source: "admin", admin: true, rankPlan: params.rankPlan });
+  }
+
+  async adminDeleteRankingChallenge(principal, params) {
+    const payload = { matchId: params.matchId, reason: params.reason };
+    return this.runIdempotent(principal, "adminDeleteRankingChallenge", params.operationId, payload, ({ recoveryOnly, recoveryDetails, checkpointUnknown }) => this.enqueue("matches1", async () => {
+      if (principal.role !== "admin") throw new AppError("FORBIDDEN", "Administratorberechtigung fehlt", 403);
+      requireCurrentData("bewerbe", "players");
+      this.cancelScheduledRefresh("matches1");
+      const values = await this.readTable("matches1");
+      dataStore.set("matches1", values, { source: "write-read" });
+      const header = headerOf(values);
+      const idIndex = headerIndex(header, "id");
+      if (idIndex < 0) throw new AppError("SHEET_SCHEMA", "Matches1-Spalte ID fehlt", 503);
+      const target = values.slice(1).find((row) => String(row[idIndex] || "").trim() === params.matchId);
+      if (recoveryOnly && !target) {
+        const plan = recoveryDetails;
+        if (plan?.action !== "deleted" || plan.matchId !== params.matchId) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Recovery-Plan der Forderungsloeschung ist ungueltig", 503, plan || {});
+        }
+        await this.ensureAdminRankingChallengeEvent(principal, params, plan);
+        logger.log("info", "ranking_challenge_delete_completed", { matchId: params.matchId, competitionId: plan.competitionId, actorId: principal.id, recovered: true });
+        return withAudit({ success: true, matchId: params.matchId, deleted: true, recovered: true }, {
+          before: { matchId: params.matchId, competitionId: plan.competitionId, challengeDate: plan.challengeDate, matchDate: plan.matchDate },
+          after: { deleted: true, reasonRecorded: true },
+        });
+      }
+      if (!target) throw new AppError("MATCH_NOT_FOUND", "Forderung wurde nicht gefunden", 404);
+      const stable = await this.resolveStableRow("matches1", params.matchId, values, "FORMATTED_VALUE");
+      const context = this.adminRankingChallengeContext(stable.row, stable.header);
+      const plan = recoveryOnly ? recoveryDetails : {
+        action: "deleted",
+        matchId: params.matchId,
+        competitionId: context.competitionId,
+        challengerId: context.challengerId,
+        opponentId: context.opponentId,
+        challengeDate: context.challengeDate,
+        matchDate: context.matchDate,
+        occurredAt: this.now(),
+      };
+      if (recoveryOnly) {
+        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Forderungsloeschung ist noch nicht nachweisbar", 503, plan);
+      }
+      checkpointUnknown(plan);
+      let recovered = false;
+      try {
+        const response = await stable.sheets.spreadsheets.values.batchClearByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: { dataFilters: [{ developerMetadataLookup: { metadataId: stable.metadata.metadataId } }] },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if ((response.data.clearedRanges || []).length !== 1) throw new Error("Metadaten-Clear hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        const confirmationRow = await this.readMetadataRow(stable.sheets, stable.metadata.metadataId, "FORMULA", "confirmation").catch(() => null);
+        const confirmation = await this.readTable("matches1", "confirmation").catch(() => null);
+        const confirmationIdIndex = confirmation ? headerIndex(headerOf(confirmation), "id") : -1;
+        const stillPresent = confirmationIdIndex >= 0 && confirmation.slice(1).some((row) => String(row[confirmationIdIndex] || "").trim() === params.matchId);
+        if ((confirmationRow && confirmationRow.some((value) => String(value || "").trim())) || !confirmation || stillPresent) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Forderungsloeschung ist unklar", 503, plan);
+        }
+        recovered = true;
+      }
+      try {
+        await this.deleteRecordMetadata(stable.sheets, "matches1", params.matchId, stable.metadata.metadataId);
+      } catch (error) {
+        this.recordMetadata.delete(`matches1:${params.matchId}`);
+        logger.log("warn", "sheet_match_metadata_cleanup_failed", { matchId: params.matchId, errorCode: error.code || "METADATA_CLEANUP_FAILED" });
+      }
+      const candidate = [values[0], ...values.slice(1).filter((row) => String(row[idIndex] || "").trim() !== params.matchId)];
+      dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("matches1");
+      await this.ensureAdminRankingChallengeEvent(principal, params, plan);
+      logger.log("info", "ranking_challenge_delete_completed", { matchId: params.matchId, competitionId: plan.competitionId, actorId: principal.id, recovered });
+      return withAudit({ success: true, matchId: params.matchId, deleted: true, ...(recovered ? { recovered: true } : {}) }, {
+        before: { matchId: params.matchId, competitionId: plan.competitionId, challengeDate: plan.challengeDate, matchDate: plan.matchDate },
+        after: { deleted: true, reasonRecorded: true },
+      });
+    }));
+  }
+
+  async adminSetRankingChallengeDate(principal, params) {
+    return this.adminSetRankingDate(principal, params, {
+      endpoint: "adminSetRankingChallengeDate",
+      action: "challenge_date_changed",
+      field: "challengeDate",
+      column: "forderungdate",
+      fullHour: false,
+      completedEvent: "ranking_challenge_date_update_completed",
+    });
+  }
+
+  async adminSetRankingMatchDate(principal, params) {
+    return this.adminSetRankingDate(principal, params, {
+      endpoint: "adminSetRankingMatchDate",
+      action: "match_date_changed",
+      field: "matchDate",
+      column: "matchdate",
+      fullHour: true,
+      completedEvent: "ranking_match_date_admin_update_completed",
+    });
+  }
+
+  async adminSetRankingDate(principal, params, options) {
+    const nextDate = params[options.field];
+    const payload = { matchId: params.matchId, [options.field]: nextDate, reason: params.reason };
+    return this.runIdempotent(principal, options.endpoint, params.operationId, payload, ({ recoveryOnly, recoveryDetails, checkpointUnknown }) => this.enqueue("matches1", async () => {
+      if (principal.role !== "admin") throw new AppError("FORBIDDEN", "Administratorberechtigung fehlt", 403);
+      requireCurrentData("bewerbe", "players");
+      if (!validCompactDateTime(nextDate)) throw new AppError("MATCH_DATE_INVALID", "Zeitpunkt ist ungueltig", 400);
+      if (options.fullHour && !nextDate.endsWith("00")) {
+        throw new AppError("MATCH_DATE_TIME_INVALID", "Spieldaten sind nur zur vollen Stunde moeglich", 409);
+      }
+      this.cancelScheduledRefresh("matches1");
+      const values = await this.readTable("matches1");
+      dataStore.set("matches1", values, { source: "write-read" });
+      let stable;
+      try {
+        stable = await this.resolveStableRow("matches1", params.matchId, values, "FORMATTED_VALUE");
+      } catch (error) {
+        if (error.code === "RECORD_NOT_FOUND") {
+          if (recoveryOnly) throw new AppError("WRITE_OUTCOME_UNKNOWN", "Datumsänderung ist nicht mehr nachweisbar", 503, recoveryDetails || {});
+          throw new AppError("MATCH_NOT_FOUND", "Forderung wurde nicht gefunden", 404);
+        }
+        throw error;
+      }
+      const columnIndex = headerIndex(stable.header, options.column);
+      const currentDate = String(stable.row[columnIndex] || "").trim();
+      if (recoveryOnly) {
+        const plan = recoveryDetails;
+        const previousDate = String(plan?.previousDate || "");
+        if (plan?.action !== options.action || plan.matchId !== params.matchId || plan.nextDate !== nextDate || currentDate !== nextDate) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Datumsänderung ist noch nicht nachweisbar", 503, plan || {});
+        }
+        await this.ensureAdminRankingChallengeEvent(principal, params, plan);
+        logger.log("info", options.completedEvent, { matchId: params.matchId, competitionId: plan.competitionId, actorId: principal.id, previousDate, nextDate, recovered: true });
+        return withAudit({ success: true, matchId: params.matchId, [options.field]: nextDate, recovered: true }, {
+          before: { matchId: params.matchId, [options.field]: previousDate },
+          after: { matchId: params.matchId, [options.field]: nextDate, reasonRecorded: true },
+        });
+      }
+      const context = this.adminRankingChallengeContext(stable.row, stable.header);
+      const previousDate = currentDate;
+      const plan = {
+        action: options.action,
+        matchId: params.matchId,
+        competitionId: context.competitionId,
+        challengerId: context.challengerId,
+        opponentId: context.opponentId,
+        previousDate,
+        nextDate,
+        occurredAt: this.now(),
+      };
+      if (currentDate === nextDate) throw new AppError("MATCH_DATE_UNCHANGED", "Der ausgewaehlte Zeitpunkt ist bereits eingetragen", 409);
+      checkpointUnknown(plan);
+      const updates = Array(columnIndex + 1).fill(null);
+      updates[columnIndex] = nextDate;
+      let recovered = false;
+      try {
+        const response = await stable.sheets.spreadsheets.values.batchUpdateByDataFilter({
+          spreadsheetId: SHEET_ID,
+          requestBody: {
+            valueInputOption: "RAW",
+            data: [{ dataFilter: { developerMetadataLookup: { metadataId: stable.metadata.metadataId } }, majorDimension: "ROWS", values: [updates] }],
+          },
+        }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
+        if (Number(response.data.totalUpdatedRows) !== 1) throw new Error("Metadaten-Update hat keine eindeutige Zeile aktualisiert");
+      } catch (error) {
+        const confirmationRow = await this.readMetadataRow(stable.sheets, stable.metadata.metadataId, "FORMATTED_VALUE", "confirmation").catch(() => null);
+        if (!confirmationRow || String(confirmationRow[columnIndex] || "").trim() !== nextDate) {
+          throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Datumsänderung ist unklar", 503, plan);
+        }
+        recovered = true;
+      }
+      const candidate = structuredClone(values);
+      const candidateIdIndex = headerIndex(headerOf(candidate), "id");
+      const candidateRow = candidate.slice(1).find((row) => String(row[candidateIdIndex] || "").trim() === params.matchId);
+      if (candidateRow) candidateRow[columnIndex] = nextDate;
+      dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
+      this.scheduleRefresh("matches1");
+      await this.ensureAdminRankingChallengeEvent(principal, params, plan);
+      logger.log("info", options.completedEvent, { matchId: params.matchId, competitionId: plan.competitionId, actorId: principal.id, previousDate, nextDate, recovered });
+      return withAudit({ success: true, matchId: params.matchId, [options.field]: nextDate, ...(recovered ? { recovered: true } : {}) }, {
+        before: { matchId: params.matchId, [options.field]: previousDate },
+        after: { matchId: params.matchId, [options.field]: nextDate, reasonRecorded: true },
       });
     }));
   }

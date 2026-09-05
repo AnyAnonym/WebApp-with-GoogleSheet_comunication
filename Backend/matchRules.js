@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { AppError } = require("./errors.js");
 const { headerIndex, headerOf } = require("./tableUtils.js");
 
@@ -39,13 +40,24 @@ function parseMatchDate(raw) {
   return value;
 }
 
+function matchCompletionFingerprint(row, header) {
+  const normalizedHeader = headerOf([header]);
+  const controlled = ["ergebnis", "matchende", "spieler1id", "spieler2id", "spieler3id", "spieler4id"]
+    .map((name) => {
+      const index = headerIndex(normalizedHeader, name);
+      return index < 0 ? "" : String(row[index] ?? "").trim();
+    });
+  return crypto.createHash("sha256").update(JSON.stringify(controlled)).digest("hex");
+}
+
 function analyzeMatchRules(values, competitionId, now = new Date()) {
   if (!Array.isArray(values) || !values.length) throw new AppError("MATCH_DATA_UNAVAILABLE", "Matchdaten sind nicht verfuegbar", 503);
   const header = headerOf(values);
   const indexes = {
     ignore: headerIndex(header, "ignore", "ignorieren"),
     competition: headerIndex(header, "bewerbid"),
-    date: headerIndex(header, "matchdate"),
+    date: headerIndex(header, "matchende"),
+    legacyDate: headerIndex(header, "matchdate"),
     result: headerIndex(header, "ergebnis"),
     p1: headerIndex(header, "spieler1id"),
     p2: headerIndex(header, "spieler2id"),
@@ -75,7 +87,8 @@ function analyzeMatchRules(values, competitionId, now = new Date()) {
       continue;
     }
     if (!winner) throw new AppError("MATCH_DATA_INVALID", "Ein Match besitzt ein ungueltiges Ergebnis", 503);
-    const matchDate = parseMatchDate(row[indexes.date]);
+    const matchEnd = String(row[indexes.date] ?? "").trim();
+    const matchDate = parseMatchDate(matchEnd || row[indexes.legacyDate]);
     if (!matchDate) throw new AppError("MATCH_DATA_INVALID", "Ein gespieltes Match besitzt ein ungueltiges Datum", 503);
     const firstTeamIds = firstTeam.map((participant) => participant.id);
     const secondTeamIds = secondTeam.map((participant) => participant.id);
@@ -100,4 +113,4 @@ function analyzeMatchRules(values, competitionId, now = new Date()) {
   return { blocked, busyIds, protection };
 }
 
-module.exports = { analyzeMatchRules, parseMatchDate, parseParticipant };
+module.exports = { analyzeMatchRules, matchCompletionFingerprint, parseMatchDate, parseParticipant };

@@ -17,3 +17,21 @@ export function clearProfileModalContent(modal, actionController) {
   messagesPanel?.replaceChildren();
   adminActionsElement?.replaceChildren();
 }
+
+export function mergedProfileCompetitions(profile) {
+  const merged = new Map();
+  for (const ranking of Array.isArray(profile?.rankings) ? profile.rankings : []) {
+    const competitionId = String(ranking?.competitionId || "");
+    if (competitionId) merged.set(competitionId, { ...ranking, matches: [] });
+  }
+  for (const competition of Array.isArray(profile?.competitions) ? profile.competitions : []) {
+    const competitionId = String(competition?.competitionId || "");
+    if (!competitionId) continue;
+    merged.set(competitionId, {
+      ...(merged.get(competitionId) || {}),
+      ...competition,
+      matches: Array.isArray(competition.matches) ? competition.matches : [],
+    });
+  }
+  return [...merged.values()];
+}

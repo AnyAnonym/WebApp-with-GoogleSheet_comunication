@@ -27,7 +27,17 @@ RoundRobin-Gruppenphase - Tabellen und Paarungslisten
   Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet. Jeder
   vorhandene Spielername in Gruppentabellen und Paarungen ist per Maus oder
   Tastatur bedienbar und oeffnet das gemeinsame Profilmodal fuer diese Person;
-  leere Spielerpositionen bleiben reine Anzeige.
+  leere Spielerpositionen bleiben reine Anzeige. Nur dieses gemeinsame Modal
+  bietet die in `Project/software/seiten/players.txt` beschriebene universelle
+  Ergebniseingabe; RoundRobin selbst besitzt keine eigene Eingabemaske.
+
+  Die exportierte bestehende Funktion `buildStats` bleibt die einzige
+  Tabellenberechnung. Regulaere Ergebnisse werden unveraendert ausgewertet. Ein
+  Walkover zaehlt fix als `0-6/0-6` aus Sicht der Verliererseite. Bei Retirement
+  bleiben Games erhalten und ein gefuehrter unvollstaendiger letzter Satz zaehlt
+  fuer die fuehrende Seite; ein Satzgleichstand zaehlt fuer keine Seite. Eine
+  automatische Uebernahme markierter Aufsteiger in ein KO-Match findet nicht
+  statt.
 
 -- Darstellung und Sicherheit --
   Das Grid waehlt je nach Gruppenzahl eine bis vier schrumpfbare Spalten und wird

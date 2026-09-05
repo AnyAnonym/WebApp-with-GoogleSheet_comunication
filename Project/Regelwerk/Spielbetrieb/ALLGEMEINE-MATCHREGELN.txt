@@ -16,11 +16,25 @@ Sonderabschluss abgeschlossen. [Bestaetigt]
 
 Ein regulaer begonnenes und zu Ende gespieltes Match wird durch sein Ergebnis
 abgeschlossen. Der Gewinner ergibt sich aus den gewonnenen Saetzen nach dem fuer
-das Match geltenden Matchtyp. [Arbeitsannahme]
+das Match geltenden Matchtyp. [Bestaetigt]
 
-Die vollstaendige Ergebnisgrammatik, notwendige Gewinnsatzanzahl, Satz-Tie-Breaks,
-Match-Tie-Breaks, No-Ad und die spaetere systemweite Ergebnisvalidierung werden
-gesondert festgelegt. [Offen]
+Ein regulaeres Ergebnis besteht aus durch `/` getrennten Saetzen. Ein Satz ist
+`A-B` oder bei einem Satz-Tie-Break `A-B(T)`, wobei A, B und T nichtnegative
+Ganzzahlen ohne fuehrende Nullen und mit hoechstens zwei Stellen sind. Die
+damit absichtlich festgelegte kanonische Obergrenze jeder Komponente ist 99. Die
+Satzlaenge ist als tatsaechlicher Zielbereich `0-4` oder `0-6` festgelegt. Dazu
+passen ausschliesslich der Satz-Tie-Break bei `3-3` beziehungsweise `6-6`, zwei
+oder drei Gewinnsaetze, `NoAd` mit `J` oder `N` und als entscheidender Satz
+`vollstaendiger Satz`, `MT7` oder `MT10`. [Bestaetigt]
+
+Ein regulaerer Abschluss muss die erforderliche Gewinnsatzanzahl erreichen und
+darf danach keinen weiteren Satz enthalten. Vollstaendige normale Saetze enden
+bei 4 beziehungsweise 6 mit mindestens zwei Games Abstand, beim Ziel 6 auch 7-5,
+oder nach dem vorgesehenen Satz-Tie-Break. Ein entscheidender Match-Tie-Break
+endet ab 7 beziehungsweise 10 mit mindestens zwei Punkten Abstand. Das Ergebnis
+ist das generische, nach diesen Matchtypregeln gewertete Matchresultat; es bildet
+keine zusaetzliche gewichtete Mannschafts- oder Einzelspielwertung ab.
+[Bestaetigt]
 
 
 3. WALKOVER [wo]
@@ -61,5 +75,20 @@ Beide Sonderabschluesse bestimmen einen Gewinner, sind aber fachlich nicht
 austauschbar. Andere Schreibweisen oder die konkrete technische Kodierung sind
 kein Bestandteil dieses Regelwerks.
 
-Ob und wie ein Sonderabschluss bei einem Doppel an einem einzelnen Partner oder
-an der gesamten Seite dargestellt wird, ist noch fachlich festzulegen. [Offen]
+Beim Walkover bleibt das Ergebnis leer. Beim Retirement darf es leer sein oder
+vollstaendige Saetze und als letzten Satz einen noch unvollstaendigen Spielstand
+enthalten; es darf noch keinen regulaeren Matchgewinner ergeben. Der Marker wird
+am ersten Spieler der ausgewaehlten Verliererseite gespeichert und gilt fuer die
+gesamte Einzel- oder Doppelseite. [Bestaetigt]
+
+
+6. MATCHBEGINN UND ABSCHLUSSZEITPUNKT
+=====================================
+
+`MatchDate` ist der Matchbeginn, `MatchEnde` der minutengenaue fachliche
+Abschlusszeitpunkt. Beim ersten regulaeren Abschluss, Walkover oder Retirement
+muss `MatchEnde` strikt nach `MatchDate`, hoechstens sechs Stunden danach und
+nicht in der Zukunft liegen. Eine spaetere Ergebniskorrektur behaelt diesen
+Zeitpunkt bei. Nur die sportliche Leitung darf ihn mit dokumentiertem Grund
+korrigieren. Bei historischen abgeschlossenen Matches ohne `MatchEnde` gilt fuer
+Fristen ersatzweise `MatchDate`. [Bestaetigt]

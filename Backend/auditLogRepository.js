@@ -182,6 +182,16 @@ class AuditLogRepository {
           bewerbId: String(persisted.after?.bewerbId || persisted.before?.bewerbId || ""),
           matchId: String(persisted.after?.matchId || ""),
         } : {};
+        const resultFields = ["setMatchResult", "adminCorrectRankingResult", "adminSetMatchEnd", "adminClearMatchResult"].includes(persisted.action) ? {
+          matchId: String(persisted.after?.matchId || persisted.before?.matchId || persisted.targetId || ""),
+          competitionId: String(persisted.after?.competitionId || persisted.before?.competitionId || ""),
+          changeType: String(persisted.after?.changeType || ""),
+          completionType: String(persisted.after?.completionType || ""),
+          source: String(persisted.after?.source || ""),
+          shiftedCount: Math.max(0, Number(persisted.after?.shiftedCount) || 0),
+          koTargetMatchId: String(persisted.after?.koTargetMatchId || ""),
+          koTargetStatus: String(persisted.after?.koTargetStatus || ""),
+        } : {};
         this.log(persisted.result === "failed" ? "warn" : "info", "audit_recorded", {
           eventId: persisted.eventId,
           action: persisted.action,
@@ -203,6 +213,7 @@ class AuditLogRepository {
             ? normalizationAuditSummary(persisted.before, persisted.after)
             : "",
           ...challengeFields,
+          ...resultFields,
         });
       }
       return persisted;

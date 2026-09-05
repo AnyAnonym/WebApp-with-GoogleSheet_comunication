@@ -102,8 +102,9 @@ Gewinner und Verlierer und loesen dieselben Schon- und Sperrzeiten aus.
 [Bestaetigt]
 
 Gewinnt oder verliert ein Spieler waehrend einer noch laufenden Schon- oder
-Sperrzeit ein weiteres zulaessiges Ranglistenmatch, soll der neueste Abschluss den
-danach geltenden Status bestimmen. [Arbeitsannahme]
+Sperrzeit ein weiteres zulaessiges Ranglistenmatch, bestimmt der neueste
+Abschluss den danach geltenden Status. Fuer historische Abschluesse ohne
+`MatchEnde` gilt `MatchDate` als Abschlusszeitpunkt. [Bestaetigt]
 
 
 6. WERTUNG BEI SIEG DES GEFORDERTEN
@@ -229,13 +230,36 @@ Spieler gilt bei einem spaeteren Wiedereinstieg als Neueinsteiger nach Abschnitt
 [Bestaetigt]
 
 
-11. VERANTWORTUNG UND MANUELLE ENTSCHEIDUNGEN
+11. AUTOMATISCHE ERGEBNISFOLGEN UND KORREKTUR
 =============================================
 
-Ergebnisbedingte Rangverschiebungen und Entscheidungen nach Fristueberschreitung
-werden derzeit durch die sportliche Leitung beziehungsweise den Administrator
-manuell vollzogen. Diese organisatorische Zustaendigkeit aendert die sportlichen
-Folgen dieses Regelwerks nicht. Die Anwendung legt die Forderung an und zeigt
-zulaessige Gegner an, fuehrt nach Sieg oder Niederlage aber keine automatische
-Einreihung oder Rangverschiebung aus. Details stehen in
+Mit dem ersten Ergebnis vollzieht die Anwendung die Rangfolgen atomar mit dem
+Matchabschluss. Beim normalen gereihten Forderer bleiben die Raenge bei einer
+Niederlage unveraendert; bei seinem Sieg gelten die Verschiebungen aus Abschnitt
+7. Neueinsteiger und Rueckkehrer werden nach den Abschnitten 8 und 10 eingefuegt;
+verliert ein Neueinsteiger und liegen mindestens zehn aktive Raenge hinter dem
+geforderten Rang, bleibt er ausserhalb, andernfalls wird er am Ende eingereiht.
+Nach Ablauf des Rueckkehranspruchs gelten wieder die Neueinsteigerregeln.
+[Bestaetigt]
+
+Die Anwendung speichert zu jeder automatisch verursachten Rangfolge deren
+urspruenglichen und resultierenden Stand als Provenienz. Beteiligte duerfen ein
+Ergebnis nur korrigieren, solange alle davon betroffenen Rangzustaende noch exakt
+dem gespeicherten Ergebnisstand entsprechen. Fehlt diese Provenienz bei einer
+rangveraendernden historischen Korrektur oder wurde die Rangliste inzwischen
+veraendert, ist eine automatische Korrektur gesperrt. [Bestaetigt]
+
+Ein Administrator darf mit Pflichtgrund einen vollstaendigen Plan fuer alle
+Mitglieder der Rangliste anwenden. Jeder Eintrag nennt erwarteten und neuen Rang;
+positive Zielraenge sind eindeutig, Rang `0` darf mehrfach vorkommen. Eine
+administrative Ergebnisloeschung stellt anhand der Provenienz den Stand vor dem
+Ergebnis wieder her und entfernt eine ausschliesslich durch dieses Ergebnis
+angelegte Mitgliedschaft; danach wird die Provenienz geloescht. [Bestaetigt]
+
+Raushaengen und Ergebnisabschluss verwenden technisch dieselben Grundmuster fuer
+Planung, Serialisierung, stabile Zeilen, Bestaetigung und Recovery. Sie bleiben
+fachlich getrennte Vorgaenge mit getrennten Planern: Ein Raushaengen ist kein
+Matchergebnis, eine Ergebnisfolge kein Raushaengen. Entscheidungen nach
+Fristueberschreitung bleiben bei der sportlichen Leitung und erfolgen nicht
+automatisch. Details stehen in
 `Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`.

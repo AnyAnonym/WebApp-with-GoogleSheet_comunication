@@ -29,6 +29,11 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   fest, nur der auf Viewport und Safe Area begrenzte Inhalt scrollt vertikal.
   Hintergrundscrollen ist waehrend des Dialogs gesperrt, Escape schliesst ihn.
   Die Ranglistenreiter haengen nicht von der aufrufenden Seite ab.
+  Sie werden mit den bewerbsbezogenen Matchdaten des gemeinsamen Profilmodals
+  zusammengefuehrt. Dadurch erscheinen alle eigenen offenen und bis Bewerbsende
+  abgeschlossenen Matches als Karten; Ergebnisaktionen und -dialog entsprechen
+  vollstaendig `Project/software/seiten/players.txt` und sind keine eigene
+  Bedienfunktion der Ranglistenseite.
   Ein aktiver Ranglistenreiter zeigt `Ranglistenposition: <Rang>` und gegebenenfalls
   die offene Forderung mit Gegnername, Gegnerrang, Richtung und Forderungszeit.
   Ausgehende Forderungen werden mit `Offene Forderung gegen`, eingehende mit
@@ -114,6 +119,12 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Das Terminaudit enthaelt Match-ID und kontrollierten alten/neuen Termin; das
   Abschlusslog ergaenzt Bewerbs- und Akteur-ID sowie Recoverystatus, aber keine
   freien Texte oder unnoetigen Personendaten.
+  Ergebniswrites verwenden die Auditaktionen `setMatchResult`,
+  `adminSetMatchEnd`, `adminClearMatchResult` und `adminCorrectRankingResult` mit
+  `started` sowie `success|failed|unknown`. Der Browser meldet nur die allowlist-
+  basierten Events `match_result_action_failed` und
+  `match_result_suggestion_failed`; freie Ergebnisse und Gruende bleiben
+  ausgeschlossen.
 
 -- Raushaengen und Sicherheit --
   Der Bestaetigungsdialog verlangt ausschliesslich einen Grund mit 3 bis 500
@@ -125,6 +136,12 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Liste mit Datum und Grund oeffnen. Namen, Gruende und Pyramide entstehen als
   sichere DOM-Textknoten.
 
-  Die Anwendung legt Forderungen fuer Neueinsteiger und Rueckkehrer an, veraendert
-  nach einem Sieg oder einer Niederlage aber keine Ranglistenzeile. Einreihung und
-  ergebnisbedingte Rangverschiebungen werden weiterhin manuell vollzogen.
+  Ein Ergebnis fuehrt die Regeln fuer gereihte Forderer, Neueinsteiger und
+  Rueckkehrer automatisch im selben technischen Plan aus. Korrekturen durch
+  Beteiligte setzen unveraenderten Rangprovenienzstand voraus; andernfalls kann
+  nur ein Administrator mit Pflichtgrund und vollstaendigem Rangplan korrigieren.
+  Darin koennen aktive Mitglieder nur positive Zielraenge erhalten. Rang 0 bleibt
+  bereits rausgehaengten Mitgliedern vorbehalten und darf fuer diese mehrfach
+  vorkommen; ihre Aktivierung auf einen positiven Rang ist zulaessig.
+  Eine administrative Ergebnisloeschung stellt bei unveraenderter Provenienz den
+  vorherigen Rangstand her und entfernt danach die Provenienz.

@@ -69,6 +69,9 @@ const MESSAGING_FILE = process.env.MESSAGING_FILE
 const SCORE_LOG_JOURNAL = parseBoolean("SCORE_LOG_JOURNAL", true);
 const AUDIT_LOG_JOURNAL = parseBoolean("AUDIT_LOG_JOURNAL", true);
 const AUDIT_ACTIONS = new Set(String(process.env.AUDIT_ACTIONS || "*").split(",").map((value) => value.trim()).filter(Boolean));
+const MESSAGING_REPORT_ENABLED = parseBoolean("MESSAGING_REPORT_ENABLED", false);
+const MESSAGING_REPORT_DEPLOYMENT = String(process.env.MESSAGING_REPORT_DEPLOYMENT || "").trim().toLowerCase();
+const MESSAGING_REPORT_TOKEN = String(process.env.EPIBER_OBSERVABILITY_API_TOKEN || "").trim();
 
 const PROTOCOL_VERSION = 2;
 const SESSION_TTL_MS = parseInteger("SESSION_TTL_SECONDS", 28800, 300, 604800) * 1000;
@@ -138,6 +141,10 @@ function validateRuntimeConfig() {
   }
   const persistentFiles = [STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE, MESSAGING_FILE].filter((value) => value !== ":memory:");
   if (new Set(persistentFiles).size !== persistentFiles.length) errors.push("STATE_FILE, SCORELOG_FILE, AUDITLOG_FILE und MESSAGING_FILE muessen getrennte Dateien sein");
+  if (MESSAGING_REPORT_ENABLED) {
+    if (!["live", "paj"].includes(MESSAGING_REPORT_DEPLOYMENT)) errors.push("MESSAGING_REPORT_DEPLOYMENT muss live oder paj sein");
+    if (!/^[A-Za-z0-9_-]{43,128}$/.test(MESSAGING_REPORT_TOKEN)) errors.push("EPIBER_OBSERVABILITY_API_TOKEN muss ein Base64url-Token mit mindestens 43 Zeichen sein");
+  }
   if (SHEET_STARTUP_RETRY_MAX_MS < SHEET_STARTUP_RETRY_BASE_MS) {
     errors.push("SHEET_STARTUP_RETRY_MAX_MS muss mindestens SHEET_STARTUP_RETRY_BASE_MS entsprechen");
   }
@@ -168,6 +175,9 @@ module.exports = {
   LISTEN_HOST,
   LOG_LEVEL,
   MESSAGING_FILE,
+  MESSAGING_REPORT_DEPLOYMENT,
+  MESSAGING_REPORT_ENABLED,
+  MESSAGING_REPORT_TOKEN,
   MONITOR_COOKIE,
   PASSWORD_RESET_TTL_MS,
   PORT,

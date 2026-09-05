@@ -123,19 +123,23 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   people.push(["p3", "Olivia", "Operator", "operator@example.test", "c".repeat(64), "", "+43999", "2", "1", "operator", "", "", "operator.login"]);
   dataStore.set("players", people, { source: "test" });
   dataStore.set("bewerbe", [
-    ["ID", "Bezeichnung", "BewerbsartID", "Geschlecht", "MatchtypID Standard", "SortOrder"],
-    ["cup-1", "Cup", "type-1", "2", "1", "1"],
-    ["ranking-men", "Herren", "2", "2", "1", "2"],
-    ["ranking-seniors", "Senioren", "2", "2", "1", "3"],
+    ["ID", "Bezeichnung", "BewerbsartID", "Geschlecht", "MatchtypID Standard", "SortOrder", "Bewerbsende"],
+    ["cup-1", "Cup", "type-1", "2", "1", "1", "491231"],
+    ["ranking-men", "Herren", "2", "2", "1", "2", "491231"],
+    ["ranking-seniors", "Senioren", "2", "2", "1", "3", "491231"],
   ], { source: "test" });
-  dataStore.set("bewerbsart", [["ID", "Bezeichnung"], ["type-1", "Turnier"], ["2", "Rangliste"]], { source: "test" });
-  dataStore.set("matchtyp", [["ID", "Bezeichnung", "Satztiebreak", "Entscheidender Satz"], ["1", "Normal", "6-6", "vollstaendiger Satz"], ["2", "Kurzsatz", "3-3", "MT10"]], { source: "test" });
+  dataStore.set("bewerbsart", [["ID", "Bezeichnung", "Rasterfunktion", "RoundRobin"], ["type-1", "Turnier", "", ""], ["2", "Rangliste", "", ""]], { source: "test" });
+  dataStore.set("matchtyp", [["ID", "Bezeichnung", "Gewinnsaetze", "Satzlaenge", "Satztiebreak", "Entscheidender Satz", "NoAd"], ["1", "Normal", "2", "0-6", "6-6", "vollstaendiger Satz", "N"], ["2", "Kurzsatz", "2", "0-4", "3-3", "MT10", "N"]], { source: "test" });
   dataStore.set("matches1", [[
     "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
-    "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchtypID", "InternalNote",
+    "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchtypID", "InternalNote", "MatchEnde",
   ],
-  ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note"],
-  ["", "m2", "260828-1200", "", "ranking-seniors", "F", "p1", "", "p2", "", "6-4/6-4", "1", ""],
+  ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note", "260101-1400"],
+  ["", "m-open", "260904-0800", "", "cup-1", "HF", "p1", "p3", "p2", "", "", "1", "", ""],
+  ["1", "m-ignored", "260904-0900", "", "cup-1", "VF", "p1", "", "p2", "", "", "1", "", ""],
+  ["", "m-pre", "260904-1000", "", "cup-1", "VF", "p1", "", "PRE", "", "", "1", "", ""],
+  ["", "m-nonperson", "260904-1100", "", "cup-1", "VF", "p1", "", "not-a-person", "", "", "1", "", ""],
+  ["", "m2", "260828-1200", "", "ranking-seniors", "F", "p1", "", "p2", "", "6-4/6-4", "1", "", "260828-1400"],
   ], { source: "test" });
   dataStore.set("rlPlatzierung", [
     ["ID", "BewerbID", "PersonID", "Rang", "RausgehangenAm", "RausgehangenLetztePlatzierung", "RausgehangenGrund"],
@@ -152,6 +156,19 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
       return { success: true, newMatchId: `m-${operationId.slice(-8)}` };
     },
     async setRankingMatchDate(_principal, { matchId, matchDate }) {
+      return { success: true, matchId, matchDate };
+    },
+    async setMatchResult(_principal, { matchId }) { return { success: true, matchId, fingerprint: "a".repeat(64) }; },
+    async adminSetMatchEnd(_principal, { matchId }) { return { success: true, matchId, fingerprint: "a".repeat(64) }; },
+    async adminClearMatchResult(_principal, { matchId }) { return { success: true, matchId, fingerprint: "a".repeat(64) }; },
+    async adminCorrectRankingResult(_principal, { matchId }) { return { success: true, matchId, fingerprint: "a".repeat(64) }; },
+    async adminDeleteRankingChallenge(_principal, { matchId }) {
+      return { success: true, matchId, deleted: true };
+    },
+    async adminSetRankingChallengeDate(_principal, { matchId, challengeDate }) {
+      return { success: true, matchId, challengeDate };
+    },
+    async adminSetRankingMatchDate(_principal, { matchId, matchDate }) {
       return { success: true, matchId, matchDate };
     },
     challengeEligibility() {
@@ -185,13 +202,65 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     status() { return {}; },
     async stop() {},
   };
-  const application = createApplication({ repository, sheetService });
+  const reportingToken = "r".repeat(43);
+  const application = createApplication({ repository, sheetService, messagingReporting: { enabled: true, deployment: "paj", ["token"]: reportingToken } });
+  application.scoreLogRepository.append({
+    eventId: "00000000-0000-4000-8000-000000000601", court: "1", score: "6-3/4-6/0-0/15-0",
+    matchId: "m1", courtActive: true, courtRevision: 1, occurredAt: "2026-09-04T10:00:00.000Z",
+  });
+  application.scoreLogRepository.append({
+    eventId: "00000000-0000-4000-8000-000000000602", court: "1", score: "1-0/0-0/0-0/0-0",
+    matchId: "other-match", courtActive: true, courtRevision: 2, occurredAt: "2026-09-04T10:01:00.000Z",
+  });
   await new Promise((resolve) => application.server.listen(0, "127.0.0.1", resolve));
   t.after(async () => application.shutdown("test"));
 
   const address = application.server.address();
   const httpBase = `http://127.0.0.1:${address.port}`;
   const wsBase = `ws://127.0.0.1:${address.port}`;
+
+  application.messagingRepository.ensureEvent({
+    id: "report-event",
+    competitionId: "cup-1",
+    createdAt: Date.parse("2026-09-04T10:00:00.000Z"),
+    type: "challenge",
+    source: "match",
+    sourceId: "report-match",
+    actorId: "p1",
+    actorName: "Ada Admin",
+    summary: "Ada hat Peter gefordert.",
+    detail: "Privates Ereignisdetail",
+    result: "",
+  }, [{
+    userId: "p2",
+    role: "opponent",
+    displayName: "Peter Player",
+    messageId: "report-message",
+    type: "challenge",
+    subject: "Private Forderung",
+    body: "Privater Meldungstext",
+    deliveries: [{ channel: "Inbox", status: "delivered" }],
+  }]);
+
+  const reportUrl = `${httpBase}/internal/messaging-report?from=${Date.parse("2026-09-01T00:00:00.000Z")}&to=${Date.parse("2026-10-01T00:00:00.000Z")}`;
+  const unauthorizedReport = await fetch(reportUrl);
+  assert.equal(unauthorizedReport.status, 401);
+  assert.equal((await unauthorizedReport.json()).error.code, "REPORTING_AUTH_REQUIRED");
+  const reportResponse = await fetch(reportUrl, { headers: { Authorization: `Bearer ${reportingToken}` } });
+  assert.equal(reportResponse.status, 200);
+  assert.equal(reportResponse.headers.get("cache-control"), "no-store");
+  const report = await reportResponse.json();
+  assert.equal(report.deployment, "paj");
+  assert.equal(report.totals.messageCount, 1);
+  assert.deepEqual(report.roleSummary.find(({ recipientClass }) => recipientClass === "Spieler"), { recipientClass: "Spieler", messageCount: 1, recipientCount: 1 });
+  assert.equal(report.messages[0].subject, "Private Forderung");
+  assert.equal(report.messages[0].body, "Privater Meldungstext");
+  assert.equal(report.messages[0].competitionName, "Cup");
+  assert.equal(report.series.find(({ challenges }) => challenges === 1) !== undefined, true);
+  application.messagingRepository.acknowledge("p2", "00000000-0000-4000-8000-000000000701", "report-message");
+  const excessiveReport = await fetch(`${httpBase}/internal/messaging-report?from=0&to=${32 * 24 * 60 * 60 * 1000}`, { headers: { Authorization: `Bearer ${reportingToken}` } });
+  assert.equal(excessiveReport.status, 400);
+  assert.equal((await excessiveReport.json()).error.code, "REPORTING_RANGE_TOO_LARGE");
 
   const anonymousSession = await fetch(`${httpBase}/api/session`);
   assert.equal(anonymousSession.status, 200);
@@ -502,7 +571,33 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     { competitionId: "ranking-men", competitionName: "Herren", rank: 1, status: "active", canChallenge: false, canWithdraw: false, openChallenge: null },
     { competitionId: "ranking-seniors", competitionName: "Senioren", rank: 0, status: "withdrawn", canChallenge: false, canWithdraw: false, openChallenge: null },
   ]);
+  assert.deepEqual(anonymousProfile.data.profile.competitions.map(({ competitionId, matches }) => ({
+    competitionId,
+    matches: matches.map(({ matchId, status, canSetResult, canAdminSetMatchEnd, canAdminClear }) => ({ matchId, status, canSetResult, canAdminSetMatchEnd, canAdminClear })),
+  })), [{
+    competitionId: "cup-1",
+    matches: [
+      { matchId: "m-open", status: "open", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false },
+      { matchId: "m1", status: "completed", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false },
+    ],
+  }, {
+    competitionId: "ranking-seniors",
+    matches: [{ matchId: "m2", status: "completed", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false }],
+  }]);
+  assert.equal(JSON.stringify(anonymousProfile.data.profile.competitions).includes("secret-note"), false);
   assert.equal(JSON.stringify(anonymousProfile.data.profile).includes("Verletzt"), false);
+  const currentCompetitions = structuredClone(dataStore.get("bewerbe"));
+  const currentMatches = structuredClone(dataStore.get("matches1"));
+  const noEndCompetitions = structuredClone(currentCompetitions);
+  noEndCompetitions[1][6] = "";
+  dataStore.set("bewerbe", noEndCompetitions, { source: "test-profile-no-end" });
+  const boundedWhileOpen = await publicClient.request("publicProfile", { id: "p1" });
+  assert.deepEqual(boundedWhileOpen.data.profile.competitions[0].matches.map(({ matchId }) => matchId), ["m-open", "m1"]);
+  dataStore.set("matches1", [currentMatches[0], ...currentMatches.slice(1).filter((row) => row[1] !== "m-open")], { source: "test-profile-no-open" });
+  const boundedWithoutOpen = await publicClient.request("publicProfile", { id: "p1" });
+  assert.equal(boundedWithoutOpen.data.profile.competitions.some(({ competitionId }) => competitionId === "cup-1"), false);
+  dataStore.set("bewerbe", currentCompetitions, { source: "test-profile-restore" });
+  dataStore.set("matches1", currentMatches, { source: "test-profile-restore" });
   const projectedMatches = await publicClient.request("matches1", {});
   assert.equal(projectedMatches.data.values[0].includes("InternalNote"), false);
   assert.equal(JSON.stringify(projectedMatches.data).includes("secret-note"), false);
@@ -514,7 +609,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
 
   const protectedEndpoints = [
     "memberDirectory", "myProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
-    "withdrawFromRanking", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
+    "withdrawFromRanking", "matchResultSuggestion", "setMatchResult", "adminClearMatchResult", "adminCorrectRankingResult", "adminSetMatchEnd", "adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
     "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
     "monitorTarget", "monitorAck",
   ];
@@ -649,6 +744,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   });
   assert.equal((await playerClient.handshake()).principal.role, "player");
   assert.equal((await playerClient.request("memberDirectory")).data.success, true);
+  const resultSuggestion = await playerClient.request("matchResultSuggestion", { matchId: "m1", court: "1" });
+  assert.equal(resultSuggestion.data.success, true);
+  assert.equal(resultSuggestion.data.matchId, "m1");
+  assert.deepEqual(resultSuggestion.data.suggestion, { result: "6-3/4-6", sets: ["6-3", "4-6"] });
+  assert.equal(resultSuggestion.data.source.type, "scoreLog");
+  assert.match(resultSuggestion.data.expectedFingerprint, /^[0-9a-f]{64}$/);
   const memberProfile = await playerClient.request("publicProfile", { id: "p1" });
   assert.equal(memberProfile.data.profile.email, "ada@example.test");
   assert.equal(memberProfile.data.profile.phone, "+43123");
@@ -656,6 +757,43 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(memberProfile.data.profile.login, undefined);
   assert.equal(memberProfile.data.profile.rankings[0].canChallenge, true);
   assert.deepEqual(memberProfile.data.profile.rankings[1].withdrawal, { withdrawnAt: "260829-1200", reason: "Verletzt" });
+  assert.equal(memberProfile.data.profile.competitions.every((competition) => !Object.hasOwn(competition, "rankingMembers")), true);
+  assert.equal(memberProfile.data.profile.competitions[0].matches[0].canSetResult, true);
+  assert.deepEqual(memberProfile.data.profile.competitions[0].matches[0].teams, [
+    { ids: ["p1", "p3"], names: ["Ada Admin", "Olivia Operator"] },
+    { ids: ["p2"], names: ["Peter Player"] },
+  ]);
+  const matchesBeforeNewcomerProfile = structuredClone(dataStore.get("matches1"));
+  const newcomerChallengeMatches = structuredClone(matchesBeforeNewcomerProfile);
+  newcomerChallengeMatches.push(["", "m-newcomer", "", "260902-1000", "ranking-men", "", "p3", "", "p2", "", "", "1", ""]);
+  dataStore.set("matches1", newcomerChallengeMatches, { source: "test-newcomer-profile" });
+  const newcomerProfile = await playerClient.request("publicProfile", { id: "p3" });
+  assert.deepEqual(newcomerProfile.data.profile.rankings, [{
+    competitionId: "ranking-men",
+    competitionName: "Herren",
+    rank: null,
+    status: "active",
+    canChallenge: false,
+    canWithdraw: false,
+    openChallenge: {
+      matchId: "m-newcomer",
+      direction: "challenger",
+      opponentId: "p2",
+      opponentName: "Peter Player",
+      opponentRank: 2,
+      challengedAt: "260902-1000",
+    },
+  }]);
+  newcomerChallengeMatches.at(-1)[3] = "";
+  dataStore.set("matches1", newcomerChallengeMatches, { source: "test-incomplete-challenge-profile" });
+  assert.deepEqual((await playerClient.request("publicProfile", { id: "p3" })).data.profile.rankings, []);
+  newcomerChallengeMatches.at(-1).splice(0, newcomerChallengeMatches.at(-1).length, "", "m-newcomer", "", "260902-1000", "ranking-men", "", "p3", "", "p3", "", "", "1", "");
+  dataStore.set("matches1", newcomerChallengeMatches, { source: "test-self-challenge-profile" });
+  assert.deepEqual((await playerClient.request("publicProfile", { id: "p3" })).data.profile.rankings, []);
+  newcomerChallengeMatches.at(-1).splice(0, newcomerChallengeMatches.at(-1).length, "", "m-newcomer", "", "260902-1000", "ranking-men", "", "p1", "p3", "p2", "", "", "1", "");
+  dataStore.set("matches1", newcomerChallengeMatches, { source: "test-partner-only-profile" });
+  assert.deepEqual((await playerClient.request("publicProfile", { id: "p3" })).data.profile.rankings, []);
+  dataStore.set("matches1", matchesBeforeNewcomerProfile, { source: "test-newcomer-profile-restore" });
   assert.deepEqual((await playerClient.request("rankingChallengeState", { bewerbId: "ranking-men" })).data, {
     success: true, mode: "ranked", rank: 1, returnFromRank: null,
   });
@@ -725,8 +863,9 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "memberDirectory", "myProfile", "operationStatus", "addMatch", "setRankingMatchDate", "addEntryList",
     "removeEntryList", "withdrawFromRanking",
   ];
+  const resultPlayerEndpoints = ["matchResultSuggestion", "setMatchResult"];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["adminMemberReconciliation", "adminPeopleNormalization", "sheetDataStatus", "refreshSheetData", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchEnd", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "sheetDataStatus", "refreshSheetData", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -737,10 +876,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal((await client.request(endpoint, {})).data.error.code, "FORBIDDEN", endpoint);
   };
   for (const endpoint of authenticatedEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
+  for (const endpoint of resultPlayerEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
   for (const endpoint of [...operatorEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(playerClient, endpoint);
   for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints]) await assertAllowedByPolicy(operatorClient, endpoint);
-  for (const endpoint of [...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
-  for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
+  for (const endpoint of [...resultPlayerEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
+  for (const endpoint of [...authenticatedEndpoints, ...resultPlayerEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
   for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -753,6 +893,17 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     { competitionId: "ranking-seniors", status: "withdrawn" },
   ]);
   assert.equal(ownProfile.data.profile.rankings[1].withdrawal.previousRank, 4);
+  assert.equal(ownProfile.data.profile.competitions[0].matches[0].canSetResult, true);
+  const completedAdminMatch = ownProfile.data.profile.competitions[0].matches.find(({ matchId }) => matchId === "m1");
+  assert.equal(completedAdminMatch.canAdminSetMatchEnd, true);
+  assert.equal(completedAdminMatch.canAdminClear, true);
+  const adminRankingCompetition = ownProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ranking-seniors");
+  assert.equal(adminRankingCompetition.ranking, true);
+  assert.deepEqual(adminRankingCompetition.rankingMembers, [
+    { personId: "p1", name: "Ada Admin", rank: 0 },
+    { personId: "p2", name: "Peter Player", rank: 4 },
+  ]);
+  assert.equal(ownProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "cup-1").rankingMembers, undefined);
   const normalization = await adminClient.request("adminPeopleNormalization");
   assert.equal(normalization.data.success, true);
   assert.equal(normalization.data.people.length >= 2, true);

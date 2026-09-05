@@ -7,8 +7,12 @@ ROLLEN UND VERANTWORTUNGEN
 
 Spieler fuehren ihre eigenen sportlichen Handlungen aus. Dazu gehoeren eigene
 Bewerbsanmeldungen, eigene Ranglistenforderungen, die Terminvereinbarung bei
-eigenen Forderungen und das eigene temporaere Raushaengen. Ein Spieler darf keine
-entsprechende Handlung im Namen einer anderen Person ausfuehren. [Bestaetigt]
+eigenen Forderungen und das eigene temporaere Raushaengen. Ist ein Spieler in
+`Spieler1ID`, `Spieler2ID`, `Spieler3ID` oder `Spieler4ID` eines Matches beteiligt,
+darf er fuer beide Seiten ein regulaeres Ergebnis, Walkover oder Retirement sofort
+eintragen und spaeter korrigieren. Eine Bestaetigung der anderen Seite ist nicht
+erforderlich; der Akteur bleibt in Historie und Meldungen sichtbar. Andere
+Handlungen darf er nicht im Namen einer fremden Person ausfuehren. [Bestaetigt]
 
 Die Rollenbezeichnungen `player`, `player A` und `player B` sind fachlich
 gleichgestellt. `A` und `B` sind ausschliesslich Mitgliederklassifikationen.
@@ -32,6 +36,11 @@ Aufgaben der sportlichen Leitung, die kontrollierte Personenpflege und der
 Mitgliederabgleich. Ein Administrator kann zusaetzlich die fuer Operatoren
 vorgesehenen Court- und Monitoraufgaben ausfuehren. [Bestaetigt]
 
+Administratoren duerfen Ergebnisse jedes Matches eintragen und korrigieren. Nur
+sie duerfen mit Pflichtgrund ein Matchende korrigieren, ein Ergebnis samt
+automatischer Folgen loeschen oder eine Ranglistenkorrektur mit vollstaendigem
+Rangplan ausfuehren. [Bestaetigt]
+
 Eigene aktive Adminrechte und der letzte aktive Administrator muessen vor
 unbeabsichtigter Deaktivierung oder Rollenentfernung geschuetzt bleiben.
 [Bestaetigt]
@@ -43,8 +52,9 @@ unbeabsichtigter Deaktivierung oder Rollenentfernung geschuetzt bleiben.
 Die sportliche Leitung ist keine eigene technische Systemrolle. Eine Person, die
 die sportliche Leitung ausuebt, muss im System Administrator sein. Die sportliche
 Leitung entscheidet insbesondere bei ueberfaelligen Ranglistenforderungen,
-pflegt derzeit Ergebnisse und Sonderabschluesse und vollzieht erforderliche
-Rangverschiebungen. [Bestaetigt]
+begruendet administrative Ergebnis- und Abschlusszeitkorrekturen und entscheidet
+ueber erforderliche Rangreparaturen. Regulaere Ergebnisfolgen werden von der
+Anwendung vollzogen. [Bestaetigt]
 
 
 5. MONITORGERAETE

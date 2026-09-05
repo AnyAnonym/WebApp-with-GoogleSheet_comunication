@@ -304,6 +304,132 @@ body.modal-open {
   margin-top: 0;
 }
 
+.modal-content .btn-login.admin-ranking-danger,
+.modal-content .btn-login.admin-danger {
+  background: #b42318;
+}
+
+.modal-content .btn-login.admin-ranking-danger:hover,
+.modal-content .btn-login.admin-ranking-danger:focus-visible,
+.modal-content .btn-login.admin-danger:hover,
+.modal-content .btn-login.admin-danger:focus-visible {
+  background: #8f1c13;
+}
+
+.profile-match-card {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #d6dbe3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.profile-match-card h3,
+.profile-match-card p {
+  margin: 0 0 8px;
+}
+
+.profile-match-actions,
+.match-result-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-match-actions .btn-login,
+.match-result-suggestions .btn-login {
+  flex: 1 1 150px;
+  margin-top: 0;
+}
+
+.match-result-modal {
+  z-index: 1100;
+}
+
+#matchResultForm,
+#matchResultCompletionFields,
+#matchResultValueFields,
+#matchResultLosingFields,
+#matchResultEndFields,
+#matchResultReasonFields {
+  display: grid;
+  gap: 8px;
+}
+
+#matchResultRankPlanFields {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d6dbe3;
+  border-radius: 6px;
+}
+
+#matchResultRankPlanFields p {
+  margin: 0;
+}
+
+#matchResultRankPlan {
+  display: grid;
+  gap: 8px;
+  max-height: 36vh;
+  overflow-y: auto;
+}
+
+.match-result-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 10px;
+}
+
+.match-result-rank-row input {
+  width: 100%;
+}
+
+#matchResultForm textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+}
+
+#matchResultCompletionFields[hidden],
+#matchResultValueFields[hidden],
+#matchResultLosingFields[hidden],
+#matchResultEndFields[hidden],
+#matchResultReasonFields[hidden],
+#matchResultRankPlanFields[hidden] {
+  display: none;
+}
+
+.ranking-admin-modal {
+  z-index: 1100;
+}
+
+#adminRankingActionForm {
+  display: grid;
+  gap: 10px;
+}
+
+#adminRankingDateFields {
+  display: grid;
+  gap: 8px;
+}
+
+#adminRankingDateFields[hidden] {
+  display: none;
+}
+
+#adminRankingReason {
+  width: 100%;
+  min-height: 100px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}
+
 .message-count-badge {
   display: inline-flex;
   align-items: center;
@@ -1336,6 +1462,10 @@ nav a.active {
 
 .competition-history-entry-result {
   font-weight: 400;
+}
+
+.competition-history-entry-detail {
+  white-space: pre-wrap;
 }
 
 .competition-history-more {

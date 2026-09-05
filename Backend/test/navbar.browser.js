@@ -50,6 +50,9 @@ const messageBodies = {
 };
 window.__acknowledgeCalls = [];
 window.__matchDateCalls = [];
+window.__adminRankingCalls = [];
+window.__matchResultCalls = [];
+window.__suggestionCalls = [];
 const operationIds = new Map();
 export const getOperationId = (key) => {
   if (!operationIds.has(key)) operationIds.set(key, "operation-" + key);
@@ -66,6 +69,33 @@ const rankings = [
   { competitionId: "r5", competitionName: "Wintercup", rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
   { competitionId: "r6", competitionName: "Damen Herbst", rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
 ];
+const profileRole = new URLSearchParams(window.location.search).get("role");
+const competitions = [{
+  competitionId: "r1", competitionName: "Herren", ranking: true, rankingMembers: [
+    { personId: "player-1", name: "Own Player", rank: 1 },
+    { personId: "p2", name: "Foreign Player", rank: 2 },
+    { personId: "p3", name: "Withdrawn One", rank: 0 },
+    { personId: "p4", name: "Withdrawn Two", rank: 0 },
+  ], matches: [{
+    matchId: "match-open", round: "G1", matchDate: "260903-1000", matchEnd: "", result: "",
+    completionType: "regular", teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: ["p2"], names: ["Foreign Player"] }],
+    status: "open", fingerprint: "a".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
+  }, {
+    matchId: "match-completed", round: "G2", matchDate: "260902-1000", matchEnd: "260902-1200", result: "6-4/6-4",
+    completionType: "regular", teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["player-1"], names: ["Own Player"] }],
+    status: "completed", fingerprint: "b".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
+  }],
+}, {
+  competitionId: "cup", competitionName: "Sommercup", matches: [{
+    matchId: "cup-open", round: "HF", matchDate: "260903-1100", matchEnd: "", result: "", completionType: "regular",
+    teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "open",
+    fingerprint: "c".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: false, canAdminClear: false,
+  }, {
+    matchId: "cup-completed", round: "VF", matchDate: "260901-1000", matchEnd: "260901-1200", result: "6-2/6-2", completionType: "regular",
+    teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "completed",
+    fingerprint: "d".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: profileRole === "admin", canAdminClear: profileRole === "admin",
+  }],
+}];
 export function createEndpoint(name) {
   return async (params = {}) => {
     const role = new URLSearchParams(window.location.search).get("role");
@@ -106,18 +136,22 @@ export function createEndpoint(name) {
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
-       email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], rankings: withdrawn ? [{
+        email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], competitions: competitions.filter(({ competitionId }) => competitionId === "r1"), rankings: withdrawn ? [{
          competitionId: "2", competitionName: "Mobile Rangliste", rank: 0, status: "withdrawn",
          withdrawal: { withdrawnAt: "260829-1200", previousRank: 4, reason: "Pause" },
        }] : rankings,
      } } };
-    if (name === "publicProfile") return { data: { success: true, profile: {
-      id: "p2", firstName: "Foreign", lastName: "Player",
-       ...(role === "admin" ? { login: "foreign-login", passwordSetupAllowed: false } : {}),
-       email: "directory@example.test", phone: "", birthDate: "", rankings: newcomer ? [{
-         competitionId: "2", competitionName: "Mobile Rangliste", rank: 2, status: "active", canChallenge: true,
-       }] : rankings,
+    if (name === "publicProfile") {
+      const profileRankings = structuredClone(rankings);
+      if (new URLSearchParams(window.location.search).get("dst") === "1") profileRankings[1].openChallenge.challengedAt = "270328-0237";
+      return { data: { success: true, profile: {
+        id: "p2", firstName: "Foreign", lastName: "Player",
+        ...(role === "admin" ? { login: "foreign-login", passwordSetupAllowed: false } : {}),
+        email: "directory@example.test", phone: "", birthDate: "", competitions, rankings: newcomer ? [{
+          competitionId: "2", competitionName: "Mobile Rangliste", rank: 2, status: "active", canChallenge: true,
+        }] : profileRankings,
       } } };
+    }
     if (name === "myMessageSummary") return { data: {
       success: true,
       unreadCount: messages.filter((message) => !message.acknowledged).length,
@@ -151,6 +185,20 @@ export function createEndpoint(name) {
     if (name === "setRankingMatchDate") {
       window.__matchDateCalls.push({ ...params });
       return { data: { success: true, matchId: params.matchId, matchDate: params.matchDate } };
+    }
+    if (["adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetRankingMatchDate"].includes(name)) {
+      window.__adminRankingCalls.push({ endpoint: name, ...params });
+      return { data: { success: true, matchId: params.matchId } };
+    }
+    if (name === "matchResultSuggestion") {
+      window.__suggestionCalls.push({ ...params });
+      if (params.court === "2" && new URLSearchParams(window.location.search).get("badSource") === "1") return { data: { success: true, matchId: params.matchId, suggestion: { result: "6-0/6-0", sets: ["6-0", "6-0"] }, source: { type: "unknown", court: "2" }, expectedFingerprint: "a".repeat(64) } };
+      if (params.court === "2") return { data: { success: true, matchId: params.matchId, suggestion: { result: "", sets: [] }, source: { type: "none", court: "2" }, expectedFingerprint: "a".repeat(64) } };
+      return { data: { success: true, matchId: params.matchId, suggestion: { result: "6-3/6-4", sets: ["6-3", "6-4"] }, source: { type: "scoreLog", court: "1" }, expectedFingerprint: "a".repeat(64) } };
+    }
+    if (["setMatchResult", "adminSetMatchEnd", "adminClearMatchResult", "adminCorrectRankingResult"].includes(name)) {
+      window.__matchResultCalls.push({ endpoint: name, ...params });
+      return { data: { success: true, matchId: params.matchId, fingerprint: "e".repeat(64) } };
     }
     return { data: { success: true } };
   };
@@ -233,7 +281,7 @@ function startServer() {
     }
     if (pathname === "/test/profileModalState.js") {
       response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
-      response.end("export const clearProfileModalContent = () => {};\n");
+      response.end(fs.readFileSync(path.join(FRONTEND_ROOT, "JS/profileModalState.js"), "utf8"));
       return;
     }
     if (pathname === "/JS/authClient.js") {
@@ -500,6 +548,7 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
       "Forderung vom 29.08.2026, 12:00 Uhr",
       "Spieltermin fixiert: 05.09.2026, 16:00 Uhr",
     ]);
+    assert.equal(await playerPage.locator("#profileRankingPanel1 .admin-ranking-danger").count(), 0);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel1").textContent(), /Keine Aktion verfügbar/i);
     await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
     assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-open-challenge > p").allTextContents(), [
@@ -559,6 +608,217 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(layout.bodyScrollable, true);
     assert.equal(layout.pageLocked, true);
     await adminPage.close();
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse im Kinddialog", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    assert.equal(await page.getByRole("tab", { name: "Herren", exact: true }).count(), 1);
+    assert.equal(await page.getByRole("tab", { name: "Sommercup", exact: true }).count(), 1);
+    await page.getByRole("tab", { name: "Herren", exact: true }).click();
+    const panel = page.locator('[data-competition-id="r1"]');
+    assert.equal(await panel.locator(".profile-match-card").count(), 2);
+    const resultButton = panel.getByRole("button", { name: "Ergebnis eintragen", exact: true });
+    assert.equal(await resultButton.count(), 1);
+    assert.equal(await resultButton.evaluate((button) => button.classList.contains("admin-danger")), false);
+    await resultButton.click();
+    const dialog = page.getByRole("dialog", { name: "Ergebnis erfassen" });
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), "");
+    assert.equal(await dialog.locator("#matchResultEnd").getAttribute("required"), "");
+    assert.equal(await dialog.locator("#matchResultEnd").getAttribute("min"), "2026-09-03T10:01");
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await page.evaluate(() => document.activeElement?.closest("#matchResultModal")?.id), "matchResultModal");
+    await dialog.getByRole("button", { name: "Platz 1", exact: true }).click();
+    assert.equal(await dialog.locator("#matchResultValue").inputValue(), "6-3/6-4");
+    assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
+    await dialog.getByRole("button", { name: "Platz 2", exact: true }).click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /kein Ergebnisvorschlag/);
+    await page.evaluate(() => history.replaceState(null, "", `${location.pathname}?role=player&badSource=1`));
+    await dialog.getByRole("button", { name: "Platz 2", exact: true }).click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /unbekannten Quelle/);
+    assert.equal(await dialog.locator("#matchResultValue").inputValue(), "6-3/6-4");
+    await dialog.locator("#matchResultEnd").fill("2026-09-03T12:00");
+    await dialog.getByRole("button", { name: "Ergebnis speichern", exact: true }).click();
+    await page.waitForFunction(() => window.__matchResultCalls.length === 1);
+    const initial = await page.evaluate(() => window.__matchResultCalls[0]);
+    assert.deepEqual(initial, {
+      endpoint: "setMatchResult", matchId: "match-open", expectedFingerprint: "a".repeat(64), kind: "regular",
+      result: "6-3/6-4", matchEnd: "260903-1200",
+      operationId: initial.operationId,
+    });
+    assert.match(initial.operationId, /^operation-match-result:result:match-open:/);
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), null);
+
+    await page.getByRole("tab", { name: "Herren", exact: true }).click();
+    await page.locator('[data-match-id="match-completed"]').getByRole("button", { name: "Ergebnis korrigieren" }).click();
+    const correction = page.getByRole("dialog", { name: "Ergebnis korrigieren" });
+    assert.equal(await correction.locator("#matchResultEndFields").isHidden(), true);
+    await correction.locator("#matchResultValue").fill("6-3/6-3");
+    await correction.getByRole("button", { name: "Ergebnis korrigieren" }).click();
+    await page.waitForFunction(() => window.__matchResultCalls.length === 2);
+    const corrected = await page.evaluate(() => window.__matchResultCalls[1]);
+    assert.equal(Object.hasOwn(corrected, "matchEnd"), false);
+    assert.equal(corrected.expectedFingerprint, "b".repeat(64));
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Admins sehen statt Teilnehmeraktionen rote Ergebnis- und Korrekturaktionen", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Sommercup", exact: true }).click();
+    const openCard = page.locator('[data-match-id="cup-open"]');
+    assert.deepEqual(await openCard.locator(".profile-match-actions .btn-login").allTextContents(), ["Ergebnis eintragen"]);
+    assert.equal(await openCard.locator(".admin-danger").count(), 1);
+    const completedCard = page.locator('[data-match-id="cup-completed"]');
+    assert.deepEqual(await completedCard.locator(".profile-match-actions .btn-login").allTextContents(), [
+      "Ergebnis korrigieren", "Matchende setzen", "Ergebnis löschen",
+    ]);
+    assert.equal(await completedCard.locator(".admin-danger").count(), 3);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Admin-Rangplankorrektur setzt dynamische Mindestwerte und laesst Rang 0 fuer Rausgehaengte mehrfach zu", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Herren", exact: true }).click();
+    const button = page.locator('[data-match-id="match-completed"]').getByRole("button", { name: "Mit Rangplan korrigieren", exact: true });
+    assert.equal(await button.evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(180, 35, 24)");
+    await button.click();
+    const dialog = page.getByRole("dialog", { name: "Mit Rangplan korrigieren" });
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), "");
+    assert.equal(await dialog.locator("#matchResultEndFields").isHidden(), true);
+    assert.equal(await dialog.locator("#matchResultRankPlan input").count(), 4);
+    assert.deepEqual(await dialog.locator("#matchResultRankPlan input").evaluateAll((inputs) => inputs.map((input) => Number(input.value))), [1, 2, 0, 0]);
+    assert.deepEqual(await dialog.locator("#matchResultRankPlan input").evaluateAll((inputs) => inputs.map((input) => input.min)), ["1", "1", "0", "0"]);
+    await dialog.locator('[data-person-id="player-1"]').fill("2");
+    await dialog.locator("#matchResultReason").fill("Rangfolge korrigieren");
+    await dialog.getByRole("button", { name: "Mit Rangplan korrigieren", exact: true }).click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /Positive Zielränge müssen eindeutig/);
+    assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
+    await dialog.locator('[data-person-id="p2"]').fill("1");
+    await dialog.locator("#matchResultValue").fill("6-3/6-3");
+    await dialog.getByRole("button", { name: "Mit Rangplan korrigieren", exact: true }).click();
+    await page.waitForFunction(() => window.__matchResultCalls.length === 1);
+    const request = await page.evaluate(() => window.__matchResultCalls[0]);
+    assert.deepEqual(request, {
+      endpoint: "adminCorrectRankingResult",
+      matchId: "match-completed",
+      expectedFingerprint: "b".repeat(64),
+      kind: "regular",
+      result: "6-3/6-3",
+      reason: "Rangfolge korrigieren",
+      rankPlan: [
+        { personId: "player-1", expectedRank: 1, newRank: 2 },
+        { personId: "p2", expectedRank: 2, newRank: 1 },
+        { personId: "p3", expectedRank: 0, newRank: 0 },
+        { personId: "p4", expectedRank: 0, newRank: 0 },
+      ],
+      operationId: request.operationId,
+    });
+    assert.equal(Object.hasOwn(request, "matchEnd"), false);
+    assert.match(request.operationId, /^operation-match-result:rankingRepair:match-completed:/);
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), null);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Admins bearbeiten offene Forderungen mit roten begruendungspflichtigen Datumsaktionen", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin&dst=1`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
+    const actions = page.locator("#profileRankingPanel1 .admin-ranking-danger");
+    assert.deepEqual(await actions.allTextContents(), ["Forderung löschen", "Forderungsdatum ändern", "Spieldatum ändern"]);
+    assert.equal(await actions.first().evaluate((button) => getComputedStyle(button).backgroundColor), "rgb(180, 35, 24)");
+
+    await page.getByRole("button", { name: "Forderungsdatum ändern", exact: true }).click();
+    let dialog = page.getByRole("dialog", { name: "Forderungsdatum ändern" });
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), "");
+    assert.equal(await dialog.locator("#adminRankingDay").getAttribute("min"), "1950-01-01");
+    assert.equal(await dialog.locator("#adminRankingDay").getAttribute("max"), "2049-12-31");
+    assert.equal(await dialog.locator("#adminRankingDay").inputValue(), "2027-03-28");
+    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("type"), "time");
+    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("step"), "60");
+    assert.equal(await dialog.locator("#adminRankingTime").inputValue(), "02:37");
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await page.evaluate(() => document.activeElement?.closest("#adminRankingActionModal")?.id), "adminRankingActionModal");
+    await dialog.locator("#adminRankingDay").fill("2026-01-02");
+    await dialog.locator("#adminRankingTime").fill("00:37");
+    await dialog.locator("#adminRankingReason").fill("x");
+    await dialog.getByRole("button", { name: "Forderungsdatum ändern", exact: true }).click();
+    await page.waitForFunction(() => window.__adminRankingCalls.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__adminRankingCalls[0]), {
+      endpoint: "adminSetRankingChallengeDate",
+      operationId: "operation-ranking:admin:challengeDate:match-r2:260102-0037:x",
+      matchId: "match-r2",
+      challengeDate: "260102-0037",
+      reason: "x",
+    });
+    assert.equal(await page.locator("#profileModal").getAttribute("inert"), null);
+    assert.equal(await page.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).getAttribute("aria-selected"), "true");
+
+    await page.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
+    await page.getByRole("button", { name: "Spieldatum ändern", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: "Spieldatum ändern" });
+    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("step"), "3600");
+    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("max"), "23:00");
+    await dialog.locator("#adminRankingDay").fill("2025-01-01");
+    await dialog.locator("#adminRankingTime").fill("23:00");
+    await dialog.locator("#adminRankingReason").fill("Korrektur");
+    await dialog.getByRole("button", { name: "Spieldatum ändern", exact: true }).click();
+    await page.waitForFunction(() => window.__adminRankingCalls.length === 2);
+    assert.equal((await page.evaluate(() => window.__adminRankingCalls[1])).matchDate, "250101-2300");
+
+    await page.getByRole("button", { name: "Forderung löschen", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: "Forderung löschen" });
+    assert.equal(await dialog.locator("#adminRankingDateFields").isHidden(), true);
+    await dialog.locator("#adminRankingReason").fill("x");
+    await dialog.getByRole("button", { name: "Forderung löschen", exact: true }).click();
+    await page.waitForFunction(() => window.__adminRankingCalls.length === 3);
+    assert.equal((await page.evaluate(() => window.__adminRankingCalls[2])).endpoint, "adminDeleteRankingChallenge");
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

@@ -13,3 +13,18 @@ datasources:
       httpMethod: POST
       prometheusType: Prometheus
       timeInterval: 15s
+  - name: ePiber Messaging
+    uid: epiber-messaging
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    editable: false
+    jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - http://127.0.0.1:8080
+        - http://127.0.0.1:8083
+      allowDangerousHTTPMethods: false
+      timeoutInSeconds: 15
+      unsecuredQueryHandling: deny
+    secureJsonData:
+      bearerToken: $EPIBER_OBSERVABILITY_API_TOKEN

@@ -76,9 +76,9 @@ nur kontrollierte IDs beziehungsweise aggregierte technische Zaehler.
 
 ## Dashboards und Alerts
 
-Sieben Dashboards werden provisioniert: Uebersicht, Hostressourcen,
-Loggingpipeline, Fehler/Recovery, Personennormalisierung, Ranglistenaktivitaeten
-sowie Platz- und Scoreverlauf.
+Acht Dashboards werden provisioniert: Uebersicht, Hostressourcen,
+Loggingpipeline, Fehler/Recovery, Personennormalisierung, Ranglistenaktivitaeten,
+Matchergebnisse sowie Platz- und Scoreverlauf.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
@@ -124,6 +124,18 @@ Match-ID, kontrollierten Fehlercode und Support-ID. Diese Werte bleiben
 JSON-Felder und werden keine Loki-Labels. Kontaktwerte und freie Inhalte sind
 ausgeschlossen; die Ansicht reicht hoechstens 14 Tage zurueck und ersetzt nicht
 die dauerhafte Historie in `audit.sqlite`.
+
+Das Dashboard `ePiber Matchergebnisse` zeigt erfolgreiche Ergebniseintraege,
+Korrekturen, Ruecknahmen und MatchEnd-Korrekturen sowie fehlgeschlagene, unklare
+und technisch problematische Ausgaenge. Der optionale Bewerbsfilter arbeitet auf
+dem geparsten JSON-Feld `competitionId`; Match-, Bewerbs-, KO-Ziel-, Akteur- und
+Request-IDs bleiben JSON-Felder und werden keine Loki-Labels. Der Auditverlauf
+verwendet nur `matchId`, `competitionId`, `changeType`, `completionType`,
+`source`, `shiftedCount`, `koTargetMatchId`, `koTargetStatus`, `actorName`,
+`actorId`, `result`, `errorCode` und `requestId`. Begruendungstexte, rohe Matchergebnisse, Payloads,
+Kontaktdaten, Passwoerter und Tokens sind ausgeschlossen. Die Ansicht reicht
+hoechstens 14 Tage zurueck und ersetzt nicht die dauerhafte Historie in
+`audit.sqlite`.
 
 Die Uebersicht zeigt zusaetzlich den verbleibenden Google-Sheets-Read-Cooldown,
 die tatsaechlichen API-Versuche sowie logische Readrequests nach festem Zweck und

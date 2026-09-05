@@ -19,6 +19,15 @@ const peopleNormalizationDashboardFile = path.resolve(
   __dirname,
   "../../Project/server-configs/observability/grafana/dashboards/epiber-people-normalization.json",
 );
+const matchResultsDashboardFile = path.resolve(
+  __dirname,
+  "../../Project/server-configs/observability/grafana/dashboards/epiber-match-results.json",
+);
+const messagingDashboardFile = path.resolve(
+  __dirname,
+  "../../Project/server-configs/observability/grafana/dashboards/epiber-messaging.json",
+);
+const observabilityRoot = path.resolve(__dirname, "../../Project/server-configs/observability");
 
 test("Scoreverlauf-Dashboard verwendet kontrollierte Loki-Felder und Filter", () => {
   const dashboard = JSON.parse(fs.readFileSync(dashboardFile, "utf8"));
@@ -120,4 +129,109 @@ test("Personennormalisierung zeigt aktive Mitglieder nach Playerklassifikation",
       assert.match(panel.targets[0].expr, /classification=~"player\|player_a\|player_b"/);
     }
   }
+});
+
+test("Matchergebnis-Dashboard begrenzt Auditqueries auf kontrollierte Felder", () => {
+  const dashboard = JSON.parse(fs.readFileSync(matchResultsDashboardFile, "utf8"));
+  assert.equal(dashboard.uid, "epiber-match-results");
+  assert.equal(dashboard.title, "ePiber Matchergebnisse");
+  assert.equal(dashboard.time.from, "now-14d");
+  assert.equal(dashboard.refresh, "10s");
+  assert.deepEqual(dashboard.templating.list.map(({ name }) => name), ["deployment", "competitionId"]);
+  assert.equal(dashboard.templating.list[0].query, "live,paj");
+  assert.equal(dashboard.templating.list[1].type, "textbox");
+  assert.equal(dashboard.templating.list[1].query, ".*");
+
+  const requiredActions = "setMatchResult|adminCorrectRankingResult|adminSetMatchEnd|adminClearMatchResult";
+  const auditTargets = dashboard.panels.flatMap(({ targets = [] }) => targets)
+    .filter(({ expr = "" }) => expr.includes('event="audit_recorded"'));
+  assert.equal(auditTargets.length, 6);
+  for (const { expr } of auditTargets) {
+    assert.match(expr, new RegExp(`action=~"${requiredActions}"`));
+    assert.match(expr, /competitionId=~"\$competitionId"/);
+    const selector = expr.slice(0, expr.indexOf("}") + 1);
+    for (const id of ["matchId", "competitionId", "koTargetMatchId", "actorId", "requestId"]) {
+      assert.equal(selector.includes(id), false, `${id} darf kein Loki-Label sein`);
+    }
+  }
+
+  const expectedSuccessPanels = new Map([
+    ["Erfolgreiche Ergebniseintraege", "result"],
+    ["Ergebniskorrekturen", "result_corrected"],
+    ["Ergebnisruecknahmen", "result_cleared"],
+    ["MatchEnd-Korrekturen", "match_end_corrected"],
+  ]);
+  for (const [title, changeType] of expectedSuccessPanels) {
+    const query = dashboard.panels.find((panel) => panel.title === title).targets[0].expr;
+    assert.match(query, /result="success"/);
+    assert.match(query, new RegExp(`changeType="${changeType}"`));
+  }
+
+  const outcomes = dashboard.panels.find(({ title }) => title === "Fehlgeschlagene und unklare Ausgaenge");
+  assert.match(outcomes.targets[0].expr, /sum by \(action, result, errorCode\)/);
+  assert.match(outcomes.targets[0].expr, /result=~"failed\|unknown"/);
+
+  const audit = dashboard.panels.find(({ title }) => title === "Matchergebnis-Audit");
+  assert.equal(audit.type, "logs");
+  const controlledFields = [
+    "matchId", "competitionId", "changeType", "completionType", "source", "shiftedCount",
+    "koTargetMatchId", "koTargetStatus", "actorName", "actorId", "result", "errorCode", "requestId",
+  ];
+  const keepFields = audit.targets[0].expr.match(/\| keep ([^|]+) \| line_format/)[1]
+    .split(",").map((field) => field.trim());
+  assert.deepEqual(keepFields, controlledFields);
+
+  const technical = dashboard.panels.find(({ title }) => title === "Technische WS-Fehler");
+  assert.match(technical.targets[0].expr, /event="ws_request_completed"/);
+  assert.match(technical.targets[0].expr, new RegExp(`endpoint=~"${requiredActions}"`));
+  assert.match(technical.targets[0].expr, /result=~"rejected\|failed"/);
+
+  const serialized = JSON.stringify(dashboard).toLowerCase();
+  for (const forbidden of ["reason", "rawresult", "resultvalue", "payload", "contact", "email", "phone", "telefon", "password", "token"]) {
+    assert.equal(serialized.includes(forbidden), false, `${forbidden} darf nicht im Dashboard vorkommen`);
+  }
+});
+
+test("Messaging-Dashboard nutzt nur gepinnte interne Infinity-Abfragen", () => {
+  const dashboard = JSON.parse(fs.readFileSync(messagingDashboardFile, "utf8"));
+  assert.equal(dashboard.uid, "epiber-messaging");
+  assert.equal(dashboard.timezone, "Europe/Vienna");
+  assert.equal(dashboard.time.from, "now-30d");
+  assert.equal(dashboard.refresh, "5m");
+  assert.deepEqual(dashboard.templating.list.map(({ name }) => name), ["deployment"]);
+  assert.equal(dashboard.templating.list[0].query, "Live : http://127.0.0.1:8080, PAJ : http://127.0.0.1:8083");
+  const targets = dashboard.panels.flatMap(({ targets = [] }) => targets);
+  assert.equal(targets.length, 6);
+  for (const target of targets) {
+    assert.deepEqual(target.datasource, { type: "yesoreyeram-infinity-datasource", uid: "epiber-messaging" });
+    assert.equal(target.type, "json");
+    assert.equal(target.source, "url");
+    assert.equal(target.parser, "backend");
+    assert.equal(target.url_options.method, "GET");
+    assert.equal(target.url, "$deployment/internal/messaging-report?from=${__from}&to=${__to}");
+    assert.equal(Object.hasOwn(target, "headers"), false);
+  }
+  const trend = dashboard.panels.find(({ title }) => title === "Persoenliche Meldungen pro Tag");
+  assert.deepEqual(trend.targets[0].columns.map(({ selector }) => selector), ["time", "total", "results", "challenges", "dateChanges"]);
+  assert.equal(trend.fieldConfig.defaults.custom.stacking.mode, "none");
+  const details = dashboard.panels.find(({ title }) => title === "Meldungsdetails");
+  for (const field of ["subject", "body", "summary", "detail", "result", "actorName", "acknowledgedAt", "deliveries"]) {
+    assert.equal(details.targets[0].columns.some(({ selector }) => selector === field), true, field);
+  }
+});
+
+test("Infinity-Provisionierung pinnt Plugin und haelt das Credential ausserhalb des Repositories", () => {
+  const datasource = fs.readFileSync(path.join(observabilityRoot, "grafana/provisioning/datasources/epiber.yml"), "utf8");
+  assert.match(datasource, /type: yesoreyeram-infinity-datasource/);
+  assert.match(datasource, /bearerToken: \$EPIBER_OBSERVABILITY_API_TOKEN/);
+  assert.match(datasource, /unsecuredQueryHandling: deny/);
+  assert.match(datasource, /http:\/\/127\.0\.0\.1:8080/);
+  assert.match(datasource, /http:\/\/127\.0\.0\.1:8083/);
+  const installer = fs.readFileSync(path.join(observabilityRoot, "install-observability.sh"), "utf8");
+  assert.match(installer, /INFINITY_PLUGIN_VERSION=4\.0\.0/);
+  assert.match(installer, /plugins install "\$INFINITY_PLUGIN_ID" "\$INFINITY_PLUGIN_VERSION"/);
+  assert.equal(installer.includes("--insecure"), false);
+  const template = fs.readFileSync(path.join(observabilityRoot, "grafana/messaging-api.env.example"), "utf8");
+  assert.match(template, /EPIBER_OBSERVABILITY_API_TOKEN=CHANGE_ME/);
+  assert.equal(/[A-Za-z0-9_-]{43}/.test(template.split("=").at(-1).trim()), false);
 });

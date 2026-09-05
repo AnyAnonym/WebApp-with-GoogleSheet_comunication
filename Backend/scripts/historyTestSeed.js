@@ -312,7 +312,7 @@ function inspectEventsReadOnly(filename, events = EVENTS) {
     const required = ["competition_events", "event_participants", "event_receipts", "event_deliveries", "event_ack_operations", "messaging_revisions"];
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(({ name }) => name));
     const eventColumns = tables.has("competition_events") ? new Set(db.prepare("PRAGMA table_info(competition_events)").all().map(({ name }) => name)) : new Set();
-    if (schemaVersion !== 4 || required.some((name) => !tables.has(name)) || !eventColumns.has("result")) fail("MESSAGING_SCHEMA_MISMATCH");
+    if (schemaVersion !== 5 || required.some((name) => !tables.has(name)) || !eventColumns.has("result")) fail("MESSAGING_SCHEMA_MISMATCH");
     for (const expected of events) {
       const actual = readOnlyEvent(db, expected.event.id);
       if (actual && !sameEvent(actual, expected)) fail("EVENT_ID_CONFLICT");

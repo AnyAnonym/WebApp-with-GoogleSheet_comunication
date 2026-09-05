@@ -98,7 +98,8 @@ vom Auftraggeber bestaetigt.
       Administratoren besitzen die umfassende Verwaltungsrolle. Die sportliche
       Leitung ist keine eigene technische Rolle und muss im System immer
       Administrator sein. Sie entscheidet insbesondere bei ueberfaelligen
-      Ranglistenforderungen und vollzieht derzeit Ergebnis- und Rangpflege.
+      Ranglistenforderungen und kann Ergebnisse, Abschlusszeiten und Rangfolgen
+      begruendet administrativ korrigieren.
       Administratoren pruefen und normalisieren vorhandene Personendaten und
       gleichen ClubDesk-Mitglieder kontrolliert mit dem Personenbestand ab.
       [Bestaetigt]
@@ -203,9 +204,9 @@ raushaengen. Forderungs-, Schutz-, Sperr-, Neueinsteiger- und Rueckkehrregeln
 stehen vollstaendig in `Project/Regelwerk/Spielbetrieb/RANGLISTE.txt`.
 
 Die sportliche Leitung entscheidet ueber Forderungen, die nicht innerhalb der
-vorgegebenen Fristen abgeschlossen werden. Ergebnisbedingte Rangverschiebungen
-werden derzeit manuell vollzogen; eine Fristueberschreitung erzeugt keine
-automatische Wertung.
+vorgegebenen Fristen abgeschlossen werden. Ein eingetragenes Ranglistenergebnis
+vollzieht die regelbedingte Einreihung und Rangverschiebung automatisch; eine
+Fristueberschreitung erzeugt weiterhin keine automatische Wertung.
 
 
 ================================================================================
@@ -319,14 +320,25 @@ automatische Wertung.
         moeglich automatisch erfolgen. Sichtbare Meldungen dazu sollen kurz,
         neutral und ohne technische Detailangaben formuliert sein. [Bestaetigt]
 
-6.5 Semantische Ergebnispruefung
+6.5 Matchergebnisse
 
-  LF-40 In einem spaeteren Ausbauschritt soll das System Matchergebnisse anhand
-        der Regeln des zugeordneten Matchtyps semantisch pruefen koennen.
+  LF-40 Das System prueft regulaere Ergebnisse, Walkover und Retirement anhand
+        des fuer das Match wirksamen Matchtyps. Jede in einer der vier
+        Spielerpositionen beteiligte Person darf den Abschluss ohne Bestaetigung
+        der Gegenseite eintragen und korrigieren; Administratoren duerfen dies
+        fuer jedes Match. Der handelnde Benutzer bleibt in Historie und
+        persoenlichen Meldungen transparent. [Bestaetigt]
+
+  LF-41 Der erste Matchabschluss benoetigt einen Abschlusszeitpunkt nach dem
+        Spielbeginn, hoechstens sechs Stunden danach und nicht in der Zukunft.
+        Beteiligte duerfen ihn bei spaeteren Ergebniskorrekturen nicht aendern;
+        Administratoren besitzen dafuer eine begruendungspflichtige Korrektur.
         [Bestaetigt]
 
-  LF-41 Der genaue Pruefumfang, der Zeitpunkt der Pruefung und der Umgang mit
-        Sonderfaellen oder ungueltigen Ergebnissen sind noch festzulegen. [Offen]
+  LF-42 Ergebnisfolgen werden bewerbsartspezifisch gemeinsam mit dem Ergebnis
+        ausgefuehrt: Ranglistenpositionen werden nach den bestaetigten Regeln
+        angepasst, KO-Gewinner in vorangelegte Folgematches uebernommen und
+        Gruppentabellen aus dem gespeicherten Ergebnis berechnet. [Bestaetigt]
 
 6.6 Ranglistenbetrieb
 

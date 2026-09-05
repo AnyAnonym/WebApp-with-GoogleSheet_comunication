@@ -30,10 +30,11 @@ Last-good-Cache. Ein fehlgeschlagener manueller Import veraendert keine Tabelle.
                   |                 | PasswdHash, Aktiv, Role
   bewerbe         | Bewerb          | ID, Bezeichnung, BewerbsartID
   bewerbsart      | Bewerbsart      | ID, Bezeichnung
-  matchtyp        | Matchtyp        | ID, Satztiebreak, Entscheidender Satz
+  matchtyp        | Matchtyp        | ID, Gewinnsaetze, Satzlaenge,
+                  |                 | Satztiebreak, Entscheidender Satz, NoAd
   matches1        | Matches1        | ID, MatchDate, ForderungDate, BewerbID,
                   |                 | BewerbRunde, Spieler1ID, Spieler3ID,
-                  |                 | Ergebnis
+                  |                 | Ergebnis, MatchEnde
   rlPlatzierung   | RL-Platzierung  | BewerbID, PersonID, Rang
   navigator       | Navigator       | Name, Ziel
   entryList       | EntryList       | ID, BewerbID, PersonenID, Entrydate
@@ -84,6 +85,12 @@ Matches1 enthaelt offene und gespielte Matches.
                   | temporaer `PRE` zulaessig.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
+  MatchEnde       | Fachlicher Abschlusszeitpunkt `YYMMDD-HHMM`. Beim ersten
+                  | Abschluss zwingend strikt nach MatchDate, maximal sechs
+                  | Stunden danach und nicht in der Zukunft. Beteiligte behalten
+                  | ihn bei Korrekturen unveraendert; nur Admins korrigieren ihn
+                  | mit Grund. Historisch leer faellt fuer Abschlussregeln auf
+                  | MatchDate zurueck.
   PTN-Wertung     | Reserviert.
   Bemerkung       | Freitext.
 
@@ -99,6 +106,13 @@ ersetzt werden. Fuer `Spieler2ID` und `Spieler4ID` ist keine `PRE`-Verwendung
 vorgesehen.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
+
+Der Ergebnis-Fingerprint ist SHA-256 ueber die getrimmten Werte von `Ergebnis`,
+`MatchEnde` und `Spieler1ID` bis `Spieler4ID`. Ergebniswrites vergleichen ihn
+unmittelbar vor der Mutation. Sie schreiben ueber stabile `epiberRecord`-
+Metadaten nur die tatsaechlich geaenderten Zellen; die uebrige Zeile und Formeln
+werden weder ersetzt noch neu geschrieben. Ein gemeinsamer Google-Batch kann
+zusaetzlich Rangzeilen und genau einen KO-Nachfolgeslot enthalten.
 
 
 ================================================================================
@@ -308,8 +322,10 @@ Matchtyp:
   ID                     | Eindeutige positive ganzzahlige Matchtyp-ID.
   Bezeichnung            | Textuelle Bezeichnung.
   Gewinnsaetze           | `2` fuer Best-of-3 oder `3` fuer Best-of-5.
-  Satzlaenge             | Ganzzahl von 0 bis 6; ueblich 6, kurze Saetze z.B. 4.
-  Satztiebreak           | Aktuell `3-3` oder `6-6`; Stand, an dem im Satz ein
+  Satzlaenge             | Exakt `0-4` oder `0-6`; tatsaechlicher Zielbereich
+                          | eines Satzes, nicht eine einzelne Ganzzahl.
+  Satztiebreak           | Exakt passend `3-3` zu `0-4` oder `6-6` zu `0-6`;
+                          | Stand, an dem im Satz ein
                          | Tie-Break beginnt.
   Entscheidender Satz    | `vollstaendiger Satz`, `MT10` oder `MT7`.
   NoAd                   | `N` ohne No-Ad-Regel, `J` mit No-Ad-Regel.
@@ -337,8 +353,15 @@ Individualzuweisungen speichern `matchtypId: ""` und `displayRules: null`.
 Die Scoreboard-Projektion verwendet nur diesen Snapshot und ignoriert ihn bei
 falscher `schemaVersion`, anderer `source` oder einer von `matchtypId`
 abweichenden Snapshot-ID. Spaetere Sheet-Aenderungen wirken erst nach einer
-Neuzuweisung. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
-spaetere semantische Ergebnispruefung ist fachlich vorgesehen.
+Neuzuweisung. Fuer Ergebniswrites werden alle sechs oben genannten Matchtypfelder
+strikt validiert. Regulaere Ergebnisse verwenden die Satzgrammatik
+`A-B[/A-B...]` mit optionalem Tie-Break-Verliererwert `A-B(T)` und werden gegen
+Gewinnsaetze, Satzlaenge und entscheidenden Satz geprueft. Walkover bleibt ohne
+Ergebnis; Retirement erlaubt ein leeres Teilergebnis oder als letzten Satz einen
+gueltigen unvollstaendigen Stand. Jede numerische Ergebniskomponente liegt aus
+kanonischen Speicher- und Validierungsgruenden absichtlich zwischen 0 und 99.
+NoAd ist Bestandteil des strikten Vertrags,
+veraendert aber nicht die gespeicherte Satzgrammatik.
 
 RL-Platzierung:
   Optional ID; verpflichtend sind BewerbID, PersonID, Rang, RausgehangenAm,
@@ -470,6 +493,14 @@ Projektion fuer Forderer und Geforderten. Scheitert diese recovery-sichere
 Ereignispersistenz nach dem Sheetwrite, wird der Fachwrite nicht als eindeutig
 erfolgreich bestaetigt.
 
+Jede bestaetigte Ergebniseintragung, -korrektur, -loeschung oder administrative
+MatchEnde-Korrektur erzeugt genau ein generisches matchbezogenes Ereignis mit
+kontrolliertem Gesamtergebnis und einer privaten Projektion fuer jeden eindeutigen
+Beteiligten aus allen vier Spielerpositionen. Die Historie unterscheidet nicht in
+separate Einzel-/Doppel- oder gewichtete Teilresultate. Akteur und damaliger Name
+werden als Snapshot gespeichert; ein freier Admin-Grund erscheint nur im
+fachlichen Ereignisdetail und in den privaten Meldungstexten.
+
 `SCORELOG_FILE`, standardmaessig
 `Backend/.state/<INSTANCE_ID>-scorelog.sqlite`, produktiv
 `/var/lib/epiber-<system>/scorelog.sqlite`:
@@ -484,6 +515,9 @@ Tabelle `score_log`:
   `(instance, court, sequence)` eindeutig. Eine wiederholte Event-ID ist nur mit
   identischem Inhalt idempotent; anderer Inhalt ergibt
   `SCORE_LOG_EVENT_CONFLICT`.
+  Der Index `score_log_match_latest(instance, match_id, court, sequence DESC)`
+  ermoeglicht die gezielte Suche nach dem neuesten ScoreLog-Eintrag fuer exakt
+  eine Match-ID und einen Court. Der Court wird nicht im Match gespeichert.
 
 Score hat das Format
 `S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`. Inaktive
@@ -579,6 +613,20 @@ enthaelt nur Match-ID und neuen kontrollierten Termin. `success`, `failed` oder
 Termin. Der strukturierte Journalabschluss enthaelt ausschliesslich Match-,
 Bewerbs- und Akteur-ID, neuen Termin und Recoverykennzeichen, keine freien Texte.
 
+Ergebnisoperationen verwenden die Auditaktionen `setMatchResult`,
+`adminSetMatchEnd`, `adminClearMatchResult` und `adminCorrectRankingResult`.
+Jeder Versuch besitzt `started` und endet als `success`, `failed` oder `unknown`.
+Audit und Journal spiegeln nur Match-/Bewerbs-ID, Aenderungs- und Abschlussart,
+Quelle, Anzahl Rangverschiebungen, KO-Zielmatch und das Vorhandensein eines
+Admin-Grundes. Der freie Grund steht ausschliesslich in der fachlichen Historie
+und in persoenlichen Meldungen, nie in Audit oder Betriebslog.
+
+Automatische Rangfolgen speichern in `app_state` unter
+`match-result-ranking:<Match-ID>` die betroffenen Personen mit Stand vor und nach
+dem Ergebnis sowie die Kennzeichnung einer dadurch neu angelegten Mitgliedschaft.
+Korrektur und Loeschung verlangen den unveraenderten Nachher-Stand; eine
+erfolgreiche Loeschung oder vollstaendige Ruecknahme leert die Provenienz.
+
 
 ================================================================================
   8. SQLITE-STATE
@@ -592,7 +640,8 @@ Foreign Keys, WAL und `synchronous=FULL`.
 Tabelle `app_state`:
   key TEXT PRIMARY KEY, value_json TEXT, revision INTEGER, updated_at INTEGER.
   Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
-  Monitorziele `monitor-target:<id>`, Metadaten-Intents sowie die
+  Monitorziele `monitor-target:<id>`, Ergebnis-Rangprovenienz und persistente
+  Ergebnis-Recovery-Plaene, Metadaten-Intents sowie die
   Frontend-Logging-Schluessel `frontend-logging:settings` und
   `frontend-logging:targets`. Compare-and-set meldet bei falscher Revision
   `REVISION_CONFLICT`.
@@ -699,7 +748,8 @@ Tokens, Passwortwerte oder privaten Schluessel.
 ================================================================================
 
 Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
-Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
+Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, `MatchEnde`, die
+sechs strikten Matchtypfelder, Schreibrechte
 fuer Personen, Matches1 und EntryList sowie eindeutige IDs/Metadaten zu pruefen.
 Insbesondere muss `Personen.Login` vor dem Backendstart vorhanden sein; bestehende
 Anmeldekonten brauchen einen gueltigen, kanonischen und eindeutigen Login. Es gibt
@@ -712,6 +762,11 @@ bietet keine transaktionale Compare-and-set-Operation ueber Zielzeile, ID-,
 `CD-ID`- und Login-Eindeutigkeit. Fingerprints, die serialisierte `players`-Queue,
 Developer Metadata und Bestaetigungsreads sind Schutzschichten, aber kein
 atomarer Ersatz dafuer.
+Auch die A1-Einfuegung einer neuen Ranglistenmitgliedschaft liest die Rangliste
+unmittelbar vor dem Batch ein letztes Mal und verengt damit das Konfliktfenster.
+Google Sheets bietet dennoch kein transaktionales CAS; Ergebniswrites mit
+Neueinsteiger-Einfuegung unterliegen deshalb ebenfalls der betrieblichen
+Single-Writer-Vorgabe ohne parallele manuelle oder zweite Backendwrites.
 ScoreLog- und Auditlog-Dateien muessen getrennt vom State angelegt, gesichert und
 mit ihren WAL-/SHM-Dateien konsistent behandelt werden.
 Die vollstaendige verbindliche Liste steht in

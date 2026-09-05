@@ -30,7 +30,9 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   unbekannte Platzhalter bleiben ohne Profilaktion. Nur Admins sehen bei fremden
   Profilen die statusabhaengige Aktion zum Freigeben beziehungsweise Aufheben der
   erstmaligen Passwortvergabe sowie Reset-Code-Erstellung und direktes
-  Passwortsetzen.
+  Passwortsetzen. Das gemeinsame Profilmodal zeigt ausserdem die in
+  `Project/software/seiten/players.txt` dokumentierten Matchkarten und
+  Ergebnisaktionen; der KO-Baum selbst erhaelt keine Ergebnisbuttons.
 
 -- Darstellung und Sicherheit --
   Einzel/Doppel, BYE/PRE, die exakt kleingeschriebenen Marker [wo] und [ret],
@@ -48,3 +50,13 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   ist. Die leere Reserve bleibt unsichtbar und ohne Bedienaktion; dadurch behalten
   die Matchboxen insbesondere bei einem Rasterstart im Halbfinale vor und nach
   einer Terminsetzung denselben Abstand.
+
+-- Ergebnisfortschreibung --
+  Alle Rastermatches muessen vorab mit eindeutiger ID und passendem Rundencode
+  existieren. Ein Ergebniswrite uebernimmt die Gewinnerseite automatisch in den
+  berechneten Slot des Folgematches. Eine Korrektur ersetzt nur die aus diesem
+  Match stammende Seite und ist gesperrt, sobald das Folgematch abgeschlossen oder
+  der Slot abweichend belegt ist. Eine administrative Ergebnisloeschung entfernt
+  die propagierte Seite; bei rueckwaertigen Korrekturen werden deshalb zuerst die
+  Ergebnisse spaeterer Runden geloescht. RoundRobin-Bewerbe verwenden diese
+  KO-Propagation auch bei numerischer Rasterfunktion nicht.

@@ -184,9 +184,11 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   `matchtypId`, aber ohne `displayRules`, werden nach einem verwendbaren
   Matchtyp-Load migriert und mit exakten unresolved-Diagnosen im Status gefuehrt.
 
-`matchRules.js`
-  Berechnet Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
-  Sperrzeiten serverseitig. Der Browser ist nicht Autoritaet fuer Fachregeln.
+`matchRules.js`, `matchResultRules.js`
+  Berechnen Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
+  Sperrzeiten sowie Ergebnis-Fingerprint, strikte Matchtypauflosung,
+  Ergebnisgrammatik, Abschlusskodierung und KO-Nachfolger serverseitig. Der
+  Browser ist nicht Autoritaet fuer Fachregeln.
 
 `courtPoller.js`
   Pollt nur wenn mindestens ein Court aktiv ist. AbortController, Fetch-Timeout,
@@ -291,6 +293,12 @@ Datenprojektionen:
     anonyme Profile nicht. Der vorherige Rang bleibt grundsaetzlich im
     Persistenzlayer und wird nur dem berechtigten Eigenprofil innerhalb der
     zwoelfmonatigen Rueckkehrfrist kontrolliert projiziert.
+  - Profile enthalten zusaetzlich bewerbsbezogene Matchreiter. Ranglisten- und
+    Bewerbsprojektion werden im gemeinsamen Profilmodal nach Bewerb-ID vereinigt.
+    Sichtbar sind alle offenen und bis `Bewerbsende` alle abgeschlossenen Matches
+    der Profilperson aus jeder der vier Spielerpositionen; mehrere Matches pro
+    Bewerb bleiben getrennt. Nur dieses gemeinsame Modal stellt die neuen
+    Ergebnisaktionen bereit, nicht die einzelnen Fachseiten selbst.
   - Das Eigenprofil projiziert die administrativ gepflegten gueltigen
     Benachrichtigungskanaele sowie offene Forderungen mit Richtung, aktuellem
     Gegnerrang, Forderungszeit und optionalem Spieltermin. Persoenliche Meldungen
@@ -349,6 +357,57 @@ Ranglistentermin:
   `recovered`. Andere Benutzer, geschlossene Forderungen, unveraenderte Termine,
   ungueltige Stunden oder ausserhalb des Erstkorridors liegende Ersttermine werden
   ohne Sheetmutation abgewiesen.
+
+Universelles Matchergebnis:
+  Profilmatch -> optionaler bearbeitbarer Vorschlag aus exakt aktuellem
+  Match/Court oder neuestem ScoreLog fuer Match/Court -> UUID-operationId,
+  Match-ID, Abschlussart und Fingerprint -> frische Match-/Ranglistenreads ->
+  Teilnehmer- oder Adminrecht, strikten Matchtyp, Ergebnisgrammatik und erstes
+  MatchEnde pruefen -> bewerbsartbezogener Gesamtplan fuer Match, Rangfolge und
+  hoechstens einen KO-Nachfolger -> stabile Metadatenaufloesung -> zellensparsamer
+  `batchUpdateByDataFilter` -> Bestaetigung, lokale Projektion und Invalidierung ->
+  Rangprovenienz -> Bewerbsereignis und private Meldungen -> Auditabschluss und
+  strukturiertes Abschlusslog.
+
+  Fehlt bei einer berechneten KO-Fortschreibung exakt das Folgematch, bleibt der
+  Matchabschluss im Gesamtplan enthalten, waehrend der KO-Teil den kontrollierten
+  Status `missing` erhaelt. Nach dem Write erzeugt dieselbe idempotente
+  Recovery-Phase neben dem normalen Ergebnisereignis ein separates, keiner
+  Bewerbshistorie zugeordnetes Systemereignis mit je einer persoenlichen Meldung
+  fuer alle aktiven Administratoren. Ein Meldungsfehler wird ohne zweiten
+  Sheetwrite wiederaufgenommen. Mehrdeutige, abgeschlossene oder abweichend
+  belegte Ziele werden vor dem Write weiterhin abgelehnt.
+
+  Der Fingerprint umfasst Ergebnis, MatchEnde und alle vier Spielerfelder.
+  Spieler in jeder dieser Positionen duerfen fuer beide Seiten ohne
+  Gegenbestaetigung eintragen und korrigieren; Admins duerfen jedes Match,
+  Operatoren keines. Beim ersten Abschluss ist MatchEnde strikt nach MatchDate,
+  maximal sechs Stunden danach und nicht zukuenftig. Beteiligte behalten es bei
+  Korrekturen bei; `adminSetMatchEnd` aendert es mit Pflichtgrund. Historische
+  Abschluesse ohne MatchEnde verwenden nur fuer Abschlussregeln MatchDate als
+  Fallback.
+
+  Ranglistenplanung deckt gereihte Forderer, Neueinsteiger, Rueckkehr innerhalb
+  und nach Ablauf der Frist sowie die Einreihung am Listenende ab. Eine normale
+  Ergebniskorrektur setzt unveraenderten provenienzgebundenen Rangstand voraus;
+  `adminCorrectRankingResult` verlangt stattdessen einen vollstaendigen Plan fuer
+  alle Mitglieder. `adminClearMatchResult` stellt den Vorher-Stand her und leert
+  die Provenienz. Raushaengen und Ergebnis verwenden gemeinsame technische
+  Executor-/Recovery-Muster, aber getrennte fachliche Planer.
+
+  KO-Matches muessen vollstaendig vorangelegt sein. Gewinner werden automatisch
+  weitergereicht; Korrekturen sind nur vor Abschluss des Folgematches moeglich,
+  und Admins loeschen Abhaengigkeiten rueckwaerts. Round Robin bleibt ausserhalb
+  dieser Backendplanung: `buildStats` im Frontend ist die einzige
+  Tabellenberechnung und es gibt keine automatische Gruppen-zu-KO-Promotion.
+
+  Der vor der Mutation persistierte Recovery-Plan bindet alle Teilupdates. Nach
+  Transportverlust werden nur die sparse Zielzellen bestaetigt; ein gemischter
+  Zustand bleibt `unknown`, ein nachweislicher Zielzustand wird ohne zweiten
+  Fachwrite fertiggestellt. Formeln und sonstige Zeilenzellen werden nie als
+  Vollzeile zurueckgeschrieben. Eine A1-Neueinsteigerzeile erhaelt unmittelbar
+  vor dem Batch einen letzten Tabellenread, doch Google Sheets bietet kein CAS;
+  dafuer gilt die operative Single-Writer-Beschraenkung.
 
 Personennormalisierung:
   Adminprojektion -> dreizehn erlaubte Feldwerte + Problemcodes + SHA-256-
@@ -493,6 +552,14 @@ Fachhistorien und Betriebslogs:
     `setRankingMatchDate` verwendet denselben Auditvertrag mit Match-ID und
     kontrolliertem alten/neuen Termin; sein Abschlusslog und das erlaubte
     Browserereignis `ranking_match_date_failed` enthalten keine freien Payloads.
+    Die Ergebnisaktionen `setMatchResult`, `adminSetMatchEnd`,
+    `adminClearMatchResult` und `adminCorrectRankingResult` besitzen jeweils
+    `started` und `success|failed|unknown`. Audit und die Abschlusslogs enthalten
+    nur kontrollierte Match-/Bewerbs-, Aenderungs-, Abschluss-, Ranganzahl-,
+    KO-Ziel- und Recoveryfelder sowie `reasonRecorded`; freie Admin-Gruende stehen
+    ausschliesslich in Fachhistorie und Meldungen. Abschlussereignisse sind
+    `match_result_update_completed`, `admin_match_end_update_completed` und
+    `admin_match_result_clear_completed`.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der
@@ -527,6 +594,12 @@ Fachhistorien und Betriebslogs:
     `failed` und `unknown` wie andere Fachwrites. Persistiert werden Akteur,
     Ziel-ID/-Namenssnapshot, Aktion und geaenderte Feldmarker; nur Aktiv- und
     Rollenwerte duerfen kontrolliert als Alt-/Neuwert erscheinen.
+  - Das gemeinsame Profilmodal verwendet den bekannten Seitentyp der jeweils
+    aufrufenden Seite und fuer Ergebnisfehler ausschliesslich die allowlist-
+    basierten Browserereignisse `match_result_action_failed` und
+    `match_result_suggestion_failed`. Erlaubt sind technische Fehlercodes,
+    Support-ID und kontrollierte Endpoint-/Dauerfelder; Ergebnis, Grund,
+    Matchpayload und Personendaten werden nicht als freie Diagnose uebertragen.
   - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
     bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
     `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale
@@ -756,7 +829,9 @@ die Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
                        mit Restzeit und revisionsgeschuetzten Aenderungen.
 `navbar.js`           Navigation und sessiongetriebene Login-/Profilanzeige.
 `modals.js`           Profil, Login, Passwort/Reset und Fachdialoge; sichere
-                      kontextabhaengige Profilprojektionen. Profilinhalt und
+                      kontextabhaengige Profilprojektionen sowie der gemeinsame
+                      Match-Ergebnisdialog mit blauen Teilnehmer- und roten
+                      Adminaktionen. Profilinhalt und
                       Aktionshandler werden beim Schliessen und Identitaetswechsel
                       vollstaendig entfernt.
 `loadingHelper.js`    Abschlussgarantien sowie fokussierbare, schliessbare

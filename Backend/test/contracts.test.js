@@ -4,12 +4,12 @@ const { requestContracts, validateEndpointRequest, validateEndpointResponse } = 
 
 test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
   assert.deepEqual(Object.keys(requestContracts).sort(), [
-    "acknowledgeMessage", "addEntryList", "addMatch", "adminMemberReconciliation", "adminPeopleNormalization", "bewerbe", "bewerbsart", "competitionHistory", "courtAssign", "courtScores",
-    "courtSetActive", "entryList", "getScoreboardCourts", "matches", "matches1",
+    "acknowledgeMessage", "addEntryList", "addMatch", "adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchEnd", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "bewerbe", "bewerbsart", "competitionHistory", "courtAssign", "courtScores",
+    "courtSetActive", "entryList", "getScoreboardCourts", "matchResultSuggestion", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
     "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myMessage", "myMessageSummary", "myMessages", "myProfile", "navigator", "normalizePerson", "operationStatus",
     "players", "preMatches", "publicProfile", "rankingChallengeState", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
-    "scoreboardSnapshot", "setRankingMatchDate", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
+    "scoreboardSnapshot", "setMatchResult", "setRankingMatchDate", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
   ]);
 });
 
@@ -25,6 +25,65 @@ test("Ranglistenspieltermin akzeptiert nur operationId, Match-ID und kompaktes D
     matchId: "match-1",
     matchDate: "2026-09-05T18:30",
   }), { code: "VALIDATION_ERROR" });
+});
+
+test("Matchergebnisvertraege sind geschlossen und trennen Spieler- von Adminaktionen", () => {
+  const operationId = "00000000-0000-4000-8000-000000000022";
+  const expectedFingerprint = "a".repeat(64);
+  assert.deepEqual(validateEndpointRequest("matchResultSuggestion", { matchId: "m1", court: "2" }), { matchId: "m1", court: "2" });
+  assert.deepEqual(validateEndpointRequest("setMatchResult", {
+    operationId, matchId: "m1", kind: "retirement", result: "6-4/2-1", losingSide: 2,
+    matchEnd: "260904-1130", expectedFingerprint,
+  }), {
+    operationId, matchId: "m1", kind: "retirement", result: "6-4/2-1", losingSide: 2,
+    matchEnd: "260904-1130", expectedFingerprint,
+  });
+  assert.deepEqual(validateEndpointRequest("adminCorrectRankingResult", {
+    operationId, matchId: "m1", kind: "regular", result: "6-4/6-4",
+    expectedFingerprint, reason: "Korrektur", rankPlan: [
+      { personId: "p1", expectedRank: 2, newRank: 1 },
+      { personId: "p2", expectedRank: 0, newRank: 0 },
+    ],
+  }).rankPlan, [
+    { personId: "p1", expectedRank: 2, newRank: 1 },
+    { personId: "p2", expectedRank: 0, newRank: 0 },
+  ]);
+  assert.throws(() => validateEndpointRequest("adminCorrectRankingResult", {
+    operationId, matchId: "m1", kind: "regular", result: "6-4/6-4", expectedFingerprint, reason: "Korrektur",
+    rankPlan: [{ personId: "p1", expectedRank: 1, newRank: 2 }, { personId: "p2", expectedRank: 2, newRank: 2 }],
+  }), { code: "VALIDATION_ERROR" });
+  assert.throws(() => validateEndpointRequest("adminCorrectRankingResult", {
+    operationId, matchId: "m1", kind: "regular", result: "6-4/6-4", expectedFingerprint, reason: "Korrektur",
+    rankPlan: [{ personId: "p1", expectedRank: 1, newRank: 0 }],
+  }), { code: "RANK_PLAN_INVALID" });
+  assert.throws(() => validateEndpointRequest("adminCorrectRankingResult", {
+    operationId, matchId: "m1", kind: "regular", result: "6-4/6-4", matchEnd: "260904-1130",
+    expectedFingerprint, reason: "Korrektur", rankPlan: [{ personId: "p1", expectedRank: 1, newRank: 1 }],
+  }), { code: "VALIDATION_ERROR" });
+  assert.throws(() => validateEndpointRequest("setMatchResult", {
+    operationId, matchId: "m1", kind: "regular", expectedFingerprint, reason: "nicht erlaubt",
+  }), { code: "VALIDATION_ERROR" });
+  assert.throws(() => validateEndpointRequest("matchResultSuggestion", { matchId: "m1", court: "3" }), { code: "VALIDATION_ERROR" });
+});
+
+test("Admin-Korrekturen verlangen einen Grund und trennen Forderungsminuten von vollen Spielstunden", () => {
+  const operationId = "00000000-0000-4000-8000-000000000021";
+  assert.deepEqual(validateEndpointRequest("adminDeleteRankingChallenge", {
+    operationId, matchId: "match-1", reason: " x ",
+  }), { operationId, matchId: "match-1", reason: "x" });
+  assert.deepEqual(validateEndpointRequest("adminSetRankingChallengeDate", {
+    operationId, matchId: "match-1", challengeDate: "260905-1437", reason: "Korrektur",
+  }), { operationId, matchId: "match-1", challengeDate: "260905-1437", reason: "Korrektur" });
+  assert.deepEqual(validateEndpointRequest("adminSetRankingMatchDate", {
+    operationId, matchId: "match-1", matchDate: "260905-2300", reason: "Korrektur",
+  }), { operationId, matchId: "match-1", matchDate: "260905-2300", reason: "Korrektur" });
+  for (const params of [
+    { operationId, matchId: "match-1", reason: "   " },
+    { operationId, matchId: "match-1", matchDate: "260905-2337", reason: "x" },
+  ]) {
+    const endpoint = params.matchDate ? "adminSetRankingMatchDate" : "adminDeleteRankingChallenge";
+    assert.throws(() => validateEndpointRequest(endpoint, params), { code: "VALIDATION_ERROR" });
+  }
 });
 
 test("Mitgliederabgleich besitzt getrennte geschlossene Aktionsvertraege", () => {

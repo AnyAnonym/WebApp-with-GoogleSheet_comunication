@@ -13,8 +13,9 @@ Type=simple
 User=piber
 WorkingDirectory=/srv/http/ePiber/piber/Backend
 EnvironmentFile=/srv/http/ePiber/piber/Backend/.env
+EnvironmentFile=-/etc/epiber-observability/messaging-api.env
 LoadCredential=google-service-account:/srv/http/ePiber/piber/Backend/epiberpiber-31aebe556ced.json
-ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=piber LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at ALLOW_INSECURE_TRANSPORT=false SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-piber/state.sqlite SCORELOG_FILE=/var/lib/epiber-piber/scorelog.sqlite AUDITLOG_FILE=/var/lib/epiber-piber/audit.sqlite MESSAGING_FILE=/var/lib/epiber-piber/messaging.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
+ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=piber LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at ALLOW_INSECURE_TRANSPORT=false SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-piber/state.sqlite SCORELOG_FILE=/var/lib/epiber-piber/scorelog.sqlite AUDITLOG_FILE=/var/lib/epiber-piber/audit.sqlite MESSAGING_FILE=/var/lib/epiber-piber/messaging.sqlite MESSAGING_REPORT_DEPLOYMENT=live GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=epiber-piber

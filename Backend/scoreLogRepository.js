@@ -45,6 +45,7 @@ class ScoreLogRepository {
         UNIQUE(instance, court, sequence)
       );
       CREATE INDEX IF NOT EXISTS score_log_occurred_at ON score_log(created_at, event_id);
+      CREATE INDEX IF NOT EXISTS score_log_match_latest ON score_log(instance, match_id, court, sequence DESC);
     `);
     if (this.filename !== ":memory:") fs.chmodSync(this.filename, 0o600);
   }
@@ -115,6 +116,23 @@ class ScoreLogRepository {
   get(eventId) {
     this.ensureOpen();
     const row = this.db.prepare("SELECT * FROM score_log WHERE event_id = ?").get(eventId);
+    return row ? this.mapRow(row) : null;
+  }
+
+  getLatestByMatchIdAndCourt(matchId, court) {
+    this.ensureOpen();
+    if (typeof matchId !== "string" || !/^[A-Za-z0-9_.:-]{1,64}$/.test(matchId)) {
+      throw new AppError("SCORE_LOG_MATCH_ID_INVALID", "ScoreLog-Match-ID ist ungueltig", 400);
+    }
+    if (!['1', '2'].includes(court)) {
+      throw new AppError("SCORE_LOG_CONTEXT_INVALID", "ScoreLog-Court-Kontext ist ungueltig", 400);
+    }
+    const row = this.db.prepare(`
+      SELECT * FROM score_log
+      WHERE instance = ? AND match_id = ? AND court = ?
+      ORDER BY sequence DESC
+      LIMIT 1
+    `).get(this.instanceId, matchId, court);
     return row ? this.mapRow(row) : null;
   }
 

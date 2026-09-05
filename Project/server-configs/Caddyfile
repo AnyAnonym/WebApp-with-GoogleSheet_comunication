@@ -40,6 +40,9 @@ epiber.at {
 	handle /api/admin/grafana-auth {
 		respond 404
 	}
+	handle /internal/* {
+		respond 404
+	}
 
 	@backend path /ws /api/* /live /ready /health /version /status
 	handle @backend {
@@ -91,6 +94,9 @@ https://epiber.at:8081 {
 	handle /api/admin/grafana-auth {
 		respond 404
 	}
+	handle /internal/* {
+		respond 404
+	}
 
 	@backend path /ws /api/* /live /ready /health /version /status
 	handle @backend {
@@ -115,6 +121,9 @@ https://epiber.at:8082 {
 	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://epiber.at:8082 wss://epiber.at:8082; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 
 	handle /api/admin/grafana-auth {
+		respond 404
+	}
+	handle /internal/* {
 		respond 404
 	}
 

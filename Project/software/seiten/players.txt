@@ -43,7 +43,10 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   aktive Reiter zeigen Position und offene Forderung, rausgehaengte fuer
   angemeldete Benutzer Zeitpunkt und Grund. Alle offenen und bis Bewerbsende alle
   abgeschlossenen Matches der Profilperson werden angezeigt, auch mehrere im
-  selben Bewerb und bei Beteiligung als einer der vier Spieler. Die Reiter sind
+  selben Bewerb und bei Beteiligung als einer der vier Spieler. In Ranglisten-
+  bewerben stehen echte offene Begegnungen vor abgeschlossenen Matches; innerhalb
+  beider Gruppen bleibt die Sortierung nach `MatchDate` absteigend. Freilose
+  gehoeren nicht zum offenen Vorrangblock. Die Reiter sind
   unabhaengig von der aufrufenden Seite. Nur
   Admins erhalten den Login einer fremden Person in der
   Adminprojektion und sehen im Adminreiter die vom aktuellen Profilstatus
@@ -63,16 +66,32 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   Ergebnisoberflaeche.
 
   Der explizit schliessbare Dialog waehlt `Regulär`, `Walkover` oder `Aufgabe`.
-  Regulaer verlangt das Satzresultat, Sonderabschluesse die Verliererseite;
-  Retirement kann ein Teilergebnis behalten. Beim ersten Abschluss ist ein
-  Matchende nach MatchDate, maximal sechs Stunden danach und nicht in der Zukunft
-  erforderlich. Bei spaeterer Teilnehmerkorrektur bleibt es unveraendert.
+  Unter dem Titel stehen zentriert zuerst nur der Bewerbsname und in einer zweiten
+  Zeile die vollstaendige Einzel- oder Doppelbegegnung.
+  Regulaer verlangt das Satzresultat. Sonderabschluesse verlangen eine bewusste
+  Auswahl der mit ihren Einzel- oder Doppelnamen bezeichneten Verliererseite;
+  bei Korrekturen ist die bestehende Seite vorausgewaehlt. Retirement kann ein
+  Teilergebnis behalten. Beim ersten Abschluss sind Matchstart und Matchende
+  erforderlich; ein vergangener vereinbarter Termin wird als Start vorgeschlagen,
+  ohne Termin gilt die editierbare Vorgabe `aktuelle Zeit minus 90 Minuten`.
+  Bei Walkover setzt die Auswahl beide schreibgeschuetzten Werte auf denselben
+  aktuellen Zeitpunkt; der Server bestimmt diesen Wert beim Speichern erneut.
+  Bei regulaerem Abschluss und Aufgabe liegt das Ende nach dem Start, hoechstens
+  sechs Stunden danach und nicht in der Zukunft. Bei spaeterer Teilnehmerkorrektur bleiben beide Zeiten unveraendert.
   Schaltflaechen `Platz 1` und `Platz 2` laden einen Vorschlag aus dem aktuellen
   exakt zugeordneten Court oder dem neuesten exakten ScoreLog-Eintrag; der Wert
   bleibt bearbeitbar und wird beim Speichern nach dem Matchtyp validiert.
 
-  Erfolg oeffnet dasselbe Profil und denselben Bewerbsreiter neu. Die Historie und
-  privaten Meldungen nennen den Akteur; es gibt keine Gegenbestaetigung. Fehler
+  Erfolg oeffnet dasselbe Profil und denselben Bewerbsreiter neu. Bei Eintrag und
+  Korrektur nennt die Historie Gewinner und Gegner neutral; private Meldungen
+  sprechen jeden Teilnehmer als Gewinner oder Verlierer an und nennen Gegner und
+  Ergebnis. Walkover wird im persoenlichen Gewinn- oder Verlustsatz als `durch
+  Walkover` formuliert; Aufgabe steht hinter dem Teilergebnis in Klammern, bei
+  leerem Teilergebnis als `Ergebnis: (Aufgabe)`. Der Akteur bleibt separat
+  sichtbar. Profilkarten und Matchansichten benennen Sonderabschluesse als
+  `Aufgabe durch <Verliererseite>: <Ergebnis>` beziehungsweise
+  `Walkover durch <Verliererseite>` mit vollstaendigen Doppelnamen.
+  Es gibt keine Gegenbestaetigung. Fehler
   bleiben mit Support-ID im Dialog und verwenden ausschliesslich
   `match_result_action_failed` beziehungsweise
   `match_result_suggestion_failed`; Ergebnis und freie Admin-Gruende werden nicht

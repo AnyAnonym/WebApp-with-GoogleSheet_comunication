@@ -224,7 +224,7 @@ body.modal-open {
 
 .profile-dialog {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   width: min(100%, 560px);
   max-width: 560px;
   max-height: 100%;
@@ -253,6 +253,15 @@ body.modal-open {
   -webkit-overflow-scrolling: touch;
 }
 
+.profile-tabs[hidden] {
+  display: none;
+}
+
+.profile-competition-tabs {
+  border-top: 0;
+  background: #fff;
+}
+
 .profile-tab {
   flex: 0 0 auto;
   min-height: 44px;
@@ -279,6 +288,7 @@ body.modal-open {
 }
 
 .profile-body {
+  grid-row: 4;
   min-height: 0;
   padding: 20px 24px 24px;
   overflow-y: auto;
@@ -287,6 +297,11 @@ body.modal-open {
 
 .profile-panel[hidden] {
   display: none;
+}
+
+.profile-competition-empty {
+  margin: 0;
+  color: #4a5568;
 }
 
 .profile-actions {
@@ -326,7 +341,12 @@ body.modal-open {
 
 .profile-match-card h3,
 .profile-match-card p {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
+}
+
+.profile-match-date {
+  font-size: 1rem;
+  font-weight: 400;
 }
 
 .profile-match-actions,
@@ -334,6 +354,10 @@ body.modal-open {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.profile-match-actions {
+  margin-top: 4px;
 }
 
 .profile-match-actions .btn-login,
@@ -346,10 +370,19 @@ body.modal-open {
   z-index: 1100;
 }
 
+.match-result-target {
+  text-align: center;
+}
+
+.match-result-target > * {
+  display: block;
+}
+
 #matchResultForm,
 #matchResultCompletionFields,
 #matchResultValueFields,
 #matchResultLosingFields,
+#matchResultStartFields,
 #matchResultEndFields,
 #matchResultReasonFields {
   display: grid;
@@ -396,6 +429,7 @@ body.modal-open {
 #matchResultCompletionFields[hidden],
 #matchResultValueFields[hidden],
 #matchResultLosingFields[hidden],
+#matchResultStartFields[hidden],
 #matchResultEndFields[hidden],
 #matchResultReasonFields[hidden],
 #matchResultRankPlanFields[hidden] {
@@ -493,6 +527,10 @@ body.modal-open {
 
 .message-row-subject {
   font-weight: 700;
+}
+
+.message-row-actor {
+  font-size: 0.8rem;
 }
 
 .message-row.unread {
@@ -1906,7 +1944,7 @@ input[type="date"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: grab;
+  cursor: default;
   user-select: none;
   transition:
     background 0.2s ease,
@@ -1936,7 +1974,11 @@ input[type="date"] {
   line-height: 1.2;
 }
 
-.box:hover {
+.box.profile-openable {
+  cursor: pointer;
+}
+
+.box.profile-openable:hover {
   background: #eaf1fb;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
@@ -2776,6 +2818,13 @@ body.bracket-page {
   width: 100%;
 }
 
+.bracket-completion {
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.35rem;
+  text-align: center;
+}
+
 .bracket-match-date {
   position: absolute;
   bottom: calc(100% + 4px);
@@ -2800,6 +2849,39 @@ body.bracket-page {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.bracket-player .pname {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+button.bracket-player-name {
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.bracket-player-name:hover {
+  text-decoration: underline;
+}
+
+button.bracket-player-name:focus-visible {
+  outline: 2px solid #0b57d0;
+  outline-offset: 1px;
+}
+
+.bracket-player-separator {
+  white-space: pre;
 }
 
 .bracket-player .player-result {

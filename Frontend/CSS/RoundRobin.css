@@ -266,7 +266,8 @@
   font-size: var(--rr-pairing-name-size, inherit);
   font-weight: 700;
   color: var(--accent);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   margin-left: auto;
 }
 

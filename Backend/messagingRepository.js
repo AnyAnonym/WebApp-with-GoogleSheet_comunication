@@ -4,7 +4,7 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 const { AppError } = require("./errors.js");
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 class MessagingRepository {
   constructor(filename, { now = Date.now } = {}) {
@@ -32,11 +32,16 @@ class MessagingRepository {
       this.migrateV2();
       this.migrateV3();
       this.migrateV4();
+      this.migrateV5();
     } else if (version === 3) {
       this.migrateV3();
       this.migrateV4();
+      this.migrateV5();
     } else if (version === 4) {
       this.migrateV4();
+      this.migrateV5();
+    } else if (version === 5) {
+      this.migrateV5();
     } else if (version !== SCHEMA_VERSION) {
       throw new AppError("MESSAGING_SCHEMA_UNSUPPORTED", "Nachrichtenschema kann nicht migriert werden", 503);
     }
@@ -103,7 +108,7 @@ class MessagingRepository {
         user_id TEXT PRIMARY KEY,
         revision INTEGER NOT NULL
       );
-      PRAGMA user_version = 5;
+      PRAGMA user_version = 6;
     `);
   }
 
@@ -151,6 +156,39 @@ class MessagingRepository {
         PRAGMA user_version = 5;
         COMMIT;
       `);
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV5() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const events = this.db.prepare(`
+        SELECT event_id, detail, result
+        FROM competition_events
+        WHERE event_type IN ('result', 'result_corrected')
+          AND (detail LIKE 'Abschlussart: walkover%' OR detail LIKE 'Abschlussart: retirement%')
+      `).all();
+      const participants = this.db.prepare("SELECT user_id, body FROM event_participants WHERE event_id = ?");
+      const updateParticipant = this.db.prepare("UPDATE event_participants SET body = ? WHERE event_id = ? AND user_id = ?");
+      const updateEvent = this.db.prepare("UPDATE competition_events SET detail = ?, result = ? WHERE event_id = ?");
+      for (const event of events) {
+        const walkover = event.detail.startsWith("Abschlussart: walkover");
+        const displayResult = walkover ? "Walkover" : `${event.result ? `${event.result} ` : ""}(Aufgabe)`;
+        for (const participant of participants.all(event.event_id)) {
+          const body = walkover
+            ? participant.body.replace(". Abschlussart: Walkover.", " durch Walkover.")
+            : event.result
+              ? participant.body.replace(` Ergebnis: ${event.result}.`, ` Ergebnis: ${displayResult}.`)
+              : participant.body.replace(". Abschlussart: Aufgabe.", ". Ergebnis: (Aufgabe).");
+          updateParticipant.run(body, event.event_id, participant.user_id);
+        }
+        const remainingDetails = event.detail.split("; ").filter((part) => !part.startsWith("Abschlussart: ") && !part.startsWith("Ergebnis: "));
+        updateEvent.run([`Ergebnis: ${displayResult}`, ...remainingDetails].join("; "), displayResult, event.event_id);
+      }
+      this.db.exec("PRAGMA user_version = 6; COMMIT");
     } catch (error) {
       try { this.db.exec("ROLLBACK"); } catch {}
       throw error;

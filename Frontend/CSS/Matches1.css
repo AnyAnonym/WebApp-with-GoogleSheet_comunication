@@ -223,7 +223,8 @@ main:has(#matches1-container) section {
 .m1-result {
   font-weight: 600;
   font-size: 0.85rem;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   flex-shrink: 0;
   text-align: right;
   min-width: 60px;

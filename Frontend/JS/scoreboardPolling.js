@@ -247,7 +247,15 @@ function createMatchEntry(row, indexes, maps, upcoming) {
   ));
   if (!upcoming) {
     const result = String(row[ergebnisIdx] || "").replace(/\((\d+)\)/g, "").trim();
-    content.append(createElement("div", "ae-result", result || "—"));
+    const losingSide = pid1.special || pid2.special ? 1 : pid3.special || pid4.special ? 2 : 0;
+    const marker = losingSide === 1 ? pid1.special || pid2.special : losingSide === 2 ? pid3.special || pid4.special : null;
+    const losingTeam = losingSide === 1 ? [p1, p2].filter(Boolean).join(" / ") : losingSide === 2 ? [p3, p4].filter(Boolean).join(" / ") : "";
+    const displayResult = marker === "wo" && losingTeam
+      ? `Walkover durch ${losingTeam}`
+      : marker === "ret" && losingTeam
+        ? `Aufgabe durch ${losingTeam}${result ? `: ${result}` : ""}`
+        : result || "—";
+    content.append(createElement("div", "ae-result", displayResult));
   }
   entry.append(createElement("div", "ae-header", headerText), content);
   return entry;

@@ -33,10 +33,10 @@ test("Matchergebnisvertraege sind geschlossen und trennen Spieler- von Adminakti
   assert.deepEqual(validateEndpointRequest("matchResultSuggestion", { matchId: "m1", court: "2" }), { matchId: "m1", court: "2" });
   assert.deepEqual(validateEndpointRequest("setMatchResult", {
     operationId, matchId: "m1", kind: "retirement", result: "6-4/2-1", losingSide: 2,
-    matchEnd: "260904-1130", expectedFingerprint,
+    matchStart: "260904-1000", matchEnd: "260904-1130", expectedFingerprint,
   }), {
     operationId, matchId: "m1", kind: "retirement", result: "6-4/2-1", losingSide: 2,
-    matchEnd: "260904-1130", expectedFingerprint,
+    matchStart: "260904-1000", matchEnd: "260904-1130", expectedFingerprint,
   });
   assert.deepEqual(validateEndpointRequest("adminCorrectRankingResult", {
     operationId, matchId: "m1", kind: "regular", result: "6-4/6-4",

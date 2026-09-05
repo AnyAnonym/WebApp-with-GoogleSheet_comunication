@@ -21,6 +21,7 @@ const {
 const MATCH_HEADER = [
   "Bemerkung", "Spieler3ID", "ID", "BewerbID", "Ignore", "Ergebnis",
   "Spieler1ID", "MatchDate", "Spieler4ID", "ForderungDate", "Spieler2ID", "BewerbRunde",
+  "Spieler1RangBeiErgebnis", "Spieler3RangBeiErgebnis", "MatchStart", "ErgebnisErfasstAm",
 ];
 
 function baseTables() {
@@ -60,7 +61,7 @@ function baseTables() {
     ],
     Matches1: [
       MATCH_HEADER,
-      ["nicht löschen", "999", "real-match", "99", "", "6-0/6-0", "81", "260701-1000", "", "", "", "F"],
+      ["nicht löschen", "999", "real-match", "99", "", "6-0/6-0", "81", "260701-1000", "", "", "", "F", "", "", "", ""],
     ],
   };
 }

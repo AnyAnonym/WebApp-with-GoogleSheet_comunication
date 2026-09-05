@@ -124,6 +124,7 @@ function fakeSheets(initialTables) {
             const [, title, letters, rowText] = match;
             let column = 0;
             for (const letter of letters) column = column * 26 + letter.charCodeAt(0) - 64;
+            while (tables[title].length < Number(rowText)) tables[title].push([]);
             tables[title][Number(rowText) - 1][column - 1] = update.values[0][0];
           }
           return { data: {} };
@@ -301,6 +302,7 @@ function fixtures() {
     Matches1: [[
       "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
       "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchEnde",
+      "Spieler1RangBeiErgebnis", "Spieler3RangBeiErgebnis", "MatchStart", "ErgebnisErfasstAm",
     ]],
     Rangliste: ranking,
     "RL-Platzierung": ranking,
@@ -996,7 +998,11 @@ test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () =
   ]);
 
   assert.notEqual(first.newMatchId, second.newMatchId);
-  assert.equal(fake.calls.append.filter((call) => call.range === "Matches1").length, 2);
+  assert.equal(fake.calls.append.filter((call) => call.range === "Matches1").length, 0);
+  assert.deepEqual(fake.calls.valueUpdates.map(({ range }) => range).sort(), [
+    "Matches1!B2", "Matches1!B3", "Matches1!D2", "Matches1!D3", "Matches1!E2",
+    "Matches1!E3", "Matches1!G2", "Matches1!G3", "Matches1!I2", "Matches1!I3",
+  ]);
   assert.equal(dataStore.get("matches1").length, 3);
   const firstMatch = fake.tables.Matches1.find((row) => row[1] === first.newMatchId);
   assert.equal(firstMatch[6], "p1");
@@ -1005,7 +1011,7 @@ test("parallele Adds bleiben serialisiert, eindeutig und idempotent", async () =
   const repeated = await service.addMatch(principal, { operationId: firstOperation, bewerbId: "cup-1", opponentId: "p2" });
   assert.equal(repeated.newMatchId, first.newMatchId);
   assert.equal(repeated.repeated, true);
-  assert.equal(fake.calls.append.filter((call) => call.range === "Matches1").length, 2);
+  assert.equal(fake.calls.valueUpdates.length, 10);
 
   await service.stop();
   repository.close();
@@ -1310,15 +1316,15 @@ test("Passwortvergabe prueft den Aktivstatus im frischen Personen-Stand", async 
   repository.close();
 });
 
-test("ein nach Commit verlorenes Append-Ergebnis wird ueber die stabile ID erkannt", async () => {
+test("eine nach Matchwrite verlorene Antwort wird ueber die stabile ID erkannt", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
   seedStore(fake.tables);
-  const append = fake.client.spreadsheets.values.append;
+  const batchUpdate = fake.client.spreadsheets.values.batchUpdate;
   let loseResponse = true;
-  fake.client.spreadsheets.values.append = async (params) => {
-    await append(params);
+  fake.client.spreadsheets.values.batchUpdate = async (params) => {
+    await batchUpdate(params);
     if (loseResponse) {
       loseResponse = false;
       throw new Error("response lost");
@@ -1365,6 +1371,30 @@ test("Ranglistenforderung uebergibt die aktuellen Positionen als Meldungssnapsho
   assert.equal(messages.length, 1);
   assert.equal(messages[0].challengerRank, 2);
   assert.equal(messages[0].opponentRank, 1);
+  await service.stop();
+  repository.close();
+});
+
+test("Ranglistenforderung laesst bestehende Leerzeilen frei und schreibt ans Tabellenende", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  initial.Matches1.push(new Array(initial.Matches1[0].length).fill(""));
+  initial.Matches1.push(["", "existing-last", "260901-1000", "", "cup-2", "", "p3", "", "p4", "", "6-2/6-2"]);
+  const emptyRowBefore = structuredClone(initial.Matches1[1]);
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => Date.UTC(2026, 8, 5, 10, 0) });
+
+  const match = await service.addMatch({ type: "user", id: "p1", name: "Ada Admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000129",
+    bewerbId: "cup-1",
+    opponentId: "p2",
+  });
+
+  assert.deepEqual(fake.tables.Matches1[1], emptyRowBefore);
+  assert.equal(fake.tables.Matches1.at(-2)[1], "existing-last");
+  assert.equal(fake.tables.Matches1.at(-1)[1], match.newMatchId);
   await service.stop();
   repository.close();
 });
@@ -1627,14 +1657,14 @@ test("Admin-Korrektur lehnt eine Forderung gegen dieselbe Person vor dem Write a
   repository.close();
 });
 
-test("ein unklarer Append darf bei Wiederholung keinen zweiten Append starten", async () => {
+test("ein unklarer positionsgenauer Matchwrite darf bei Wiederholung keinen zweiten Write starten", async () => {
   const repository = new StateRepository(":memory:");
   repository.init();
   const fake = fakeSheets(fixtures());
   seedStore(fake.tables);
-  const append = fake.client.spreadsheets.values.append;
+  const batchUpdate = fake.client.spreadsheets.values.batchUpdate;
   let delayedParams;
-  fake.client.spreadsheets.values.append = async (params) => {
+  fake.client.spreadsheets.values.batchUpdate = async (params) => {
     delayedParams = structuredClone(params);
     throw new Error("timeout before delayed commit");
   };
@@ -1649,13 +1679,13 @@ test("ein unklarer Append darf bei Wiederholung keinen zweiten Append starten", 
   await assert.rejects(service.addMatch(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   await assert.rejects(service.addMatch(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   assert.equal(delayedParams !== undefined, true);
-  assert.equal(fake.calls.append.length, 0);
+  assert.equal(fake.calls.valueUpdates.length, 0);
 
-  await append(delayedParams);
+  await batchUpdate(delayedParams);
   const recovered = await service.addMatch(principal, params);
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.repeated, true);
-  assert.equal(fake.calls.append.length, 1);
+  assert.equal(fake.calls.valueUpdates.length, 5);
 
   await service.stop();
   repository.close();
@@ -1685,7 +1715,7 @@ test("eine nach Match-Commit fehlgeschlagene Inbox wird ohne doppelten Match rep
   const recovered = await service.addMatch(principal, params);
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.repeated, true);
-  assert.equal(fake.calls.append.length, 1);
+  assert.equal(fake.calls.valueUpdates.length, 5);
   assert.equal(messageAttempts, 2);
 
   await service.stop();
@@ -1713,7 +1743,7 @@ test("wiedergefundene Match-ID wird vor einer Benachrichtigung gegen den Request
     service.addMatch(principal, { operationId, bewerbId: "cup-2", opponentId: "p4" }),
     { code: "OPERATION_ID_CONFLICT" },
   );
-  assert.equal(fake.calls.append.length, 1);
+  assert.equal(fake.calls.valueUpdates.length, 5);
   assert.equal(messageAttempts, 1);
 
   await service.stop();
@@ -2289,6 +2319,7 @@ test("Matchergebnis verschiebt eine Rangliste atomar und Admin-Clear stellt sie 
       matchId: "result-ranking",
       kind: "regular",
       result: "6-3/6-4",
+      matchStart: "260904-0930",
       matchEnd: "260904-1130",
       expectedFingerprint: matchCompletionFingerprint(original, header),
     },
@@ -2297,6 +2328,10 @@ test("Matchergebnis verschiebt eine Rangliste atomar und Admin-Clear stellt sie 
   assert.deepEqual(fake.tables["RL-Platzierung"].slice(1, 3).map((row) => row[3]), [2, 1]);
   assert.equal(fake.tables.Matches1[1][10], "6-3/6-4");
   assert.equal(fake.tables.Matches1[1][11], "260904-1130");
+  assert.deepEqual(fake.tables.Matches1[1].slice(12, 14), [2, 1]);
+  assert.deepEqual(fake.tables.Matches1[1].slice(14, 16), ["260904-0930", "260904-1200"]);
+  assert.deepEqual(events[0].teams, [["p1"], ["p2"]]);
+  assert.equal(events[0].winnerSide, 1);
   assert.deepEqual(repository.getState("match-result-ranking:result-ranking", null).value, {
     before: [{ personId: "p2", beforeRank: 1 }, { personId: "p1", beforeRank: 2 }],
     after: [{ personId: "p2", afterRank: 2 }, { personId: "p1", afterRank: 1 }],
@@ -2313,6 +2348,8 @@ test("Matchergebnis verschiebt eine Rangliste atomar und Admin-Clear stellt sie 
     },
   );
   assert.equal(fake.tables.Matches1[1][11], "260904-1145");
+  assert.deepEqual(fake.tables.Matches1[1].slice(12, 14), [2, 1]);
+  assert.deepEqual(fake.tables.Matches1[1].slice(14, 16), ["260904-0930", "260904-1200"]);
   const cleared = await service.adminClearMatchResult(
     { type: "user", id: "p1", role: "admin", name: "Ada Admin" },
     {
@@ -2326,8 +2363,39 @@ test("Matchergebnis verschiebt eine Rangliste atomar und Admin-Clear stellt sie 
   assert.deepEqual(fake.tables["RL-Platzierung"].slice(1, 3).map((row) => row[3]), [1, 2]);
   assert.equal(fake.tables.Matches1[1][10], "");
   assert.equal(fake.tables.Matches1[1][11], "");
+  assert.deepEqual(fake.tables.Matches1[1].slice(12, 14), ["", ""]);
+  assert.deepEqual(fake.tables.Matches1[1].slice(14, 16), ["", ""]);
   assert.equal(repository.getState("match-result-ranking:result-ranking", null).value, null);
   assert.deepEqual(events.map(({ changeType }) => changeType), ["result", "match_end_corrected", "result_cleared"]);
+  await service.stop();
+  repository.close();
+});
+
+test("Spielerkorrektur endet 60 Minuten nach dem ersten Ergebniseintrag", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const initial = fixtures();
+  initial.Matches1.push([
+    "", "correction-window", "260904-1000", "", "cup-1", "", "p1", "", "p2", "", "2-6/3-6", "260904-1100",
+    "2", "1", "260904-1000", "260904-1100",
+  ]);
+  const fake = fakeSheets(initial);
+  seedStore(fake.tables);
+  let now = new Date(2026, 8, 4, 12, 0).getTime();
+  const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => now });
+  const principal = { type: "user", id: "p1", role: "player", name: "Ada Admin" };
+  const corrected = await service.setMatchResult(principal, {
+    operationId: "00000000-0000-4000-8000-000000000546", matchId: "correction-window", kind: "regular", result: "3-6/4-6",
+    expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+  });
+  assert.equal(fake.tables.Matches1.at(-1)[15], "260904-1100");
+  now = new Date(2026, 8, 4, 12, 1).getTime();
+  const writes = fake.calls.valueUpdates.length;
+  await assert.rejects(service.setMatchResult(principal, {
+    operationId: "00000000-0000-4000-8000-000000000547", matchId: "correction-window", kind: "regular", result: "4-6/4-6",
+    expectedFingerprint: corrected.fingerprint,
+  }), { code: "RESULT_CORRECTION_WINDOW_EXPIRED" });
+  assert.equal(fake.calls.valueUpdates.length, writes);
   await service.stop();
   repository.close();
 });
@@ -2484,8 +2552,9 @@ test("Neueinsteiger-Clear lehnt fremde Zellen ab und entfernt eine saubere Mitgl
   const original = initial.Matches1.at(-1);
   const first = await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000520", matchId: "newcomer-win", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(original, initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(original, initial.Matches1[0]),
   });
+  assert.deepEqual(fake.tables.Matches1.at(-1).slice(12, 14), [0, 2]);
   assert.deepEqual(fake.tables["RL-Platzierung"].filter((row) => row[1] === "cup-1").map((row) => [row[2], Number(row[3])]), [["p2", 1], ["p1", 3], ["p3", 2]]);
   assert.equal(fake.tables["RL-Platzierung"].filter((row) => row[1] === "cup-1" && row[2] === "p3").length, 1);
 
@@ -2493,6 +2562,7 @@ test("Neueinsteiger-Clear lehnt fremde Zellen ab und entfernt eine saubere Mitgl
     operationId: "00000000-0000-4000-8000-000000000521", matchId: "newcomer-win", kind: "regular", result: "2-6/3-6",
     expectedFingerprint: first.fingerprint,
   });
+  assert.deepEqual(fake.tables.Matches1.at(-1).slice(12, 14), [0, 2]);
   assert.deepEqual(fake.tables["RL-Platzierung"].filter((row) => row[1] === "cup-1").map((row) => [row[2], Number(row[3])]), [["p2", 1], ["p1", 2], ["p3", 3]]);
 
   const clearParams = {
@@ -2514,6 +2584,7 @@ test("Neueinsteiger-Clear lehnt fremde Zellen ab und entfernt eine saubere Mitgl
   assert.deepEqual(fake.tables["RL-Platzierung"].filter((row) => row[1] === "cup-1").map((row) => [row[2], Number(row[3])]), [["p2", 1], ["p1", 2]]);
   assert.equal(insertedRow.some((value) => String(value || "").trim()), false);
   assert.equal(repository.getState("match-result-ranking:newcomer-win", null).value, null);
+  assert.deepEqual(fake.tables.Matches1.at(-1).slice(12, 14), ["", ""]);
   await service.stop();
   repository.close();
 });
@@ -2528,7 +2599,7 @@ test("Neueinsteiger-Niederlage reiht bei weniger als zehn Folgepositionen am End
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await service.setMatchResult({ type: "user", id: "p3", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000523", matchId: "newcomer-loss-short", kind: "regular", result: "2-6/3-6",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
   });
   assert.equal(fake.tables["RL-Platzierung"].find((row) => row[1] === "cup-1" && row[2] === "p3")[3], 3);
   await service.stop();
@@ -2546,7 +2617,7 @@ test("Neueinsteiger-Niederlage bleibt bei mindestens zehn Folgepositionen ohne R
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await service.setMatchResult({ type: "user", id: "p3", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000524", matchId: "newcomer-loss-long", kind: "regular", result: "2-6/3-6",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
   });
   assert.equal(fake.tables["RL-Platzierung"].some((row) => row[1] === "cup-1" && row[2] === "p3"), false);
   assert.equal(fake.tables.Matches1.at(-1)[11], "260904-1100");
@@ -2566,7 +2637,7 @@ test("Rueckkehrer-Sieg uebernimmt den geforderten Rang und behaelt Rueckzugsmeta
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await service.setMatchResult({ type: "user", id: "p1", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000525", matchId: "return-win", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
   });
   assert.deepEqual(fake.tables["RL-Platzierung"].find((row) => row[1] === "cup-1" && row[2] === "p1").slice(3), [2, "260829-1200", "2", "Pause"]);
   assert.deepEqual(fake.tables["RL-Platzierung"].filter((row) => row[1] === "cup-1" && Number(row[3]) > 0).map((row) => Number(row[3])).sort((a, b) => a - b), [1, 2, 3, 4]);
@@ -2586,7 +2657,7 @@ test("Rueckkehrer-Niederlage reiht unmittelbar hinter dem Geforderten ein", asyn
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await service.setMatchResult({ type: "user", id: "p1", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000526", matchId: "return-loss", kind: "regular", result: "2-6/3-6",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
   });
   assert.equal(fake.tables["RL-Platzierung"].find((row) => row[1] === "cup-1" && row[2] === "p1")[3], 3);
   assert.equal(fake.tables["RL-Platzierung"].find((row) => row[1] === "cup-1" && row[2] === "p4")[3], 4);
@@ -2617,7 +2688,7 @@ test("Ergebnisrecovery bestaetigt eine eingefuegte Mitgliedschaft ohne Duplikat 
   });
   const params = {
     operationId: "00000000-0000-4000-8000-000000000527", matchId: "newcomer-recovery", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
+    matchStart: "260904-1000", matchEnd: "260904-1100", expectedFingerprint: matchCompletionFingerprint(initial.Matches1.at(-1), initial.Matches1[0]),
   };
   await assert.rejects(service.setMatchResult({ type: "user", id: "p3", role: "player" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   const writeCount = fake.calls.valueUpdates.length;
@@ -2645,11 +2716,12 @@ test("Matchergebnis lehnt fremde Spieler, Zukunftsende und veraltete Fingerprint
     matchId: "result-guard",
     kind: "walkover",
     losingSide: 2,
+    matchStart: "260904-1000",
     matchEnd: "260904-1100",
     expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   };
   await assert.rejects(service.setMatchResult({ type: "user", id: "p1", role: "player" }, params), { code: "MATCH_PARTICIPANT_REQUIRED" });
-  await assert.rejects(service.setMatchResult({ type: "user", id: "p3", role: "player" }, { ...params, operationId: "00000000-0000-4000-8000-000000000504", matchEnd: "260904-1300" }), { code: "MATCH_END_FUTURE" });
+  await assert.rejects(service.setMatchResult({ type: "user", id: "p3", role: "player" }, { ...params, operationId: "00000000-0000-4000-8000-000000000504", kind: "regular", losingSide: undefined, result: "6-4/6-4", matchEnd: "260904-1300" }), { code: "MATCH_END_FUTURE" });
   await assert.rejects(service.setMatchResult({ type: "user", id: "p3", role: "player" }, { ...params, operationId: "00000000-0000-4000-8000-000000000505", expectedFingerprint: "0".repeat(64) }), { code: "RESULT_CONFLICT" });
   assert.equal(fake.calls.valueUpdates.length, 0);
   await service.stop();
@@ -2672,14 +2744,16 @@ test("Walkover und Aufgabe kodieren nur den exakten Verlierermarker", async () =
   const principal = { type: "user", id: "p1", role: "player", name: "Ada Admin" };
   await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000506", matchId: "result-wo", kind: "walkover", losingSide: 2,
-    matchEnd: "260904-0910", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-0910", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000507", matchId: "result-ret", kind: "retirement", losingSide: 2,
-    result: "6-4/2-1", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[2], initial.Matches1[0]),
+    result: "6-4/2-1", matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[2], initial.Matches1[0]),
   });
   assert.equal(fake.tables.Matches1[1][8], "p2 [wo]");
   assert.equal(fake.tables.Matches1[1][10], "");
+  assert.equal(fake.tables.Matches1[1][14], "260904-1200");
+  assert.equal(fake.tables.Matches1[1][11], "260904-1200");
   assert.equal(fake.tables.Matches1[2][8], "p2 [ret]");
   assert.equal(fake.tables.Matches1[2][10], "6-4/2-1");
   await service.stop();
@@ -2704,7 +2778,7 @@ test("Ergebnisrecovery wiederholt nach Meldungsfehler keinen Sheet-Write", async
   });
   const params = {
     operationId: "00000000-0000-4000-8000-000000000508", matchId: "result-recovery", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   };
   await assert.rejects(service.setMatchResult({ type: "user", id: "p1", role: "player" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   const writes = fake.calls.valueUpdates.length;
@@ -2722,7 +2796,7 @@ test("Ergebnisrecovery speichert nur kontrollierte Zellen und gibt keine private
   repository.init();
   const initial = fixtures();
   initial.Matches1[0].push("Privat", "Formel");
-  initial.Matches1.push(["", "result-private", "260904-0900", "", "cup-1", "", "p1", "", "p2", "", "", "", "MATCH-SECRET", "=A2&B2"]);
+  initial.Matches1.push(["", "result-private", "260904-0900", "", "cup-1", "", "p1", "", "p2", "", "", "", "", "", "", "", "MATCH-SECRET", "=A2&B2"]);
   initial.Rangliste[0].push("Privat", "Formel");
   initial.Rangliste.slice(1).forEach((row, index) => row.push(`RL-SECRET-${index}`, `=C${index + 2}&D${index + 2}`));
   const fake = fakeSheets(initial);
@@ -2741,6 +2815,7 @@ test("Ergebnisrecovery speichert nur kontrollierte Zellen und gibt keine private
     matchId: "result-private",
     kind: "regular",
     result: "6-2/6-3",
+    matchStart: "260904-0900",
     matchEnd: "260904-1030",
     expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   };
@@ -2763,9 +2838,9 @@ test("Ergebnisrecovery speichert nur kontrollierte Zellen und gibt keine private
   assert.equal(serializedOperation.includes("beforeRow"), false);
   assert.equal(serializedOperation.includes("afterRow"), false);
   assert.equal(JSON.stringify(logs).includes("SECRET"), false);
-  assert.equal(fake.tables.Matches1[1][13], "=A2&B2");
+  assert.equal(fake.tables.Matches1[1][17], "=A2&B2");
   assert.equal(fake.tables["RL-Platzierung"][1][8], "=C2&D2");
-  assert.equal(fake.calls.valueUpdates.some(({ index }) => index >= 12), false);
+  assert.equal(fake.calls.valueUpdates.some(({ index }) => index >= 16), false);
   const recovered = await service.setMatchResult({ type: "user", id: "p1", role: "player" }, params);
   assert.equal(recovered.recovered, true);
   await service.stop();
@@ -2795,6 +2870,7 @@ test("Ergebnisdienst lehnt strukturell ungueltige Teilnehmer vor Autorisierung u
       matchId: name,
       kind: "regular",
       result: "6-2/6-3",
+      matchStart: "260904-0900",
       matchEnd: "260904-1030",
       expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
     }), { code: "MATCH_PARTICIPANTS_INVALID" });
@@ -2819,7 +2895,7 @@ test("Round-Robin-Typ mit numerischer Rasterfunktion propagiert keinen KO-Gewinn
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await service.setMatchResult({ type: "user", id: "p1", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000537", matchId: "rr-hf", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   assert.deepEqual(fake.tables.Matches1[2].slice(6, 10), ["", "", "", ""]);
   await service.stop();
@@ -2844,7 +2920,7 @@ test("Admin-Rangreparatur behaelt die urspruengliche Baseline fuer ein spaeteres
   const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
   const first = await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000538", matchId: "baseline-result", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   const corrected = await service.adminCorrectRankingResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000539", matchId: "baseline-result", kind: "regular", result: "2-6/3-6",
@@ -2889,7 +2965,7 @@ test("A1-Ranglisteneinfuegung liest unmittelbar neu und stoppt bei belegter Ziel
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await assert.rejects(service.setMatchResult({ type: "user", id: "p3", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000541", matchId: "a1-race", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   }), { code: "WRITE_CONFLICT" });
   assert.equal(fake.calls.valueUpdates.length, 0);
   await service.stop();
@@ -2904,7 +2980,7 @@ test("KO-Ergebnis ersetzt nur den exakt propagierten Gewinner und Clear entfernt
   initial.Bewerbsart.push(["ko", "KO", "4", ""]);
   initial.Matches1.push(
     ["", "ko-hf1", "260904-0900", "", "cup-1", "HF-P1", "p1", "", "p2", "", "", ""],
-    ["", "ko-final", "260905-0900", "", "cup-1", "F", "", "", "", "", "", ""],
+    ["", "ko-final", "", "", "cup-1", "F", "", "", "", "", "", ""],
   );
   const fake = fakeSheets(initial);
   seedStore(fake.tables);
@@ -2912,7 +2988,7 @@ test("KO-Ergebnis ersetzt nur den exakt propagierten Gewinner und Clear entfernt
   const principal = { type: "user", id: "p1", role: "player", name: "Ada Admin" };
   const first = await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000509", matchId: "ko-hf1", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   assert.equal(fake.tables.Matches1[2][6], "p1");
   const corrected = await service.setMatchResult(principal, {
@@ -2926,6 +3002,35 @@ test("KO-Ergebnis ersetzt nur den exakt propagierten Gewinner und Clear entfernt
   assert.equal(fake.tables.Matches1[2][6], "");
   await service.stop();
   repository.close();
+});
+
+test("KO-Korrekturen bleiben bei jedem eingetragenen Folgetermin gesperrt", async () => {
+  for (const [index, successorMatchDate] of ["260903-1700", "260905-1700"].entries()) {
+    const repository = new StateRepository(":memory:");
+    repository.init();
+    const initial = fixtures();
+    initial.Bewerb[1][2] = "ko";
+    initial.Bewerbsart.push(["ko", "KO", "4", ""]);
+    initial.Matches1.push(
+      ["", "ko-hf-locked", "260904-0900", "", "cup-1", "HF-P1", "p1", "", "p2", "", "6-2/6-3", "260904-1030", "", "", "260904-0900", "260904-1200"],
+      ["", "ko-final-locked", successorMatchDate, "", "cup-1", "F", "p1", "", "p3", "", "", ""],
+    );
+    const fake = fakeSheets(initial);
+    seedStore(fake.tables);
+    const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
+    const expectedFingerprint = matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]);
+    await assert.rejects(service.setMatchResult({ type: "user", id: "p1", role: "player" }, {
+      operationId: `00000000-0000-4000-8000-00000000055${index}`,
+      matchId: "ko-hf-locked", kind: "regular", result: "2-6/3-6", expectedFingerprint,
+    }), { code: "RESULT_CORRECTION_DEPENDENCY_CONFLICT" });
+    await assert.rejects(service.adminClearMatchResult({ type: "user", id: "p1", role: "admin", name: "Ada Admin" }, {
+      operationId: `00000000-0000-4000-8000-00000000056${index}`,
+      matchId: "ko-hf-locked", expectedFingerprint, reason: "Raster rueckwaerts korrigieren",
+    }), { code: "RESULT_CORRECTION_DEPENDENCY_CONFLICT" });
+    assert.equal(fake.calls.valueUpdates.length, 0);
+    await service.stop();
+    repository.close();
+  }
 });
 
 test("fehlendes KO-Folgematch erlaubt das Ergebnis und fordert Administratoren zur Reparatur auf", async () => {
@@ -2951,7 +3056,7 @@ test("fehlendes KO-Folgematch erlaubt das Ergebnis und fordert Administratoren z
   });
   const response = await service.setMatchResult({ type: "user", id: "p1", role: "player", name: "Ada Admin" }, {
     operationId: "00000000-0000-4000-8000-000000000542", matchId: "ko-hf-missing", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   assert.equal(response.success, true);
   assert.equal(response.warningCode, "KO_TARGET_MISSING");
@@ -2988,7 +3093,7 @@ test("fehlgeschlagene KO-Adminmeldung wird ohne zweiten Ergebniswrite wiederaufg
   });
   const params = {
     operationId: "00000000-0000-4000-8000-000000000543", matchId: "ko-hf-warning-recovery", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   };
   await assert.rejects(service.setMatchResult({ type: "user", id: "p1", role: "player" }, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   const writes = fake.calls.valueUpdates.length;
@@ -3017,7 +3122,7 @@ test("mehrdeutiges KO-Folgematch bleibt ein harter Konflikt", async () => {
   const service = new SheetService({ repository, messagingService, clientFactory: async () => fake.client, now: () => new Date(2026, 8, 4, 12, 0).getTime() });
   await assert.rejects(service.setMatchResult({ type: "user", id: "p1", role: "player" }, {
     operationId: "00000000-0000-4000-8000-000000000544", matchId: "ko-hf-ambiguous", kind: "regular", result: "6-2/6-3",
-    matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    matchStart: "260904-0900", matchEnd: "260904-1030", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   }), { code: "KO_TARGET_AMBIGUOUS" });
   assert.equal(fake.calls.valueUpdates.length, 0);
   await service.stop();

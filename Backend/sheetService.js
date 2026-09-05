@@ -154,7 +154,9 @@ function rowObject(header, row) {
 
 function completionState(row, header) {
   const resultIndex = headerIndex(header, "ergebnis");
+  const startIndex = headerIndex(header, "matchstart");
   const endIndex = headerIndex(header, "matchende");
+  const capturedIndex = headerIndex(header, "ergebniserfasstam");
   const participants = ["spieler1id", "spieler2id", "spieler3id", "spieler4id"].map((name) => {
     const index = headerIndex(header, name);
     return index < 0 ? { id: "", marker: null } : parseParticipantId(row[index]);
@@ -163,7 +165,9 @@ function completionState(row, header) {
   return {
     closed: Boolean(String(row[resultIndex] || "").trim() || marker),
     result: String(row[resultIndex] || "").trim(),
+    matchStart: String(row[startIndex] || "").trim(),
     matchEnd: String(row[endIndex] || "").trim(),
+    resultCapturedAt: String(row[capturedIndex] || "").trim(),
     participants,
     kind: marker === "wo" ? "walkover" : marker === "ret" ? "retirement" : "regular",
   };
@@ -174,12 +178,14 @@ function appResultRuleError(error) {
   return new AppError(error.code || "MATCH_RESULT_INVALID", error.message || "Matchergebnis ist ungueltig", 409);
 }
 
-function assertMatchEnd(matchDateValue, matchEndValue, now) {
-  const matchDate = parseMatchDate(matchDateValue);
+function assertMatchEnd(matchStartValue, matchEndValue, now, { allowEqual = false } = {}) {
+  const matchStart = parseMatchDate(matchStartValue);
   const matchEnd = parseMatchDate(matchEndValue);
-  if (!matchDate || !matchEnd) throw new AppError("MATCH_END_INVALID", "Matchzeitpunkte sind ungueltig", 409);
-  if (matchEnd <= matchDate) throw new AppError("MATCH_END_BEFORE_START", "Matchende muss nach dem Matchbeginn liegen", 409);
-  if (matchEnd.getTime() > matchDate.getTime() + 6 * 60 * 60 * 1000) {
+  if (!matchStart || !matchEnd) throw new AppError("MATCH_TIME_INVALID", "Matchstart und Matchende sind ungueltig", 409);
+  if (matchEnd < matchStart || !allowEqual && matchEnd.getTime() === matchStart.getTime()) {
+    throw new AppError("MATCH_END_BEFORE_START", allowEqual ? "Matchende darf nicht vor dem Matchstart liegen" : "Matchende muss nach dem Matchstart liegen", 409);
+  }
+  if (matchEnd.getTime() > matchStart.getTime() + 6 * 60 * 60 * 1000) {
     throw new AppError("MATCH_END_AFTER_LIMIT", "Matchende darf hoechstens sechs Stunden nach Matchbeginn liegen", 409);
   }
   if (matchEnd.getTime() > now) throw new AppError("MATCH_END_FUTURE", "Matchende darf nicht in der Zukunft liegen", 409);
@@ -1812,7 +1818,7 @@ class SheetService {
 
   async addMatch(principal, params) {
     const payload = { bewerbId: params.bewerbId, opponentId: params.opponentId };
-    return this.runIdempotent(principal, "addMatch", params.operationId, payload, ({ recoveryOnly }) => this.enqueue(`ranking:${params.bewerbId}`, () => this.enqueue("matches1", async () => {
+    return this.runIdempotent(principal, "addMatch", params.operationId, payload, ({ recoveryOnly, checkpointUnknown }) => this.enqueue(`ranking:${params.bewerbId}`, () => this.enqueue("matches1", async () => {
       if (params.opponentId === principal.id) throw new AppError("MATCH_SELF", "Ein Spieler kann sich nicht selbst fordern");
       this.cancelScheduledRefresh("matches1");
       const values = await this.readTable("matches1");
@@ -1838,34 +1844,41 @@ class SheetService {
         spieler3id: params.opponentId,
       });
       const sheets = await this.getClient();
+      const rowNumber = values.length + 1;
+      const fields = ["id", "forderungdate", "bewerbid", "spieler1id", "spieler3id"];
+      checkpointUnknown({ phase: "match-create", recordId: newId, rowNumber });
+      let writeError = null;
       try {
-        await sheets.spreadsheets.values.append({
+        await sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: SHEET_ID,
-          range: TABLE_CONFIG.matches1.range,
-          valueInputOption: "RAW",
-          requestBody: { values: [newRow] },
+          requestBody: {
+            valueInputOption: "RAW",
+            data: fields.map((name) => {
+              const index = headerIndex(header, name);
+              return {
+                range: `${TABLE_CONFIG.matches1.range}!${columnName(index)}${rowNumber}`,
+                majorDimension: "ROWS",
+                values: [[newRow[index]]],
+              };
+            }),
+          },
         }, { timeout: GOOGLE_REQUEST_TIMEOUT_MS });
       } catch (error) {
-        let confirmation = null;
-        try {
-          confirmation = await this.readTable("matches1", "confirmation");
-        } catch (confirmationError) {
-          logger.log("error", "sheet_match_confirmation_read_failed", { recordId: newId, error: confirmationError });
-        }
-        const confirmedRow = confirmation?.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
-        if (confirmedRow) {
-          dataStore.set("matches1", confirmation, { source: "write" });
-          await this.ensureChallengeMessage(principal, params, newId, confirmedRow, headerOf(confirmation));
-          return { success: true, newMatchId: newId, recovered: true };
-        }
-        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId });
+        writeError = error;
       }
-      const candidate = structuredClone(values);
-      candidate.push(newRow);
-      dataStore.set("matches1", candidate, { source: "write-local", authoritative: false });
-      this.scheduleRefresh("matches1");
-      await this.ensureChallengeMessage(principal, params, newId, newRow, header);
-      return { success: true, newMatchId: newId };
+      let confirmation = null;
+      try {
+        confirmation = await this.readTable("matches1", "confirmation");
+      } catch (confirmationError) {
+        logger.log("error", "sheet_match_confirmation_read_failed", { recordId: newId, error: confirmationError });
+      }
+      const confirmedRow = confirmation?.slice(1).find((row) => String(row[idIndex] || "").trim() === newId);
+      if (!confirmedRow) {
+        throw new AppError("WRITE_OUTCOME_UNKNOWN", "Ausgang der Match-Erstellung ist unklar", 503, { operationId: params.operationId, recordId: newId, rowNumber });
+      }
+      dataStore.set("matches1", confirmation, { source: "write" });
+      await this.ensureChallengeMessage(principal, params, newId, confirmedRow, headerOf(confirmation));
+      return { success: true, newMatchId: newId, ...(writeError ? { recovered: true } : {}) };
     })));
   }
 
@@ -2176,8 +2189,13 @@ class SheetService {
     const context = this.matchResultCompetition(row, header);
     if (options.rankPlan && !context.ranking) throw new AppError("RANKING_MATCH_REQUIRED", "Administrativer Rangplan ist nur fuer Ranglistenmatches erlaubt", 409);
     const matchDateIndex = headerIndex(header, "matchdate");
+    const matchStartIndex = headerIndex(header, "matchstart");
     const matchEndIndex = headerIndex(header, "matchende");
-    if (matchDateIndex < 0 || matchEndIndex < 0) throw new AppError("SHEET_SCHEMA", "Matches1-Spalten MatchDate oder MatchEnde fehlen", 503);
+    const resultCapturedIndex = headerIndex(header, "ergebniserfasstam");
+    const rankAtResultIndexes = [headerIndex(header, "spieler1rangbeiergebnis"), headerIndex(header, "spieler3rangbeiergebnis")];
+    if (matchDateIndex < 0 || matchStartIndex < 0 || matchEndIndex < 0 || resultCapturedIndex < 0 || rankAtResultIndexes.some((index) => index < 0)) {
+      throw new AppError("SHEET_SCHEMA", "Matches1-Ergebnisfelder sind unvollstaendig", 503);
+    }
     const participantIds = [...new Set(state.participants.map(({ id }) => id).filter(Boolean))];
     let changeType;
     let completionType = state.kind;
@@ -2194,20 +2212,29 @@ class SheetService {
 
     if (options.action === "matchEnd") {
       if (!state.closed || !state.matchEnd || !winnerSide) throw new AppError("MATCH_RESULT_OPEN", "Match ist noch nicht abgeschlossen", 409);
-      assertMatchEnd(row[matchDateIndex], params.matchEnd, this.now());
+      assertMatchEnd(state.matchStart || row[matchDateIndex], params.matchEnd, this.now(), { allowEqual: state.kind === "walkover" });
       targetRow[matchEndIndex] = params.matchEnd;
       changeType = "match_end_corrected";
     } else if (options.action === "clear") {
       if (!state.closed || !winnerSide) throw new AppError("MATCH_RESULT_OPEN", "Match ist noch nicht abgeschlossen", 409);
       targetRow[headerIndex(header, "ergebnis")] = "";
+      targetRow[matchStartIndex] = "";
       targetRow[matchEndIndex] = "";
+      targetRow[resultCapturedIndex] = "";
       for (const field of ["spieler1id", "spieler2id", "spieler3id", "spieler4id"]) {
         const index = headerIndex(header, field);
         if (index >= 0) targetRow[index] = String(targetRow[index] || "").replace(/\s+\[(?:wo|ret)\]$/, "").trim();
       }
+      if (context.ranking) rankAtResultIndexes.forEach((index) => { targetRow[index] = ""; });
       changeType = "result_cleared";
     } else {
       this.assertResultActor(principal, state);
+      if (state.closed && principal.role !== "admin") {
+        const capturedAt = parseMatchDate(state.resultCapturedAt);
+        if (!capturedAt || this.now() > capturedAt.getTime() + 60 * 60 * 1000) {
+          throw new AppError("RESULT_CORRECTION_WINDOW_EXPIRED", "Die Korrekturfrist von 60 Minuten ist abgelaufen", 409);
+        }
+      }
       const rules = this.matchResultRules(row, header, context.competition);
       let validated;
       try {
@@ -2216,15 +2243,21 @@ class SheetService {
         throw appResultRuleError(error);
       }
       if (!validated.valid) throw new AppError(validated.error, "Matchergebnis ist ungueltig", 409);
+      const walkoverTime = !state.closed && validated.kind === "walkover" ? viennaTimestamp(false, new Date(this.now())) : "";
       const suppliedEnd = params.matchEnd || "";
-      if (!state.closed && !suppliedEnd) throw new AppError("MATCH_END_REQUIRED", "Beim ersten Abschluss ist MatchEnde erforderlich", 409);
+      const suppliedStart = params.matchStart || "";
+      if (!state.closed && validated.kind !== "walkover" && (!suppliedStart || !suppliedEnd)) throw new AppError("MATCH_TIME_REQUIRED", "Beim ersten Abschluss sind Matchstart und Matchende erforderlich", 409);
+      if (state.closed && suppliedStart && suppliedStart !== state.matchStart) {
+        throw new AppError("MATCH_START_CHANGE_FORBIDDEN", "Matchstart darf bei Ergebniskorrekturen nicht geaendert werden", 409);
+      }
       if (state.closed && suppliedEnd && suppliedEnd !== state.matchEnd) {
         throw new AppError("MATCH_END_CHANGE_FORBIDDEN", principal.role === "admin"
           ? "Matchende muss ueber die administrative Zeitkorrektur geaendert werden"
           : "Beteiligte duerfen MatchEnde bei Korrekturen nicht aendern", principal.role === "admin" ? 409 : 403);
       }
-      const targetEnd = state.closed ? state.matchEnd : suppliedEnd;
-      assertMatchEnd(row[matchDateIndex], targetEnd, this.now());
+      const targetEnd = state.closed ? state.matchEnd : walkoverTime || suppliedEnd;
+      const targetStart = state.closed ? state.matchStart : walkoverTime || suppliedStart;
+      assertMatchEnd(targetStart || row[matchDateIndex], targetEnd, this.now(), { allowEqual: validated.kind === "walkover" });
       let encoded;
       try {
         encoded = encodeCompletion({
@@ -2242,10 +2275,30 @@ class SheetService {
         if (index >= 0 && Object.hasOwn(encoded, field)) targetRow[index] = encoded[field];
       }
       targetRow[matchEndIndex] = targetEnd;
+      if (!state.closed) {
+        targetRow[matchStartIndex] = targetStart;
+        targetRow[resultCapturedIndex] = viennaTimestamp(false, new Date(this.now()));
+      }
       winnerSide = validated.winnerSide;
       completionType = validated.kind;
       changeType = state.closed ? "result_corrected" : "result";
       if (context.ranking) {
+        if (!state.closed) {
+          const rankingHeader = headerOf(rankingValues);
+          const competitionIndex = headerIndex(rankingHeader, "bewerbid");
+          const personIndex = headerIndex(rankingHeader, "personid");
+          const rankIndex = headerIndex(rankingHeader, "rang");
+          const currentRank = (personId) => {
+            const membership = rankingValues.slice(1).find((entry) => (
+              String(entry[competitionIndex] || "").trim() === context.competitionId
+              && String(entry[personIndex] || "").trim() === personId
+            ));
+            const rank = Number(membership?.[rankIndex]);
+            return Number.isSafeInteger(rank) && rank >= 0 ? rank : 0;
+          };
+          targetRow[rankAtResultIndexes[0]] = currentRank(state.participants[0].id);
+          targetRow[rankAtResultIndexes[1]] = currentRank(state.participants[2].id);
+        }
         if (options.rankPlan) {
           rankingTargets = this.customRankingTargets(rankingValues, context.competitionId, options.rankPlan);
           const provenance = this.repository.getState(`match-result-ranking:${params.matchId}`, null).value;
@@ -2357,6 +2410,10 @@ class SheetService {
           const [successorRow] = successorRows;
           const successorState = completionState(successorRow, header);
           if (successorState.closed) throw new AppError("RESULT_CORRECTION_DEPENDENCY_CONFLICT", "Abhaengiges KO-Match ist bereits abgeschlossen", 409);
+          const successorMatchDate = String(successorRow[headerIndex(header, "matchdate")] || "").trim();
+          if (state.closed && successorMatchDate) {
+            throw new AppError("RESULT_CORRECTION_DEPENDENCY_CONFLICT", "Abhaengiges KO-Match besitzt bereits einen Spieltermin", 409);
+          }
           const oldWinner = completionWinnerSide(state);
           const oldIds = oldWinner ? (oldWinner === 1 ? state.participants.slice(0, 2) : state.participants.slice(2, 4)).map(({ id }) => id).filter(Boolean) : [];
           const winningParticipants = winnerSide === 1 ? state.participants.slice(0, 2) : state.participants.slice(2, 4);
@@ -2450,7 +2507,7 @@ class SheetService {
         ],
       }];
     });
-    const matchChanges = changedCells(header, row, targetRow, ["ergebnis", "matchende", "spieler1id", "spieler2id", "spieler3id", "spieler4id"]);
+    const matchChanges = changedCells(header, row, targetRow, ["ergebnis", "matchstart", "matchende", "ergebniserfasstam", "spieler1id", "spieler2id", "spieler3id", "spieler4id", "spieler1rangbeiergebnis", "spieler3rangbeiergebnis"]);
     const competitionName = String(context.competition.row[headerIndex(context.competition.header, "bezeichnung")] || "").trim();
     const updates = [
       ...(matchChanges.length ? [{
@@ -2473,6 +2530,10 @@ class SheetService {
       source: options.source,
       participantIds,
       participantNames: Object.fromEntries(participantIds.map((id) => [id, this.personName(id)])),
+      teams: [state.participants.slice(0, 2), state.participants.slice(2, 4)].map((team) => team
+        .map(({ id }) => id)
+        .filter(Boolean)),
+      winnerSide,
       competitionName,
       roundCode: String(row[headerIndex(header, "bewerbrunde")] || "").trim(),
       result: String(targetRow[headerIndex(header, "ergebnis")] || "").trim(),
@@ -2565,6 +2626,8 @@ class SheetService {
         roundCode: plan.roundCode,
         participantIds: plan.participantIds,
         participantNames: plan.participantNames,
+        teams: plan.teams,
+        winnerSide: plan.winnerSide,
         actorId: principal.id,
         actorName: principal.name || this.personName(principal.id),
         changeType: plan.changeType,

@@ -177,6 +177,8 @@ async function loadData() {
         const pid3 = iP3 >= 0 ? parsePlayerId(row[iP3]) : {cleanId: "", special: null};
         const pid4 = iP4 >= 0 ? parsePlayerId(row[iP4]) : {cleanId: "", special: null};
         const ergebnis = iErg >= 0 ? String(row[iErg] || "").trim() : "";
+        const firstTeamSpecial = pid1.special || pid2.special;
+        const secondTeamSpecial = pid3.special || pid4.special;
         const matchDateRaw = iDate >= 0 ? String(row[iDate] || "").trim() : "";
         const fordDateRaw = iFord >= 0 ? String(row[iFord] || "").trim() : "";
         const bewerbId = iBewerb >= 0 ? String(row[iBewerb] || "").trim() : "";
@@ -197,8 +199,10 @@ async function loadData() {
           p2: {name: pid2.cleanId ? (playerMap.get(pid2.cleanId) || pid2.cleanId) : "", id: pid2.cleanId, special: pid2.special},
           p3: {name: pid3.cleanId ? (playerMap.get(pid3.cleanId) || pid3.cleanId) : "", id: pid3.cleanId, special: pid3.special},
           p4: {name: pid4.cleanId ? (playerMap.get(pid4.cleanId) || pid4.cleanId) : "", id: pid4.cleanId, special: pid4.special},
-          ergebnis,
-          ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
+           ergebnis,
+           ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
+           completionType: firstTeamSpecial || secondTeamSpecial,
+           losingSide: firstTeamSpecial ? 1 : secondTeamSpecial ? 2 : 0,
           winner: determineWinnerWithWo(ergebnis, [pid1.special, pid2.special], [pid3.special, pid4.special]),
           hasWo: !!(pid1.special === "wo" || pid2.special === "wo" || pid3.special === "wo" || pid4.special === "wo"),
           isPlayed: !!ergebnis || !!pid1.special || !!pid2.special || !!pid3.special || !!pid4.special,
@@ -397,7 +401,12 @@ function renderMatches() {
 
     const result = document.createElement("div");
     result.className = "m1-result";
-    result.textContent = m.ergebnisFormatted || "";
+    const losingTeam = m.losingSide === 1 ? team1Name : m.losingSide === 2 ? team2Name : "";
+    result.textContent = m.completionType === "wo" && losingTeam
+      ? `Walkover durch ${losingTeam}`
+      : m.completionType === "ret" && losingTeam
+        ? `Aufgabe durch ${losingTeam}${m.ergebnisFormatted ? `: ${m.ergebnisFormatted}` : ""}`
+        : m.ergebnisFormatted || "";
 
     content.append(players, result);
     card.append(meta, content);

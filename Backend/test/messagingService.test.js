@@ -128,7 +128,7 @@ test("Forderung erzeugt fuer Gegner und Forderer getrennte Meldungen samt extern
 
 test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche Meldungen mit Akteur", async () => {
   dataStore.resetForTests();
-  dataStore.set("players", [["ID", "Notification"], ["p1", ""], ["p2", ""]], { source: "test" });
+  dataStore.set("players", [["ID", "Notification"], ["p1", ""], ["p2", ""], ["p3", ""], ["p4", ""]], { source: "test" });
   dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID"], ["ranking-1", "Herren", "2"]], { source: "test" });
   dataStore.set("matches1", [["ID", "BewerbID", "BewerbRunde"], ["m-appointment", "ranking-1", "R1"]], { source: "test" });
   const repository = new MessagingRepository(":memory:");
@@ -261,6 +261,8 @@ test("Admin-Korrekturen nennen Grund und Administrator in Bewerbshistorie und be
 test("Ergebnisereignisse informieren jeden eindeutigen Teilnehmer ohne Bestaetigungstyp", async () => {
   dataStore.resetForTests();
   dataStore.set("players", [["ID", "Notification"], ["p1", ""], ["p2", ""]], { source: "test" });
+  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID"], ["cup-1", "Cup", "3"]], { source: "test" });
+  dataStore.set("matches1", [["ID", "BewerbID", "BewerbRunde"], ["m-walkover", "cup-1", "F"]], { source: "test" });
   const repository = new MessagingRepository(":memory:");
   repository.init();
   const service = new MessagingService({ repository, emailAdapter: new EmailMessagingAdapter(), whatsappAdapter: new WhatsappMessagingAdapter(), now: () => 4000 });
@@ -271,6 +273,8 @@ test("Ergebnisereignisse informieren jeden eindeutigen Teilnehmer ohne Bestaetig
     competitionName: "Cup",
     participantIds: ["p1", "p1", "p2"],
     participantNames: { p1: "Ada Aufschlag", p2: "Peter Player" },
+    teams: [["p1"], ["p2"]],
+    winnerSide: 1,
     actorId: "p1",
     actorName: "Ada Aufschlag",
     changeType: "result_corrected",
@@ -280,12 +284,55 @@ test("Ergebnisereignisse informieren jeden eindeutigen Teilnehmer ohne Bestaetig
     reason: "Falsche Erfassung",
   });
   assert.equal(outcome.event.type, "result_corrected");
-  assert.equal(outcome.event.result, "6-4/2-1");
+  assert.equal(outcome.event.result, "6-4/2-1 (Aufgabe)");
   assert.equal(outcome.participants.length, 2);
   assert.deepEqual(new Set(outcome.participants.map(({ type }) => type)), new Set(["result_corrected"]));
-  assert.match(service.message({ id: "p2" }, outcome.participants.find(({ recipient }) => recipient === "p2").id).message.body, /Ada Aufschlag/);
+  assert.equal(outcome.event.summary, "Ada Aufschlag gewinnt gegen Peter Player.");
+  assert.equal(service.message({ id: "p1" }, outcome.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Du gewinnst das Match gegen Peter Player. Ergebnis: 6-4/2-1 (Aufgabe). Grund: Falsche Erfassung");
+  assert.equal(service.message({ id: "p2" }, outcome.participants.find(({ recipient }) => recipient === "p2").id).message.body, "Du verlierst das Match gegen Ada Aufschlag. Ergebnis: 6-4/2-1 (Aufgabe). Grund: Falsche Erfassung");
+  assert.equal(service.messages({ id: "p1" }, { limit: 10 }).messages[0].subject, "Match gewonnen: Cup");
+  assert.equal(service.messages({ id: "p2" }, { limit: 10 }).messages[0].subject, "Match verloren: Cup");
   assert.match(outcome.event.detail, /Grund: Falsche Erfassung/);
-  assert.match(service.message({ id: "p2" }, outcome.participants.find(({ recipient }) => recipient === "p2").id).message.body, /Grund: Falsche Erfassung/);
+  assert.equal(outcome.event.detail.includes("Abschlussart"), false);
+  const walkover = await service.ensureMatchResultEvent({
+    operationId: "00000000-0000-4000-8000-000000000502",
+    matchId: "m-walkover",
+    competitionId: "cup-1",
+    competitionName: "Cup",
+    participantIds: ["p1", "p2", "p3", "p4"],
+    participantNames: { p1: "Ada Aufschlag", p2: "Alfred Ass", p3: "Peter Player", p4: "Paula Passierball" },
+    teams: [["p1", "p2"], ["p3", "p4"]],
+    winnerSide: 2,
+    actorId: "p3",
+    actorName: "Peter Player",
+    changeType: "result",
+    completionType: "walkover",
+  });
+  assert.equal(walkover.event.summary, "Peter Player / Paula Passierball gewinnt gegen Ada Aufschlag / Alfred Ass.");
+  assert.equal(walkover.event.result, "Walkover");
+  assert.equal(walkover.event.detail, "Ergebnis: Walkover");
+  const historyEntry = service.competitionHistory({ id: "p1" }, { bewerbId: "cup-1" }).entries.find(({ id }) => id === walkover.event.id);
+  assert.equal(historyEntry.summary, "Peter Player / Paula Passierball gewinnt gegen Ada Aufschlag / Alfred Ass.");
+  assert.equal(historyEntry.result, "Walkover");
+  assert.equal(service.message({ id: "p1" }, walkover.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Du verlierst das Match gegen Peter Player / Paula Passierball durch Walkover.");
+  assert.equal(service.message({ id: "p3" }, walkover.participants.find(({ recipient }) => recipient === "p3").id).message.body, "Du gewinnst das Match gegen Ada Aufschlag / Alfred Ass durch Walkover.");
+  const retirementWithoutResult = await service.ensureMatchResultEvent({
+    operationId: "00000000-0000-4000-8000-000000000503",
+    matchId: "m-retirement-without-result",
+    competitionId: "cup-1",
+    competitionName: "Cup",
+    participantIds: ["p1", "p2"],
+    participantNames: { p1: "Ada Aufschlag", p2: "Peter Player" },
+    teams: [["p1"], ["p2"]],
+    winnerSide: 1,
+    actorId: "p2",
+    actorName: "Peter Player",
+    changeType: "result",
+    completionType: "retirement",
+  });
+  assert.equal(retirementWithoutResult.event.result, "(Aufgabe)");
+  assert.equal(service.message({ id: "p1" }, retirementWithoutResult.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Du gewinnst das Match gegen Peter Player. Ergebnis: (Aufgabe).");
+  assert.equal(service.message({ id: "p2" }, retirementWithoutResult.participants.find(({ recipient }) => recipient === "p2").id).message.body, "Du verlierst das Match gegen Ada Aufschlag. Ergebnis: (Aufgabe).");
   repository.close();
 });
 

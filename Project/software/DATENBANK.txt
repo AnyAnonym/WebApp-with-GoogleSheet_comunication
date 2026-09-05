@@ -86,8 +86,10 @@ Matches1 enthaelt offene und gespielte Matches.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
   MatchEnde       | Fachlicher Abschlusszeitpunkt `YYMMDD-HHMM`. Beim ersten
-                  | Abschluss zwingend strikt nach MatchDate, maximal sechs
-                  | Stunden danach und nicht in der Zukunft. Beteiligte behalten
+                   | regulaeren Abschluss oder Retirement zwingend strikt nach
+                   | MatchStart, maximal sechs Stunden danach und nicht in der
+                   | Zukunft. Beim Walkover entsprechen MatchStart und MatchEnde
+                   | demselben aktuellen serverseitigen Zeitpunkt. Beteiligte behalten
                   | ihn bei Korrekturen unveraendert; nur Admins korrigieren ihn
                   | mit Grund. Historisch leer faellt fuer Abschlussregeln auf
                   | MatchDate zurueck.
@@ -106,6 +108,11 @@ ersetzt werden. Fuer `Spieler2ID` und `Spieler4ID` ist keine `PRE`-Verwendung
 vorgesehen.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
+Sie werden nicht per Tabellen-Append angelegt. Der Server bestimmt die Zeile
+unmittelbar nach dem letzten vorhandenen Datensatz und schreibt nur `ID`, `ForderungDate`, `BewerbID`,
+`Spieler1ID` und `Spieler3ID` positionsgenau. Dadurch bleiben Formeln in anderen
+Spalten sowie bestehende Leerzeilen erhalten und koennen den Datensatz nicht horizontal verschieben. Ein
+anschliessender Vollread muss die stabile ID und alle Forderungswerte bestaetigen.
 
 Der Ergebnis-Fingerprint ist SHA-256 ueber die getrimmten Werte von `Ergebnis`,
 `MatchEnde` und `Spieler1ID` bis `Spieler4ID`. Ergebniswrites vergleichen ihn

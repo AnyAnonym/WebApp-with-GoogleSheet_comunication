@@ -578,7 +578,9 @@ AUTHENTICATED (player, operator oder admin):
       Liefert die absteigend sortierte, cursorpaginierte Bewerbshistorie fuer
       einen Bewerb oder global fuer alle Bewerbe. Eintraege enthalten unter
       anderem Bewerb-ID/-Bezeichnung, Zeitpunkt, Titel, optionales Ergebnis und
-      optionalen Akteur. Die Einzelhistorie darf die im Dialog bereits genannte
+      optionalen Akteur. Das sichtbare Ergebnis ist bei Walkover `Walkover`, bei
+      Retirement `<Teilergebnis> (Aufgabe)` beziehungsweise ohne Teilergebnis
+      `(Aufgabe)`. Die Einzelhistorie darf die im Dialog bereits genannte
       Bewerbsbezeichnung je Eintrag auslassen; die globale Historie zeigt sie je
       Eintrag. Matchgebundene Eintraege enthalten optional `roundName`; Codes wie
       `AF-P3`, `VF-P2` oder `G1` werden ohne Paarungsnummer als `Achtelfinale`,

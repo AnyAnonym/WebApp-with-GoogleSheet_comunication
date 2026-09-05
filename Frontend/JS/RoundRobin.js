@@ -132,7 +132,7 @@ function escapeHtml(value) {
 
 function formatPlayerHtml(playerId, playerMap) {
   const name = escapeHtml(formatPlayerName(playerId, playerMap));
-  if (!playerId) return `<span class="rr-player-name">${name}</span>`;
+  if (!playerId || !playerMap.has(playerId) || !getUser()) return `<span class="rr-player-name">${name}</span>`;
   return `<button type="button" class="rr-player" data-player-id="${escapeHtml(playerId)}">${name}</button>`;
 }
 
@@ -143,10 +143,15 @@ function formatTeamHtml(pid1, pid2, playerMap) {
   return `${player1}<span class="rr-team-sep"> / </span>${player2}`;
 }
 
+function formatTeamText(pid1, pid2, playerMap) {
+  return [pid1, pid2].filter(Boolean).map((id) => formatPlayerName(id, playerMap)).join(" / ");
+}
+
 function bindProfileLinks(container) {
   if (profileLinkContainers.has(container)) return;
   profileLinkContainers.add(container);
   container.addEventListener("click", (event) => {
+    if (!getUser()) return;
     if (!(event.target instanceof Element)) return;
     const player = event.target.closest(".rr-player[data-player-id]");
     if (!player || !container.contains(player)) return;
@@ -336,6 +341,9 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
     const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+    const losingMarker = firstTeamRetired
+      ? [p1Idx, p2Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index])).find(Boolean)
+      : [p3Idx, p4Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index])).find(Boolean);
 
     // Gewinner aus Ergebnis oder Abschlussmarker berechnen
     let winnerId = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
@@ -351,6 +359,12 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     const team1Html = formatTeamHtml(id1, id2, playerMap);
     const team2Html = formatTeamHtml(id3, id4, playerMap);
+    const losingTeam = firstTeamRetired ? formatTeamText(id1, id2, playerMap) : secondTeamRetired ? formatTeamText(id3, id4, playerMap) : "";
+    const displayResult = losingMarker === "wo" && losingTeam
+      ? `Walkover durch ${losingTeam}`
+      : losingMarker === "ret" && losingTeam
+        ? `Aufgabe durch ${losingTeam}${ergebnis ? `: ${ergebnis}` : ""}`
+        : ergebnis;
 
     const isPlayed = Boolean(ergebnis || firstTeamRetired || secondTeamRetired);
 
@@ -365,6 +379,7 @@ function collectPairings(data, header, bewerbId, playerMap) {
       team2Html,
       matchId,
       ergebnis: ergebnis || "",
+      displayResult,
       played: isPlayed,
       datumRaw: datum,
       datum: parseSheetDate(datum),
@@ -640,7 +655,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
           html += `<span class="rr-pairing-team rr-pairing-team-1 ${t1cls}">${p.team1Html}</span>`;
           html += `<span class="rr-pairing-sep">-</span>`;
           html += `<span class="rr-pairing-team rr-pairing-team-2 ${t2cls}">${p.team2Html}</span>`;
-          if (p.ergebnis) html += `<span class="rr-pairing-result">${escapeHtml(p.ergebnis)}</span>`;
+          if (p.displayResult) html += `<span class="rr-pairing-result">${escapeHtml(p.displayResult)}</span>`;
           html += `</div>`;
         });
         html += `</div>`;

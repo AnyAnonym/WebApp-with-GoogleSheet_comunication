@@ -52,6 +52,40 @@ function createBadge(type) {
   return null;
 }
 
+function appendPlayerName(container, playerId, name, canOpenProfile) {
+  const knownPlayer = playerId && name && playerMap.has(playerId);
+  if (knownPlayer && canOpenProfile) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bracket-player-name";
+    button.dataset.playerId = playerId;
+    button.textContent = name;
+    button.setAttribute("aria-label", `Profil von ${name} öffnen`);
+    button.addEventListener("click", () => window.openProfileModal?.({ playerId }));
+    container.appendChild(button);
+    return;
+  }
+  const text = document.createElement("span");
+  text.className = "bracket-player-name";
+  text.textContent = name || "—";
+  container.appendChild(text);
+}
+
+function createPlayerNames(slot, canOpenProfile) {
+  const names = document.createElement("span");
+  names.className = "pname";
+  appendPlayerName(names, slot.id, slot.name, canOpenProfile);
+  if (slot.partnerName) {
+    const separator = document.createElement("span");
+    separator.className = "bracket-player-separator";
+    separator.setAttribute("aria-hidden", "true");
+    separator.textContent = " / ";
+    names.appendChild(separator);
+    appendPlayerName(names, slot.partnerId, slot.partnerName, canOpenProfile);
+  }
+  return names;
+}
+
 function renderMessage(container, message) {
   const paragraph = document.createElement("p");
   paragraph.textContent = message;
@@ -132,6 +166,9 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
       top: { id: pid1.cleanId, partnerId: pid2.cleanId, name: null, partnerName: null, special: pid1.special || pid2.special, pre: pid1.pre, gesetzt: pid1.gesetzt },
       bottom: { id: pid3.cleanId, partnerId: pid4.cleanId, name: null, partnerName: null, special: pid3.special || pid4.special, pre: pid3.pre, gesetzt: pid3.gesetzt },
       result: null,
+      rawResult,
+      completionType: pid1.special || pid2.special || pid3.special || pid4.special,
+      losingSide: pid1.special || pid2.special ? "top" : pid3.special || pid4.special ? "bottom" : null,
       winner: null,
       matchDate: formatMatchDate(matchDateIdx >= 0 ? row[matchDateIdx] : ""),
     };
@@ -239,6 +276,9 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
         top: sm ? sm.top : { id: "", name: null },
         bottom: sm ? sm.bottom : { id: "", name: null },
         result: sm ? sm.result : null,
+        rawResult: sm ? sm.rawResult : "",
+        completionType: sm ? sm.completionType : null,
+        losingSide: sm ? sm.losingSide : null,
         winner: sm ? sm.winner : null,
         matchDate: sm ? sm.matchDate : "",
       });
@@ -317,6 +357,7 @@ function renderBracket(rounds) {
 
   const numRounds = rounds.length;
   const currentUserId = String(getUser()?.id || "");
+  const canOpenProfile = Boolean(currentUserId);
   const r1Count = rounds[0].matches.length;
   const gridRows = r1Count * 2;
   const dateToMatchGap = 4;
@@ -395,16 +436,9 @@ function renderBracket(rounds) {
           el.classList.add("current-user");
         }
 
-        // Doppel: Name + Partner
-        const displayName = slot.partnerName
-          ? `${slot.name} / ${slot.partnerName}`
-          : (slot.name || "—");
-
         if (match.result && slot.name) {
           const hasRet = match.result.some((s) => s.special && (slot._side === "left" ? s.retOnLeft : !s.retOnLeft));
-          const name = document.createElement("span");
-          name.className = "pname";
-          name.textContent = displayName;
+          const name = createPlayerNames(slot, canOpenProfile);
           [hasRet ? "ret" : null, slot.special, slot.gesetzt ? "gesetzt" : null].forEach((type) => {
             const badge = createBadge(type);
             if (badge) name.append(" ", badge);
@@ -429,9 +463,7 @@ function renderBracket(rounds) {
           });
           el.append(name, " ", result);
         } else {
-          const name = document.createElement("span");
-          name.className = "pname";
-          name.textContent = slot.name ? displayName : "—";
+          const name = createPlayerNames(slot, canOpenProfile);
           [slot.special, slot.gesetzt ? "gesetzt" : null].forEach((type) => {
             const badge = createBadge(type);
             if (badge) name.append(" ", badge);
@@ -440,17 +472,21 @@ function renderBracket(rounds) {
           if (!slot.name && !slot.special) el.classList.add("bye");
         }
 
-        if (slotId && playerMap.has(slotId)) {
-          el.dataset.playerId = slotId;
-          el.addEventListener("click", () => {
-            if (typeof window.openProfileModal === "function") {
-              window.openProfileModal({ playerId: slotId });
-            }
-          });
-        }
-
         matchBox.appendChild(el);
       });
+
+      if (match.completionType && match.losingSide) {
+        const losingSlot = match[match.losingSide];
+        const losingTeam = [losingSlot.name, losingSlot.partnerName].filter(Boolean).join(" / ");
+        if (losingTeam) {
+          const completion = document.createElement("div");
+          completion.className = "bracket-completion";
+          completion.textContent = match.completionType === "wo"
+            ? `Walkover durch ${losingTeam}`
+            : `Aufgabe durch ${losingTeam}${match.rawResult ? `: ${match.rawResult}` : ""}`;
+          matchBox.appendChild(completion);
+        }
+      }
 
       md.appendChild(matchBox);
       grid.appendChild(md);

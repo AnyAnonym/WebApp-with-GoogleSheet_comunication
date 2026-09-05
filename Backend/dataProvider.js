@@ -26,7 +26,7 @@ const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules, matchCompletionFingerprint, parseMatchDate, parseParticipant } = require("./matchRules.js");
-const { parseParticipantId } = require("./matchResultRules.js");
+const { koRoundSuccessor, parseParticipantId } = require("./matchResultRules.js");
 const { projectPeopleNormalization } = require("./peopleNormalization.js");
 const { projectPeopleReconciliation } = require("./memberReconciliation.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
@@ -217,15 +217,19 @@ function profileRankings(personId, principal = null) {
     id: headerIndex(competitionHeader, "id"),
     name: headerIndex(competitionHeader, "bezeichnung"),
     type: headerIndex(competitionHeader, "bewerbsartid"),
+    end: headerIndex(competitionHeader, "bewerbsende"),
     sortOrder: headerIndex(competitionHeader, "sortorder"),
   };
+  const now = new Date();
   const rankingCompetitions = new Map(competitions.slice(1)
     .filter((row) => String(row[competitionIndexes.type] || "").trim() === "2")
     .map((row) => {
       const id = String(row[competitionIndexes.id] || "").trim();
+      const lifecycle = profileCompetitionLifecycle(competitionIndexes.end < 0 ? "" : row[competitionIndexes.end], now);
       return [id, {
         competitionId: id,
         competitionName: String(row[competitionIndexes.name] || "").trim(),
+        ...lifecycle,
         sortOrder: competitionIndexes.sortOrder < 0 || String(row[competitionIndexes.sortOrder] || "").trim() === ""
           ? Number.POSITIVE_INFINITY
           : Number(row[competitionIndexes.sortOrder]),
@@ -321,6 +325,8 @@ function profileRankings(personId, principal = null) {
     return [{
       competitionId: competition.competitionId,
       competitionName: competition.competitionName,
+      competitionEndAt: competition.competitionEndAt,
+      competitionEnded: competition.competitionEnded,
       rank,
       status: withdrawn ? "withdrawn" : "active",
       canChallenge,
@@ -346,6 +352,8 @@ function profileRankings(personId, principal = null) {
     projected.push({
       competitionId: competition.competitionId,
       competitionName: competition.competitionName,
+      competitionEndAt: competition.competitionEndAt,
+      competitionEnded: competition.competitionEnded,
       rank: null,
       status: "active",
       canChallenge: false,
@@ -386,6 +394,69 @@ function profileCompetitionEnd(raw) {
     : null;
 }
 
+function profileCompetitionLifecycle(raw, now = new Date()) {
+  const competitionEnd = profileCompetitionEnd(raw);
+  return {
+    competitionEndAt: competitionEnd ? competitionEnd.getTime() : null,
+    competitionEnded: Boolean(competitionEnd && competitionEnd < now),
+  };
+}
+
+function koCorrectionBlockedMatchIds(competitions, types, matches) {
+  const competitionHeader = headerOf(competitions);
+  const typeHeader = headerOf(types);
+  const matchHeader = headerOf(matches);
+  const typeIdIndex = headerIndex(typeHeader, "id");
+  const roundRobinIndex = headerIndex(typeHeader, "roundrobin");
+  const rasterIndex = headerIndex(typeHeader, "rasterfunktion");
+  const typeById = new Map(types.slice(1).map((row) => [String(row[typeIdIndex] || "").trim(), row]));
+  const rasterByCompetition = new Map();
+  for (const row of competitions.slice(1)) {
+    const competitionId = String(row[headerIndex(competitionHeader, "id")] || "").trim();
+    const typeId = String(row[headerIndex(competitionHeader, "bewerbsartid")] || "").trim();
+    const typeRow = typeById.get(typeId);
+    const raster = Number(typeRow?.[rasterIndex]);
+    if (typeId !== "2" && typeRow && roundRobinIndex >= 0 && String(typeRow[roundRobinIndex] || "").trim() !== "1"
+      && Number.isInteger(raster) && raster > 0 && (raster & (raster - 1)) === 0) {
+      rasterByCompetition.set(competitionId, raster);
+    }
+  }
+
+  const indexes = {
+    id: headerIndex(matchHeader, "id"),
+    competition: headerIndex(matchHeader, "bewerbid"),
+    round: headerIndex(matchHeader, "bewerbrunde"),
+    matchDate: headerIndex(matchHeader, "matchdate"),
+    result: headerIndex(matchHeader, "ergebnis"),
+    participants: ["spieler1id", "spieler2id", "spieler3id", "spieler4id"].map((name) => headerIndex(matchHeader, name)),
+  };
+  const rowsByCompetitionRound = new Map();
+  for (const row of matches.slice(1)) {
+    const key = `${String(row[indexes.competition] || "").trim()}\0${String(row[indexes.round] || "").trim().toUpperCase()}`;
+    if (!rowsByCompetitionRound.has(key)) rowsByCompetitionRound.set(key, []);
+    rowsByCompetitionRound.get(key).push(row);
+  }
+
+  const blocked = new Set();
+  for (const row of matches.slice(1)) {
+    const competitionId = String(row[indexes.competition] || "").trim();
+    const raster = rasterByCompetition.get(competitionId);
+    if (!raster) continue;
+    let successor;
+    try { successor = koRoundSuccessor(row[indexes.round], raster); } catch { continue; }
+    if (!successor) continue;
+    const successorRows = rowsByCompetitionRound.get(`${competitionId}\0${successor.roundCode}`) || [];
+    if (successorRows.length !== 1) continue;
+    const successorRow = successorRows[0];
+    const successorClosed = Boolean(String(successorRow[indexes.result] || "").trim())
+      || indexes.participants.some((index) => parseParticipantId(successorRow[index]).marker);
+    if (successorClosed || String(successorRow[indexes.matchDate] || "").trim()) {
+      blocked.add(String(row[indexes.id] || "").trim());
+    }
+  }
+  return blocked;
+}
+
 function profileCompetitions(personId, principal = null) {
   requireCurrentTables("bewerbe", "bewerbsart", "matches1", "players", "rlPlatzierung");
   const competitions = dataStore.get("bewerbe");
@@ -400,6 +471,7 @@ function profileCompetitions(personId, principal = null) {
   const types = dataStore.get("bewerbsart");
   const typeHeader = headerOf(types);
   const typeIds = new Set(types.slice(1).map((row) => String(row[headerIndex(typeHeader, "id")] || "").trim()).filter(Boolean));
+  const now = new Date();
   const competitionById = new Map(competitions.slice(1).flatMap((row) => {
     const competitionId = String(row[competitionIndexes.id] || "").trim();
     const typeId = String(row[competitionIndexes.type] || "").trim();
@@ -408,7 +480,7 @@ function profileCompetitions(personId, principal = null) {
     return [[competitionId, {
       competitionId,
       competitionName: String(row[competitionIndexes.name] || "").trim() || competitionId,
-      competitionEnd: competitionIndexes.end < 0 ? null : profileCompetitionEnd(row[competitionIndexes.end]),
+      ...profileCompetitionLifecycle(competitionIndexes.end < 0 ? "" : row[competitionIndexes.end], now),
       ranking: typeId === "2",
       sortOrder: rawSortOrder === "" || !Number.isFinite(Number(rawSortOrder)) ? Number.POSITIVE_INFINITY : Number(rawSortOrder),
       matches: [],
@@ -449,21 +521,30 @@ function profileCompetitions(personId, principal = null) {
     competition: headerIndex(matchHeader, "bewerbid"),
     round: headerIndex(matchHeader, "bewerbrunde"),
     matchDate: headerIndex(matchHeader, "matchdate"),
+    matchStart: headerIndex(matchHeader, "matchstart"),
     matchEnd: headerIndex(matchHeader, "matchende"),
+    resultCaptured: headerIndex(matchHeader, "ergebniserfasstam"),
     result: headerIndex(matchHeader, "ergebnis"),
+    ranksAtResult: [headerIndex(matchHeader, "spieler1rangbeiergebnis"), headerIndex(matchHeader, "spieler3rangbeiergebnis")],
     participants: ["spieler1id", "spieler2id", "spieler3id", "spieler4id"].map((name) => headerIndex(matchHeader, name)),
   };
+  const koCorrectionBlocked = koCorrectionBlockedMatchIds(competitions, types, matches);
   for (const row of matches.slice(1)) {
     if (indexes.ignore >= 0 && String(row[indexes.ignore] || "").trim() === "1") continue;
     const competition = competitionById.get(String(row[indexes.competition] || "").trim());
     if (!competition) continue;
     const participants = indexes.participants.map((index) => index < 0 ? { id: "", marker: null } : parseParticipantId(row[index]));
     if (!participants.some(({ id }) => id === String(personId))) continue;
+    const bye = participants.some(({ id }) => id.toUpperCase() === "BYE");
     if (!participants[0].id || !participants[2].id
-      || participants.some(({ id, marker }) => id && (marker && !["wo", "ret"].includes(marker) || !personIds.has(id)))) continue;
-    const marker = participants.find((participant) => participant.marker)?.marker || null;
+      || participants.some(({ id, marker }) => id && (marker && !["wo", "ret"].includes(marker) || id.toUpperCase() !== "BYE" && !personIds.has(id)))) continue;
+    const markedParticipantIndex = participants.findIndex((participant) => participant.marker);
+    const marker = markedParticipantIndex >= 0 ? participants[markedParticipantIndex].marker : null;
     const result = String(row[indexes.result] || "").trim();
     const completed = Boolean(result || marker);
+    const resultCapturedAt = indexes.resultCaptured < 0 ? null : parseMatchDate(row[indexes.resultCaptured]);
+    const participantCorrectionOpen = !completed || Boolean(resultCapturedAt && now.getTime() <= resultCapturedAt.getTime() + 60 * 60 * 1000);
+    const correctionBlocked = completed && koCorrectionBlocked.has(String(row[indexes.id] || "").trim());
     const cleanIds = participants.map(({ id }) => id).filter(Boolean);
     const defenderRank = rankByCompetitionAndPerson.get(`${competition.competitionId}\0${participants[2].id}`);
     const correctionBlockReason = competition.ranking && (!Number.isInteger(defenderRank) || defenderRank <= 0)
@@ -473,40 +554,52 @@ function profileCompetitions(personId, principal = null) {
       matchId: String(row[indexes.id] || "").trim(),
       round: String(row[indexes.round] || "").trim(),
       matchDate: String(row[indexes.matchDate] || "").trim(),
+      matchStart: String(row[indexes.matchStart] || "").trim(),
       matchEnd: String(row[indexes.matchEnd] || "").trim(),
       result,
       completionType: marker === "wo" ? "walkover" : marker === "ret" ? "retirement" : "regular",
-      teams: [participants.slice(0, 2), participants.slice(2, 4)].map((team) => ({
-        ids: team.map(({ id }) => id).filter(Boolean),
-        names: team.map(({ id }) => names.get(id)).filter(Boolean),
-      })),
+      ...(marker ? { losingSide: Math.floor(markedParticipantIndex / 2) + 1 } : {}),
+      teams: [participants.slice(0, 2), participants.slice(2, 4)].map((team, teamIndex) => {
+        const rawRank = indexes.ranksAtResult[teamIndex] < 0 ? "" : String(row[indexes.ranksAtResult[teamIndex]] ?? "").trim();
+        const rankAtResult = /^\d+$/.test(rawRank) && Number.isSafeInteger(Number(rawRank)) ? Number(rawRank) : null;
+        return {
+          ids: team.map(({ id }) => id).filter((id) => id && id.toUpperCase() !== "BYE"),
+          names: team.map(({ id }) => id.toUpperCase() === "BYE" ? "" : names.get(id)).filter(Boolean),
+          ...(competition.ranking && rankAtResult !== null ? { rankAtResult } : {}),
+        };
+      }),
+      ...(bye ? { bye: true } : {}),
       status: completed ? "completed" : "open",
       fingerprint: matchCompletionFingerprint(row, matchHeader),
-      canSetResult: admin || participantRole && cleanIds.includes(actorId),
-      canAdminSetMatchEnd: admin && completed,
-      canAdminClear: admin && completed,
+      canSetResult: !bye && !correctionBlocked && (admin || participantRole && cleanIds.includes(actorId) && participantCorrectionOpen),
+      canAdminSetMatchEnd: !bye && admin && completed,
+      canAdminClear: !bye && admin && completed && !correctionBlocked,
       ...(correctionBlockReason ? { correctionBlockReason } : {}),
     });
   }
 
-  const now = new Date();
   return [...competitionById.values()].flatMap((competition) => {
-    const hasOpen = competition.matches.some((match) => match.status === "open");
-    const completedVisible = competition.competitionEnd ? now <= competition.competitionEnd : hasOpen;
-    const visibleMatches = competition.matches.filter((match) => match.status === "open" || completedVisible);
-    if (!visibleMatches.length) return [];
-    visibleMatches.sort((left, right) => (
-      (left.status === "open" ? 0 : 1) - (right.status === "open" ? 0 : 1)
-      || left.matchDate.localeCompare(right.matchDate, "de")
-      || left.round.localeCompare(right.round, "de")
-      || left.matchId.localeCompare(right.matchId, "de")
-    ));
+    if (!competition.matches.length) return [];
+    competition.matches.sort((left, right) => {
+      const leftOpenRankingMatch = competition.ranking && left.status === "open" && !left.bye ? 0 : 1;
+      const rightOpenRankingMatch = competition.ranking && right.status === "open" && !right.bye ? 0 : 1;
+      if (leftOpenRankingMatch !== rightOpenRankingMatch) return leftOpenRankingMatch - rightOpenRankingMatch;
+      const leftDate = parseMatchDate(left.matchDate)?.getTime() ?? null;
+      const rightDate = parseMatchDate(right.matchDate)?.getTime() ?? null;
+      if (leftDate === null && rightDate !== null) return 1;
+      if (leftDate !== null && rightDate === null) return -1;
+      return (rightDate ?? 0) - (leftDate ?? 0)
+        || left.round.localeCompare(right.round, "de")
+        || left.matchId.localeCompare(right.matchId, "de");
+    });
     return [{
       competitionId: competition.competitionId,
       competitionName: competition.competitionName,
+      competitionEndAt: competition.competitionEndAt,
+      competitionEnded: competition.competitionEnded,
       ranking: competition.ranking,
       ...(admin && competition.ranking ? { rankingMembers: competition.rankingMembers } : {}),
-      matches: visibleMatches,
+      matches: competition.matches,
       sortOrder: competition.sortOrder,
     }];
   }).sort((left, right) => (
@@ -910,13 +1003,11 @@ const endpoints = {
     },
   },
   publicProfile: {
-    access: "public",
+    access: "authenticated",
     handler: (params, context) => {
       requireCurrentTables("players");
       const id = idValue(params?.id, "id");
-      const profile = context.auth
-        ? dependencies.authService.memberProfile(id, { includeAdminFields: context.principal.role === "admin" })
-        : dependencies.authService.publicProfile(id);
+      const profile = dependencies.authService.memberProfile(id, { includeAdminFields: context.principal.role === "admin" });
       return { success: true, profile: {
         ...profile,
         rankings: profileRankings(id, context.principal),

@@ -86,9 +86,10 @@ gesamte Einzel- oder Doppelseite. [Bestaetigt]
 =====================================
 
 `MatchDate` ist der Matchbeginn, `MatchEnde` der minutengenaue fachliche
-Abschlusszeitpunkt. Beim ersten regulaeren Abschluss, Walkover oder Retirement
-muss `MatchEnde` strikt nach `MatchDate`, hoechstens sechs Stunden danach und
-nicht in der Zukunft liegen. Eine spaetere Ergebniskorrektur behaelt diesen
+Abschlusszeitpunkt. Beim Walkover setzt der Server Matchbeginn und Abschluss auf
+denselben aktuellen Zeitpunkt, weil das Match nicht begonnen hat. Beim ersten
+regulaeren Abschluss oder Retirement muss `MatchEnde` strikt nach `MatchStart`,
+hoechstens sechs Stunden danach und nicht in der Zukunft liegen. Eine spaetere Ergebniskorrektur behaelt diesen
 Zeitpunkt bei. Nur die sportliche Leitung darf ihn mit dokumentiertem Grund
 korrigieren. Bei historischen abgeschlossenen Matches ohne `MatchEnde` gilt fuer
 Fristen ersatzweise `MatchDate`. [Bestaetigt]

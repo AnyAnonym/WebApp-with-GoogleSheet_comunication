@@ -31,7 +31,10 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   Die Ranglistenreiter haengen nicht von der aufrufenden Seite ab.
   Sie werden mit den bewerbsbezogenen Matchdaten des gemeinsamen Profilmodals
   zusammengefuehrt. Dadurch erscheinen alle eigenen offenen und bis Bewerbsende
-  abgeschlossenen Matches als Karten; Ergebnisaktionen und -dialog entsprechen
+  abgeschlossenen Matches als Karten. Echte offene Ranglistenbegegnungen stehen
+  vor den abgeschlossenen Karten; innerhalb beider Gruppen bleibt `MatchDate`
+  absteigend sortiert, Freilose erhalten keinen offenen Vorrang.
+  Ergebnisaktionen und -dialog entsprechen
   vollstaendig `Project/software/seiten/players.txt` und sind keine eigene
   Bedienfunktion der Ranglistenseite.
   Ein aktiver Ranglistenreiter zeigt `Ranglistenposition: <Rang>` und gegebenenfalls
@@ -65,6 +68,14 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   werden bei ungelesenen Meldungen die Hamburger-Striche rot. Der Systemreiter
   weist die administrativ gepflegten gueltigen Kanaele Email und Whatsapp aus.
   Meldungen werden ungelesen vor gelesen und je Gruppe neueste zuerst sortiert.
+  Ergebnis- und Korrekturmeldungen sprechen Gewinner und Verlierer jeweils
+  empfaengerbezogen an und nennen die gegnerische Seite. Beim Walkover lautet der
+  Satz `Du gewinnst|verlierst das Match gegen <Gegenseite> durch Walkover.` Bei
+  Aufgabe folgt `Ergebnis: <Spielstand> (Aufgabe).`; ohne Teilergebnis wird
+  `Ergebnis: (Aufgabe).` angezeigt. Die Bewerbshistorie nennt beide Seiten neutral
+  als `<Gewinner> gewinnt gegen <Verlierer>.` und zeigt darunter `Ergebnis:
+  Walkover`, `Ergebnis: <Spielstand> (Aufgabe)` oder `Ergebnis: (Aufgabe)`. Der
+  ausloesende Akteur bleibt davon getrennt.
 
   Beide Beteiligten einer offenen Forderung sehen vor `Raushängen` bei leerem
   MatchDate `Spieltermin festlegen`, danach `Termin abändern`. Der Dialog waehlt
@@ -87,7 +98,9 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schonzeit;
-  lila: Sperrzeit. Forderbar sind links in derselben Reihe und ab eigener Spalte in
+  lila: Sperrzeit. Eine offene Forderung hat auch fuer den angemeldeten Spieler
+  Vorrang vor einer noch laufenden Schon- oder Sperrzeit: Die Box ist gelb, behaelt
+  ihren blauen Eigenrahmen und zeigt keinen Fristtimer. Forderbar sind links in derselben Reihe und ab eigener Spalte in
   der Reihe darueber; Rang 3 darf Rang 1 fordern. Eigene/offene/geschuetzte oder
   gesperrte Konstellationen begrenzen Aktionen. Fuer einen rausgehaengten Spieler
   werden der gespeicherte letzte Rang und alle dahinterliegenden Raenge gruen

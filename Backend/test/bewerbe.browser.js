@@ -198,18 +198,16 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(await modal.locator("#competition-history-title").innerText(), "Historie");
     assert.equal(await modal.locator("#competition-history-competition-name").innerText(), "Alle Bewerbe");
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}]);
-    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup", "Rangliste"]);
+    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste"]);
     assert.deepEqual(await modal.locator(".competition-history-entry").first().locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").first().locator("time").innerText(),
-      "Sommercup",
-      "Viertelfinale",
+      "Sommercup - Viertelfinale",
       "Zweite Änderung",
       "Grund: Doppelte Forderung",
       "Ergebnis: 6-3/6-4",
       "Durch: Neu Spieler",
     ]);
     const expectedHistoryStyles = [
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
@@ -243,7 +241,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(scrollMetrics.dialogBottom <= scrollMetrics.viewportHeight, true);
     await page.getByRole("button", { name: "Weitere Einträge laden" }).click();
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}, { cursor: "global-page-2" }]);
-    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup", "Rangliste", "Wintercup"]);
+    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste", "Wintercup - Achtelfinale"]);
     await page.keyboard.press("Escape");
     assert.equal(await globalHistoryButton.evaluate((button) => document.activeElement === button), true);
 

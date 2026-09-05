@@ -42,7 +42,7 @@ function parseMatchDate(raw) {
 
 function matchCompletionFingerprint(row, header) {
   const normalizedHeader = headerOf([header]);
-  const controlled = ["ergebnis", "matchende", "spieler1id", "spieler2id", "spieler3id", "spieler4id"]
+  const controlled = ["ergebnis", "matchstart", "matchende", "ergebniserfasstam", "spieler1id", "spieler2id", "spieler3id", "spieler4id", "spieler1rangbeiergebnis", "spieler3rangbeiergebnis"]
     .map((name) => {
       const index = headerIndex(normalizedHeader, name);
       return index < 0 ? "" : String(row[index] ?? "").trim();

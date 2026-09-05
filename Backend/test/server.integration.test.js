@@ -133,13 +133,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   dataStore.set("matches1", [[
     "Ignore", "ID", "MatchDate", "ForderungDate", "BewerbID", "BewerbRunde",
     "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchtypID", "InternalNote", "MatchEnde",
+    "Spieler1RangBeiErgebnis", "Spieler3RangBeiErgebnis", "MatchStart", "ErgebnisErfasstAm",
   ],
   ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note", "260101-1400"],
   ["", "m-open", "260904-0800", "", "cup-1", "HF", "p1", "p3", "p2", "", "", "1", "", ""],
   ["1", "m-ignored", "260904-0900", "", "cup-1", "VF", "p1", "", "p2", "", "", "1", "", ""],
   ["", "m-pre", "260904-1000", "", "cup-1", "VF", "p1", "", "PRE", "", "", "1", "", ""],
   ["", "m-nonperson", "260904-1100", "", "cup-1", "VF", "p1", "", "not-a-person", "", "", "1", "", ""],
-  ["", "m2", "260828-1200", "", "ranking-seniors", "F", "p1", "", "p2", "", "6-4/6-4", "1", "", "260828-1400"],
+  ["", "m2", "260828-1200", "", "ranking-seniors", "F", "p1", "", "p2", "", "6-4/6-4", "1", "", "260828-1400", "4", "2"],
   ], { source: "test" });
   dataStore.set("rlPlatzierung", [
     ["ID", "BewerbID", "PersonID", "Rang", "RausgehangenAm", "RausgehangenLetztePlatzierung", "RausgehangenGrund"],
@@ -546,7 +547,6 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(JSON.stringify(publicPlayers.data).includes("ada@example.test"), false);
 
   const publicContracts = [
-    ["publicProfile", { id: "p1" }],
     ["bewerbe", {}],
     ["bewerbsart", {}],
     ["matches1", { bewerbId: "cup-1" }],
@@ -564,40 +564,8 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     assert.equal(response.data.success, true, endpoint);
   }
   const anonymousProfile = await publicClient.request("publicProfile", { id: "p1" });
-  assert.equal(anonymousProfile.data.profile.email, undefined);
-  assert.equal(anonymousProfile.data.profile.phone, undefined);
-  assert.equal(anonymousProfile.data.profile.birthDate, undefined);
-  assert.deepEqual(anonymousProfile.data.profile.rankings, [
-    { competitionId: "ranking-men", competitionName: "Herren", rank: 1, status: "active", canChallenge: false, canWithdraw: false, openChallenge: null },
-    { competitionId: "ranking-seniors", competitionName: "Senioren", rank: 0, status: "withdrawn", canChallenge: false, canWithdraw: false, openChallenge: null },
-  ]);
-  assert.deepEqual(anonymousProfile.data.profile.competitions.map(({ competitionId, matches }) => ({
-    competitionId,
-    matches: matches.map(({ matchId, status, canSetResult, canAdminSetMatchEnd, canAdminClear }) => ({ matchId, status, canSetResult, canAdminSetMatchEnd, canAdminClear })),
-  })), [{
-    competitionId: "cup-1",
-    matches: [
-      { matchId: "m-open", status: "open", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false },
-      { matchId: "m1", status: "completed", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false },
-    ],
-  }, {
-    competitionId: "ranking-seniors",
-    matches: [{ matchId: "m2", status: "completed", canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false }],
-  }]);
-  assert.equal(JSON.stringify(anonymousProfile.data.profile.competitions).includes("secret-note"), false);
-  assert.equal(JSON.stringify(anonymousProfile.data.profile).includes("Verletzt"), false);
-  const currentCompetitions = structuredClone(dataStore.get("bewerbe"));
-  const currentMatches = structuredClone(dataStore.get("matches1"));
-  const noEndCompetitions = structuredClone(currentCompetitions);
-  noEndCompetitions[1][6] = "";
-  dataStore.set("bewerbe", noEndCompetitions, { source: "test-profile-no-end" });
-  const boundedWhileOpen = await publicClient.request("publicProfile", { id: "p1" });
-  assert.deepEqual(boundedWhileOpen.data.profile.competitions[0].matches.map(({ matchId }) => matchId), ["m-open", "m1"]);
-  dataStore.set("matches1", [currentMatches[0], ...currentMatches.slice(1).filter((row) => row[1] !== "m-open")], { source: "test-profile-no-open" });
-  const boundedWithoutOpen = await publicClient.request("publicProfile", { id: "p1" });
-  assert.equal(boundedWithoutOpen.data.profile.competitions.some(({ competitionId }) => competitionId === "cup-1"), false);
-  dataStore.set("bewerbe", currentCompetitions, { source: "test-profile-restore" });
-  dataStore.set("matches1", currentMatches, { source: "test-profile-restore" });
+  assert.equal(anonymousProfile.data.error.code, "AUTH_REQUIRED");
+  assert.equal(anonymousProfile.data.profile, undefined);
   const projectedMatches = await publicClient.request("matches1", {});
   assert.equal(projectedMatches.data.values[0].includes("InternalNote"), false);
   assert.equal(JSON.stringify(projectedMatches.data).includes("secret-note"), false);
@@ -608,7 +576,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(seniorRestrictions.data.schonzeit, []);
 
   const protectedEndpoints = [
-    "memberDirectory", "myProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
+    "memberDirectory", "myProfile", "publicProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
     "withdrawFromRanking", "matchResultSuggestion", "setMatchResult", "adminClearMatchResult", "adminCorrectRankingResult", "adminSetMatchEnd", "adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
     "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
     "monitorTarget", "monitorAck",
@@ -751,6 +719,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(resultSuggestion.data.source.type, "scoreLog");
   assert.match(resultSuggestion.data.expectedFingerprint, /^[0-9a-f]{64}$/);
   const memberProfile = await playerClient.request("publicProfile", { id: "p1" });
+  assert.equal(memberProfile.data.success, true, JSON.stringify(memberProfile.data.error));
   assert.equal(memberProfile.data.profile.email, "ada@example.test");
   assert.equal(memberProfile.data.profile.phone, "+43123");
   assert.equal(memberProfile.data.profile.birthDate, "19900102");
@@ -759,10 +728,80 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(memberProfile.data.profile.rankings[1].withdrawal, { withdrawnAt: "260829-1200", reason: "Verletzt" });
   assert.equal(memberProfile.data.profile.competitions.every((competition) => !Object.hasOwn(competition, "rankingMembers")), true);
   assert.equal(memberProfile.data.profile.competitions[0].matches[0].canSetResult, true);
+  const historicalRankingMatch = memberProfile.data.profile.competitions
+    .find(({ competitionId }) => competitionId === "ranking-seniors").matches.find(({ matchId }) => matchId === "m2");
+  assert.equal(historicalRankingMatch.canSetResult, false);
   assert.deepEqual(memberProfile.data.profile.competitions[0].matches[0].teams, [
     { ids: ["p1", "p3"], names: ["Ada Admin", "Olivia Operator"] },
     { ids: ["p2"], names: ["Peter Player"] },
   ]);
+  const profileCompetitionsBeforeKoLock = structuredClone(dataStore.get("bewerbe"));
+  const profileTypesBeforeKoLock = structuredClone(dataStore.get("bewerbsart"));
+  const profileMatchesBeforeKoLock = structuredClone(dataStore.get("matches1"));
+  dataStore.set("bewerbe", [...profileCompetitionsBeforeKoLock, ["ko-profile", "KO-Profil", "ko-profile-type", "2", "1", "4", "491231"]], { source: "test-profile-ko-lock" });
+  dataStore.set("bewerbsart", [...profileTypesBeforeKoLock, ["ko-profile-type", "KO", "4", ""]], { source: "test-profile-ko-lock" });
+  const profileMatchesWithKoLock = [
+    ...profileMatchesBeforeKoLock,
+    ["", "ko-profile-hf", "260901-1000", "", "ko-profile", "HF-P1", "p1", "", "p2", "", "6-2/6-3", "1", "", "260901-1200", "", "", "260901-1000", "491231-2359"],
+    ["", "ko-profile-final", "260910-1000", "", "ko-profile", "F", "p1", "", "p3", "", "", "1", "", ""],
+  ];
+  dataStore.set("matches1", profileMatchesWithKoLock, { source: "test-profile-ko-lock" });
+  const lockedKoProfile = await playerClient.request("publicProfile", { id: "p2" });
+  const lockedKoMatch = lockedKoProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ko-profile").matches.find(({ matchId }) => matchId === "ko-profile-hf");
+  assert.equal(lockedKoMatch.canSetResult, false);
+  profileMatchesWithKoLock.at(-1)[2] = "";
+  dataStore.set("matches1", profileMatchesWithKoLock, { source: "test-profile-ko-unlock" });
+  const unlockedKoProfile = await playerClient.request("publicProfile", { id: "p2" });
+  const unlockedKoMatch = unlockedKoProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ko-profile").matches.find(({ matchId }) => matchId === "ko-profile-hf");
+  assert.equal(unlockedKoMatch.canSetResult, true);
+  dataStore.set("bewerbe", profileCompetitionsBeforeKoLock, { source: "test-profile-ko-restore" });
+  dataStore.set("bewerbsart", profileTypesBeforeKoLock, { source: "test-profile-ko-restore" });
+  dataStore.set("matches1", profileMatchesBeforeKoLock, { source: "test-profile-ko-restore" });
+  const currentCompetitions = structuredClone(dataStore.get("bewerbe"));
+  const currentMatches = structuredClone(dataStore.get("matches1"));
+  const noEndCompetitions = structuredClone(currentCompetitions);
+  noEndCompetitions[1][6] = "";
+  dataStore.set("bewerbe", noEndCompetitions, { source: "test-profile-no-end" });
+  const boundedWhileOpen = await playerClient.request("publicProfile", { id: "p1" });
+  assert.deepEqual(boundedWhileOpen.data.profile.competitions[0].matches.map(({ matchId }) => matchId), ["m-open", "m1"]);
+  dataStore.set("matches1", [currentMatches[0], ...currentMatches.slice(1).filter((row) => row[1] !== "m-open")], { source: "test-profile-no-open" });
+  const boundedWithoutOpen = await playerClient.request("publicProfile", { id: "p1" });
+  const historicalCup = boundedWithoutOpen.data.profile.competitions.find(({ competitionId }) => competitionId === "cup-1");
+  assert.deepEqual(historicalCup.matches.map(({ matchId }) => matchId), ["m1"]);
+  assert.equal(historicalCup.competitionEnded, false);
+  assert.equal(historicalCup.competitionEndAt, null);
+  const endedCompetitions = structuredClone(currentCompetitions);
+  endedCompetitions[1][6] = "20000101";
+  dataStore.set("bewerbe", endedCompetitions, { source: "test-profile-ended" });
+  dataStore.set("matches1", currentMatches, { source: "test-profile-ended" });
+  const endedProfile = await playerClient.request("publicProfile", { id: "p1" });
+  const endedCup = endedProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "cup-1");
+  assert.equal(endedCup.competitionEnded, true);
+  assert.equal(endedCup.competitionEndAt, new Date(2000, 0, 1, 23, 59, 59).getTime());
+  assert.deepEqual(endedCup.matches.map(({ matchId }) => matchId), ["m-open", "m1"]);
+  dataStore.set("bewerbe", currentCompetitions, { source: "test-profile-restore" });
+  dataStore.set("matches1", currentMatches, { source: "test-profile-restore" });
+  const matchesWithBye = [
+    ...currentMatches,
+    ["", "m-newest", "260905-1000", "", "cup-1", "HF-P1", "p2", "", "p1", "", "6-1/6-1", "1", "", "260905-1200"],
+    ["", "m-bye", "", "", "cup-1", "R1-P1", "p2", "", "BYE", "", "", "1", "", ""],
+    ["", "m-ranking-undated", "", "", "ranking-seniors", "", "p1", "", "p2", "", "", "1", "", ""],
+    ["", "m-ranking-retirement", "260904-0700", "", "ranking-seniors", "", "p1", "", "p2 [ret]", "", "6-4/2-1", "1", "", "260904-0830", "", "", "260904-0700", "260904-0835"],
+  ];
+  dataStore.set("matches1", matchesWithBye, { source: "test-profile-bye" });
+  const byeProfile = await playerClient.request("publicProfile", { id: "p2" });
+  const byeCup = byeProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "cup-1");
+  assert.deepEqual(byeCup.matches.map(({ matchId }) => matchId), ["m-newest", "m-open", "m1", "m-bye"]);
+  const byeMatch = byeCup.matches.at(-1);
+  assert.equal(byeMatch.bye, true);
+  assert.deepEqual(byeMatch.teams, [{ ids: ["p2"], names: ["Peter Player"] }, { ids: [], names: [] }]);
+  assert.equal(byeMatch.canSetResult, false);
+  assert.equal(byeMatch.canAdminSetMatchEnd, false);
+  assert.equal(byeMatch.canAdminClear, false);
+  const seniorMatches = byeProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ranking-seniors").matches;
+  assert.deepEqual(seniorMatches.map(({ matchId }) => matchId), ["m-ranking-undated", "m-ranking-retirement", "m2"]);
+  assert.equal(seniorMatches[1].losingSide, 2);
+  dataStore.set("matches1", currentMatches, { source: "test-profile-bye-restore" });
   const matchesBeforeNewcomerProfile = structuredClone(dataStore.get("matches1"));
   const newcomerChallengeMatches = structuredClone(matchesBeforeNewcomerProfile);
   newcomerChallengeMatches.push(["", "m-newcomer", "", "260902-1000", "ranking-men", "", "p3", "", "p2", "", "", "1", ""]);
@@ -771,6 +810,8 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(newcomerProfile.data.profile.rankings, [{
     competitionId: "ranking-men",
     competitionName: "Herren",
+    competitionEndAt: new Date(2049, 11, 31, 23, 59, 59).getTime(),
+    competitionEnded: false,
     rank: null,
     status: "active",
     canChallenge: false,
@@ -899,6 +940,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(completedAdminMatch.canAdminClear, true);
   const adminRankingCompetition = ownProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ranking-seniors");
   assert.equal(adminRankingCompetition.ranking, true);
+  assert.equal(adminRankingCompetition.matches.find(({ matchId }) => matchId === "m2").canSetResult, true);
+  assert.deepEqual(adminRankingCompetition.matches.find(({ matchId }) => matchId === "m2").teams, [
+    { ids: ["p1"], names: ["Ada Admin"], rankAtResult: 4 },
+    { ids: ["p2"], names: ["Peter Player"], rankAtResult: 2 },
+  ]);
   assert.deepEqual(adminRankingCompetition.rankingMembers, [
     { personId: "p1", name: "Ada Admin", rank: 0 },
     { personId: "p2", name: "Peter Player", rank: 4 },

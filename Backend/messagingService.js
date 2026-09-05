@@ -211,7 +211,7 @@ class MessagingService {
     return { event, participants: event.participants };
   }
 
-  async ensureMatchResultEvent({ operationId, matchId, competitionId, competitionName, roundCode = "", participantIds, participantNames = {}, actorId, actorName, changeType, completionType = "", result = "", matchEnd = "", reason = "", createdAt = this.now() }) {
+  async ensureMatchResultEvent({ operationId, matchId, competitionId, competitionName, roundCode = "", participantIds, participantNames = {}, teams = [], winnerSide = null, actorId, actorName, changeType, completionType = "", result = "", matchEnd = "", reason = "", createdAt = this.now() }) {
     const types = {
       result: "result",
       result_corrected: "result_corrected",
@@ -230,17 +230,37 @@ class MessagingService {
       match_end_corrected: "Matchende korrigiert",
     };
     const controlledResult = changeType === "result_cleared" ? "" : String(result || "");
-    const detailParts = [completionType ? `Abschlussart: ${completionType}` : "", controlledResult ? `Ergebnis: ${controlledResult}` : "", matchEnd ? `Matchende: ${matchEnd}` : "", reason ? `Grund: ${reason}` : ""].filter(Boolean);
-    const participants = uniqueIds.map((userId) => this.participant({
-      identity: `${identity}:${userId}`,
-      userId,
-      role: "participant",
-      displayName: participantNames[userId] || userId,
-      type,
-      subject: `${labels[changeType]}: ${competitionName}`,
-      body: `${actorName || actorId} hat das Matchergebnis ${changeType === "result" ? "eingetragen" : changeType === "result_cleared" ? "zurückgenommen" : "korrigiert"}.${controlledResult ? ` Ergebnis: ${controlledResult}.` : ""}${reason ? ` Grund: ${reason}` : ""}`,
-      allowMissingPerson: true,
-    }));
+    const outcomeChange = ["result", "result_corrected"].includes(changeType);
+    const displayResult = outcomeChange && completionType === "walkover"
+      ? "Walkover"
+      : outcomeChange && completionType === "retirement"
+        ? `${controlledResult ? `${controlledResult} ` : ""}(Aufgabe)`
+        : controlledResult;
+    const detailParts = [displayResult ? `Ergebnis: ${displayResult}` : "", matchEnd ? `Matchende: ${matchEnd}` : "", reason ? `Grund: ${reason}` : ""].filter(Boolean);
+    const namedTeams = teams.slice(0, 2).map((team) => (team || []).map(String).filter(Boolean).map((id) => participantNames[id] || id));
+    const hasOutcome = outcomeChange
+      && [1, 2].includes(winnerSide)
+      && namedTeams.length === 2
+      && namedTeams.every((team) => team.length > 0);
+    const participants = uniqueIds.map((userId) => {
+      const recipientWon = hasOutcome && teams[winnerSide - 1].map(String).includes(userId);
+      const opponentIndex = recipientWon ? 2 - winnerSide : winnerSide - 1;
+      const outcomeText = hasOutcome ? `Du ${recipientWon ? "gewinnst" : "verlierst"} das Match gegen ${namedTeams[opponentIndex].join(" / ")}` : "";
+      return this.participant({
+        identity: `${identity}:${userId}`,
+        userId,
+        role: "participant",
+        displayName: participantNames[userId] || userId,
+        type,
+        subject: hasOutcome
+          ? `Match ${recipientWon ? "gewonnen" : "verloren"}: ${competitionName}`
+          : `${labels[changeType]}: ${competitionName}`,
+        body: hasOutcome
+          ? `${outcomeText}${completionType === "walkover" ? " durch Walkover." : `.${displayResult ? ` Ergebnis: ${displayResult}.` : ""}`}${reason ? ` Grund: ${reason}` : ""}`
+          : `${actorName || actorId} hat das Matchergebnis ${changeType === "result" ? "eingetragen" : changeType === "result_cleared" ? "zurückgenommen" : "korrigiert"}.${displayResult ? ` Ergebnis: ${displayResult}.` : ""}${reason ? ` Grund: ${reason}` : ""}`,
+        allowMissingPerson: true,
+      });
+    });
     const event = await this.ensureEvent({
       id: stableId("evt", identity),
       competitionId,
@@ -250,9 +270,11 @@ class MessagingService {
       sourceId: matchId,
       actorId,
       actorName,
-      summary: `${labels[changeType]} für ${uniqueIds.map((id) => participantNames[id] || id).join(" / ")}.`,
+      summary: hasOutcome
+        ? `${namedTeams[winnerSide - 1].join(" / ")} gewinnt gegen ${namedTeams[2 - winnerSide].join(" / ")}.`
+        : `${labels[changeType]} für ${uniqueIds.map((id) => participantNames[id] || id).join(" / ")}.`,
       detail: detailParts.join("; "),
-      result: controlledResult,
+      result: displayResult,
       roundName: competitionRoundName(roundCode),
       completionType,
     }, participants);

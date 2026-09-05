@@ -111,7 +111,7 @@ test("MessagingRepository migriert v1, gruppiert nur exakte Matchquellen und rei
 
   const repository = new MessagingRepository(filename);
   repository.init();
-  assert.equal(repository.status().schemaVersion, 5);
+  assert.equal(repository.status().schemaVersion, 6);
   assert.equal(repository.status().eventCount, 2);
   const migratedEventId = repository.getForRecipient("p1", "legacy-challenger").eventId;
   assert.equal(migratedEventId, repository.getForRecipient("p2", "legacy-opponent").eventId);
@@ -181,7 +181,7 @@ test("MessagingRepository migriert Schema 3 additiv auf das Ergebnisfeld", (t) =
 
   repository = new MessagingRepository(filename);
   repository.init();
-  assert.equal(repository.status().schemaVersion, 5);
+  assert.equal(repository.status().schemaVersion, 6);
   assert.equal(repository.getForRecipient("p2", "before-v4").subject, "Private subject");
   assert.equal(repository.getEvent("before-v4").result, "");
   repository.close();
@@ -239,8 +239,44 @@ test("MessagingRepository migriert Schema 4 mit Datenbestand auf den globalen Ze
 
   repository = new MessagingRepository(filename);
   repository.init();
-  assert.equal(repository.status().schemaVersion, 5);
+  assert.equal(repository.status().schemaVersion, 6);
   assert.equal(repository.getForRecipient("p2", "before-v5").subject, "Private subject");
   assert.equal(repository.db.prepare("PRAGMA index_list('competition_events')").all().some(({ name }) => name === "competition_events_created"), true);
+  repository.close();
+});
+
+test("MessagingRepository migriert bestehende Walkover- und Aufgabe-Texte", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "epiber-messaging-v5-"));
+  const filename = path.join(directory, "messaging.sqlite");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  let repository = new MessagingRepository(filename);
+  repository.init();
+  const oldEvent = (id) => ({ id, competitionId: "cup", createdAt: 10, type: "result", source: "match", sourceId: id, actorId: "p1" });
+  const oldParticipant = (index) => ({ userId: `p${index}`, role: "participant", messageId: `message-${index}`, type: "result", subject: "Ergebnis", body: "", deliveries: [{ channel: "Inbox", status: "delivered" }] });
+  repository.ensureEvent({
+    ...oldEvent("walkover-old"), detail: "Abschlussart: walkover", result: "",
+  }, [{ ...oldParticipant(1), messageId: "walkover-old-message", body: "Du gewinnst das Match gegen Peter Player. Abschlussart: Walkover." }]);
+  repository.ensureEvent({
+    ...oldEvent("retirement-old"), type: "result_corrected", detail: "Abschlussart: retirement; Ergebnis: 6-4/2-1; Grund: Korrektur", result: "6-4/2-1",
+  }, [{ ...oldParticipant(2), messageId: "retirement-old-message", body: "Du verlierst das Match gegen Ada Aufschlag. Ergebnis: 6-4/2-1. Grund: Korrektur" }]);
+  repository.ensureEvent({
+    ...oldEvent("retirement-empty-old"), detail: "Abschlussart: retirement", result: "",
+  }, [{ ...oldParticipant(3), messageId: "retirement-empty-old-message", body: "Du gewinnst das Match gegen Peter Player. Abschlussart: Aufgabe." }]);
+  repository.close();
+  const db = new DatabaseSync(filename);
+  db.exec("PRAGMA user_version = 5;");
+  db.close();
+
+  repository = new MessagingRepository(filename);
+  repository.init();
+  assert.equal(repository.status().schemaVersion, 6);
+  assert.equal(repository.getForRecipient("p1", "walkover-old-message").body, "Du gewinnst das Match gegen Peter Player durch Walkover.");
+  assert.equal(repository.getEvent("walkover-old").result, "Walkover");
+  assert.equal(repository.getEvent("walkover-old").detail, "Ergebnis: Walkover");
+  assert.equal(repository.getForRecipient("p2", "retirement-old-message").body, "Du verlierst das Match gegen Ada Aufschlag. Ergebnis: 6-4/2-1 (Aufgabe). Grund: Korrektur");
+  assert.equal(repository.getEvent("retirement-old").result, "6-4/2-1 (Aufgabe)");
+  assert.equal(repository.getEvent("retirement-old").detail, "Ergebnis: 6-4/2-1 (Aufgabe); Grund: Korrektur");
+  assert.equal(repository.getForRecipient("p3", "retirement-empty-old-message").body, "Du gewinnst das Match gegen Peter Player. Ergebnis: (Aufgabe).");
+  assert.equal(repository.getEvent("retirement-empty-old").result, "(Aufgabe)");
   repository.close();
 });

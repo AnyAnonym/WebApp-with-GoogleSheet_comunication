@@ -84,8 +84,10 @@ test("Ranglistenmatches erkennen nur exakte [wo]- und [ret]-Abschluesse", () => 
 
   const ownProtection = rankingPlayerState("p1", "p1", new Set(), new Map([["p1", new Date()]]), new Map());
   const ownBlock = rankingPlayerState("p1", "p1", new Set(), new Map(), new Map([["p1", new Date()]]));
+  const ownBusyAndProtected = rankingPlayerState("p1", "p1", new Set(["p1"]), new Map([["p1", new Date()]]), new Map());
   assert.deepEqual(JSON.parse(JSON.stringify(ownProtection)), { selected: true, status: "protection" });
   assert.deepEqual(JSON.parse(JSON.stringify(ownBlock)), { selected: true, status: "blocked" });
+  assert.deepEqual(JSON.parse(JSON.stringify(ownBusyAndProtected)), { selected: true, status: "busy" });
 });
 
 test("Frontenddiagnose filtert Level und verlangt benannte Events", () => {

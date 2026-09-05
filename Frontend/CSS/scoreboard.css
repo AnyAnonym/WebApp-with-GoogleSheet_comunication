@@ -328,7 +328,9 @@
   font-weight: 700;
   color: var(--accent);
   text-align: right;
-  white-space: nowrap;
+  max-width: 50%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-family: "Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif;
   font-stretch: condensed;
 }

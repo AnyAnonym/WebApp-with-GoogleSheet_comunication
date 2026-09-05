@@ -53,6 +53,7 @@ window.__matchDateCalls = [];
 window.__adminRankingCalls = [];
 window.__matchResultCalls = [];
 window.__suggestionCalls = [];
+window.__endpointCalls = [];
 const operationIds = new Map();
 export const getOperationId = (key) => {
   if (!operationIds.has(key)) operationIds.set(key, "operation-" + key);
@@ -62,12 +63,12 @@ export const releaseOperationId = () => {};
 export const subscribeInvalidations = () => () => {};
 export const subscribe = () => () => {};
 const rankings = [
-  { competitionId: "r1", competitionName: "Herren", rank: 1, status: "active", canChallenge: true, canWithdraw: true },
-  { competitionId: "r2", competitionName: "Damen Doppel Lang", rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r2", direction: "challenger", opponentName: "Test Gegner", opponentRank: 5, challengedAt: "260829-1200", matchDate: "260905-1600" } },
-  { competitionId: "r3", competitionName: "Senioren 45 Plus", rank: 3, status: "active", canChallenge: false, openChallenge: { matchId: "match-r3", direction: "challenged", opponentName: "Andere Gegnerin", opponentRank: 7, challengedAt: "260830-0900" } },
-  { competitionId: "r4", competitionName: "Mixed Sommer", rank: 4, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r4", direction: "challenger", opponentName: "Mixed Gegner", opponentRank: 2, challengedAt: "260828-1200" } },
-  { competitionId: "r5", competitionName: "Wintercup", rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
-  { competitionId: "r6", competitionName: "Damen Herbst", rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
+  { competitionId: "r1", competitionName: "Herren", competitionEndAt: 1, competitionEnded: false, rank: 1, status: "active", canChallenge: true, canWithdraw: true },
+  { competitionId: "r2", competitionName: "Damen Doppel Lang", competitionEndAt: 2, competitionEnded: false, rank: 2, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r2", direction: "challenger", opponentName: "Test Gegner", opponentRank: 5, challengedAt: "260829-1200", matchDate: "260905-1600" } },
+  { competitionId: "r3", competitionName: "Senioren 45 Plus", competitionEndAt: 3, competitionEnded: false, rank: 3, status: "active", canChallenge: false, openChallenge: { matchId: "match-r3", direction: "challenged", opponentName: "Andere Gegnerin", opponentRank: 7, challengedAt: "260830-0900" } },
+  { competitionId: "r4", competitionName: "Mixed Sommer", competitionEndAt: 4, competitionEnded: false, rank: 4, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r4", direction: "challenger", opponentName: "Mixed Gegner", opponentRank: 2, challengedAt: "260828-1200" } },
+  { competitionId: "r5", competitionName: "Wintercup", competitionEndAt: 20, competitionEnded: false, rank: 0, status: "withdrawn", canChallenge: false, withdrawal: { withdrawnAt: "260829-1230", reason: "Verletzt" } },
+  { competitionId: "r6", competitionName: "Damen Herbst", competitionEndAt: 5, competitionEnded: false, rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
 ];
 const profileRole = new URLSearchParams(window.location.search).get("role");
 const competitions = [{
@@ -78,33 +79,56 @@ const competitions = [{
     { personId: "p4", name: "Withdrawn Two", rank: 0 },
   ], matches: [{
     matchId: "match-open", round: "G1", matchDate: "260903-1000", matchEnd: "", result: "",
-    completionType: "regular", teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: ["p2"], names: ["Foreign Player"] }],
+    completionType: "regular", teams: [{ ids: ["player-1", "partner-1"], names: ["Own Player", "Doubles Partner"] }, { ids: ["p2"], names: ["Foreign Player"] }],
     status: "open", fingerprint: "a".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
-    matchId: "match-completed", round: "G2", matchDate: "260902-1000", matchEnd: "260902-1200", result: "6-4/6-4",
-    completionType: "regular", teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["player-1"], names: ["Own Player"] }],
+    matchId: "match-completed", round: "G2", matchDate: "260902-1000", matchEnd: "260902-1200", result: "6-4/2-1",
+    completionType: "retirement", losingSide: 2, teams: [{ ids: ["p2"], names: ["Foreign Player"], rankAtResult: 2 }, { ids: ["player-1"], names: ["Own Player"], rankAtResult: 0 }],
     status: "completed", fingerprint: "b".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
+  }, {
+    matchId: "match-without-date", round: "", matchDate: "", matchEnd: "", result: "", completionType: "regular",
+    teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: ["p2"], names: ["Foreign Player"] }],
+    status: "open", fingerprint: "e".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
+  }, {
+    matchId: "match-bye", round: "R1-P1", matchDate: "", matchEnd: "", result: "", completionType: "regular", bye: true,
+    teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: [], names: [] }],
+    status: "open", fingerprint: "9".repeat(64), canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false,
   }],
 }, {
-  competitionId: "cup", competitionName: "Sommercup", matches: [{
-    matchId: "cup-open", round: "HF", matchDate: "260903-1100", matchEnd: "", result: "", completionType: "regular",
+  competitionId: "cup", competitionName: "Sommercup", competitionEndAt: null, competitionEnded: false, matches: [{
+    matchId: "cup-open", round: "HF-P2", matchDate: "260903-1100", matchEnd: "", result: "", completionType: "regular",
     teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "open",
     fingerprint: "c".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
-    matchId: "cup-completed", round: "VF", matchDate: "260901-1000", matchEnd: "260901-1200", result: "6-2/6-2", completionType: "regular",
+    matchId: "cup-completed", round: "F", matchDate: "260901-1000", matchEnd: "260901-1200", result: "6-2/6-2", completionType: "regular",
     teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "completed",
     fingerprint: "d".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: profileRole === "admin", canAdminClear: profileRole === "admin",
+  }],
+}, {
+  competitionId: "archive-new", competitionName: "Archiv Neu", competitionEndAt: 30, competitionEnded: true, matches: [{
+    matchId: "archive-new-open", round: "F", matchDate: "260801-1000", matchEnd: "", result: "", completionType: "regular",
+    teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "open",
+    fingerprint: "f".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
+  }],
+}, {
+  competitionId: "archive-old", competitionName: "Archiv Alt", competitionEndAt: 10, competitionEnded: true, matches: [{
+    matchId: "archive-old-completed", round: "F", matchDate: "250801-1000", matchEnd: "250801-1200", result: "6-1/6-1", completionType: "regular",
+    teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "completed",
+    fingerprint: "0".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
   }],
 }];
 export function createEndpoint(name) {
   return async (params = {}) => {
+    window.__endpointCalls.push({ name, params: structuredClone(params) });
     const role = new URLSearchParams(window.location.search).get("role");
     const withdrawn = new URLSearchParams(window.location.search).get("withdrawn") === "1";
     const newcomer = new URLSearchParams(window.location.search).get("newcomer") === "1";
     const ineligible = new URLSearchParams(window.location.search).get("ineligible") === "1";
     const inactivePlayer = new URLSearchParams(window.location.search).get("inactivePlayer") === "1";
     const blockedTarget = new URLSearchParams(window.location.search).get("blockedTarget") === "1";
+    const ownBusy = new URLSearchParams(window.location.search).get("ownBusy") === "1";
     const noNotifications = new URLSearchParams(window.location.search).get("noNotifications") === "1";
+    const emptyProfile = new URLSearchParams(window.location.search).get("emptyProfile") === "1";
     if (name === "rlPlatzierung") return { data: { success: true, values: [
       ["BewerbID", "PersonID", "Rang"],
       ...Array.from({ length: 28 }, (_, index) => ["2", withdrawn || newcomer || ineligible ? "p" + (index + 1) : (index === 0 ? "player-1" : "p" + (index + 1)), String(index + 1)]),
@@ -116,9 +140,9 @@ export function createEndpoint(name) {
     ] } };
     if (name === "preMatches") return { data: { success: true, values: [[
       "BewerbID", "Ergebnis", "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID",
-    ]] } };
+    ], ...(ownBusy ? [["2", "", "player-1", "", "p2", ""]] : [])] } };
     if (name === "readMatchRestrictions") return { data: {
-      success: true, complete: true, schonzeit: [],
+      success: true, complete: true, schonzeit: ownBusy ? [{ id: "player-1", until: "2099-01-01T00:00:00.000Z" }] : [],
       sperrzeit: blockedTarget ? [{ id: "p1", until: "2099-01-01T00:00:00.000Z" }] : [],
     } };
     if (name === "bewerbe") return { data: { success: true, values: [["ID", "Bezeichnung"], ["2", "Mobile Rangliste"]] } };
@@ -136,7 +160,7 @@ export function createEndpoint(name) {
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
-        email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], competitions: competitions.filter(({ competitionId }) => competitionId === "r1"), rankings: withdrawn ? [{
+        email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], competitions: emptyProfile ? [] : competitions.filter(({ competitionId }) => competitionId === "r1"), rankings: emptyProfile ? [] : withdrawn ? [{
          competitionId: "2", competitionName: "Mobile Rangliste", rank: 0, status: "withdrawn",
          withdrawal: { withdrawnAt: "260829-1200", previousRank: 4, reason: "Pause" },
        }] : rankings,
@@ -349,6 +373,49 @@ test("Mobile Navigation zeigt rollenabhaengige Links nur berechtigten Benutzern"
   }
 });
 
+test("Anonyme direkte Profilaufrufe bleiben geschlossen und senden keinen Profilrequest", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    assert.equal(await page.locator("#profileModal").isHidden(), true);
+    assert.equal(await page.locator("#loginModal").isHidden(), true);
+    assert.equal(await page.evaluate(() => window.__endpointCalls.some(({ name }) => name === "publicProfile")), false);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Leere aktuelle und archivierte Profilbewerbe bleiben erreichbar", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player&emptyProfile=1`, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.openProfileModal());
+    await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
+    assert.equal(await page.locator("#profileCurrentCompetitionsPanel").textContent(), "Keine Bewerbe enthalten");
+    assert.equal(await page.locator("#profileCurrentCompetitionTabs").isHidden(), true);
+    await page.getByRole("tab", { name: "Archiv", exact: true }).click();
+    assert.equal(await page.locator("#profileArchiveCompetitionsPanel").textContent(), "Keine Bewerbe enthalten");
+    assert.equal(await page.locator("#profileArchiveCompetitionTabs").isHidden(), true);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("Loginfehler bleiben im mobilen Dialog sichtbar und nennen die Sperrdauer", {
   skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
   timeout: 30000,
@@ -430,10 +497,19 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.match(await playerPage.locator("#profileText").textContent(), /Login: player-login/);
     assert.match(await playerPage.locator("#profileText").textContent(), /E-Mail: contact@example\.test/);
     assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").allTextContents(), [
-      "System", "Meldungen (2)", "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Wintercup", "Damen Herbst",
+      "System", "Meldungen (2)", "Aktuell", "Archiv",
     ]);
-    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.deepEqual(await playerPage.locator("#profileTabs [role=tab]").evaluateAll((tabs) => tabs.map((tab) => tab.tabIndex)), [0, 0, 0, 0]);
+    assert.equal(await playerPage.locator("#profileCurrentCompetitionTabs").isHidden(), true);
+    assert.equal(await playerPage.locator("#profileArchiveCompetitionTabs").isHidden(), true);
     assert.match(await playerPage.locator("#profileSystemPanel").textContent(), /Benachrichtigungen:\s*Email \| Whatsapp/);
+    await playerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileCurrentCompetitionTabs [role=tab]").allTextContents(), [
+      "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Damen Herbst",
+    ]);
+    await playerPage.getByRole("tab", { name: "Meldungen (2)", exact: true }).click();
+    assert.equal(await playerPage.locator("#profileCurrentCompetitionTabs").isHidden(), true);
+    await playerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     const withdrawButton = playerPage.getByRole("button", { name: "Raushängen" });
@@ -517,20 +593,26 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(await orangeCountdown.evaluate((element) => element.classList.contains("warning")), true);
     assert.equal(await orangeCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 83, 9)");
     await playerPage.getByRole("tab", { name: "Damen Herbst", exact: true }).click();
-    const redCountdown = playerPage.locator("#profileRankingPanel5 .profile-match-date-countdown");
+    const redCountdown = playerPage.locator("#profileRankingPanel4 .profile-match-date-countdown");
     assert.equal(await redCountdown.textContent(), "Terminfrist: +8 Tage, 0 Stunden, 0 Minuten");
     assert.equal(await redCountdown.evaluate((element) => element.classList.contains("overdue")), true);
     assert.equal(await redCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(180, 35, 24)");
+    await playerPage.getByRole("tab", { name: "Archiv", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileArchiveCompetitionTabs [role=tab]").allTextContents(), ["Wintercup"]);
     await playerPage.getByRole("tab", { name: "Wintercup" }).click();
-    assert.doesNotMatch(await playerPage.locator("#profileRankingPanel4").textContent(), /Ranglistenposition:\s*0/);
-    assert.match(await playerPage.locator("#profileRankingPanel4").textContent(), /Rausgehängt am:\s*29\.08\.2026, 12:30 Uhr/);
-    assert.match(await playerPage.locator("#profileRankingPanel4").textContent(), /Grund:\s*Verletzt/);
-    const ownTabMetrics = await playerPage.locator("#profileTabs").evaluate((element) => ({
+    assert.doesNotMatch(await playerPage.locator("#profileRankingPanel5").textContent(), /Ranglistenposition:\s*0/);
+    assert.match(await playerPage.locator("#profileRankingPanel5").textContent(), /Rausgehängt am:\s*29\.08\.2026, 12:30 Uhr/);
+    assert.match(await playerPage.locator("#profileRankingPanel5").textContent(), /Grund:\s*Verletzt/);
+    await playerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
+    assert.equal(await playerPage.getByRole("tab", { name: "Damen Herbst", exact: true }).getAttribute("aria-selected"), "true");
+    const ownTabMetrics = await playerPage.locator("#profileCurrentCompetitionTabs").evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }));
     assert.equal(ownTabMetrics.scrollWidth > ownTabMetrics.clientWidth, true);
     await playerPage.getByRole("tab", { name: "System" }).click();
+    assert.equal(await playerPage.locator("#profileCurrentCompetitionTabs").isHidden(), true);
+    assert.equal(await playerPage.locator("#profileArchiveCompetitionTabs").isHidden(), true);
     await playerPage.getByRole("button", { name: "Passwort ändern" }).click();
     assert.equal(await playerPage.locator("#changePasswordUsername").inputValue(), "player-login");
 
@@ -539,6 +621,10 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.doesNotMatch(await playerPage.locator("#profileText").textContent(), /Login:/);
     assert.match(await playerPage.locator("#profileText").textContent(), /E-Mail: directory@example\.test/);
     assert.equal(await playerPage.getByRole("tab", { name: /Meldungen/ }).count(), 0);
+    await playerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileCurrentCompetitionTabs [role=tab]").allTextContents(), [
+      "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Damen Herbst", "Sommercup",
+    ]);
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     assert.equal(await playerPage.getByRole("button", { name: "Fordern" }).isVisible(), true);
@@ -556,6 +642,15 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
       "Forderung vom 30.08.2026, 09:00 Uhr",
     ]);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel2").textContent(), /Spieltermin/);
+    await playerPage.getByRole("tab", { name: "Sommercup", exact: true }).click();
+    assert.deepEqual(await playerPage.locator('[data-competition-id="cup"] .profile-match-card h3').allTextContents(), [
+      "Halbfinale (03.09.2026, 11:00 Uhr)",
+      "Finale (01.09.2026, 10:00 Uhr)",
+    ]);
+    await playerPage.getByRole("tab", { name: "Archiv", exact: true }).click();
+    assert.deepEqual(await playerPage.locator("#profileArchiveCompetitionTabs [role=tab]").allTextContents(), ["Archiv Neu", "Wintercup", "Archiv Alt"]);
+    await playerPage.getByRole("tab", { name: "Archiv Neu", exact: true }).click();
+    assert.equal(await playerPage.locator('[data-match-id="archive-new-open"]').getByRole("button", { name: "Ergebnis eintragen" }).isVisible(), true);
     await playerPage.keyboard.press("Escape");
     assert.equal(await playerPage.locator("#profileModal").isHidden(), true);
     await playerPage.evaluate(() => window.openWithdrawnRankingPlayers("r5"));
@@ -616,28 +711,86 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
 
 test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse im Kinddialog", {
   skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
-  timeout: 30000,
+  timeout: 45000,
 }, async () => {
   const server = await startServer();
   const address = server.address();
   const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
   try {
+    const anonymousPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await anonymousPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?id=2`, { waitUntil: "domcontentloaded" });
+    const anonymousBox = anonymousPage.locator("#rankingContainer .box").first();
+    await anonymousBox.waitFor({ state: "visible" });
+    assert.equal(await anonymousPage.locator("#rankingContainer .box.profile-openable").count(), 0);
+    assert.equal(await anonymousBox.getAttribute("role"), null);
+    assert.equal(await anonymousBox.evaluate((box) => getComputedStyle(box).cursor), "default");
+    await anonymousBox.click();
+    assert.equal(await anonymousPage.locator("#profileModal").isHidden(), true);
+    assert.equal(await anonymousPage.evaluate(() => window.__endpointCalls.some(({ name }) => name === "publicProfile")), false);
+    await anonymousPage.close();
+
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=player`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     assert.equal(await page.getByRole("tab", { name: "Herren", exact: true }).count(), 1);
     assert.equal(await page.getByRole("tab", { name: "Sommercup", exact: true }).count(), 1);
     await page.getByRole("tab", { name: "Herren", exact: true }).click();
     const panel = page.locator('[data-competition-id="r1"]');
-    assert.equal(await panel.locator(".profile-match-card").count(), 2);
-    const resultButton = panel.getByRole("button", { name: "Ergebnis eintragen", exact: true });
-    assert.equal(await resultButton.count(), 1);
+    assert.equal(await panel.locator(".profile-match-card").count(), 4);
+    assert.deepEqual(await panel.locator(".profile-match-card h3").allTextContents(), [
+      "1. Gruppe (03.09.2026, 10:00 Uhr)",
+      "2. Gruppe (02.09.2026, 10:00 Uhr)",
+      "Match (noch kein Termin festgelegt)",
+      "Erste Runde (ohne Datum)",
+    ]);
+    assert.equal(await panel.locator('[data-match-id="match-open"] .profile-match-status').count(), 0);
+    assert.equal(await panel.locator('[data-match-id="match-without-date"] .profile-match-status').count(), 0);
+    assert.equal(await panel.locator('[data-match-id="match-completed"] .profile-match-status').textContent(), "Aufgabe durch Own Player: 6-4/2-1");
+    assert.equal(await panel.locator('[data-match-id="match-completed"] .profile-match-teams').textContent(), "Foreign Player (2) gegen Own Player (0)");
+    assert.equal(await panel.locator('[data-match-id="match-open"] .profile-match-teams').textContent(), "Own Player / Doubles Partner gegen Foreign Player");
+    assert.equal(await panel.locator('[data-match-id="match-bye"] .profile-match-teams').textContent(), "Freilos für Own Player");
+    assert.equal(await panel.locator('[data-match-id="match-bye"] .profile-match-actions > button').count(), 0);
+    assert.deepEqual(await panel.locator('[data-match-id="match-open"] h3').evaluate((heading) => {
+      const date = heading.querySelector(".profile-match-date");
+      const team = heading.nextElementSibling;
+      return {
+        sameFontSize: getComputedStyle(team).fontSize === getComputedStyle(date).fontSize,
+        dateFontWeight: getComputedStyle(date).fontWeight,
+        headingMarginBottom: getComputedStyle(heading).marginBottom,
+        teamMarginBottom: getComputedStyle(heading.nextElementSibling).marginBottom,
+      };
+    }), {
+      sameFontSize: true,
+      dateFontWeight: "400",
+      headingMarginBottom: "4px",
+      teamMarginBottom: "4px",
+    });
+    const resultButton = panel.locator('[data-match-id="match-open"]').getByRole("button", { name: "Ergebnis eintragen", exact: true });
+    assert.equal(await panel.getByRole("button", { name: "Ergebnis eintragen", exact: true }).count(), 2);
     assert.equal(await resultButton.evaluate((button) => button.classList.contains("admin-danger")), false);
     await resultButton.click();
     const dialog = page.getByRole("dialog", { name: "Ergebnis erfassen" });
     assert.equal(await page.locator("#profileModal").getAttribute("inert"), "");
+    assert.equal(await dialog.locator("#matchResultCompetition").textContent(), "Herren");
+    assert.equal(await dialog.locator("#matchResultEncounter").textContent(), "Own Player / Doubles Partner gegen Foreign Player");
+    assert.equal(await dialog.locator("#matchResultTarget").evaluate((target) => getComputedStyle(target).textAlign), "center");
+    assert.equal(await dialog.locator("#matchResultStart").getAttribute("required"), "");
+    assert.equal(await dialog.locator("#matchResultStart").inputValue(), "2026-09-03T10:00");
     assert.equal(await dialog.locator("#matchResultEnd").getAttribute("required"), "");
-    assert.equal(await dialog.locator("#matchResultEnd").getAttribute("min"), "2026-09-03T10:01");
+    await dialog.locator("#matchResultKind").selectOption("walkover");
+    assert.equal(await dialog.locator("#matchResultStart").inputValue(), await dialog.locator("#matchResultEnd").inputValue());
+    assert.equal(await dialog.locator("#matchResultStart").getAttribute("readonly"), "");
+    assert.equal(await dialog.locator("#matchResultEnd").getAttribute("readonly"), "");
+    assert.deepEqual(await dialog.locator("#matchResultLosingSide option").allTextContents(), [
+      "Bitte Verliererseite auswählen", "Own Player / Doubles Partner", "Foreign Player",
+    ]);
+    assert.equal(await dialog.locator("#matchResultLosingSide").inputValue(), "");
+    assert.equal(await dialog.locator("#matchResultLosingSide").getAttribute("required"), "");
+    await dialog.locator("#matchResultLosingSide").selectOption("2");
+    await dialog.locator("#matchResultKind").selectOption("regular");
+    assert.equal(await dialog.locator("#matchResultStart").inputValue(), "2026-09-03T10:00");
+    assert.equal(await dialog.locator("#matchResultStart").getAttribute("readonly"), null);
     await page.keyboard.press("Shift+Tab");
     assert.equal(await page.evaluate(() => document.activeElement?.closest("#matchResultModal")?.id), "matchResultModal");
     await dialog.getByRole("button", { name: "Platz 1", exact: true }).click();
@@ -655,16 +808,30 @@ test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse i
     const initial = await page.evaluate(() => window.__matchResultCalls[0]);
     assert.deepEqual(initial, {
       endpoint: "setMatchResult", matchId: "match-open", expectedFingerprint: "a".repeat(64), kind: "regular",
-      result: "6-3/6-4", matchEnd: "260903-1200",
+      result: "6-3/6-4", matchStart: "260903-1000", matchEnd: "260903-1200",
       operationId: initial.operationId,
     });
     assert.match(initial.operationId, /^operation-match-result:result:match-open:/);
     assert.equal(await page.locator("#profileModal").getAttribute("inert"), null);
 
     await page.getByRole("tab", { name: "Herren", exact: true }).click();
+    const beforeUndatedDialog = Date.now();
+    await page.locator('[data-match-id="match-without-date"]').getByRole("button", { name: "Ergebnis eintragen", exact: true }).click();
+    const undatedStart = await page.locator("#matchResultStart").inputValue();
+    const parsedUndatedStart = new Date(undatedStart).getTime();
+    assert.equal(parsedUndatedStart >= beforeUndatedDialog - 91 * 60 * 1000 && parsedUndatedStart <= Date.now() - 89 * 60 * 1000, true);
+    await page.getByRole("button", { name: "Ergebnisdialog abbrechen" }).click();
+
+    await page.getByRole("tab", { name: "Herren", exact: true }).click();
     await page.locator('[data-match-id="match-completed"]').getByRole("button", { name: "Ergebnis korrigieren" }).click();
     const correction = page.getByRole("dialog", { name: "Ergebnis korrigieren" });
+    assert.equal(await correction.locator("#matchResultStartFields").isHidden(), true);
     assert.equal(await correction.locator("#matchResultEndFields").isHidden(), true);
+    assert.equal(await correction.locator("#matchResultLosingSide").inputValue(), "2");
+    assert.deepEqual(await correction.locator("#matchResultLosingSide option").allTextContents(), [
+      "Bitte Verliererseite auswählen", "Foreign Player", "Own Player",
+    ]);
+    await correction.locator("#matchResultKind").selectOption("regular");
     await correction.locator("#matchResultValue").fill("6-3/6-3");
     await correction.getByRole("button", { name: "Ergebnis korrigieren" }).click();
     await page.waitForFunction(() => window.__matchResultCalls.length === 2);
@@ -688,6 +855,7 @@ test("Admins sehen statt Teilnehmeraktionen rote Ergebnis- und Korrekturaktionen
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await page.getByRole("tab", { name: "Sommercup", exact: true }).click();
     const openCard = page.locator('[data-match-id="cup-open"]');
     assert.deepEqual(await openCard.locator(".profile-match-actions .btn-login").allTextContents(), ["Ergebnis eintragen"]);
@@ -714,6 +882,7 @@ test("Admin-Rangplankorrektur setzt dynamische Mindestwerte und laesst Rang 0 fu
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await page.getByRole("tab", { name: "Herren", exact: true }).click();
     const button = page.locator('[data-match-id="match-completed"]').getByRole("button", { name: "Mit Rangplan korrigieren", exact: true });
     assert.equal(await button.evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(180, 35, 24)");
@@ -730,6 +899,7 @@ test("Admin-Rangplankorrektur setzt dynamische Mindestwerte und laesst Rang 0 fu
     assert.match(await dialog.locator("#matchResultStatus").textContent(), /Positive Zielränge müssen eindeutig/);
     assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
     await dialog.locator('[data-person-id="p2"]').fill("1");
+    await dialog.locator("#matchResultKind").selectOption("regular");
     await dialog.locator("#matchResultValue").fill("6-3/6-3");
     await dialog.getByRole("button", { name: "Mit Rangplan korrigieren", exact: true }).click();
     await page.waitForFunction(() => window.__matchResultCalls.length === 1);
@@ -769,6 +939,7 @@ test("Admins bearbeiten offene Forderungen mit roten begruendungspflichtigen Dat
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await page.goto(`http://127.0.0.1:${address.port}/modals-test.html?role=admin&dst=1`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
+    await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await page.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
     const actions = page.locator("#profileRankingPanel1 .admin-ranking-danger");
     assert.deepEqual(await actions.allTextContents(), ["Forderung löschen", "Forderungsdatum ändern", "Spieldatum ändern"]);
@@ -847,15 +1018,13 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
     ))), [
       [
         { className: "message-row-date", text: "30.08.2026, 12:00 Uhr" },
-        { className: "message-row-competition", text: "Sommercup" },
-        { className: "message-row-round", text: "Viertelfinale" },
+        { className: "message-row-competition", text: "Sommercup - Viertelfinale" },
         { className: "message-row-subject", text: "Neue Platzinformation" },
         { className: "message-row-actor", text: "Durch: Ergebnis Erfasser" },
       ],
       [
         { className: "message-row-date", text: "29.08.2026, 10:30 Uhr" },
-        { className: "message-row-competition", text: "Wintercup" },
-        { className: "message-row-round", text: "1. Gruppe" },
+        { className: "message-row-competition", text: "Wintercup - 1. Gruppe" },
         { className: "message-row-subject", text: "Turnierhinweis" },
         { className: "message-row-actor", text: "Durch: Turnierleitung" },
       ],
@@ -872,10 +1041,10 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
     })), [
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "12.8px", fontWeight: "400" },
     ]);
+    assert.equal(await rows.first().locator(".message-row-date").textContent(), "30.08.2026, 12:00 Uhr");
     assert.equal(await rows.nth(0).evaluate((row) => row.classList.contains("unread")), true);
     assert.equal(await rows.nth(1).evaluate((row) => row.classList.contains("unread")), true);
     assert.equal(await rows.nth(2).evaluate((row) => row.classList.contains("unread")), false);
@@ -960,9 +1129,8 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
     })), [
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
+      { color: "rgb(0, 0, 0)", fontSize: "12.8px", fontWeight: "400" },
     ]);
     for (let unread = 2; unread > 0; unread--) {
       await mobilePage.locator("#profileMessagesPanel .message-row.unread").first().click();
@@ -1050,6 +1218,16 @@ test("Mobiles Ranglistenprofil bleibt nach horizontalem Scrollen im sichtbaren V
     assert.equal(await page.locator("#rankingContainer").evaluate((scrollport) => scrollport.scrollLeft), ranking.scrollLeft);
     await page.close();
 
+    const busyPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await busyPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&ownBusy=1`, { waitUntil: "domcontentloaded" });
+    const ownBusyBox = busyPage.locator("#rankingContainer .box.selected");
+    await ownBusyBox.waitFor({ state: "visible" });
+    assert.equal(await ownBusyBox.evaluate((box) => box.classList.contains("challenged")), true);
+    assert.equal(await ownBusyBox.evaluate((box) => box.classList.contains("schonzeit")), false);
+    assert.equal(await ownBusyBox.locator(".box-timer").count(), 0);
+    assert.equal(await ownBusyBox.evaluate((box) => getComputedStyle(box).backgroundColor), "rgb(255, 246, 204)");
+    await busyPage.close();
+
     const returnPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await returnPage.goto(`http://127.0.0.1:${address.port}/ranking-test.html?role=player&id=2&withdrawn=1`, { waitUntil: "domcontentloaded" });
     await returnPage.locator("#rankingContainer .box.challengeable").first().waitFor({ state: "visible" });
@@ -1085,6 +1263,7 @@ test("Mobiles Ranglistenprofil bleibt nach horizontalem Scrollen im sichtbaren V
       cursor: "grab",
     });
     await blockedTarget.click();
+    await newcomerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await newcomerPage.getByRole("tab", { name: "Mobile Rangliste" }).click();
     await newcomerPage.getByRole("button", { name: "Fordern" }).waitFor({ state: "visible" });
     await newcomerPage.close();

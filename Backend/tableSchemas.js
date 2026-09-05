@@ -27,7 +27,7 @@ const REQUIRED_HEADERS = {
   bewerbe: ["id", "bezeichnung", "bewerbsartid"],
   bewerbsart: ["id", "bezeichnung"],
   matchtyp: ["id", "gewinnsaetze", "satzlaenge", "satztiebreak", "entscheidender satz", "noad"],
-  matches1: ["id", "matchdate", "matchende", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler3id", "ergebnis"],
+  matches1: ["id", "matchdate", "matchstart", "matchende", "ergebniserfasstam", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler3id", "ergebnis", "spieler1rangbeiergebnis", "spieler3rangbeiergebnis"],
   rlPlatzierung: ["bewerbid", "personid", "rang", "rausgehangenam", "rausgehangenletzteplatzierung", "rausgehangengrund"],
   navigator: ["name", "ziel"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
@@ -173,6 +173,20 @@ function validateTableValues(tableName, values) {
       const age = ageIndex < 0 ? "" : String(row[ageIndex] || "").trim();
       if (age && !/^\d{1,3}[+-]$/.test(age)) {
         throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Alterskategorie in Zeile ${offset + 2} ist ungueltig`, 503);
+      }
+    }
+  }
+  if (tableName === "matches1") {
+    const rankIndexes = [headerIndex(header, "spieler1rangbeiergebnis"), headerIndex(header, "spieler3rangbeiergebnis")];
+    const timestampIndexes = [headerIndex(header, "matchstart"), headerIndex(header, "ergebniserfasstam")];
+    for (const [offset, row] of values.slice(1).entries()) {
+      if (!row.some((value) => String(value || "").trim())) continue;
+      const ranks = rankIndexes.map((index) => String(row[index] ?? "").trim());
+      if (ranks.some(Boolean) && (ranks.some((rank) => !/^\d+$/.test(rank) || !Number.isSafeInteger(Number(rank))))) {
+        throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Ergebnisraenge in Zeile ${offset + 2} sind ungueltig`, 503);
+      }
+      if (timestampIndexes.some((index) => String(row[index] ?? "").trim() && !validCompactTimestamp(row[index]))) {
+        throw new AppError("SHEET_SCHEMA", `Tabelle ${tableName}: Ergebniszeitpunkte in Zeile ${offset + 2} sind ungueltig`, 503);
       }
     }
   }

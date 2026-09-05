@@ -37,6 +37,7 @@ const competitionWrite = (params) => objectShape(params, { operationId: operatio
 const adminRankingReason = text("reason", { min: 1, max: 500 });
 const fingerprint = text("expectedFingerprint", { min: 64, max: 64, pattern: /^[0-9a-f]{64}$/i });
 const completionKind = text("kind", { max: 16, pattern: /^(regular|walkover|retirement)$/ });
+const optionalMatchStart = optional(text("matchStart", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }));
 const optionalMatchEnd = optional(text("matchEnd", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }));
 const matchCompletionFields = {
   operationId: operation,
@@ -44,6 +45,7 @@ const matchCompletionFields = {
   kind: completionKind,
   result: optional(text("result", { min: 0, max: 200 })),
   losingSide: optional(integer("losingSide", { min: 1, max: 2 })),
+  matchStart: optionalMatchStart,
   matchEnd: optionalMatchEnd,
   expectedFingerprint: fingerprint,
 };

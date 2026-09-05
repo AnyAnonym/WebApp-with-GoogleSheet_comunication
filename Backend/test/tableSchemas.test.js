@@ -12,6 +12,12 @@ test("kritische Tabellen benoetigen ihre Vertragsspalten", () => {
   assert.throws(() => validateTableValues("players", []), { code: "SHEET_SCHEMA" });
   assert.throws(() => validateTableValues("entryList", [["ID", "BewerbID", "PersonenID", "Datum"]]), { code: "SHEET_SCHEMA" });
   assert.throws(() => validateTableValues("matchtyp", [["ID", "Bezeichnung"]]), { code: "SHEET_SCHEMA" });
+  const matches = [["ID", "MatchDate", "MatchStart", "MatchEnde", "ErgebnisErfasstAm", "ForderungDate", "BewerbID", "BewerbRunde", "Spieler1ID", "Spieler3ID", "Ergebnis", "Spieler1RangBeiErgebnis", "Spieler3RangBeiErgebnis"], ["m1", "260904-1000", "260904-1010", "260904-1100", "260904-1110", "", "r1", "", "p1", "p2", "6-4/6-4", "0", "2"]];
+  assert.equal(validateTableValues("matches1", matches), matches);
+  assert.throws(() => validateTableValues("matches1", [matches[0], [...matches[1].slice(0, -2), "1", ""]]), { code: "SHEET_SCHEMA" });
+  const invalidCapturedAt = structuredClone(matches);
+  invalidCapturedAt[1][4] = "260932-2561";
+  assert.throws(() => validateTableValues("matches1", invalidCapturedAt), { code: "SHEET_SCHEMA" });
   const entryList = [["ID", "BewerbID", "PersonenID", "Entrydate"]];
   assert.equal(validateTableValues("entryList", entryList), entryList);
   const matchtyp = [["ID", "Gewinnsaetze", "Satzlaenge", "Satztiebreak", "Entscheidender Satz", "NoAd"], ["1", "2", "0-6", "6-6", "MT10", "N"]];

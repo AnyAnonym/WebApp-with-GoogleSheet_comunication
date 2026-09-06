@@ -12,6 +12,7 @@ epiber-{piber,paj}.service --journald-----+
 Caddy-Access-Logs ------------------------+--> Alloy --> Loki ----+
 Backend /metrics ----------------------------> Prometheus --------+--> Grafana
 Node Exporter ----------------------------------------------------+
+Backend /internal/messaging-report -- Infinity (Bearer/Loopback) -+
 ```
 
 - Grafana: `/run/epiber-observability/grafana.sock`, extern `https://epiber.at/grafana/`
@@ -22,6 +23,8 @@ Node Exporter ----------------------------------------------------+
 - Alloy: `127.0.0.1:12345`
 - Grafana-Auth-Broker: `127.0.0.1:8085`
 - Backendmetriken: Live `:8080/metrics`, PAJ `:8083/metrics`
+- Messaging-Reporting: Live `127.0.0.1:8080/internal/messaging-report`,
+  PAJ `127.0.0.1:8083/internal/messaging-report`
 
 PAJ `https://epiber.at:8081/grafana/` leitet zur kanonischen Live-Adresse weiter.
 Die unveraenderte PK-Origin besitzt keine Grafana-Integration. Grafana besitzt
@@ -52,6 +55,14 @@ Access-Logs ueber die separate Gruppe `grafana-alloy` und kann den Socket nicht
 oeffnen. Der Auth-Broker bleibt auf Loopback und akzeptiert keine Identitaet ohne
 positive current-only Backendpruefung.
 
+Das signierte Infinity-Plugin `yesoreyeram-infinity-datasource` ist fuer das
+Messaging-Reporting exakt auf Version `4.0.0` gepinnt. Seine nicht editierbare
+Datasource darf ausschliesslich die festen Hosts `http://127.0.0.1:8080` und
+`http://127.0.0.1:8083` abfragen. Beide Backends akzeptieren den Bericht nur von
+Loopback und mit demselben Maschinen-Bearer. Caddy beantwortet `/internal/*` auf
+Live, PAJ und PK explizit mit 404; der Bericht ist kein Browser- oder externes
+Admin-API.
+
 ## Daten und Aufbewahrung
 
 Alloy sammelt ausschliesslich:
@@ -73,12 +84,17 @@ Alarmzustandshistorie getrennt in `/var/lib/grafana/grafana.db` mit WAL.
 Messaging-Ereignisse, persoenliche Projektionen, Zustellungen und Quittierungen
 bleiben ausschliesslich in `messaging.sqlite`; Journal und Prometheus enthalten
 nur kontrollierte IDs beziehungsweise aggregierte technische Zaehler.
+Empfaengername und -rolle, persoenlicher Betreff und Text, Ereignisdetail,
+Ergebnis, Akteur, Quittierungszeit, Zustellungen sowie Ereignis- und Meldungs-ID
+werden nur ueber den geschuetzten Reporting-Endpunkt an das Messaging-Dashboard
+projiziert und weder nach Loki geschrieben noch als Prometheus-Metrik oder
+-Label exportiert.
 
 ## Dashboards und Alerts
 
-Sieben Dashboards werden provisioniert: Uebersicht, Hostressourcen,
-Loggingpipeline, Fehler/Recovery, Personennormalisierung, Ranglistenaktivitaeten
-sowie Platz- und Scoreverlauf.
+Neun Dashboards werden provisioniert: Uebersicht, Hostressourcen,
+Loggingpipeline, Fehler/Recovery, Personennormalisierung, Ranglistenaktivitaeten,
+Matchergebnisse, Platz- und Scoreverlauf sowie `ePiber Persoenliche Meldungen`.
 Anwendungsdashboards besitzen die feste Auswahl `live|paj`; Hostmetriken werden
 nur einmal gezeigt. Das Normalisierungsdashboard zeigt den aktuellen
 aggregierten Problemstand, RPC-/Write-Ergebnisse und technische Diagnosen ohne
@@ -125,6 +141,29 @@ JSON-Felder und werden keine Loki-Labels. Kontaktwerte und freie Inhalte sind
 ausgeschlossen; die Ansicht reicht hoechstens 14 Tage zurueck und ersetzt nicht
 die dauerhafte Historie in `audit.sqlite`.
 
+Das Dashboard `ePiber Persoenliche Meldungen` fragt fuer maximal 31 Tage die
+jeweilige Live- oder PAJ-`messaging.sqlite` direkt ueber die geschuetzte
+Infinity-Datasource ab. Es zeigt Wiener Tagesreihen fuer Gesamt-, Ergebnis-,
+Forderungs- und datumsaendernde Meldungen, aktuelle Rollenklassen,
+Empfaengerzaehler und die vertrauliche vollstaendige Meldungsprojektion. Die
+Kategorien duerfen sich ueberschneiden; erstmalige Terminsetzungen zaehlen nicht
+als Datumsaenderung. Rollenwechsel wirken auf die Auswertung des gesamten
+gewaehlten Zeitraums. Exporte aus Detailpanels besitzen dieselbe Schutzklasse wie
+`messaging.sqlite` und duerfen nicht in Loki, Prometheus, Tickets oder
+Freigabeprotokolle uebernommen werden.
+
+Das Dashboard `ePiber Matchergebnisse` zeigt erfolgreiche Ergebniseintraege,
+Korrekturen, Ruecknahmen und MatchEnd-Korrekturen sowie fehlgeschlagene, unklare
+und technisch problematische Ausgaenge. Der optionale Bewerbsfilter arbeitet auf
+dem geparsten JSON-Feld `competitionId`; Match-, Bewerbs-, KO-Ziel-, Akteur- und
+Request-IDs bleiben JSON-Felder und werden keine Loki-Labels. Der Auditverlauf
+verwendet nur `matchId`, `competitionId`, `changeType`, `completionType`,
+`source`, `shiftedCount`, `koTargetMatchId`, `koTargetStatus`, `actorName`,
+`actorId`, `result`, `errorCode` und `requestId`. Begruendungstexte, rohe Matchergebnisse, Payloads,
+Kontaktdaten, Passwoerter und Tokens sind ausgeschlossen. Die Ansicht reicht
+hoechstens 14 Tage zurueck und ersetzt nicht die dauerhafte Historie in
+`audit.sqlite`.
+
 Die Uebersicht zeigt zusaetzlich den verbleibenden Google-Sheets-Read-Cooldown,
 die tatsaechlichen API-Versuche sowie logische Readrequests nach festem Zweck und
 Ergebnis. Methoden, Zwecke, Ergebnisse und `initial|retry` sind kontrollierte
@@ -155,6 +194,14 @@ root-only Datei `/etc/epiber-observability/grafana.env` wird einmalig aus
 `grafana/grafana.env.example` angelegt und erhaelt Modus 0600. Adminpasswort und
 Secret-Key werden bei Wiederholung nicht geaendert; insbesondere darf der
 Secret-Key einer bestehenden `grafana.db` nicht beilaufig rotiert werden.
+Zusaetzlich wird `/etc/epiber-observability/messaging-api.env` einmalig aus
+`grafana/messaging-api.env.example` angelegt, gehoert `root:root` und hat Modus
+0600. Diese eine Datei wird von Grafana sowie den Live- und PAJ-Units gelesen und
+enthaelt `MESSAGING_REPORT_ENABLED=true` und denselben
+`EPIBER_OBSERVABILITY_API_TOKEN`. Der Token muss 43 bis 128 Zeichen lang sein und
+ausschliesslich Base64url-Zeichen `A-Z`, `a-z`, `0-9`, `_` und `-` enthalten; sein
+Wert darf nie dokumentiert oder ausgegeben werden. PK liest diese Datei nicht
+und besitzt weder Deploymentkennung noch aktivierten Reporting-Endpunkt.
 
 ```text
 sh Project/server-configs/observability/install-observability.sh
@@ -170,6 +217,12 @@ Lauf wird die bereits validierte Vorlage installiert und Caddy kontrolliert
 reloaded. In diesem kurzen Wartungsfenster ist Grafana nicht erreichbar; ePiber
 bleibt unabhaengig. Bei Fehler muss der Betreiber Caddy- und Observability-
 Vorlagen aus dem geprueften unmittelbaren Backup gemeinsam zurueckrollen.
+Der Installer verweigert fehlende oder von `root:root:0600` abweichende
+Messaging-Credentials und ungueltige Tokenformate. Er installiert das signierte
+Infinity-Plugin reproduzierbar nur als `yesoreyeram-infinity-datasource` Version
+`4.0.0`, bricht bei einer vorhandenen abweichenden Version ab und prueft danach
+beide Reporting-Endpunkte mit dem Maschinen-Bearer. Paket- und Pluginversion
+werden am Ende ohne Geheimniswert ausgegeben.
 
 Das lokale Grafana-Adminpasswort ist ausschliesslich Break-glass. Es wird nur in
 einem Wartungsfenster mit gestopptem Normaldienst, deaktiviertem Auth Proxy,

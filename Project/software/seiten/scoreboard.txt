@@ -92,6 +92,10 @@ Live-Scoreboard - Vollbildanzeige fuer zwei Plaetze
   z.B. `VM 2026 Frauen Vorrunde | 2.Gruppe`. Externe Daten werden ausschliesslich
   mit sicheren DOM-/Textknoten aufgebaut; Ressourcen und Font-Fallbacks sind lokal
   und CSP-kompatibel.
+  In `Letzte Spiele` erscheinen `wo` und `ret` ausschliesslich als Badge am
+  markierten Namen. Rechts steht nur ein gespeichertes Satzergebnis; bei Walkover
+  sowie bei Aufgabe ohne Teilergebnis bleibt dieser Bereich leer, bei Aufgabe mit
+  Teilergebnis entfaellt jeder beschreibende Zusatztext.
 
 -- Responsive Namen und Layout --
   Ueber 1300 px: Courts plus Seitenpanel. Von 1001 bis 1300 px: nur die beiden

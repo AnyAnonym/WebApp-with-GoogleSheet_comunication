@@ -7,6 +7,11 @@ import { diagnostic } from "./diagnostics.js";
 const readBewerbe = createEndpoint("bewerbe");
 const readBewerbsart = createEndpoint("bewerbsart");
 const readCompetitionHistory = createEndpoint("competitionHistory");
+const ADMIN_RANKING_HISTORY_TYPES = new Set([
+  "ranking_challenge_deleted",
+  "ranking_challenge_date_changed",
+  "ranking_match_date_admin_changed",
+]);
 let competitionBoundaryTimer = null;
 let historyButtonsVisible = false;
 let historyAuthIdentity = null;
@@ -119,16 +124,30 @@ function renderCompetitionHistory() {
     time.textContent = formatHistoryTimestamp(rawTimestamp);
     item.appendChild(time);
 
+    const roundName = String(entry?.roundName || "").trim();
     if (historyState.global) {
       const competitionName = entry?.competitionName ?? entry?.competition?.name ?? entry?.bewerbName;
-      appendHistoryText(item, competitionName || "Bewerb unbekannt", "competition-history-entry-competition");
+      const competition = document.createElement("p");
+      competition.className = "competition-history-entry-competition";
+      competition.textContent = String(competitionName || "Bewerb unbekannt");
+      if (roundName) {
+        const round = document.createElement("span");
+        round.className = "competition-history-entry-round";
+        round.textContent = ` - ${roundName}`;
+        competition.appendChild(round);
+      }
+      item.appendChild(competition);
+    } else {
+      appendHistoryText(item, roundName, "competition-history-entry-round");
     }
-    appendHistoryText(item, entry?.roundName, "competition-history-entry-round");
     const title = entry?.summary ?? entry?.label ?? entry?.action ?? entry?.type ?? entry?.event;
     appendHistoryText(item, title || "Änderung", "competition-history-entry-title");
+    if (ADMIN_RANKING_HISTORY_TYPES.has(entry?.type)) {
+      appendHistoryText(item, entry?.detail, "competition-history-entry-detail");
+    }
     appendHistoryText(item, entry?.result ? `Ergebnis: ${entry.result}` : "", "competition-history-entry-result");
     const actor = entry?.actorName ?? entry?.actor;
-    appendHistoryText(item, actor ? `Durch: ${actor}` : "", "competition-history-entry-meta");
+    appendHistoryText(item, actor ? `Eingetragen durch: ${actor}` : "", "competition-history-entry-meta");
     list.appendChild(item);
   }
 

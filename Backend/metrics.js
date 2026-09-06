@@ -4,6 +4,7 @@ const HTTP_BUCKETS = Object.freeze([0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1,
 const FIXED_HTTP_METHODS = new Set(["GET", "POST", "DELETE", "OPTIONS"]);
 const FIXED_HTTP_ROUTES = new Set([
   "/metrics", "/version", "/live", "/ready", "/health", "/status",
+  "/internal/messaging-report",
   "/api/frontend-logging-policy", "/api/frontend-events", "/api/session",
   "/api/password", "/api/admin/grafana-auth", "/api/admin/frontend-logging", "/api/admin/frontend-logging/targets",
   "/api/password-reset", "/api/password-setup", "/api/admin/password-reset",

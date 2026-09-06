@@ -37,3 +37,16 @@ Matches-Uebersicht mit Filtern - Zentrale Match-Seite
   Die Anzeige folgt der gespeicherten Reihenfolge Spieler1-Seite vor
   Spieler3-Seite. Neue Ranglistenforderungen zeigen deshalb den Forderer zuerst;
   bestehende Matchzeilen werden nicht migriert und behalten ihre Reihenfolge.
+  `wo` und `ret` erscheinen ausschliesslich als Badge am markierten Namen. Die
+  rechte Ergebnisspalte enthaelt nur ein gespeichertes Satzergebnis: bei Walkover
+  bleibt sie leer, bei Aufgabe erscheint optional das Teilergebnis ohne
+  beschreibenden Zusatztext.
+  Gespielte Matches mit gueltigem `MatchStart` und `MatchEnde` zeigen direkt neben
+  dem vereinbarten Matchdatum `(<Startzeit> - <Endzeit> Uhr = <Dauer>)`, etwa
+  `(18:07 - 19:42 Uhr = 1 Stunde 35 Minuten)`. Die Berechnung unterstuetzt einen
+  Lauf ueber Mitternacht; bei fehlenden oder chronologisch ungueltigen Zeitwerten
+  entfaellt der Zusatz. Neue Walkover besitzen keine Start-/Endzeit und zeigen
+  daher keine Dauer. Der Zusatz darf mobil umbrechen. Das Forderungsdatum besitzt
+  am Desktop eine feste mittlere Gridspalte
+  und bleibt kartenuebergreifend zentriert; mobil werden Matchdatum und danach
+  Forderungsdatum gestapelt.

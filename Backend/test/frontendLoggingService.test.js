@@ -167,7 +167,7 @@ test("Bewerbshistorienfehler akzeptiert nur kontrollierte Browserdiagnosefelder"
   }), { code: "VALIDATION_ERROR" });
 });
 
-test("Spielterminfehler im Ranglistenprofil ist als kontrollierte Browserdiagnose bekannt", () => {
+test("Termin- und Adminfehler im Profil sind als kontrollierte Browserdiagnosen bekannt", () => {
   const now = { value: 2350000 };
   const { logs, service } = fixture(now);
   service.updateSettings(settings(0));
@@ -179,18 +179,56 @@ test("Spielterminfehler im Ranglistenprofil ist als kontrollierte Browserdiagnos
       clientSessionId: "00000000-0000-4000-8000-000000000022",
       pageType: "rangliste",
       events: [{
-        event: "ranking_match_date_failed",
+        event: "match_date_action_failed",
         level: "error",
         timestamp: "2026-09-02T10:00:00.000Z",
         code: "MATCH_DATE_UNCHANGED",
         supportId: "support-match-date-1",
+      }, {
+        event: "ranking_admin_action_failed",
+        level: "error",
+        timestamp: "2026-09-02T10:01:00.000Z",
+        code: "RANKING_CHALLENGE_CLOSED",
+        supportId: "support-ranking-admin-1",
       }],
     },
   });
-  assert.deepEqual(result, { success: true, accepted: 1, dropped: 0 });
+  assert.deepEqual(result, { success: true, accepted: 2, dropped: 0 });
   assert.equal(logs[0].fields.pageType, "rangliste");
-  assert.equal(logs[0].fields.frontendEvent, "ranking_match_date_failed");
+  assert.equal(logs[0].fields.frontendEvent, "match_date_action_failed");
   assert.equal(logs[0].fields.code, "MATCH_DATE_UNCHANGED");
+  assert.equal(logs[1].fields.frontendEvent, "ranking_admin_action_failed");
+});
+
+test("Matchergebnis-HMI akzeptiert nur kontrollierte Aktions- und Vorschlagsfehler", () => {
+  const now = { value: 2360000 };
+  const { logs, service } = fixture(now);
+  service.updateSettings(settings(0));
+  const result = service.recordBatch({
+    sourceIp: "203.0.113.11",
+    identity: { id: "p2", name: "Peter Player", role: "player" },
+    body: {
+      appVersion: "test",
+      clientSessionId: "00000000-0000-4000-8000-000000000023",
+      pageType: "players",
+      events: [{
+        event: "match_result_action_failed",
+        level: "error",
+        timestamp: "2026-09-04T10:00:00.000Z",
+        code: "RANKING_REPAIR_REQUIRED",
+      }, {
+        event: "match_result_suggestion_failed",
+        level: "warn",
+        timestamp: "2026-09-04T10:01:00.000Z",
+        code: "SUGGESTION_SOURCE_INVALID",
+      }],
+    },
+  });
+  assert.deepEqual(result, { success: true, accepted: 2, dropped: 0 });
+  assert.deepEqual(logs.map(({ fields }) => fields.frontendEvent), [
+    "match_result_action_failed",
+    "match_result_suggestion_failed",
+  ]);
 });
 
 test("Personennormalisierungsfehler werden mit kontrollierten Feldern angenommen", () => {

@@ -53,8 +53,8 @@ Dashboard / Willkommensseite - Startseite der Anwendung
   Neben vorhandener E-Mail und Telefonnummer steht jeweils ein kleiner,
   tastaturbedienbarer Kopierbutton mit ueberlappendem Rechtecksymbol. Moderne
   Clipboard-APIs und ein Browser-Fallback liefern eine sichtbare Erfolg- oder
-  Fehlerrueckmeldung. Anonyme oeffentliche Profile enthalten weiterhin keine
-  Kontaktdaten.
+  Fehlerrueckmeldung. Anonyme Ansichten bieten keine Profilaktion; direkte oder
+  veraltete Profilaufrufe bleiben ohne aktive Sitzung geschlossen.
 
 -- Layout und Bereitschaft --
   Header, Main-Bereich, leerer Sidebar-Container und Footer; responsiv rutscht die

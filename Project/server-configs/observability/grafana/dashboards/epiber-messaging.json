@@ -1,0 +1,193 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Persoenliche Empfaengerprojektionen pro Wiener Kalendertag. Kategorien duerfen sich ueberschneiden; erstmalige Terminsetzungen zaehlen nicht als Datumsaenderung.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "columns": [
+            { "selector": "time", "text": "Zeit", "type": "timestamp_epoch" },
+            { "selector": "total", "text": "Gesamte Meldungen", "type": "number" },
+            { "selector": "results", "text": "Ergebnismeldungen", "type": "number" },
+            { "selector": "challenges", "text": "Forderungsmeldungen", "type": "number" },
+            { "selector": "dateChanges", "text": "Datumsändernde Meldungen", "type": "number" }
+          ],
+          "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+          "filters": [],
+          "format": "timeseries",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "$.series",
+          "source": "url",
+          "type": "json",
+          "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}",
+          "url_options": { "data": "", "method": "GET" }
+        }
+      ],
+      "title": "Persoenliche Meldungen pro Tag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Anzahl persoenlicher Meldungen an aktuelle Spielerrollen.",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixedColor", "fixedColor": "blue" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 11 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{
+        "columns": [{ "selector": "messageCount", "text": "Meldungen an Spieler", "type": "number" }],
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+        "format": "table", "parser": "backend", "refId": "A", "root_selector": "$.roleSummary[recipientClass='Spieler']", "source": "url", "type": "json",
+        "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}", "url_options": { "data": "", "method": "GET" }
+      }],
+      "title": "Meldungen an Spieler",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Anzahl persoenlicher Meldungen an aktuelle Administratorrollen.",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixedColor", "fixedColor": "orange" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 11 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{
+        "columns": [{ "selector": "messageCount", "text": "Meldungen an Administratoren", "type": "number" }],
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+        "format": "table", "parser": "backend", "refId": "A", "root_selector": "$.roleSummary[recipientClass='Administratoren']", "source": "url", "type": "json",
+        "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}", "url_options": { "data": "", "method": "GET" }
+      }],
+      "title": "Meldungen an Administratoren",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Operatoren sowie entfernte oder aktuell nicht zuordenbare Empfaenger.",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixedColor", "fixedColor": "gray" }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 11 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{
+        "columns": [{ "selector": "messageCount", "text": "Andere/Unbekannt", "type": "number" }],
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+        "format": "table", "parser": "backend", "refId": "A", "root_selector": "$.roleSummary[recipientClass='Andere/Unbekannt']", "source": "url", "type": "json",
+        "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}", "url_options": { "data": "", "method": "GET" }
+      }],
+      "title": "Andere oder unbekannte Empfaenger",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Aktuelle Empfaengerrolle; Rollenwechsel wirken auf die Auswertung des gesamten gewaehlten Zeitraums.",
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Meldungen" }] },
+      "targets": [{
+        "columns": [
+          { "selector": "recipientName", "text": "Empfaenger", "type": "string" },
+          { "selector": "recipientRole", "text": "Aktuelle Rolle", "type": "string" },
+          { "selector": "recipientClass", "text": "Gruppe", "type": "string" },
+          { "selector": "messageCount", "text": "Meldungen", "type": "number" },
+          { "selector": "unreadCount", "text": "Ungelesen", "type": "number" },
+          { "selector": "latestAt", "text": "Letzte Meldung", "type": "timestamp_epoch" }
+        ],
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+        "format": "table", "parser": "backend", "refId": "A", "root_selector": "$.recipients", "source": "url", "type": "json",
+        "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}", "url_options": { "data": "", "method": "GET" }
+      }],
+      "title": "Persoenliche Meldungen je Empfaenger",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+      "description": "Vertrauliche vollstaendige Meldungsprojektion. Exportierte Daten unterliegen derselben Schutzklasse wie messaging.sqlite.",
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": true }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 15, "w": 24, "x": 0, "y": 25 },
+      "id": 6,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Zeit" }] },
+      "targets": [{
+        "columns": [
+          { "selector": "time", "text": "Zeit", "type": "timestamp_epoch" },
+          { "selector": "recipientName", "text": "Empfaenger", "type": "string" },
+          { "selector": "recipientRole", "text": "Aktuelle Rolle", "type": "string" },
+          { "selector": "projectionType", "text": "Meldungstyp", "type": "string" },
+          { "selector": "competitionName", "text": "Bewerb", "type": "string" },
+          { "selector": "subject", "text": "Betreff", "type": "string" },
+          { "selector": "body", "text": "Persoenlicher Text", "type": "string" },
+          { "selector": "summary", "text": "Ereignis", "type": "string" },
+          { "selector": "detail", "text": "Ereignisdetail", "type": "string" },
+          { "selector": "result", "text": "Ergebnis", "type": "string" },
+          { "selector": "actorName", "text": "Akteur", "type": "string" },
+          { "selector": "acknowledgedAt", "text": "Gelesen am", "type": "timestamp_epoch" },
+          { "selector": "deliveries", "text": "Zustellungen", "type": "string" },
+          { "selector": "eventId", "text": "Ereignis-ID", "type": "string" },
+          { "selector": "id", "text": "Meldungs-ID", "type": "string" }
+        ],
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "epiber-messaging" },
+        "format": "table", "parser": "backend", "refId": "A", "root_selector": "$.messages", "source": "url", "type": "json",
+        "url": "$deployment/internal/messaging-report?from=${__from}&to=${__to}", "url_options": { "data": "", "method": "GET" }
+      }],
+      "title": "Meldungsdetails",
+      "type": "table"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 41,
+  "tags": ["epiber", "messaging", "vertraulich"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "Live", "value": "http://127.0.0.1:8080" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Deployment",
+        "multi": false,
+        "name": "deployment",
+        "options": [
+          { "selected": true, "text": "Live", "value": "http://127.0.0.1:8080" },
+          { "selected": false, "text": "PAJ", "value": "http://127.0.0.1:8083" }
+        ],
+        "query": "Live : http://127.0.0.1:8080, PAJ : http://127.0.0.1:8083",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5m", "15m", "30m", "1h"] },
+  "timezone": "Europe/Vienna",
+  "title": "ePiber Persoenliche Meldungen",
+  "uid": "epiber-messaging",
+  "version": 1,
+  "weekStart": "monday"
+}

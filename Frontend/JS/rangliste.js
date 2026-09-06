@@ -331,7 +331,7 @@ async function applyAllRules(container, pyramid, rankedList) {
     const id = String(playerId).trim();
     const playerState = rankingPlayerState(id, myPlayerId, busyData.busyIds, schonzeitMap, sperrzeitMap);
 
-    // Der blaue Rahmen bleibt erhalten; Schutz-/Sperrstatus und Timer bleiben sichtbar.
+    // Der blaue Rahmen bleibt erhalten; eine offene Forderung verdraengt alte Fristen.
     if (playerState.selected) box.classList.add("selected");
 
     // ── 1. Offene Forderung (gilt für alle, nicht nur forderbare)
@@ -607,11 +607,24 @@ export async function renderRanking() {
       box.appendChild(nameElement);
 
       rowEl.appendChild(box);
-      box.addEventListener("click", () => {
-        window.openProfileModal?.({
-          playerId: player.playerId || "",
+      if (isAuthenticated()) {
+        box.classList.add("profile-openable");
+        box.tabIndex = 0;
+        box.setAttribute("role", "button");
+        box.setAttribute("aria-label", `Profil von ${player.name || [player.firstName, player.lastName].filter(Boolean).join(" ")} öffnen`);
+        const openProfile = () => {
+          if (!isAuthenticated()) return;
+          window.openProfileModal?.({
+            playerId: player.playerId || "",
+          });
+        };
+        box.addEventListener("click", openProfile);
+        box.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openProfile();
         });
-      });
+      }
 
       rowBoxes.push({
         rank:     player.rank,
@@ -650,7 +663,9 @@ subscribeAuth((user) => {
 
   if (!user) {
     document.querySelectorAll("#rankingContainer .box").forEach((box) => {
-      box.classList.remove("selected", "challengeable", "challenge-with-me");
+      box.classList.remove("selected", "challengeable", "challenge-with-me", "profile-openable");
+      box.removeAttribute("role");
+      box.removeAttribute("tabindex");
     });
     renderRankingLegend();
   }

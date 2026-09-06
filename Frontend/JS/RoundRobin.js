@@ -2,6 +2,7 @@ import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { getUser, ready, subscribeAuth } from "./authClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { formatWalkoverResult } from "./matchCompletionText.js";
 
 // preMatches endpoint beibehalten für Kompatibilität, wird aber nicht mehr verwendet
 // const readPreMatches  = createEndpoint("preMatches");
@@ -132,7 +133,7 @@ function escapeHtml(value) {
 
 function formatPlayerHtml(playerId, playerMap) {
   const name = escapeHtml(formatPlayerName(playerId, playerMap));
-  if (!playerId) return `<span class="rr-player-name">${name}</span>`;
+  if (!playerId || !playerMap.has(playerId) || !getUser()) return `<span class="rr-player-name">${name}</span>`;
   return `<button type="button" class="rr-player" data-player-id="${escapeHtml(playerId)}">${name}</button>`;
 }
 
@@ -143,10 +144,15 @@ function formatTeamHtml(pid1, pid2, playerMap) {
   return `${player1}<span class="rr-team-sep"> / </span>${player2}`;
 }
 
+function formatTeamText(pid1, pid2, playerMap) {
+  return [pid1, pid2].filter(Boolean).map((id) => formatPlayerName(id, playerMap)).join(" / ");
+}
+
 function bindProfileLinks(container) {
   if (profileLinkContainers.has(container)) return;
   profileLinkContainers.add(container);
   container.addEventListener("click", (event) => {
+    if (!getUser()) return;
     if (!(event.target instanceof Element)) return;
     const player = event.target.closest(".rr-player[data-player-id]");
     if (!player || !container.contains(player)) return;
@@ -227,7 +233,7 @@ function collectPlayers(data, header, bewerbId) {
 
 // ── Statistik aus gespielten Matches ──
 
-function buildStats(matchData, matchHeader, bewerbId) {
+export function buildStats(matchData, matchHeader, bewerbId) {
   const h = matchHeader.map((c) => String(c).trim().toLowerCase());
   const bwIdx = h.indexOf("bewerbid");
   const p1Idx = h.indexOf("spieler1id");
@@ -248,13 +254,24 @@ function buildStats(matchData, matchHeader, bewerbId) {
     const id3 = p3Idx >= 0 ? parsePlayerId(row[p3Idx]) : "";
     const id4 = p4Idx >= 0 ? parsePlayerId(row[p4Idx]) : "";
     const rawResult = ergebnisIdx !== -1 ? String(row[ergebnisIdx] || "").trim() : "";
-    const sets = parseResult(rawResult);
-    const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
-    const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
-    const isPlayed = Boolean(rawResult || firstTeamRetired || secondTeamRetired);
+    const recordedSets = parseResult(rawResult);
+    const firstTeamMarkers = [p1Idx, p2Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index]));
+    const secondTeamMarkers = [p3Idx, p4Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index]));
+    const firstTeamWalkover = firstTeamMarkers.includes("wo");
+    const secondTeamWalkover = secondTeamMarkers.includes("wo");
+    const firstTeamRetired = firstTeamMarkers.includes("ret");
+    const secondTeamRetired = secondTeamMarkers.includes("ret");
+    const hasWalkover = firstTeamWalkover || secondTeamWalkover;
+    const hasRetirement = firstTeamRetired || secondTeamRetired;
+    const sets = firstTeamWalkover
+      ? [{ left: 0, right: 6 }, { left: 0, right: 6 }]
+      : secondTeamWalkover
+        ? [{ left: 6, right: 0 }, { left: 6, right: 0 }]
+        : recordedSets;
+    const isPlayed = Boolean(rawResult || hasWalkover || hasRetirement);
 
     // Gewinner aus Ergebnis berechnen
-    let winner = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
+    let winner = firstTeamWalkover || firstTeamRetired ? id3 : secondTeamWalkover || secondTeamRetired ? id1 : "";
     if (!winner && sets) {
       let setsLeft = 0, setsRight = 0;
       sets.forEach((s) => { if (s.left > s.right) setsLeft++; else if (s.right > s.left) setsRight++; });
@@ -280,12 +297,13 @@ function buildStats(matchData, matchHeader, bewerbId) {
           stats[key].gamesW += mine;
           stats[key].gamesL += opp;
           if (mine > opp) stats[key].saetzeW++;
-          else stats[key].saetzeL++;
+          else if (opp > mine) stats[key].saetzeL++;
         });
       }
       if (oppKey) {
         if (!playerMatches[key]) playerMatches[key] = [];
-        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || (firstTeamRetired || secondTeamRetired ? "wo/ret" : "—") });
+        const markerResult = hasWalkover ? "wo" : hasRetirement ? "ret" : "—";
+        playerMatches[key].push({ opponent: oppKey, oppPartner, result: rawResult || markerResult });
       }
     });
   });
@@ -324,6 +342,9 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     const firstTeamRetired = [p1Idx, p2Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
     const secondTeamRetired = [p3Idx, p4Idx].filter((index) => index >= 0).some((index) => playerMarker(row[index]));
+    const losingMarker = firstTeamRetired
+      ? [p1Idx, p2Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index])).find(Boolean)
+      : [p3Idx, p4Idx].filter((index) => index >= 0).map((index) => playerMarker(row[index])).find(Boolean);
 
     // Gewinner aus Ergebnis oder Abschlussmarker berechnen
     let winnerId = firstTeamRetired ? id3 : secondTeamRetired ? id1 : "";
@@ -339,6 +360,15 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     const team1Html = formatTeamHtml(id1, id2, playerMap);
     const team2Html = formatTeamHtml(id3, id4, playerMap);
+    const team1Text = formatTeamText(id1, id2, playerMap);
+    const team2Text = formatTeamText(id3, id4, playerMap);
+    const losingTeam = firstTeamRetired ? formatTeamText(id1, id2, playerMap) : secondTeamRetired ? formatTeamText(id3, id4, playerMap) : "";
+    const winningTeam = firstTeamRetired ? team2Text : secondTeamRetired ? team1Text : "";
+    const displayResult = losingMarker === "wo" && losingTeam
+      ? formatWalkoverResult(winningTeam, losingTeam)
+      : losingMarker === "ret" && losingTeam
+        ? `Aufgabe durch ${losingTeam}${ergebnis ? `: ${ergebnis}` : ""}`
+        : ergebnis;
 
     const isPlayed = Boolean(ergebnis || firstTeamRetired || secondTeamRetired);
 
@@ -353,6 +383,7 @@ function collectPairings(data, header, bewerbId, playerMap) {
       team2Html,
       matchId,
       ergebnis: ergebnis || "",
+      displayResult,
       played: isPlayed,
       datumRaw: datum,
       datum: parseSheetDate(datum),
@@ -628,7 +659,7 @@ export async function renderRoundRobin(bewerbId, container, paarungslayout) {
           html += `<span class="rr-pairing-team rr-pairing-team-1 ${t1cls}">${p.team1Html}</span>`;
           html += `<span class="rr-pairing-sep">-</span>`;
           html += `<span class="rr-pairing-team rr-pairing-team-2 ${t2cls}">${p.team2Html}</span>`;
-          if (p.ergebnis) html += `<span class="rr-pairing-result">${escapeHtml(p.ergebnis)}</span>`;
+          if (p.displayResult) html += `<span class="rr-pairing-result">${escapeHtml(p.displayResult)}</span>`;
           html += `</div>`;
         });
         html += `</div>`;

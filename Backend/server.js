@@ -14,6 +14,9 @@ const {
   INSTANCE_ID,
   LISTEN_HOST,
   MESSAGING_FILE,
+  MESSAGING_REPORT_DEPLOYMENT,
+  MESSAGING_REPORT_ENABLED,
+  MESSAGING_REPORT_TOKEN,
   MONITOR_COOKIE,
   PORT,
   SESSION_COOKIE,
@@ -35,6 +38,7 @@ const { MonitorBroker } = require("./monitorBroker.js");
 const { summarizePeopleNormalization } = require("./peopleNormalization.js");
 const {
   assertAllowedOrigin,
+  assertBearerToken,
   clearCookie,
   getRequestIp,
   parseCookies,
@@ -174,6 +178,11 @@ function createApplication(overrides = {}) {
     whatsappAdapter: new WhatsappMessagingAdapter(),
     publish: (topic, data) => dataProvider.publish(topic, data),
   });
+  const messagingReporting = overrides.messagingReporting || {
+    enabled: MESSAGING_REPORT_ENABLED,
+    deployment: MESSAGING_REPORT_DEPLOYMENT,
+    token: String(MESSAGING_REPORT_TOKEN),
+  };
   const sheetService = overrides.sheetService || new SheetService({ repository, messagingService });
   const authService = overrides.authService || new AuthService({ repository, sheetService });
   const frontendLoggingService = overrides.frontendLoggingService || new FrontendLoggingService({
@@ -332,6 +341,23 @@ function createApplication(overrides = {}) {
 
       if (shuttingDown) {
         throw new AppError("SHUTTING_DOWN", "Server wird beendet", 503);
+      }
+
+      if (pathname === "/internal/messaging-report") {
+        if (!messagingReporting.enabled) {
+          return sendJson(response, 404, { ...errorData(new AppError("NOT_FOUND", "Route wurde nicht gefunden", 404)), supportId });
+        }
+        if (request.method !== "GET") return methodNotAllowed(response, ["GET"], supportId);
+        if (!new Set(["127.0.0.1", "::1"]).has(getRequestIp(request))) throw new AppError("REPORTING_AUTH_REQUIRED", "Reporting-Autorisierung ist erforderlich", 401);
+        assertBearerToken(request, messagingReporting.token);
+        const allowedParameters = new Set(["from", "to"]);
+        for (const key of url.searchParams.keys()) if (!allowedParameters.has(key) || url.searchParams.getAll(key).length !== 1) throw new AppError("VALIDATION_ERROR", "Reporting-Parameter sind ungueltig", 400);
+        if (![...allowedParameters].every((key) => url.searchParams.has(key))) throw new AppError("VALIDATION_ERROR", "Reporting-Zeitraum fehlt", 400);
+        const fromMs = Number(url.searchParams.get("from"));
+        const toMs = Number(url.searchParams.get("to"));
+        if (![fromMs, toMs].every(Number.isSafeInteger) || fromMs < 0 || toMs <= fromMs) throw new AppError("REPORTING_RANGE_INVALID", "Reporting-Zeitraum ist ungueltig", 400);
+        if (toMs - fromMs > 31 * 24 * 60 * 60 * 1000) throw new AppError("REPORTING_RANGE_TOO_LARGE", "Reporting-Zeitraum darf hoechstens 31 Tage umfassen", 400);
+        return sendJson(response, 200, messagingService.messagingReport({ fromMs, toMs, deployment: messagingReporting.deployment }));
       }
 
       const cookies = parseCookies(request.headers.cookie);
@@ -699,6 +725,7 @@ function createApplication(overrides = {}) {
     monitorBroker,
     messagingService,
     repository,
+    scoreLogRepository,
     sheetService,
   });
 

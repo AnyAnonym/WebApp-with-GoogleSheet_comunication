@@ -63,7 +63,7 @@ export function createEndpoint(name) {
       if (!params.bewerbId) return { data: {
         success: true,
         events: [
-          { occurredAt: "2026-08-02T10:00:00.000Z", competitionName: "Sommercup", roundName: "Viertelfinale", summary: "Zweite Änderung", result: "6-3/6-4", actorName: "Neu Spieler" },
+          { occurredAt: "2026-08-02T10:00:00.000Z", competitionName: "Sommercup", roundName: "Viertelfinale", type: "ranking_challenge_deleted", summary: "Zweite Änderung", result: "6-3/6-4", actorName: "Neu Spieler", detail: "Grund: Doppelte Forderung" },
           { occurredAt: "2026-08-01T09:00:00.000Z", competitionName: "Rangliste", summary: "Erste Änderung", actorName: "Alt Spieler" },
         ],
         nextCursor: "global-page-2",
@@ -76,7 +76,7 @@ export function createEndpoint(name) {
       return { data: {
         success: true,
         events: [
-          { occurredAt: "2026-08-02T10:00:00.000Z", roundName: "Viertelfinale", summary: "Zweite Änderung", result: "6-3/6-4", actorName: "Neu Spieler", detail: "Nicht anzeigen" },
+          { occurredAt: "2026-08-02T10:00:00.000Z", roundName: "Viertelfinale", type: "ranking_challenge_deleted", summary: "Zweite Änderung", result: "6-3/6-4", actorName: "Neu Spieler", detail: "Grund: Doppelte Forderung" },
           { occurredAt: "2026-08-01T09:00:00.000Z", roundName: "1. Gruppe", summary: "<img src=x onerror=alert(1)>", actorName: "Alt Spieler", detail: "Ebenfalls nicht anzeigen" },
         ],
         nextCursor: "page-2",
@@ -198,20 +198,20 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(await modal.locator("#competition-history-title").innerText(), "Historie");
     assert.equal(await modal.locator("#competition-history-competition-name").innerText(), "Alle Bewerbe");
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}]);
-    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup", "Rangliste"]);
+    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste"]);
     assert.deepEqual(await modal.locator(".competition-history-entry").first().locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").first().locator("time").innerText(),
-      "Sommercup",
-      "Viertelfinale",
+      "Sommercup - Viertelfinale",
       "Zweite Änderung",
+      "Grund: Doppelte Forderung",
       "Ergebnis: 6-3/6-4",
-      "Durch: Neu Spieler",
+      "Eingetragen durch: Neu Spieler",
     ]);
     const expectedHistoryStyles = [
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
-      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "700" },
+      { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
     ];
@@ -241,7 +241,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(scrollMetrics.dialogBottom <= scrollMetrics.viewportHeight, true);
     await page.getByRole("button", { name: "Weitere Einträge laden" }).click();
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}, { cursor: "global-page-2" }]);
-    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup", "Rangliste", "Wintercup"]);
+    assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste", "Wintercup - Achtelfinale"]);
     await page.keyboard.press("Escape");
     assert.equal(await globalHistoryButton.evaluate((button) => document.activeElement === button), true);
 
@@ -282,16 +282,18 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
       await modal.locator(".competition-history-entry").first().locator("time").innerText(),
       "Viertelfinale",
       "Zweite Änderung",
+      "Grund: Doppelte Forderung",
       "Ergebnis: 6-3/6-4",
-      "Durch: Neu Spieler",
+      "Eingetragen durch: Neu Spieler",
     ]);
     assert.deepEqual(await modal.locator(".competition-history-entry").nth(1).locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").nth(1).locator("time").innerText(),
       "1. Gruppe",
       "<img src=x onerror=alert(1)>",
-      "Durch: Alt Spieler",
+      "Eingetragen durch: Alt Spieler",
     ]);
-    assert.equal((await modal.textContent()).includes("Nicht anzeigen"), false);
+    assert.equal((await modal.textContent()).includes("Grund: Doppelte Forderung"), true);
+    assert.equal((await modal.textContent()).includes("Ebenfalls nicht anzeigen"), false);
     assert.equal(await page.locator("#competition-history-close").evaluate((button) => document.activeElement === button), true);
 
     await page.getByRole("button", { name: "Weitere Einträge laden" }).click();

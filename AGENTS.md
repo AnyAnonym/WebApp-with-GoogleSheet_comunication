@@ -44,6 +44,13 @@ moeglichst wenigen Datei- und Suchzugriffen.
     keine Passwoerter, Tokens, freien Payloads oder unnoetigen Personendaten
     enthalten. Eine Implementierung ist erst vollstaendig, wenn Logging-, Audit-,
     Datenschutz- und Fehlerpfade gemeinsam geprueft sind.
+11. Vor der Umsetzung einer Funktionsaenderung sind auch ihre erkennbaren
+    sichtbaren und bedienrelevanten Auswirkungen zu bewerten. Erwartbare
+    Auswirkungen sind dem User vorab ausdruecklich zusammen mit der
+    Funktionsaenderung zu nennen; gehen sie ueber den eindeutig beauftragten Umfang
+    hinaus oder ist ihre Akzeptanz unklar, ist vor der Umsetzung eine Bestaetigung
+    einzuholen. Die Verifikation muss neben der neuen Funktion auch unbeabsichtigte
+    Aenderungen bestehender Darstellung und Bedienung abdecken.
 
 ## Projekt
 

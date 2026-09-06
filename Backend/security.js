@@ -28,6 +28,15 @@ function timingSafeTextEqual(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function assertBearerToken(req, expectedToken) {
+  const values = req.headersDistinct?.authorization;
+  const value = Array.isArray(values) && values.length === 1 ? values[0] : "";
+  const match = value.match(/^Bearer ([A-Za-z0-9_-]{43,128})$/);
+  if (!match || !timingSafeTextEqual(hashToken(match[1]), hashToken(expectedToken))) {
+    throw new AppError("REPORTING_AUTH_REQUIRED", "Reporting-Autorisierung ist erforderlich", 401);
+  }
+}
+
 function parseCookies(header = "") {
   const result = {};
   for (const part of String(header).split(";")) {
@@ -210,6 +219,7 @@ class TokenBucketLimiter {
 }
 
 module.exports = {
+  assertBearerToken,
   TokenBucketLimiter,
   assertAllowedOrigin,
   clearCookie,

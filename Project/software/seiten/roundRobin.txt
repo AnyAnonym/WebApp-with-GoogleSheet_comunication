@@ -24,10 +24,29 @@ RoundRobin-Gruppenphase - Tabellen und Paarungslisten
   Datum, 1 Uhrzeit, 2 ohne Datum; bei 3/4/5 bleiben offene Paarungen voll datiert,
   gespielte verwenden entsprechend voll/Uhrzeit/ohne. Spezifikum-Regeln wie
   `1G(A)/2G(A)/3G(1)` markieren Aufsteiger; Vergleich: Siege, Satzdifferenz,
-  Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet. Jeder
-  vorhandene Spielername in Gruppentabellen und Paarungen ist per Maus oder
-  Tastatur bedienbar und oeffnet das gemeinsame Profilmodal fuer diese Person;
-  leere Spielerpositionen bleiben reine Anzeige.
+  Gamedifferenz. Gruppen und Paarungen werden chronologisch angeordnet. Anonym
+  sind Spielernamen in Gruppentabellen und Paarungen reine, nicht fokussierbare
+  Anzeige. Nach erfolgreicher Anmeldung ist jeder bekannte Spieler per Maus und
+  Tastatur als eigene Profilaktion bedienbar; bei Doppeln sind beide Partner
+  getrennte Namensbuttons mit eigener Personen-ID. Leere Positionen und unbekannte
+  IDs bleiben ohne Profilaktion, ein veralteter oder direkter anonymer Modalaufruf
+  bleibt geschlossen. Nur dieses gemeinsame Modal
+  bietet die in `Project/software/seiten/players.txt` beschriebenen universellen
+  Ergebnis- und Terminaktionen; RoundRobin selbst besitzt keine eigene
+  Eingabemaske. Beteiligte terminieren vollstaendige offene Paarungen dort auf
+  eine zukuenftige volle Stunde von 06:00 bis 23:00 Uhr; Administratoren duerfen
+  dies fuer jede solche Paarung mit Pflichtgrund.
+
+  Die exportierte bestehende Funktion `buildStats` bleibt die einzige
+  Tabellenberechnung. Regulaere Ergebnisse werden unveraendert ausgewertet. Ein
+  Walkover zaehlt fix als `0-6/0-6` aus Sicht der Verliererseite. Bei Retirement
+  bleiben Games erhalten und ein gefuehrter unvollstaendiger letzter Satz zaehlt
+  fuer die fuehrende Seite; ein Satzgleichstand zaehlt fuer keine Seite. Eine
+  automatische Uebernahme markierter Aufsteiger in ein KO-Match findet nicht
+  statt.
+  Die Ergebniszeile einer Walkover-Paarung lautet mit den vollstaendigen Einzel-
+  oder Doppelnamen `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.`;
+  Aufgabe bleibt mit der benannten Verliererseite dargestellt.
 
 -- Darstellung und Sicherheit --
   Das Grid waehlt je nach Gruppenzahl eine bis vier schrumpfbare Spalten und wird

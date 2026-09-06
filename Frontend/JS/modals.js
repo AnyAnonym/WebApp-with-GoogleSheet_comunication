@@ -1,4 +1,5 @@
 import { createEndpoint, getOperationId, releaseOperationId } from "./dataClient.js";
+import { formatWalkoverResult } from "./matchCompletionText.js";
 import {
   ready,
   createPasswordReset,
@@ -15,7 +16,7 @@ import {
   subscribeAuth,
 } from "./authClient.js";
 import { diagnostic } from "./diagnostics.js";
-import { clearProfileModalContent } from "./profileModalState.js";
+import { categorizedProfileCompetitions, clearProfileModalContent } from "./profileModalState.js";
 
 const readPublicProfile = createEndpoint("publicProfile");
 const readMyProfile = createEndpoint("myProfile");
@@ -24,18 +25,32 @@ const readMyMessages = createEndpoint("myMessages");
 const readMyMessage = createEndpoint("myMessage");
 const acknowledgeMessage = createEndpoint("acknowledgeMessage");
 const addMatch = createEndpoint("addMatch");
-const setRankingMatchDate = createEndpoint("setRankingMatchDate");
+const setMatchAppointment = createEndpoint("setMatchAppointment");
+const adminDeleteRankingChallenge = createEndpoint("adminDeleteRankingChallenge");
+const adminSetRankingChallengeDate = createEndpoint("adminSetRankingChallengeDate");
+const adminSetMatchAppointment = createEndpoint("adminSetMatchAppointment");
+const matchResultSuggestion = createEndpoint("matchResultSuggestion");
+const setMatchResult = createEndpoint("setMatchResult");
+const adminSetMatchEnd = createEndpoint("adminSetMatchEnd");
+const adminClearMatchResult = createEndpoint("adminClearMatchResult");
+const adminCorrectRankingResult = createEndpoint("adminCorrectRankingResult");
 const withdrawFromRanking = createEndpoint("withdrawFromRanking");
 const readWithdrawnRankingPlayers = createEndpoint("withdrawnRankingPlayers");
 let withdrawContext = null;
 let matchDateContext = null;
 let matchCalendarMonth = null;
+let adminRankingActionContext = null;
+let matchResultContext = null;
 let adminPasswordTarget = null;
 let profileRequestGeneration = 0;
 let profileActionController = null;
 let modalAuthIdentity = null;
 let messageState = null;
 let messageDetailReturnFocus = null;
+let adminRankingReturnFocus = null;
+let matchResultReturnFocus = null;
+let matchResultScore = [];
+let matchResultStatusTimer = null;
 
 function errorMessage(value, fallback) {
   if (value instanceof Error && value.message) return value.message;
@@ -110,8 +125,16 @@ function closeModal(modal) {
   }
   if (modal?.id === "withdrawModal") withdrawContext = null;
   if (modal?.id === "matchDateModal") matchDateContext = null;
+  if (modal?.id === "adminRankingActionModal") adminRankingActionContext = null;
+  if (modal?.id === "matchResultModal") {
+    matchResultContext = null;
+    matchResultScore = [];
+    clearTimeout(matchResultStatusTimer);
+  }
   if (modal?.id === "profileModal") {
     closeModal(matchDateModal);
+    closeModal(adminRankingActionModal);
+    closeModal(matchResultModal);
     closeModal(messageDetailModal);
     profileRequestGeneration += 1;
     clearProfileModalContent(modal, profileActionController);
@@ -121,6 +144,20 @@ function closeModal(modal) {
   if (modal?.id === "messageDetailModal") {
     const returnFocus = messageDetailReturnFocus;
     messageDetailReturnFocus = null;
+    profileModal.inert = false;
+    profileModal.removeAttribute("aria-hidden");
+    if (returnFocus?.isConnected && !profileModal.classList.contains("hidden")) returnFocus.focus();
+  }
+  if (modal?.id === "adminRankingActionModal") {
+    const returnFocus = adminRankingReturnFocus;
+    adminRankingReturnFocus = null;
+    profileModal.inert = false;
+    profileModal.removeAttribute("aria-hidden");
+    if (returnFocus?.isConnected && !profileModal.classList.contains("hidden")) returnFocus.focus();
+  }
+  if (modal?.id === "matchResultModal") {
+    const returnFocus = matchResultReturnFocus;
+    matchResultReturnFocus = null;
     profileModal.inert = false;
     profileModal.removeAttribute("aria-hidden");
     if (returnFocus?.isConnected && !profileModal.classList.contains("hidden")) returnFocus.focus();
@@ -241,6 +278,8 @@ const adminPasswordModal = createModal("adminPasswordModal", `
 const profileModal = createModal("profileModal", `
   <h2 id="profileName">Profil</h2>
   <div id="profileTabs" class="profile-tabs" role="tablist" aria-label="Profilbereiche"></div>
+  <div id="profileCurrentCompetitionTabs" class="profile-tabs profile-competition-tabs" role="tablist" aria-label="Aktuelle Bewerbe" hidden></div>
+  <div id="profileArchiveCompetitionTabs" class="profile-tabs profile-competition-tabs" role="tablist" aria-label="Archivierte Bewerbe" hidden></div>
   <div id="profileBody" class="profile-body" aria-live="polite">
     <section id="profileSystemPanel" class="profile-panel" role="tabpanel">
       <div id="profileText">Lade Profildaten...</div>
@@ -289,17 +328,8 @@ const withdrawModal = createModal("withdrawModal", `
   </form>
 `, { explicitDismiss: true });
 
-const withdrawalBlockedModal = createModal("withdrawalBlockedModal", `
-  <h2 id="withdrawalBlockedTitle">Raushängen nicht möglich</h2>
-  <p>Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.</p>
-`);
-withdrawalBlockedModal.setAttribute("role", "dialog");
-withdrawalBlockedModal.setAttribute("aria-modal", "true");
-withdrawalBlockedModal.setAttribute("aria-labelledby", "withdrawalBlockedTitle");
-withdrawalBlockedModal.querySelector(".close")?.setAttribute("aria-label", "Hinweis schließen");
-
 const matchDateModal = createModal("matchDateModal", `
-  <h2 id="matchDateTitle">Spieltermin festlegen</h2>
+  <h2 id="matchDateTitle">Termin eintragen</h2>
   <form id="matchDateForm">
     <span class="match-date-label">Datum:</span>
     <input type="hidden" id="rankingMatchDay" name="rankingMatchDay">
@@ -316,6 +346,10 @@ const matchDateModal = createModal("matchDateModal", `
     <select id="rankingMatchHour" name="rankingMatchHour" required>
       ${Array.from({ length: 18 }, (_, index) => `<option value="${String(index + 6).padStart(2, "0")}">${String(index + 6).padStart(2, "0")}:00 Uhr</option>`).join("")}
     </select>
+    <div id="matchDateReasonFields" hidden>
+      <label for="matchDateReason">Grund:</label>
+      <textarea id="matchDateReason" name="reason" maxlength="500" placeholder="Bitte geben Sie den Grund ein..."></textarea>
+    </div>
     <button type="submit" class="btn-login">Übernehmen</button>
   </form>
 `, { explicitDismiss: true });
@@ -323,6 +357,87 @@ matchDateModal.setAttribute("role", "dialog");
 matchDateModal.setAttribute("aria-modal", "true");
 matchDateModal.setAttribute("aria-labelledby", "matchDateTitle");
 matchDateModal.querySelector(".close")?.setAttribute("aria-label", "Terminauswahl schließen");
+
+const adminRankingActionModal = createModal("adminRankingActionModal", `
+  <h2 id="adminRankingActionTitle">Forderung bearbeiten</h2>
+  <p id="adminRankingActionTarget"></p>
+  <form id="adminRankingActionForm">
+    <div id="adminRankingDateFields">
+      <label for="adminRankingDay">Datum:</label>
+      <input type="date" id="adminRankingDay" name="adminRankingDay" min="1950-01-01" max="2049-12-31" required>
+      <label for="adminRankingTime">Uhrzeit:</label>
+      <input type="time" id="adminRankingTime" name="adminRankingTime" min="00:00" max="23:59" step="60" required>
+    </div>
+    <label for="adminRankingReason">Grund:</label>
+    <textarea id="adminRankingReason" name="adminRankingReason" maxlength="500" required placeholder="Bitte geben Sie den Grund ein..."></textarea>
+    <button type="submit" class="btn-login admin-ranking-danger" id="adminRankingActionSubmit">Übernehmen</button>
+  </form>
+`, { explicitDismiss: true });
+adminRankingActionModal.classList.add("ranking-admin-modal");
+adminRankingActionModal.setAttribute("role", "dialog");
+adminRankingActionModal.setAttribute("aria-modal", "true");
+adminRankingActionModal.setAttribute("aria-labelledby", "adminRankingActionTitle");
+adminRankingActionModal.querySelector(".close")?.setAttribute("aria-label", "Adminaktion abbrechen");
+
+const matchResultModal = createModal("matchResultModal", `
+  <h2 id="matchResultTitle">Ergebnis erfassen</h2>
+  <div id="matchResultTarget" class="match-result-target">
+    <strong id="matchResultCompetition"></strong>
+    <span id="matchResultEncounter"></span>
+  </div>
+  <form id="matchResultForm" novalidate>
+    <div id="matchResultCompletionFields">
+      <div class="match-result-field-row">
+        <label for="matchResultKind">Abschlussart:</label>
+        <select id="matchResultKind" name="kind">
+          <option value="regular">Regulär</option>
+          <option value="walkover">WO</option>
+          <option value="retirement">RET</option>
+        </select>
+      </div>
+      <div id="matchResultValueFields">
+        <div id="matchResultScoreEditor" class="match-result-score-editor" aria-label="Satzergebnis bearbeiten"></div>
+        <div class="match-result-suggestions" aria-label="Ergebnis vom Platz übernehmen">
+          <button type="button" class="btn-login match-result-suggestion">Match vom Scoreboard übernehmen</button>
+        </div>
+      </div>
+      <div id="matchResultLosingFields" hidden>
+        <label for="matchResultLosingSide">Verliererseite:</label>
+        <select id="matchResultLosingSide" name="losingSide">
+          <option value="">Bitte Verliererseite auswählen</option>
+        </select>
+      </div>
+    </div>
+    <div id="matchResultStartFields">
+      <div class="match-result-field-row">
+        <label for="matchResultStart">Matchstart:</label>
+        <input id="matchResultStart" name="matchStart" type="datetime-local">
+      </div>
+    </div>
+    <div id="matchResultEndFields">
+      <div class="match-result-field-row">
+        <label for="matchResultEnd">Matchende:</label>
+        <input id="matchResultEnd" name="matchEnd" type="datetime-local">
+      </div>
+    </div>
+    <div id="matchResultReasonFields" hidden>
+      <label for="matchResultReason">Grund:</label>
+      <textarea id="matchResultReason" name="reason" maxlength="500"></textarea>
+    </div>
+    <fieldset id="matchResultRankPlanFields" hidden>
+      <legend>Vollständiger Rangplan</legend>
+      <p>Rang 0 bleibt bestehenden rausgehängten Mitgliedern vorbehalten und darf dort mehrfach vorkommen.</p>
+      <div id="matchResultRankPlan"></div>
+    </fieldset>
+    <p id="matchResultStatus" class="match-result-status" role="status" aria-live="polite" hidden></p>
+    <button type="submit" id="matchResultSubmit" class="btn-login">Speichern</button>
+  </form>
+`, { explicitDismiss: true });
+matchResultModal.classList.add("match-result-modal");
+matchResultModal.setAttribute("role", "dialog");
+matchResultModal.setAttribute("aria-modal", "true");
+matchResultModal.setAttribute("aria-labelledby", "matchResultTitle");
+matchResultModal.querySelector(".close")?.setAttribute("aria-label", "Ergebnisdialog abbrechen");
 document.getElementById("matchDatePreviousMonth").addEventListener("click", () => {
   if (!matchCalendarMonth) return;
   matchCalendarMonth = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth() - 1, 1);
@@ -355,14 +470,25 @@ function formatBirthDate(value) {
 function formatCompactDate(value) {
   const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
   if (!match) return String(value || "").trim() || "---";
-  return `${match[3]}.${match[2]}.20${match[1]}, ${match[4]}:${match[5]} Uhr`;
+  const century = Number(match[1]) >= 50 ? "19" : "20";
+  return `${match[3]}.${match[2]}.${century}${match[1]}, ${match[4]}:${match[5]} Uhr`;
 }
 
 function compactDateValue(value) {
   const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
   if (!match) return null;
-  const date = new Date(2000 + Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+  const year = Number(match[1]) >= 50 ? 1900 + Number(match[1]) : 2000 + Number(match[1]);
+  const date = new Date(year, Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function compactWallTimeParts(value) {
+  const match = String(value || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]) >= 50 ? 1900 + Number(match[1]) : 2000 + Number(match[1]);
+  const probe = new Date(Date.UTC(year, Number(match[2]) - 1, Number(match[3])));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== Number(match[2]) - 1 || probe.getUTCDate() !== Number(match[3])) return null;
+  return { year, month: match[2], day: match[3], hour: match[4], minute: match[5] };
 }
 
 function dateInputValue(date) {
@@ -374,6 +500,514 @@ function compactMatchDate(dayValue, hourValue) {
   const day = String(dayValue || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const hour = String(hourValue || "").match(/^(0[6-9]|1\d|2[0-3])$/);
   return day && hour ? `${day[1].slice(2)}${day[2]}${day[3]}-${hour[1]}00` : "";
+}
+
+function compactAdminRankingDate(dayValue, timeValue, fullHour = false) {
+  const day = String(dayValue || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const time = String(timeValue || "").match(/^((?:[01]\d|2[0-3])):([0-5]\d)$/);
+  return day && time && (!fullHour || time[2] === "00")
+    ? `${day[1].slice(2)}${day[2]}${day[3]}-${time[1]}${time[2]}`
+    : "";
+}
+
+function localDateTimeValue(date) {
+  const part = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())}T${part(date.getHours())}:${part(date.getMinutes())}`;
+}
+
+function compactResultDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})T([0-2]\d):([0-5]\d)$/);
+  return match ? `${match[1].slice(2)}${match[2]}${match[3]}-${match[4]}${match[5]}` : "";
+}
+
+function endpointResultError(data, fallback) {
+  const error = new Error(errorMessage(data, fallback));
+  error.code = data?.error?.code || "UNEXPECTED_ERROR";
+  error.supportId = data?.supportId || "";
+  return error;
+}
+
+function showMatchResultStatus(message, type = "error") {
+  const status = document.getElementById("matchResultStatus");
+  clearTimeout(matchResultStatusTimer);
+  status.textContent = String(message || "");
+  status.className = `match-result-status ${type}`;
+  status.hidden = !message;
+  if (message) matchResultStatusTimer = setTimeout(() => {
+    status.hidden = true;
+    status.textContent = "";
+  }, 3000);
+}
+
+function matchResultRules() {
+  const rules = matchResultContext?.match?.resultRules || {};
+  const winningSets = rules.winningSets === 3 ? 3 : 2;
+  const setTarget = rules.setTarget === 4 ? 4 : 6;
+  return {
+    winningSets,
+    setTarget,
+    setTiebreak: String(rules.setTiebreak || `${setTarget - 1}-${setTarget - 1}`),
+    decidingSet: String(rules.decidingSet || "vollstaendiger Satz"),
+  };
+}
+
+function matchResultSetCount() {
+  return matchResultRules().winningSets * 2 - 1;
+}
+
+function isMatchTiebreakSet(index) {
+  const rules = matchResultRules();
+  return index === matchResultSetCount() - 1 && ["MT7", "MT10"].includes(rules.decidingSet.toUpperCase());
+}
+
+function parseMatchResultScore(result) {
+  const count = matchResultSetCount();
+  const parsed = String(result || "").trim().split("/").filter(Boolean).slice(0, count).map((token) => {
+    const match = token.match(/^(\d{1,2})-(\d{1,2})(?:\((\d{1,2})\))?$/);
+    if (!match) return { side1: 0, side2: 0, touched: false, tiebreak: null };
+    const side1 = Number(match[1]);
+    const side2 = Number(match[2]);
+    let tiebreak = null;
+    if (match[3] !== undefined && side1 !== side2) {
+      const loserPoints = Number(match[3]);
+      const winnerPoints = Math.max(7, loserPoints + 2);
+      tiebreak = side1 > side2
+        ? { side1: winnerPoints, side2: loserPoints }
+        : { side1: loserPoints, side2: winnerPoints };
+    }
+    return { side1, side2, touched: true, tiebreak };
+  });
+  const sets = Array.from({ length: count }, (_, index) => parsed[index] || ({ side1: 0, side2: 0, touched: false, tiebreak: null }));
+  sets.forEach((set, index) => {
+    if (!set.tiebreak && normalSetNeedsTiebreak(set, index)) set.tiebreak = { side1: 0, side2: 0 };
+  });
+  return sets;
+}
+
+function normalSetNeedsTiebreak(set, index) {
+  if (isMatchTiebreakSet(index)) return false;
+  const trigger = Number(matchResultRules().setTiebreak.split("-")[0]);
+  const high = Math.max(set.side1, set.side2);
+  const low = Math.min(set.side1, set.side2);
+  return Number.isInteger(trigger) && (set.side1 === trigger && set.side2 === trigger || high === trigger + 1 && low === trigger);
+}
+
+function clampMatchResultNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(99, Math.trunc(number))) : 0;
+}
+
+function createMatchResultStepper(setIndex, side, { tiebreak = false } = {}) {
+  const set = matchResultScore[setIndex];
+  const valueTarget = tiebreak ? set.tiebreak : set;
+  const row = document.createElement("div");
+  row.className = "match-result-score-row";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.max = "99";
+  input.step = "1";
+  input.inputMode = "numeric";
+  input.value = String(valueTarget[side]);
+  const teamName = matchResultContext?.match?.teams?.[side === "side1" ? 0 : 1]?.names?.join(" / ") || (side === "side1" ? "Seite 1" : "Seite 2");
+  const scoreName = tiebreak ? `Tie-Break in Set ${setIndex + 1}` : `Set ${setIndex + 1}`;
+  input.setAttribute("aria-label", `${scoreName}, ${teamName}`);
+  input.addEventListener("change", () => {
+    valueTarget[side] = clampMatchResultNumber(input.value);
+    set.touched = true;
+    if (!tiebreak) {
+      if (normalSetNeedsTiebreak(set, setIndex) && !set.tiebreak) set.tiebreak = { side1: 0, side2: 0 };
+      if (!normalSetNeedsTiebreak(set, setIndex)) set.tiebreak = null;
+    }
+    renderMatchResultScore();
+  });
+  const controls = document.createElement("div");
+  controls.className = "match-result-score-controls";
+  for (const [label, change] of [["+", 1], ["-", -1]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "match-result-score-step";
+    button.textContent = label;
+    button.setAttribute("aria-label", `${scoreName}, ${teamName}: ${change > 0 ? "Plus" : "Minus"}`);
+    button.addEventListener("click", () => {
+      valueTarget[side] = clampMatchResultNumber(valueTarget[side] + change);
+      set.touched = true;
+      if (!tiebreak) {
+        if (normalSetNeedsTiebreak(set, setIndex) && !set.tiebreak) set.tiebreak = { side1: 0, side2: 0 };
+        if (!normalSetNeedsTiebreak(set, setIndex)) set.tiebreak = null;
+      }
+      renderMatchResultScore();
+    });
+    controls.appendChild(button);
+  }
+  row.append(input, controls);
+  return row;
+}
+
+function createMatchResultScoreColumn(setIndex, { tiebreak = false } = {}) {
+  const column = document.createElement("section");
+  column.className = `match-result-score-column${tiebreak ? " tiebreak" : isMatchTiebreakSet(setIndex) ? " match-tiebreak" : ""}`;
+  const heading = document.createElement("h3");
+  heading.textContent = tiebreak ? "TB" : `Set ${setIndex + 1}`;
+  column.append(heading, createMatchResultStepper(setIndex, "side1", { tiebreak }), createMatchResultStepper(setIndex, "side2", { tiebreak }));
+  return column;
+}
+
+function renderMatchResultScore() {
+  const editor = document.getElementById("matchResultScoreEditor");
+  editor.replaceChildren();
+  for (let index = 0; index < matchResultScore.length; index++) {
+    editor.appendChild(createMatchResultScoreColumn(index));
+    if (matchResultScore[index].tiebreak) editor.appendChild(createMatchResultScoreColumn(index, { tiebreak: true }));
+  }
+}
+
+function setMatchResultScore(result) {
+  matchResultScore = parseMatchResultScore(result);
+  renderMatchResultScore();
+}
+
+function serializeMatchResultScore() {
+  const lastSet = matchResultScore.findLastIndex((set) => set.touched || set.side1 !== 0 || set.side2 !== 0 || set.tiebreak);
+  if (lastSet < 0) return "";
+  return matchResultScore.slice(0, lastSet + 1).map((set, index) => {
+    let token = `${set.side1}-${set.side2}`;
+    if (set.tiebreak && !isMatchTiebreakSet(index)) {
+      const winnerSide = set.side1 > set.side2 ? "side1" : set.side2 > set.side1 ? "side2" : "";
+      const loserSide = winnerSide === "side1" ? "side2" : winnerSide === "side2" ? "side1" : "";
+      const high = Math.max(set.tiebreak.side1, set.tiebreak.side2);
+      const low = Math.min(set.tiebreak.side1, set.tiebreak.side2);
+      if (!winnerSide || set.tiebreak[winnerSide] <= set.tiebreak[loserSide] || high < 7 || high !== 7 && high - low !== 2) {
+        throw new Error(`Bitte geben Sie für den Tie-Break in Set ${index + 1} einen vollständigen Punktestand ein.`);
+      }
+      token += `(${set.tiebreak[loserSide]})`;
+    }
+    return token;
+  }).join("/");
+}
+
+function updateMatchResultKind() {
+  const kind = document.getElementById("matchResultKind").value;
+  const regular = kind === "regular";
+  const valueFields = document.getElementById("matchResultValueFields");
+  const losingFields = document.getElementById("matchResultLosingFields");
+  const losingInput = document.getElementById("matchResultLosingSide");
+  valueFields.hidden = kind === "walkover";
+  losingFields.hidden = regular;
+  losingInput.disabled = regular;
+  losingInput.required = !regular;
+  const openMatch = matchResultContext?.action === "result" && matchResultContext.match?.status === "open";
+  if (openMatch) {
+    const startFields = document.getElementById("matchResultStartFields");
+    const endFields = document.getElementById("matchResultEndFields");
+    const startInput = document.getElementById("matchResultStart");
+    const endInput = document.getElementById("matchResultEnd");
+    const needsTimes = kind !== "walkover";
+    startFields.hidden = !needsTimes;
+    endFields.hidden = !needsTimes;
+    startInput.disabled = !needsTimes;
+    startInput.required = needsTimes;
+    endInput.disabled = !needsTimes;
+    endInput.required = needsTimes;
+  }
+}
+
+function setMatchResultLosingSides(match) {
+  const select = document.getElementById("matchResultLosingSide");
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Bitte Verliererseite auswählen";
+  select.replaceChildren(placeholder, ...(match.teams || []).slice(0, 2).map((team, index) => {
+    const option = document.createElement("option");
+    option.value = String(index + 1);
+    option.textContent = team.names?.join(" / ") || `Seite ${index + 1}`;
+    return option;
+  }));
+  select.value = match.losingSide ? String(match.losingSide) : "";
+}
+
+function openMatchResultModal(action, profile, competition, match) {
+  const rankingRepair = action === "rankingRepair";
+  const adminAction = action === "matchEnd" || action === "clear" || rankingRepair;
+  if (!match?.matchId || adminAction && getUser()?.role !== "admin" || action === "result" && !match.canSetResult
+    || rankingRepair && (match.status !== "completed" || competition.ranking !== true || !Array.isArray(competition.rankingMembers))) return;
+  matchResultContext = {
+    action,
+    playerId: String(profile.id),
+    competitionId: String(competition.competitionId),
+    match: { ...match },
+    rankingMembers: rankingRepair ? competition.rankingMembers.map((member) => ({ ...member })) : [],
+  };
+  const form = document.getElementById("matchResultForm");
+  form.reset();
+  const completionFields = document.getElementById("matchResultCompletionFields");
+  const startFields = document.getElementById("matchResultStartFields");
+  const endFields = document.getElementById("matchResultEndFields");
+  const reasonFields = document.getElementById("matchResultReasonFields");
+  const rankPlanFields = document.getElementById("matchResultRankPlanFields");
+  const rankPlan = document.getElementById("matchResultRankPlan");
+  const startInput = document.getElementById("matchResultStart");
+  const endInput = document.getElementById("matchResultEnd");
+  const reasonInput = document.getElementById("matchResultReason");
+  const submit = document.getElementById("matchResultSubmit");
+  startInput.readOnly = false;
+  endInput.readOnly = false;
+  delete startInput.dataset.defaultValue;
+  delete endInput.dataset.defaultValue;
+  showMatchResultStatus("");
+  document.getElementById("matchResultCompetition").textContent = competition.competitionName;
+  document.getElementById("matchResultEncounter").textContent = match.teams.map((team) => team.names.join(" / ")).join(" gegen ");
+  completionFields.hidden = action !== "result" && !rankingRepair;
+  startFields.hidden = rankingRepair || action !== "result" || match.status === "completed";
+  endFields.hidden = rankingRepair || action === "clear" || action === "result" && match.status === "completed";
+  reasonFields.hidden = !adminAction;
+  rankPlanFields.hidden = !rankingRepair;
+  rankPlan.replaceChildren();
+  if (rankingRepair) {
+    for (const member of matchResultContext.rankingMembers) {
+      const row = document.createElement("label");
+      row.className = "match-result-rank-row";
+      row.textContent = `${member.name} (bisher Rang ${member.rank})`;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = Number(member.rank) === 0 ? "0" : "1";
+      input.max = "10000";
+      input.step = "1";
+      input.required = true;
+      input.value = String(member.rank);
+      input.dataset.personId = String(member.personId);
+      input.dataset.expectedRank = String(member.rank);
+      input.setAttribute("aria-label", `Zielrang für ${member.name}`);
+      row.appendChild(input);
+      rankPlan.appendChild(row);
+    }
+  }
+  startInput.disabled = startFields.hidden;
+  startInput.required = !startFields.hidden;
+  endInput.disabled = endFields.hidden;
+  endInput.required = !endFields.hidden;
+  reasonInput.disabled = !adminAction;
+  reasonInput.required = adminAction;
+  if (action === "result" || rankingRepair) {
+    document.getElementById("matchResultTitle").textContent = rankingRepair ? "Mit Rangplan korrigieren" : match.status === "completed" ? "Ergebnis korrigieren" : "Ergebnis erfassen";
+    document.getElementById("matchResultKind").value = match.completionType || "regular";
+    setMatchResultScore(match.result || "");
+    document.querySelector(".match-result-suggestion").hidden = action !== "result";
+    setMatchResultLosingSides(match);
+    submit.textContent = rankingRepair ? "Mit Rangplan korrigieren" : match.status === "completed" ? "Ergebnis korrigieren" : "Ergebnis speichern";
+    if (match.status === "open") {
+      const now = new Date();
+      const scheduled = compactDateValue(match.matchDate);
+      const defaultStart = scheduled && scheduled <= now ? scheduled : new Date(now.getTime() - 90 * 60 * 1000);
+      startInput.max = localDateTimeValue(now);
+      startInput.value = localDateTimeValue(defaultStart);
+      endInput.min = "";
+      endInput.max = localDateTimeValue(now);
+      endInput.value = localDateTimeValue(now);
+      startInput.dataset.defaultValue = startInput.value;
+      endInput.dataset.defaultValue = endInput.value;
+    }
+    updateMatchResultKind();
+    if (match.correctionBlockReason === "RANKING_REPAIR_REQUIRED") {
+      showMatchResultStatus("Für diese Korrektur ist ein vollständiger administrativer Rangplan erforderlich.", "info");
+    }
+  } else if (action === "matchEnd") {
+    document.getElementById("matchResultTitle").textContent = "Matchende korrigieren";
+    endInput.min = "";
+    endInput.max = localDateTimeValue(new Date());
+    const current = compactDateValue(match.matchEnd);
+    if (current) endInput.value = localDateTimeValue(current);
+    submit.textContent = "Matchende setzen";
+  } else {
+    document.getElementById("matchResultTitle").textContent = "Ergebnis löschen";
+    submit.textContent = "Ergebnis löschen";
+  }
+  submit.classList.toggle("admin-danger", getUser()?.role === "admin");
+  matchResultReturnFocus = document.activeElement;
+  profileModal.inert = true;
+  profileModal.setAttribute("aria-hidden", "true");
+  openModal(matchResultModal);
+  matchResultModal.querySelector("select:not(:disabled), input:not(:disabled), textarea:not(:disabled)")?.focus();
+}
+
+function appendMatchCard(panel, profile, competition, match, signal) {
+  const card = document.createElement("article");
+  card.className = "profile-match-card";
+  card.dataset.matchId = String(match.matchId || "");
+  const heading = document.createElement("h3");
+  heading.textContent = formatProfileRound(match.round);
+  const matchDate = document.createElement("span");
+  matchDate.className = "profile-match-date";
+  matchDate.textContent = `(${match.matchDate ? formatCompactDate(match.matchDate) : match.bye ? "ohne Datum" : "noch kein Termin festgelegt"})`;
+  heading.append(" ", matchDate);
+  const teams = document.createElement("p");
+  teams.className = "profile-match-teams";
+  const teamText = (team) => {
+    const names = team.names.join(" / ") || "Offen";
+    return competition.ranking === true && Number.isInteger(team.rankAtResult) && team.rankAtResult >= 0
+      ? `${names} (${team.rankAtResult})`
+      : names;
+  };
+  teams.textContent = match.bye
+    ? `Freilos für ${match.teams.flatMap((team) => team.names).join(" / ")}`
+    : match.teams.map(teamText).join(" gegen ");
+  const actions = document.createElement("div");
+  actions.className = "profile-match-actions";
+  if (match.canSetResult) {
+    const resultButton = document.createElement("button");
+    resultButton.type = "button";
+    resultButton.className = `btn-login${getUser()?.role === "admin" ? " admin-danger" : ""}`;
+    resultButton.textContent = match.status === "completed" ? "Ergebnis korrigieren" : "Ergebnis eintragen";
+    resultButton.addEventListener("click", () => openMatchResultModal("result", profile, competition, match), { signal });
+    actions.appendChild(resultButton);
+  }
+  if (match.canSetMatchAppointment) {
+    const appointmentButton = document.createElement("button");
+    appointmentButton.type = "button";
+    appointmentButton.className = `btn-login${getUser()?.role === "admin" ? " admin-danger" : ""}`;
+    appointmentButton.textContent = match.matchDate ? "Termin abändern" : "Termin eintragen";
+    appointmentButton.addEventListener("click", () => openMatchDateModal(match, profile, competition), { signal });
+    actions.appendChild(appointmentButton);
+  }
+  if (getUser()?.role === "admin" && competition.ranking === true && match.status === "completed") {
+    const repairButton = document.createElement("button");
+    repairButton.type = "button";
+    repairButton.className = "btn-login admin-ranking-danger";
+    repairButton.textContent = "Mit Rangplan korrigieren";
+    repairButton.addEventListener("click", () => openMatchResultModal("rankingRepair", profile, competition, match), { signal });
+    actions.appendChild(repairButton);
+  }
+  if (match.canAdminSetMatchEnd) {
+    const endButton = document.createElement("button");
+    endButton.type = "button";
+    endButton.className = "btn-login admin-danger";
+    endButton.textContent = "Matchende setzen";
+    endButton.addEventListener("click", () => openMatchResultModal("matchEnd", profile, competition, match), { signal });
+    actions.appendChild(endButton);
+  }
+  if (match.canAdminClear) {
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "btn-login admin-danger";
+    clearButton.textContent = "Ergebnis löschen";
+    clearButton.addEventListener("click", () => openMatchResultModal("clear", profile, competition, match), { signal });
+    actions.appendChild(clearButton);
+  }
+  card.append(heading, teams);
+  if (match.status === "completed") {
+    const status = document.createElement("p");
+    status.className = "profile-match-status";
+    const losingTeam = match.losingSide ? match.teams[match.losingSide - 1]?.names.join(" / ") : "";
+    const winningTeam = match.losingSide ? match.teams[2 - match.losingSide]?.names.join(" / ") : "";
+    status.textContent = match.completionType === "walkover" && losingTeam
+      ? formatWalkoverResult(winningTeam, losingTeam)
+      : match.completionType === "retirement" && losingTeam
+        ? `Aufgabe durch ${losingTeam}${match.result ? `: ${match.result}` : ""}`
+        : `${match.completionType === "walkover" ? "Walkover" : match.completionType === "retirement" ? "Aufgabe" : "Ergebnis"}: ${match.result || "ohne Satzergebnis"}`;
+    card.appendChild(status);
+  }
+  card.appendChild(actions);
+  panel.appendChild(card);
+}
+
+function formatProfileRound(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Match";
+  const code = raw.toUpperCase().match(/^(R\d+|AF|VF|HF|F|G\d+)(?:-P\d+)?$/)?.[1] || "";
+  if (/^R\d+$/.test(code)) {
+    const roundNames = ["", "Erste", "Zweite", "Dritte", "Vierte", "Fünfte", "Sechste", "Siebte", "Achte", "Neunte", "Zehnte"];
+    const number = Number(code.slice(1));
+    return `${roundNames[number] || `${number}.`} Runde`;
+  }
+  if (code === "AF") return "Achtelfinale";
+  if (code === "VF") return "Viertelfinale";
+  if (code === "HF") return "Halbfinale";
+  if (code === "F") return "Finale";
+  if (/^G\d+$/.test(code)) return `${code.slice(1)}. Gruppe`;
+  return `Runde ${raw}`;
+}
+
+document.getElementById("matchResultKind").addEventListener("change", updateMatchResultKind);
+matchResultModal.querySelector(".match-result-suggestion").addEventListener("click", async (event) => {
+  if (!matchResultContext || matchResultContext.action !== "result") return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  showMatchResultStatus("Scoreboard-Ergebnis wird geladen...", "info");
+  try {
+    const matchId = matchResultContext.match.matchId;
+    const responses = await Promise.all(["1", "2"].map((court) => matchResultSuggestion({ matchId, court })));
+    const candidates = responses.flatMap((response, index) => {
+      const court = String(index + 1);
+      const data = response.data;
+      if (!data?.success) throw endpointResultError(data, "Ergebnisvorschlag konnte nicht geladen werden.");
+      if (String(data.matchId || "") !== matchId
+        || String(data.source?.court || "") !== court
+        || !["court", "scoreLog", "none"].includes(data.source?.type)) {
+        const error = new Error("Ergebnisvorschlag stammt aus einer unbekannten Quelle.");
+        error.code = "SUGGESTION_SOURCE_INVALID";
+        throw error;
+      }
+      const result = String(data.suggestion?.result || "").trim();
+      return data.source.type === "none" || !result ? [] : [{ court, result }];
+    });
+    if (!candidates.length) {
+      showMatchResultStatus("Für Platz 1 und Platz 2 ist kein Ergebnis verfügbar.", "info");
+      return;
+    }
+    if (candidates.length > 1) {
+      showMatchResultStatus("Das Match wurde auf Platz 1 und Platz 2 gefunden. Bitte Ergebnis manuell eingeben.");
+      return;
+    }
+    setMatchResultScore(candidates[0].result);
+    showMatchResultStatus(`Vorschlag von Platz ${candidates[0].court} wurde übernommen. Bitte prüfen und speichern.`, "success");
+  } catch (error) {
+    diagnostic.warn("match_result_suggestion_failed", error);
+    showMatchResultStatus(errorMessage(error, "Ergebnisvorschlag konnte nicht geladen werden."));
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function openAdminRankingAction(action, profile, ranking) {
+  if (getUser()?.role !== "admin" || !ranking?.openChallenge?.matchId) {
+    window.showToast("Administratorberechtigung oder Forderung fehlt.", "error");
+    return;
+  }
+  const definitions = {
+    delete: { title: "Forderung löschen", submit: "Forderung löschen", value: "" },
+    challengeDate: { title: "Forderungsdatum ändern", submit: "Forderungsdatum ändern", value: ranking.openChallenge.challengedAt },
+  };
+  const definition = definitions[action];
+  if (!definition) return;
+  adminRankingActionContext = {
+    action,
+    matchId: String(ranking.openChallenge.matchId),
+    playerId: String(profile.id),
+    competitionId: String(ranking.competitionId),
+  };
+  const form = document.getElementById("adminRankingActionForm");
+  form.reset();
+  document.getElementById("adminRankingActionTitle").textContent = definition.title;
+  document.getElementById("adminRankingActionTarget").textContent = `${ranking.competitionName}: ${profileName(profile)} und ${ranking.openChallenge.opponentName}`;
+  document.getElementById("adminRankingActionSubmit").textContent = definition.submit;
+  const dateFields = document.getElementById("adminRankingDateFields");
+  const dayInput = document.getElementById("adminRankingDay");
+  const timeInput = document.getElementById("adminRankingTime");
+  const date = compactWallTimeParts(definition.value);
+  dateFields.hidden = action === "delete";
+  dayInput.disabled = action === "delete";
+  timeInput.disabled = action === "delete";
+  timeInput.step = "60";
+  timeInput.max = "23:59";
+  if (date) {
+    dayInput.value = `${date.year}-${date.month}-${date.day}`;
+    timeInput.value = `${date.hour}:${date.minute}`;
+  }
+  adminRankingReturnFocus = document.activeElement;
+  profileModal.inert = true;
+  profileModal.setAttribute("aria-hidden", "true");
+  openModal(adminRankingActionModal);
+  document.getElementById(action === "delete" ? "adminRankingReason" : "adminRankingDay")?.focus();
 }
 
 function calendarDayValue(date) {
@@ -399,8 +1033,9 @@ function renderMatchDateCalendar() {
     const date = new Date(matchCalendarMonth.getFullYear(), matchCalendarMonth.getMonth(), day);
     const value = dateInputValue(date);
     const timestamp = calendarDayValue(date);
-    const inOriginalWindow = timestamp >= matchDateContext.challengeDay && timestamp <= matchDateContext.finalDay;
-    const selectable = matchDateContext.previousDate
+    const inOriginalWindow = matchDateContext.ranking
+      && timestamp >= matchDateContext.challengeDay && timestamp <= matchDateContext.finalDay;
+    const selectable = matchDateContext.previousDate || !matchDateContext.ranking
       ? timestamp >= matchDateContext.today
       : inOriginalWindow;
     const button = document.createElement("button");
@@ -433,6 +1068,7 @@ function updateMatchDateHours() {
     option.disabled = !selectedDay
       || Number.isNaN(candidate.getTime())
       || candidate.getTime() < Number(matchDateContext?.earliestAt || 0)
+      || (matchDateContext?.earliestExclusive && candidate.getTime() === Number(matchDateContext.earliestAt))
       || (matchDateContext?.latestAt && candidate.getTime() > matchDateContext.latestAt);
     if (!option.disabled && !firstEnabled) firstEnabled = option.value;
   }
@@ -441,29 +1077,42 @@ function updateMatchDateHours() {
   document.querySelector('#matchDateForm button[type="submit"]').disabled = !firstEnabled;
 }
 
-function openMatchDateModal(challenge) {
-  const matchId = String(challenge?.matchId || "").trim();
+function openMatchDateModal(match, profile, competition) {
+  const matchId = String(match?.matchId || "").trim();
   if (!matchId) {
-    window.showToast("Die offene Forderung konnte nicht eindeutig zugeordnet werden.", "error");
+    window.showToast("Das Match konnte nicht eindeutig zugeordnet werden.", "error");
     return;
   }
-  const currentDate = compactDateValue(challenge.matchDate);
+  const currentDate = compactDateValue(match.matchDate);
   const dayInput = document.getElementById("rankingMatchDay");
   const hourInput = document.getElementById("rankingMatchHour");
+  const reasonFields = document.getElementById("matchDateReasonFields");
+  const reasonInput = document.getElementById("matchDateReason");
+  const admin = getUser()?.role === "admin";
   const today = new Date(Date.now());
   const now = today.getTime();
   today.setHours(0, 0, 0, 0);
-  const challengedAt = compactDateValue(challenge.challengedAt);
+  const ranking = competition?.ranking === true;
+  const challengedAt = ranking ? compactDateValue(match.challengeDate) : null;
   const finalDay = challengedAt ? new Date(challengedAt.getFullYear(), challengedAt.getMonth(), challengedAt.getDate() + 14) : today;
   matchDateContext = {
     matchId,
-    previousDate: String(challenge.matchDate || ""),
+    playerId: String(profile?.id || ""),
+    competitionId: String(competition?.competitionId || ""),
+    previousDate: String(match.matchDate || ""),
+    ranking,
+    admin,
     earliestAt: currentDate ? now : challengedAt?.getTime() || now,
+    earliestExclusive: Boolean(currentDate || !ranking),
     latestAt: currentDate || !challengedAt ? null : challengedAt.getTime() + 14 * 24 * 60 * 60 * 1000,
     today: calendarDayValue(today),
     challengeDay: challengedAt ? calendarDayValue(challengedAt) : calendarDayValue(today),
     finalDay: calendarDayValue(finalDay),
   };
+  reasonFields.hidden = !admin;
+  reasonInput.disabled = !admin;
+  reasonInput.required = admin;
+  reasonInput.value = "";
   if (currentDate) {
     dayInput.value = currentDate >= today ? dateInputValue(currentDate) : dateInputValue(today);
     hourInput.value = String(currentDate.getHours()).padStart(2, "0");
@@ -471,7 +1120,7 @@ function openMatchDateModal(challenge) {
   } else {
     dayInput.value = challengedAt ? dateInputValue(challengedAt) : "";
     hourInput.value = "18";
-    document.getElementById("matchDateTitle").textContent = "Spieltermin festlegen";
+    document.getElementById("matchDateTitle").textContent = "Termin eintragen";
   }
   const visibleDate = compactDateValue(`${dayInput.value.replaceAll("-", "").slice(2)}-0000`) || today;
   matchCalendarMonth = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), 1);
@@ -603,7 +1252,9 @@ function appendContactFields(container, profile, signal) {
 }
 
 function activateProfileTab(tab) {
-  const tabs = [...profileModal.querySelectorAll('[role="tab"]')];
+  const tablist = tab.closest('[role="tablist"]');
+  if (!tablist) return;
+  const tabs = [...tablist.children].filter((candidate) => candidate.getAttribute("role") === "tab");
   for (const candidate of tabs) {
     const selected = candidate === tab;
     candidate.setAttribute("aria-selected", String(selected));
@@ -664,24 +1315,24 @@ function renderMessageList({ append = false } = {}) {
     date.textContent = formatMessageDate(messageDate(message));
     const competition = document.createElement("span");
     competition.className = "message-row-competition";
-    competition.textContent = competitionName;
     const roundName = String(message.roundName || "").trim();
+    competition.textContent = competitionName;
+    if (roundName) {
+      const round = document.createElement("span");
+      round.className = "message-row-round";
+      round.textContent = ` - ${roundName}`;
+      competition.appendChild(round);
+    }
     const subject = document.createElement("span");
     subject.className = "message-row-subject";
     subject.textContent = subjectText;
     row.append(date, competition);
-    if (roundName) {
-      const round = document.createElement("span");
-      round.className = "message-row-round";
-      round.textContent = roundName;
-      row.appendChild(round);
-    }
     row.appendChild(subject);
     const actorName = String(message.actorName || "").trim();
     if (actorName) {
       const actor = document.createElement("span");
       actor.className = "message-row-actor";
-      actor.textContent = `Durch: ${actorName}`;
+      actor.textContent = `Eingetragen durch: ${actorName}`;
       row.appendChild(actor);
     }
     row.addEventListener("click", () => openMessageDetail(id, row), { signal: profileActionController?.signal });
@@ -758,7 +1409,7 @@ async function openMessageDetail(id, returnFocus) {
     document.getElementById("messageDetailCompetition").textContent = String(message.competitionName || "Allgemeine Meldung");
     const actorName = String(message.actorName || "").trim();
     if (actorName) {
-      actorElement.textContent = `Durch: ${actorName}`;
+    actorElement.textContent = `Eingetragen durch: ${actorName}`;
       actorElement.hidden = false;
     }
     document.getElementById("messageDetailBody").textContent = String(message.body || "");
@@ -879,17 +1530,14 @@ window.openProfileModal = async (options = {}) => {
 
   const requestedId = String(options.playerId || "").trim();
   const sessionUser = getUser();
+  if (!sessionUser) return;
   const ownProfile = !requestedId || (sessionUser && requestedId === String(sessionUser.id));
-
-  if (ownProfile && !sessionUser) {
-    window.showToast("Bitte zuerst anmelden.", "error");
-    window.openLoginModal();
-    return;
-  }
 
   const nameElement = document.getElementById("profileName");
   const textElement = document.getElementById("profileText");
   const tabsElement = document.getElementById("profileTabs");
+  const currentCompetitionTabs = document.getElementById("profileCurrentCompetitionTabs");
+  const archiveCompetitionTabs = document.getElementById("profileArchiveCompetitionTabs");
   const messagesPanel = document.getElementById("profileMessagesPanel");
   const rankingPanelsElement = document.getElementById("profileRankingPanels");
   const systemActionsElement = document.getElementById("profileSystemActions");
@@ -902,6 +1550,10 @@ window.openProfileModal = async (options = {}) => {
   nameElement.textContent = "Lade Profil...";
   textElement.textContent = "";
   tabsElement.replaceChildren();
+  currentCompetitionTabs.replaceChildren();
+  currentCompetitionTabs.hidden = true;
+  archiveCompetitionTabs.replaceChildren();
+  archiveCompetitionTabs.hidden = true;
   messagesPanel.replaceChildren();
   rankingPanelsElement.replaceChildren();
   systemActionsElement.replaceChildren();
@@ -945,30 +1597,34 @@ window.openProfileModal = async (options = {}) => {
       else textElement.textContent = "Öffentliches Spielerprofil";
     }
 
-    const rankings = Array.isArray(profile.rankings) ? profile.rankings : [];
+    const categorizedCompetitions = categorizedProfileCompetitions(profile);
+    const rankings = [...categorizedCompetitions.current, ...categorizedCompetitions.archive];
+    const currentCategoryPanel = document.createElement("section");
+    currentCategoryPanel.id = "profileCurrentCompetitionsPanel";
+    currentCategoryPanel.className = "profile-panel profile-competition-category";
+    currentCategoryPanel.setAttribute("role", "tabpanel");
+    currentCategoryPanel.hidden = true;
+    const archiveCategoryPanel = document.createElement("section");
+    archiveCategoryPanel.id = "profileArchiveCompetitionsPanel";
+    archiveCategoryPanel.className = "profile-panel profile-competition-category";
+    archiveCategoryPanel.setAttribute("role", "tabpanel");
+    archiveCategoryPanel.hidden = true;
+    rankingPanelsElement.append(currentCategoryPanel, archiveCategoryPanel);
     rankings.forEach((ranking, index) => {
       const panel = document.createElement("section");
       panel.id = `profileRankingPanel${index}`;
       panel.className = "profile-panel";
+      panel.dataset.competitionId = String(ranking.competitionId || "");
       panel.setAttribute("role", "tabpanel");
       panel.hidden = true;
-      if (ranking.status === "active") appendProfileField(panel, "Ranglistenposition", ranking.rank, "", actionSignal);
+      if (ranking.status === "active" && Number(ranking.rank) > 0) appendProfileField(panel, "Ranglistenposition", ranking.rank, "", actionSignal);
       if (ranking.openChallenge) {
         const challenge = ranking.openChallenge;
-        const opponentName = String(challenge.opponentName || "Unbekannt");
-        const opponentRank = String(challenge.opponentRank ?? "").trim();
         const challengeBlock = document.createElement("div");
         challengeBlock.className = "profile-open-challenge";
-        const directionLine = document.createElement("p");
-        directionLine.textContent = `Offene Forderung ${challenge.direction === "challenged" ? "von" : "gegen"} ${opponentName}${opponentRank ? ` (${opponentRank})` : ""}`;
         const challengedAtLine = document.createElement("p");
         challengedAtLine.textContent = `Forderung vom ${formatCompactDate(challenge.challengedAt)}`;
-        challengeBlock.append(directionLine, challengedAtLine);
-        if (challenge.matchDate) {
-          const matchDateLine = document.createElement("p");
-          matchDateLine.textContent = `Spieltermin fixiert: ${formatCompactDate(challenge.matchDate)}`;
-          challengeBlock.appendChild(matchDateLine);
-        }
+        challengeBlock.append(challengedAtLine);
         if (ownProfile) appendMatchDateCountdown(challengeBlock, challenge, actionSignal);
         panel.appendChild(challengeBlock);
       }
@@ -980,35 +1636,52 @@ window.openProfileModal = async (options = {}) => {
       actions.className = "profile-actions";
       panel.appendChild(actions);
       if (ownProfile && ranking.status === "active") {
-        if (ranking.openChallenge) {
-          const matchDateButton = document.createElement("button");
-          matchDateButton.type = "button";
-          matchDateButton.className = "btn-login";
-          matchDateButton.textContent = ranking.openChallenge.matchDate ? "Termin abändern" : "Spieltermin festlegen";
-          matchDateButton.addEventListener("click", () => openMatchDateModal(ranking.openChallenge), { signal: actionSignal });
-          actions.appendChild(matchDateButton);
-        }
-        const withdrawButton = document.createElement("button");
-        withdrawButton.type = "button";
-        withdrawButton.className = "btn-login";
-        withdrawButton.textContent = "Raushängen";
-        withdrawButton.disabled = ranking.canWithdraw !== true && !ranking.openChallenge;
-        if (ranking.openChallenge) {
-          withdrawButton.addEventListener("click", () => {
-            openModal(withdrawalBlockedModal);
-            withdrawalBlockedModal.querySelector(".close")?.focus();
-          }, { once: true, signal: actionSignal });
-        } else if (ranking.canWithdraw === true) {
+        if (ranking.canWithdraw === true) {
+          const withdrawButton = document.createElement("button");
+          withdrawButton.type = "button";
+          withdrawButton.className = "btn-login";
+          withdrawButton.textContent = "Raushängen";
           withdrawButton.addEventListener("click", () => {
             window.openWithdrawModal({ rank: ranking.rank, bewerbId: ranking.competitionId });
           }, { once: true, signal: actionSignal });
+          actions.appendChild(withdrawButton);
         }
-        actions.appendChild(withdrawButton);
       } else if (ranking.canChallenge === true) {
         appendChallengeButton(actions, profile, ranking, actionSignal);
       }
-      rankingPanelsElement.appendChild(panel);
+      if (sessionUser?.role === "admin" && ranking.openChallenge) {
+        for (const [action, label] of [
+          ["delete", "Forderung löschen"],
+          ["challengeDate", "Forderungsdatum ändern"],
+        ]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "btn-login admin-ranking-danger";
+          button.textContent = label;
+          button.addEventListener("click", () => openAdminRankingAction(action, profile, ranking), { signal: actionSignal });
+          actions.appendChild(button);
+        }
+      }
+      for (const match of Array.isArray(ranking.matches) ? ranking.matches : []) {
+        appendMatchCard(panel, profile, ranking, match, actionSignal);
+      }
+      const current = index < categorizedCompetitions.current.length;
+      const categoryPanel = current ? currentCategoryPanel : archiveCategoryPanel;
+      const categoryTabs = current ? currentCompetitionTabs : archiveCompetitionTabs;
+      const categoryIndex = current ? index : index - categorizedCompetitions.current.length;
+      categoryPanel.appendChild(panel);
+      appendProfileTab(categoryTabs, ranking.competitionName, panel, categoryIndex === 0, actionSignal);
     });
+    for (const [competitions, panel] of [
+      [categorizedCompetitions.current, currentCategoryPanel],
+      [categorizedCompetitions.archive, archiveCategoryPanel],
+    ]) {
+      if (competitions.length) continue;
+      const empty = document.createElement("p");
+      empty.className = "profile-competition-empty";
+      empty.textContent = "Keine Bewerbe enthalten";
+      panel.appendChild(empty);
+    }
 
     if (!ownProfile && sessionUser?.role === "admin") {
       const setupButton = document.createElement("button");
@@ -1075,7 +1748,15 @@ window.openProfileModal = async (options = {}) => {
     }
 
     const systemPanel = document.getElementById("profileSystemPanel");
-    appendProfileTab(tabsElement, "System", systemPanel, true, actionSignal);
+    const hideCompetitionTabs = () => {
+      currentCompetitionTabs.hidden = true;
+      archiveCompetitionTabs.hidden = true;
+    };
+    const showCompetitionTabs = (tabs) => {
+      currentCompetitionTabs.hidden = tabs !== currentCompetitionTabs || !currentCompetitionTabs.childElementCount;
+      archiveCompetitionTabs.hidden = tabs !== archiveCompetitionTabs || !archiveCompetitionTabs.childElementCount;
+    };
+    appendProfileTab(tabsElement, "System", systemPanel, true, actionSignal, hideCompetitionTabs);
     if (ownProfile) {
       let unreadCount = 0;
       let revision = null;
@@ -1103,16 +1784,42 @@ window.openProfileModal = async (options = {}) => {
         false,
         actionSignal,
         () => {
+          hideCompetitionTabs();
           if (!messageState?.loaded) loadMessages();
         },
       );
     }
-    [...rankingPanelsElement.children].forEach((panel, index) => {
-      appendProfileTab(tabsElement, rankings[index].competitionName, panel, false, actionSignal);
-    });
+    const currentCategoryTab = appendProfileTab(
+      tabsElement,
+      "Aktuell",
+      currentCategoryPanel,
+      false,
+      actionSignal,
+      () => showCompetitionTabs(currentCompetitionTabs),
+    );
+    const archiveCategoryTab = appendProfileTab(
+      tabsElement,
+      "Archiv",
+      archiveCategoryPanel,
+      false,
+      actionSignal,
+      () => showCompetitionTabs(archiveCompetitionTabs),
+    );
     if (adminActionsElement.childElementCount) {
       adminPanel.hidden = true;
-      appendProfileTab(tabsElement, "Admin", adminPanel, false, actionSignal);
+      appendProfileTab(tabsElement, "Admin", adminPanel, false, actionSignal, hideCompetitionTabs);
+    }
+    const requestedCompetitionId = String(options.competitionId || "");
+    if (requestedCompetitionId) {
+      const requestedPanel = [...rankingPanelsElement.querySelectorAll("[data-competition-id]")]
+        .find((panel) => panel.dataset.competitionId === requestedCompetitionId);
+      const requestedTab = requestedPanel && document.getElementById(`${requestedPanel.id}Tab`);
+      if (requestedTab) {
+        const current = currentCategoryPanel.contains(requestedPanel);
+        activateProfileTab(current ? currentCategoryTab : archiveCategoryTab);
+        showCompetitionTabs(current ? currentCompetitionTabs : archiveCompetitionTabs);
+        activateProfileTab(requestedTab);
+      }
     }
   } catch (error) {
     if (requestGeneration !== profileRequestGeneration) return;
@@ -1136,6 +1843,8 @@ subscribeAuth((user) => {
     closeModal(profileModal);
     closeModal(resetProofModal);
     closeModal(adminPasswordModal);
+    closeModal(adminRankingActionModal);
+    closeModal(matchResultModal);
   }
   modalAuthIdentity = identity;
   if (user) return;
@@ -1144,6 +1853,8 @@ subscribeAuth((user) => {
   closeModal(adminPasswordModal);
   closeModal(resetProofModal);
   closeModal(matchDateModal);
+  closeModal(adminRankingActionModal);
+  closeModal(matchResultModal);
   closeModal(withdrawModal);
   closeModal(profileModal);
 });
@@ -1483,23 +2194,185 @@ document.getElementById("matchDateForm").addEventListener("submit", async (event
     return;
   }
   const context = { ...matchDateContext };
-  const operationKey = `ranking:match-date:${context.matchId}:${matchDate}`;
+  const reason = form.elements.reason.value.trim();
+  if (context.admin && !reason) {
+    window.showToast("Bitte gib einen Grund an.", "error");
+    form.elements.reason.focus();
+    return;
+  }
+  const operationKey = `match:appointment:${context.matchId}:${matchDate}:${context.admin ? reason : ""}`;
   setModalBusy(form, true);
   submitButton.textContent = "Wird übernommen...";
   try {
-    const result = await setRankingMatchDate({ operationId: getOperationId(operationKey), matchId: context.matchId, matchDate });
+    const request = { operationId: getOperationId(operationKey), matchId: context.matchId, matchDate };
+    if (context.admin) request.reason = reason;
+    const result = await (context.admin ? adminSetMatchAppointment : setMatchAppointment)(request);
     if (!result.data?.success) throw new Error(errorMessage(result.data, "Spieltermin konnte nicht gespeichert werden."));
     releaseOperationId(operationKey);
     closeModal(matchDateModal);
     window.showToast(context.previousDate ? "Der Spieltermin wurde geändert." : "Der Spieltermin wurde festgelegt.", "success");
-    window.openProfileModal();
+    window.openProfileModal({ playerId: context.playerId, competitionId: context.competitionId });
   } catch (error) {
     releaseOperationId(operationKey, error);
-    diagnostic.error("ranking_match_date_failed", error);
+    diagnostic.error("match_date_action_failed", error);
     window.showToast(errorMessage(error, "Spieltermin konnte nicht gespeichert werden."), "error");
   } finally {
     setModalBusy(form, false);
     submitButton.textContent = "Übernehmen";
+  }
+});
+
+document.getElementById("matchResultForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!matchResultContext) return;
+  const form = event.currentTarget;
+  const context = { ...matchResultContext, match: { ...matchResultContext.match } };
+  const payload = {
+    matchId: context.match.matchId,
+    expectedFingerprint: context.match.fingerprint,
+  };
+  let endpoint;
+  if (context.action === "result" || context.action === "rankingRepair") {
+    payload.kind = form.elements.kind.value;
+    if (payload.kind !== "walkover") {
+      try {
+        payload.result = serializeMatchResultScore();
+      } catch (error) {
+        showMatchResultStatus(error.message);
+        return;
+      }
+      if (payload.kind === "regular" && !payload.result) {
+        showMatchResultStatus("Bitte geben Sie ein vollständiges Ergebnis ein.");
+        return;
+      }
+    }
+    if (payload.kind !== "regular") {
+      payload.losingSide = Number(form.elements.losingSide.value);
+      if (![1, 2].includes(payload.losingSide)) {
+        showMatchResultStatus("Bitte wählen Sie die Verliererseite aus.");
+        return;
+      }
+    }
+    if (context.match.status === "open" && payload.kind !== "walkover") {
+      payload.matchStart = compactResultDate(form.elements.matchStart.value);
+      payload.matchEnd = compactResultDate(form.elements.matchEnd.value);
+      if (!payload.matchStart || !payload.matchEnd) {
+        showMatchResultStatus("Bitte geben Sie einen gültigen Matchstart und ein gültiges Matchende an.");
+        return;
+      }
+    }
+    if (context.action === "rankingRepair") {
+      payload.reason = form.elements.reason.value.trim();
+      if (!payload.reason) {
+        showMatchResultStatus("Bitte geben Sie einen Grund an.");
+        return;
+      }
+      payload.rankPlan = [...document.querySelectorAll("#matchResultRankPlan input")].map((input) => ({
+        personId: input.dataset.personId,
+        expectedRank: Number(input.dataset.expectedRank),
+        newRank: Number(input.value),
+      }));
+      if (payload.rankPlan.length !== context.rankingMembers.length
+        || payload.rankPlan.some(({ expectedRank, newRank }) => !Number.isInteger(newRank) || newRank < (expectedRank === 0 ? 0 : 1) || newRank > 10000)) {
+        showMatchResultStatus("Aktive Mitglieder benötigen einen Zielrang von 1 bis 10000; bereits Rausgehängte dürfen auf Rang 0 bleiben.");
+        return;
+      }
+      const positiveRanks = payload.rankPlan.map(({ newRank }) => newRank).filter((rank) => rank > 0);
+      if (new Set(positiveRanks).size !== positiveRanks.length) {
+        showMatchResultStatus("Positive Zielränge müssen eindeutig sein.");
+        return;
+      }
+      endpoint = adminCorrectRankingResult;
+    } else endpoint = setMatchResult;
+  } else {
+    payload.reason = form.elements.reason.value.trim();
+    if (!payload.reason) {
+      showMatchResultStatus("Bitte geben Sie einen Grund an.");
+      return;
+    }
+    if (context.action === "matchEnd") {
+      payload.matchEnd = compactResultDate(form.elements.matchEnd.value);
+      if (!payload.matchEnd) {
+        showMatchResultStatus("Bitte geben Sie ein gültiges Matchende an.");
+        return;
+      }
+      endpoint = adminSetMatchEnd;
+    } else {
+      endpoint = adminClearMatchResult;
+    }
+  }
+  const operationKey = `match-result:${context.action}:${context.match.matchId}:${JSON.stringify(payload)}`;
+  payload.operationId = getOperationId(operationKey);
+  const submit = document.getElementById("matchResultSubmit");
+  const originalLabel = submit.textContent;
+  setModalBusy(form, true);
+  submit.textContent = "Wird gespeichert...";
+  try {
+    const response = await endpoint(payload);
+    if (!response.data?.success) throw endpointResultError(response.data, "Matchänderung konnte nicht gespeichert werden.");
+    releaseOperationId(operationKey);
+    closeModal(matchResultModal);
+    window.showToast("Matchänderung wurde gespeichert.", "success");
+    await window.openProfileModal({ playerId: context.playerId, competitionId: context.competitionId });
+  } catch (error) {
+    releaseOperationId(operationKey, error);
+    diagnostic.error("match_result_action_failed", error);
+    showMatchResultStatus(error?.code === "RANKING_REPAIR_REQUIRED"
+      ? "Ranglistenstand muss mit einem vollständigen Rangplan administrativ repariert werden."
+      : errorMessage(error, "Matchänderung konnte nicht gespeichert werden."));
+  } finally {
+    setModalBusy(form, false);
+    if (matchResultContext) submit.textContent = originalLabel;
+  }
+});
+
+document.getElementById("adminRankingActionForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const reason = form.elements.adminRankingReason.value.trim();
+  if (!adminRankingActionContext || getUser()?.role !== "admin") {
+    window.showToast("Administratorberechtigung oder Forderung fehlt.", "error");
+    closeModal(adminRankingActionModal);
+    return;
+  }
+  if (!reason) {
+    window.showToast("Bitte geben Sie einen Grund an.", "error");
+    form.elements.adminRankingReason.focus();
+    return;
+  }
+  const context = { ...adminRankingActionContext };
+  const date = context.action === "delete"
+    ? ""
+    : compactAdminRankingDate(form.elements.adminRankingDay.value, form.elements.adminRankingTime.value, false);
+  if (context.action !== "delete" && !date) {
+    window.showToast("Bitte wählen Sie einen gültigen Zeitpunkt aus.", "error");
+    return;
+  }
+  const operationKey = `ranking:admin:${context.action}:${context.matchId}:${date}:${reason}`;
+  const request = { operationId: getOperationId(operationKey), matchId: context.matchId, reason };
+  const endpoint = context.action === "delete"
+    ? adminDeleteRankingChallenge
+    : adminSetRankingChallengeDate;
+  if (context.action === "challengeDate") request.challengeDate = date;
+  const submitButton = form.querySelector('button[type="submit"]');
+  setModalBusy(form, true);
+  submitButton.textContent = "Wird ausgeführt...";
+  try {
+    const result = await endpoint(request);
+    if (!result.data?.success) throw new Error(errorMessage(result.data, "Adminaktion konnte nicht ausgeführt werden."));
+    releaseOperationId(operationKey);
+    closeModal(adminRankingActionModal);
+    window.showToast(context.action === "delete" ? "Die Forderung wurde gelöscht." : "Der Zeitpunkt wurde geändert.", "success");
+    await window.openProfileModal({ playerId: context.playerId, competitionId: context.competitionId });
+  } catch (error) {
+    releaseOperationId(operationKey, error);
+    diagnostic.error("ranking_admin_action_failed", error);
+    window.showToast(errorMessage(error, "Adminaktion konnte nicht ausgeführt werden."), "error");
+  } finally {
+    setModalBusy(form, false);
+    if (adminRankingActionContext) submitButton.textContent = context.action === "delete"
+      ? "Forderung löschen"
+      : "Forderungsdatum ändern";
   }
 });
 
@@ -1577,6 +2450,29 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab" && !matchResultModal.classList.contains("hidden")) {
+    const focusable = [...matchResultModal.querySelectorAll("button:not([hidden]):not(:disabled), input:not([hidden]):not(:disabled), select:not([hidden]):not(:disabled), textarea:not([hidden]):not(:disabled)")]
+      .filter((element) => !element.closest("[hidden]"));
+    if (!focusable.length) return;
+    const currentIndex = focusable.indexOf(document.activeElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusable[nextIndex].focus();
+    return;
+  }
+  if (event.key === "Tab" && !adminRankingActionModal.classList.contains("hidden")) {
+    const focusable = [...adminRankingActionModal.querySelectorAll("button:not([hidden]):not(:disabled), input:not([hidden]):not(:disabled), select:not([hidden]):not(:disabled), textarea:not([hidden]):not(:disabled)")];
+    if (!focusable.length) return;
+    const currentIndex = focusable.indexOf(document.activeElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+      : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusable[nextIndex].focus();
+    return;
+  }
   if (event.key === "Tab" && !messageDetailModal.classList.contains("hidden")) {
     const focusable = [...messageDetailModal.querySelectorAll("button:not([hidden]):not(:disabled)")];
     if (!focusable.length) return;

@@ -4,7 +4,7 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 const { AppError } = require("./errors.js");
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 7;
 
 class MessagingRepository {
   constructor(filename, { now = Date.now } = {}) {
@@ -31,8 +31,23 @@ class MessagingRepository {
     } else if (version === 2) {
       this.migrateV2();
       this.migrateV3();
+      this.migrateV4();
+      this.migrateV5();
+      this.migrateV6();
     } else if (version === 3) {
       this.migrateV3();
+      this.migrateV4();
+      this.migrateV5();
+      this.migrateV6();
+    } else if (version === 4) {
+      this.migrateV4();
+      this.migrateV5();
+      this.migrateV6();
+    } else if (version === 5) {
+      this.migrateV5();
+      this.migrateV6();
+    } else if (version === 6) {
+      this.migrateV6();
     } else if (version !== SCHEMA_VERSION) {
       throw new AppError("MESSAGING_SCHEMA_UNSUPPORTED", "Nachrichtenschema kann nicht migriert werden", 503);
     }
@@ -56,6 +71,7 @@ class MessagingRepository {
         inserted_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS competition_events_history ON competition_events(competition_id, created_at DESC, event_id DESC);
+      CREATE INDEX IF NOT EXISTS competition_events_created ON competition_events(created_at DESC, event_id DESC);
       CREATE INDEX IF NOT EXISTS competition_events_source ON competition_events(source, source_id);
       CREATE TABLE IF NOT EXISTS event_participants (
         event_id TEXT NOT NULL REFERENCES competition_events(event_id) ON DELETE CASCADE,
@@ -98,7 +114,7 @@ class MessagingRepository {
         user_id TEXT PRIMARY KEY,
         revision INTEGER NOT NULL
       );
-      PRAGMA user_version = 4;
+      PRAGMA user_version = 7;
     `);
   }
 
@@ -132,6 +148,81 @@ class MessagingRepository {
         PRAGMA user_version = 4;
         COMMIT;
       `);
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV4() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS competition_events_created ON competition_events(created_at DESC, event_id DESC);
+        PRAGMA user_version = 5;
+        COMMIT;
+      `);
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV5() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const events = this.db.prepare(`
+        SELECT event_id, detail, result
+        FROM competition_events
+        WHERE event_type IN ('result', 'result_corrected')
+          AND (detail LIKE 'Abschlussart: walkover%' OR detail LIKE 'Abschlussart: retirement%')
+      `).all();
+      const participants = this.db.prepare("SELECT user_id, body FROM event_participants WHERE event_id = ?");
+      const updateParticipant = this.db.prepare("UPDATE event_participants SET body = ? WHERE event_id = ? AND user_id = ?");
+      const updateEvent = this.db.prepare("UPDATE competition_events SET detail = ?, result = ? WHERE event_id = ?");
+      for (const event of events) {
+        const walkover = event.detail.startsWith("Abschlussart: walkover");
+        const displayResult = walkover ? "Walkover" : `${event.result ? `${event.result} ` : ""}(Aufgabe)`;
+        for (const participant of participants.all(event.event_id)) {
+          const body = walkover
+            ? participant.body.replace(". Abschlussart: Walkover.", " durch Walkover.")
+            : event.result
+              ? participant.body.replace(` Ergebnis: ${event.result}.`, ` Ergebnis: ${displayResult}.`)
+              : participant.body.replace(". Abschlussart: Aufgabe.", ". Ergebnis: (Aufgabe).");
+          updateParticipant.run(body, event.event_id, participant.user_id);
+        }
+        const remainingDetails = event.detail.split("; ").filter((part) => !part.startsWith("Abschlussart: ") && !part.startsWith("Ergebnis: "));
+        updateEvent.run([`Ergebnis: ${displayResult}`, ...remainingDetails].join("; "), displayResult, event.event_id);
+      }
+      this.db.exec("PRAGMA user_version = 6; COMMIT");
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV6() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const events = this.db.prepare(`
+        SELECT event_id, summary, detail
+        FROM competition_events
+        WHERE event_type IN ('result', 'result_corrected') AND result = 'Walkover'
+      `).all();
+      const participants = this.db.prepare("SELECT user_id, body FROM event_participants WHERE event_id = ?");
+      const updateParticipant = this.db.prepare("UPDATE event_participants SET body = ? WHERE event_id = ? AND user_id = ?");
+      const updateEvent = this.db.prepare("UPDATE competition_events SET summary = ?, detail = REPLACE(detail, 'Ergebnis: Walkover', 'Ergebnis: W.O.'), result = 'W.O.' WHERE event_id = ?");
+      for (const event of events) {
+        for (const participant of participants.all(event.event_id)) {
+          const body = participant.body.startsWith("Du gewinnst ")
+            ? participant.body.replace(/^Du gewinnst das Match gegen (.+) durch Walkover\./, "Du gewinnst durch W.O. von $1.")
+            : participant.body.replace(/^Du verlierst das Match gegen .+ durch Walkover\./, "Du verlierst durch W.O.");
+          updateParticipant.run(body, event.event_id, participant.user_id);
+        }
+        const summary = event.summary.replace(/^(.+) gewinnt gegen (.+)\.$/, "$1 gewinnt durch W.O. von $2.");
+        updateEvent.run(summary, event.event_id);
+      }
+      this.db.exec("PRAGMA user_version = 7; COMMIT");
     } catch (error) {
       try { this.db.exec("ROLLBACK"); } catch {}
       throw error;
@@ -398,6 +489,46 @@ class MessagingRepository {
       events: page.map(({ event_id: eventId }) => this.getEvent(eventId)),
       nextCursor: hasMore ? this.historyCursor(scope, page.at(-1).event_id) : null,
     };
+  }
+
+  reportProjections(fromMs, toMs) {
+    this.ensureOpen();
+    const rows = this.db.prepare(`${this.projectionSelect()}
+      WHERE e.created_at >= ? AND e.created_at < ?
+      ORDER BY e.created_at DESC, p.message_id DESC`).all(fromMs, toMs);
+    const deliveries = this.db.prepare(`SELECT d.event_id, d.user_id, d.channel, d.status, d.updated_at
+      FROM event_deliveries d
+      JOIN competition_events e ON e.event_id = d.event_id
+      WHERE e.created_at >= ? AND e.created_at < ?
+      ORDER BY d.event_id, d.user_id, d.channel`).all(fromMs, toMs);
+    const deliveriesByParticipant = new Map();
+    for (const row of deliveries) {
+      const key = `${row.event_id}\0${row.user_id}`;
+      if (!deliveriesByParticipant.has(key)) deliveriesByParticipant.set(key, []);
+      deliveriesByParticipant.get(key).push({ channel: row.channel, status: row.status, updatedAt: Number(row.updated_at) });
+    }
+    return rows.map((row) => ({
+      id: row.message_id,
+      eventId: row.event_id,
+      competitionId: row.competition_id || null,
+      recipientId: row.user_id,
+      recipientName: row.display_name,
+      participantRole: row.participant_role,
+      createdAt: Number(row.created_at),
+      projectionType: row.projection_type,
+      subject: row.subject,
+      body: row.body,
+      acknowledgedAt: row.acknowledged_at === null ? null : Number(row.acknowledged_at),
+      eventType: row.event_type,
+      source: row.source,
+      sourceId: row.source_id,
+      actorId: row.actor_id,
+      actorName: row.actor_name,
+      summary: row.summary,
+      detail: row.detail,
+      result: row.result,
+      deliveries: deliveriesByParticipant.get(`${row.event_id}\0${row.user_id}`) || [],
+    }));
   }
 
   competitionHistory(competitionId, options) {

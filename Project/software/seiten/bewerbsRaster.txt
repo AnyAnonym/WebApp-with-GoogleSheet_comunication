@@ -6,8 +6,9 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   JS:   Frontend/JS/bewerbsRaster.js, bei Gruppenansicht zusaetzlich RoundRobin.js
   Zeigt dynamische Runden als CSS-Grid mit SVG-Verbindungen. Rastergroesse und
   RoundRobin-Faehigkeit stammen aus der Bewerbsart; Spalten werden anhand von Namen
-  und Ergebnissen bemessen. Fuer breite Raster scrollt das gesamte Dokument
-  horizontal, nicht nur ein innerer Rastercontainer.
+  und Ergebnissen bemessen. Bei breiten Rastern ist ausschliesslich der innere
+  Rastercontainer horizontal scrollbar; Seite, Ueberschrift und Profilmodal
+  bleiben dadurch im sichtbaren Viewport verankert.
   Verbindliche beziehungsweise offene sportliche Regeln stehen in
   `Project/Regelwerk/Spielbetrieb/KO-BEWERBE.txt`.
 
@@ -24,13 +25,21 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
 -- Bedienung --
   Pflichtparameter `?id=<bewerbId>`, optional `?paarungslayout=<0-5>` fuer die
   eingebettete RoundRobin-Ansicht. Bei RoundRobin-Bewerben kann zwischen Raster
-  und Gruppe gewechselt werden. Nur eine ID aus der geladenen Spielerliste ist als
-  Spieler anklickbar und oeffnet das gemeinsame Profilmodal: anonym nur ID/Name,
-  angemeldet zusaetzlich E-Mail, Telefon und Geburtsdatum. `PRE`, `BYE` und
-  unbekannte Platzhalter bleiben ohne Profilaktion. Nur Admins sehen bei fremden
-  Profilen die statusabhaengige Aktion zum Freigeben beziehungsweise Aufheben der
+  und Gruppe gewechselt werden. Anonym sind bekannte Spielernamen reine, nicht
+  fokussierbare Anzeige. Nach erfolgreicher Anmeldung ist jeder bekannte Spieler
+  per Maus und Tastatur als eigene Profilaktion bedienbar; bei Doppeln sind beide
+  Partner getrennte Namensbuttons mit eigener Personen-ID. Ergebnisbereich,
+  Teamseparator, Markierungen und Baumposition bleiben davon getrennt. `PRE`,
+  `BYE`, unbekannte IDs und leere Slots bleiben ohne Profilaktion. Ein veralteter
+  oder direkter anonymer Modalaufruf bleibt geschlossen. Nur Admins sehen bei
+  fremden Profilen die statusabhaengige Aktion zum Freigeben beziehungsweise Aufheben der
   erstmaligen Passwortvergabe sowie Reset-Code-Erstellung und direktes
-  Passwortsetzen.
+  Passwortsetzen. Das gemeinsame Profilmodal zeigt ausserdem die in
+  `Project/software/seiten/players.txt` dokumentierten Matchkarten und
+  Ergebnis- und Terminaktionen; der KO-Baum selbst erhaelt keine Aktionsbuttons.
+  Beteiligte terminieren ihr offenes, vollstaendig besetztes Match im Profilmodal
+  auf eine zukuenftige volle Stunde von 06:00 bis 23:00 Uhr; Administratoren
+  duerfen dies fuer jedes solche Match mit Pflichtgrund.
 
 -- Darstellung und Sicherheit --
   Einzel/Doppel, BYE/PRE, die exakt kleingeschriebenen Marker [wo] und [ret],
@@ -48,3 +57,21 @@ Turnierraster / KO-Baumansicht - Bracket eines Bewerbs
   ist. Die leere Reserve bleibt unsichtbar und ohne Bedienaktion; dadurch behalten
   die Matchboxen insbesondere bei einem Rasterstart im Halbfinale vor und nach
   einer Terminsetzung denselben Abstand.
+  Runden werden ausgeschrieben, etwa als `Vorrunde`, `Erste Runde`,
+  `Achtelfinale`, `Viertelfinale`, `Halbfinale` oder `Finale`; interne
+  Paarungsnummern bestimmen nur die Baumposition und werden nicht angezeigt.
+  Walkover und Aufgabe erzeugen keine zusaetzliche Abschlusszeile. `wo` und `ret`
+  erscheinen ausschliesslich als Badge am betroffenen Namen, vorhandene
+  Satzergebnisse ausschliesslich in den beiden Spielerzeilen. Damit bleiben
+  Matchboxen und Rasterzeilen kompakt.
+
+-- Ergebnisfortschreibung --
+  Alle Rastermatches muessen vorab mit eindeutiger ID und passendem Rundencode
+  existieren. Ein Ergebniswrite uebernimmt die Gewinnerseite automatisch in den
+  berechneten Slot des Folgematches. Eine Korrektur ersetzt nur die aus diesem
+  Match stammende Seite und ist gesperrt, sobald das Folgematch irgendein
+  `MatchDate` besitzt, abgeschlossen oder der Slot abweichend belegt ist. Eine
+  administrative Ergebnisloeschung entfernt
+  die propagierte Seite; bei rueckwaertigen Korrekturen werden deshalb zuerst die
+  Ergebnisse spaeterer Runden geloescht. RoundRobin-Bewerbe verwenden diese
+  KO-Propagation auch bei numerischer Rasterfunktion nicht.

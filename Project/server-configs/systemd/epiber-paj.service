@@ -13,8 +13,9 @@ Type=simple
 User=paj
 WorkingDirectory=/srv/http/ePiber/paj/Backend
 EnvironmentFile=/srv/http/ePiber/paj/Backend/.env
+EnvironmentFile=-/etc/epiber-observability/messaging-api.env
 LoadCredential=google-service-account:/srv/http/ePiber/paj/Backend/epiberpaj-5032a34639bf.json
-ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=paj LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at:8081 SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-paj/state.sqlite SCORELOG_FILE=/var/lib/epiber-paj/scorelog.sqlite AUDITLOG_FILE=/var/lib/epiber-paj/audit.sqlite MESSAGING_FILE=/var/lib/epiber-paj/messaging.sqlite GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
+ExecStart=/usr/bin/env NODE_ENV=production TZ=Europe/Vienna INSTANCE_ID=paj LISTEN_HOST=127.0.0.1 PUBLIC_ORIGIN=https://epiber.at:8081 SHUTDOWN_GRACE_MS=90000 STATE_FILE=/var/lib/epiber-paj/state.sqlite SCORELOG_FILE=/var/lib/epiber-paj/scorelog.sqlite AUDITLOG_FILE=/var/lib/epiber-paj/audit.sqlite MESSAGING_FILE=/var/lib/epiber-paj/messaging.sqlite MESSAGING_REPORT_DEPLOYMENT=paj GOOGLE_APPLICATION_CREDENTIALS=%d/google-service-account /usr/bin/node server.js
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=epiber-paj

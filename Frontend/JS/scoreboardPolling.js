@@ -247,7 +247,7 @@ function createMatchEntry(row, indexes, maps, upcoming) {
   ));
   if (!upcoming) {
     const result = String(row[ergebnisIdx] || "").replace(/\((\d+)\)/g, "").trim();
-    content.append(createElement("div", "ae-result", result || "—"));
+    content.append(createElement("div", "ae-result", result));
   }
   entry.append(createElement("div", "ae-header", headerText), content);
   return entry;

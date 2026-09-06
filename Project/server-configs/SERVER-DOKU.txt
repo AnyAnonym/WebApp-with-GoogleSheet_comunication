@@ -1,7 +1,7 @@
 ================================================================================
 SERVER-DOKU.txt - Verzeichnis-Dokumentation: server-configs/
 ================================================================================
-Letzte Aenderung: 19.08.2026
+Letzte Aenderung: 06.09.2026
 
 Dieses Verzeichnis enthaelt die kanonischen Vorlagen und Betriebsdokumente fuer
 die drei ePiber-Systeme Live (piber), PAJ und PK.
@@ -64,8 +64,12 @@ Unix-Socket weiterhin mit seinem unveraenderten Querystring.
 Caddy stellt Grafanas nicht vertraulichen Metrikpfad fuer Prometheus getrennt auf
 `127.0.0.1:3001` bereit. `/metrics` bleibt von allen externen Matchern
 ausgeschlossen.
+Die internen Messaging-Berichte laufen ausschliesslich auf den ohnehin an
+Loopback gebundenen Live-/PAJ-Backends unter `/internal/messaging-report` und
+verlangen zusaetzlich einen gemeinsamen Maschinen-Bearer. Caddy beantwortet
+`/internal/*` auf allen drei Browser-Origins explizit mit 404.
 
-Der Sollstand provisioniert sechs Dashboards, darunter `ePiber
+Der Sollstand provisioniert neun Dashboards, darunter `ePiber
 Personennormalisierung`. Dessen Auditpanel zeigt kontrolliert Adminname/-ID,
 Ziel-Personen-ID und resultierenden Zielnamen. Nur Aktiv und Rolle enthalten
 kanonische Alt-/Neuwerte; fuer andere Normalisierungsfelder erscheint allein der
@@ -75,11 +79,20 @@ einzelnen Platz die hoechstens 14 Tage zurueckreichenden Scoreaenderungen und
 Court-Snapshots. Match-ID, Bewerb und Anzeigenamen der Paarung bleiben
 kontrollierte JSON-Felder und werden weder Loki-Labels noch Teil einer
 zusaetzlichen dauerhaften Historie.
+Das neunte Dashboard `ePiber Persoenliche Meldungen` verwendet das signierte,
+exakt auf `4.0.0` gepinnte Infinity-Plugin. Seine nicht editierbare Datasource
+darf nur `http://127.0.0.1:8080` und `http://127.0.0.1:8083` ansprechen. Sie
+projiziert fuer hoechstens 31 Tage vertrauliche Meldungsdetails direkt aus der
+jeweiligen `messaging.sqlite`; private Empfaenger-, Text-, Ereignis-,
+Quittierungs- und Zustellfelder werden weder nach Loki noch nach Prometheus
+exportiert.
 
 PK bleibt als Anwendungssystem und Caddy-Origin dokumentiert, ist im aktuellen
 Observability-Stand aber deaktiviert: Port 8084 wird nicht gescraped, PK-Journale
 und -Access-Logs werden nicht gesammelt und PK-Sessions autorisieren Grafana nicht.
-Caddy sperrt dort den internen Authpfad explizit mit 404. Gegenueber dem
+Caddy sperrt dort den internen Authpfad und wie auf Live/PAJ alle `/internal/*`-
+Pfade explizit mit 404. Die PK-Unit liest kein Messaging-Credential und aktiviert
+keinen Reporting-Endpunkt. Gegenueber dem
 installierten PK-Caddy-Iststand ist das die einzige Verhaltensaenderung.
 
 Zu den HTTP-Routen gehoeren `POST /api/password-setup` fuer die
@@ -130,6 +143,13 @@ LOKALE, NICHT VERSIONIERTE BETRIEBSDATEN
     Root-only, Modus 0600; enthaelt das lokale Break-glass-Passwort, Grafanas
     Secret-Key und die zwingend deaktivierte SMTP-Konfiguration. Keine Werte
     daraus werden versioniert.
+
+  /etc/epiber-observability/messaging-api.env
+    Gemeinsames Maschinen-Credential fuer Grafana, Live und PAJ, `root:root` und
+    Modus 0600. Es enthaelt `MESSAGING_REPORT_ENABLED=true` sowie genau einen
+    gemeinsamen `EPIBER_OBSERVABILITY_API_TOKEN` mit 43 bis 128 Base64url-Zeichen
+    aus `A-Z`, `a-z`, `0-9`, `_` und `-`. Der Wert wird nicht versioniert,
+    dokumentiert oder ausgegeben. PK liest die Datei nicht.
 
   /var/lib/grafana/grafana.db
     Grafana-eigene SQLite/WAL fuer Benutzer, Dashboards und 30 Tage

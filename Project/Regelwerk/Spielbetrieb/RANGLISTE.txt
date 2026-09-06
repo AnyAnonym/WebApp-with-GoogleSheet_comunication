@@ -34,6 +34,11 @@ vom Geforderten nicht abgelehnt und von keiner Seite abgebrochen werden. Sie wir
 nur durch ein regulaer beendetes Match, einen Walkover oder ein Retirement
 abgeschlossen. [Bestaetigt]
 
+Als ausdrueckliche administrative Korrekturausnahme darf ein Administrator eine
+irrtuemlich angelegte oder fachlich falsche offene Forderung mit Pflichtgrund
+loeschen. Dies ist weder ein Abbruchrecht der beteiligten Spieler noch ein
+sportlicher Matchabschluss. [Bestaetigt]
+
 Ein regelwidriger, unvollstaendiger oder technisch fehlgeschlagener
 Bedienversuch erzeugt keine Forderung und ist daher keine Ablehnung durch den
 Geforderten. Sobald die Forderung erfolgreich angelegt wurde, ist sie fuer beide
@@ -64,6 +69,15 @@ Der Termin wird zwischen beiden Spielern muendlich, telefonisch, per Chat oder
 auf andere geeignete Weise vereinbart. Einer der beiden Spieler muss den
 vereinbarten Termin im System festhalten. Die konkrete Bedienfunktion ist keine
 Spielregel. [Bestaetigt]
+
+Administratoren duerfen das Forderungsdatum einer offenen Forderung mit
+Pflichtgrund minutengenau korrigieren. Fuer diese Korrektur bestehen innerhalb
+des darstellbaren Zeitbereichs von 1950 bis 2049 keine weiteren Vergangenheits-,
+Zukunfts- oder Reihenfolgegrenzen. Der vereinbarte Spieltermin wird ueber die
+allgemeine Terminpflege fuer Matches eingetragen oder geaendert; fuer
+Administratoren ist auch dabei ein Grund verpflichtend. Eine gesonderte
+ranglistenspezifische administrative Spieldatumskorrektur besteht nicht.
+[Bestaetigt]
 
 Wird innerhalb von sieben Tagen kein Termin erreicht, kann die sportliche Leitung
 eingreifen. Sie versucht zunaechst zu vermitteln. Behindert eine Seite die
@@ -102,8 +116,9 @@ Gewinner und Verlierer und loesen dieselben Schon- und Sperrzeiten aus.
 [Bestaetigt]
 
 Gewinnt oder verliert ein Spieler waehrend einer noch laufenden Schon- oder
-Sperrzeit ein weiteres zulaessiges Ranglistenmatch, soll der neueste Abschluss den
-danach geltenden Status bestimmen. [Arbeitsannahme]
+Sperrzeit ein weiteres zulaessiges Ranglistenmatch, bestimmt der neueste
+Abschluss den danach geltenden Status. Fuer historische Abschluesse ohne
+`MatchEnde` gilt `MatchDate` als Abschlusszeitpunkt. [Bestaetigt]
 
 
 6. WERTUNG BEI SIEG DES GEFORDERTEN
@@ -229,13 +244,51 @@ Spieler gilt bei einem spaeteren Wiedereinstieg als Neueinsteiger nach Abschnitt
 [Bestaetigt]
 
 
-11. VERANTWORTUNG UND MANUELLE ENTSCHEIDUNGEN
+11. AUTOMATISCHE ERGEBNISFOLGEN UND KORREKTUR
 =============================================
 
-Ergebnisbedingte Rangverschiebungen und Entscheidungen nach Fristueberschreitung
-werden derzeit durch die sportliche Leitung beziehungsweise den Administrator
-manuell vollzogen. Diese organisatorische Zustaendigkeit aendert die sportlichen
-Folgen dieses Regelwerks nicht. Die Anwendung legt die Forderung an und zeigt
-zulaessige Gegner an, fuehrt nach Sieg oder Niederlage aber keine automatische
-Einreihung oder Rangverschiebung aus. Details stehen in
+Mit dem ersten Ergebnis vollzieht die Anwendung die Rangfolgen atomar mit dem
+Matchabschluss. Beim normalen gereihten Forderer bleiben die Raenge bei einer
+Niederlage unveraendert; bei seinem Sieg gelten die Verschiebungen aus Abschnitt
+7. Neueinsteiger und Rueckkehrer werden nach den Abschnitten 8 und 10 eingefuegt;
+verliert ein Neueinsteiger und liegen mindestens zehn aktive Raenge hinter dem
+geforderten Rang, bleibt er ausserhalb, andernfalls wird er am Ende eingereiht.
+Nach Ablauf des Rueckkehranspruchs gelten wieder die Neueinsteigerregeln.
+[Bestaetigt]
+
+Die Anwendung speichert zu jeder automatisch verursachten Rangfolge deren
+urspruenglichen und resultierenden Stand als Provenienz. Beteiligte duerfen ein
+Ergebnis nur korrigieren, solange alle davon betroffenen Rangzustaende noch exakt
+dem gespeicherten Ergebnisstand entsprechen. Fehlt diese Provenienz bei einer
+rangveraendernden historischen Korrektur oder wurde die Rangliste inzwischen
+veraendert, ist eine automatische Korrektur gesperrt. [Bestaetigt]
+
+Beim erstmaligen Ergebniseintrag speichert die Anwendung ausserdem die unmittelbar
+davor aktuellen Raenge beider Hauptspieler als historischen Match-Snapshot. Eine
+fehlende Mitgliedschaft oder eine Mitgliedschaft mit Rang `0` ergibt den Wert
+`0`. Ergebniskorrekturen behalten diese beiden Snapshots unveraendert; eine
+administrative Ergebnisloeschung entfernt sie, sodass ein spaeterer Neuabschluss
+die dann aktuellen Raenge neu erfasst. [Bestaetigt]
+
+Beteiligte duerfen ein abgeschlossenes Ergebnis nur bis einschliesslich 60
+Minuten nach dem unveraenderlichen, serverseitig gespeicherten Zeitpunkt des
+ersten Ergebniseintrags korrigieren. Eine Korrektur startet oder verlaengert diese
+Frist nicht. Historische Ergebnisse ohne gespeicherten Erfassungszeitpunkt sind
+fuer Spieler geschlossen. Begruendungspflichtige administrative Korrekturen
+bleiben unter den Rangprovenienz- und sonstigen Abhaengigkeitsregeln moeglich.
+[Bestaetigt]
+
+Ein Administrator darf mit Pflichtgrund einen vollstaendigen Plan fuer alle
+Mitglieder der Rangliste anwenden. Jeder Eintrag nennt erwarteten und neuen Rang;
+positive Zielraenge sind eindeutig, Rang `0` darf mehrfach vorkommen. Eine
+administrative Ergebnisloeschung stellt anhand der Provenienz den Stand vor dem
+Ergebnis wieder her und entfernt eine ausschliesslich durch dieses Ergebnis
+angelegte Mitgliedschaft; danach wird die Provenienz geloescht. [Bestaetigt]
+
+Raushaengen und Ergebnisabschluss verwenden technisch dieselben Grundmuster fuer
+Planung, Serialisierung, stabile Zeilen, Bestaetigung und Recovery. Sie bleiben
+fachlich getrennte Vorgaenge mit getrennten Planern: Ein Raushaengen ist kein
+Matchergebnis, eine Ergebnisfolge kein Raushaengen. Entscheidungen nach
+Fristueberschreitung bleiben bei der sportlichen Leitung und erfolgen nicht
+automatisch. Details stehen in
 `Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt`.

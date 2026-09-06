@@ -33,6 +33,35 @@ function dateToTs(raw) {
   return new Date(yyyy, parseInt(mm) - 1, parseInt(dd), parseInt(hh), parseInt(mi)).getTime();
 }
 
+function parseCompactTimestamp(raw) {
+  const match = String(raw || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const [, yy, month, day, hour, minute] = match;
+  const year = Number(yy) >= 50 ? 1900 + Number(yy) : 2000 + Number(yy);
+  const timestamp = Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute));
+  const date = new Date(timestamp);
+  if (date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== Number(month) - 1
+    || date.getUTCDate() !== Number(day)
+    || date.getUTCHours() !== Number(hour)
+    || date.getUTCMinutes() !== Number(minute)) return null;
+  return { timestamp, time: `${hour}:${minute}` };
+}
+
+function formatMatchTiming(startRaw, endRaw) {
+  const start = parseCompactTimestamp(startRaw);
+  const end = parseCompactTimestamp(endRaw);
+  if (!start || !end || end.timestamp < start.timestamp) return "";
+  const totalMinutes = Math.floor((end.timestamp - start.timestamp) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const duration = [
+    hours ? `${hours} ${hours === 1 ? "Stunde" : "Stunden"}` : "",
+    minutes || !hours ? `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}` : "",
+  ].filter(Boolean).join(" ");
+  return `(${start.time} - ${end.time} Uhr = ${duration})`;
+}
+
 function parsePlayerId(raw) {
   const s = String(raw || "").trim();
   const wo = s.endsWith("[wo]");
@@ -162,6 +191,8 @@ async function loadData() {
       const h = matchValues[0].map((c) => String(c).trim().toLowerCase());
       const iId = h.indexOf("id");
       const iDate = h.indexOf("matchdate");
+      const iStart = h.indexOf("matchstart");
+      const iEnd = h.indexOf("matchende");
       const iFord = h.indexOf("forderungdate");
       const iBewerb = h.indexOf("bewerbid");
       const iRunde = h.indexOf("bewerbrunde");
@@ -188,6 +219,7 @@ async function loadData() {
           matchDateRaw,
           matchDate: parseSheetDate(matchDateRaw),
           matchTs: dateToTs(matchDateRaw),
+          matchTiming: formatMatchTiming(iStart >= 0 ? row[iStart] : "", iEnd >= 0 ? row[iEnd] : ""),
           fordDateRaw,
           fordDate: parseSheetDate(fordDateRaw),
           bewerbId,
@@ -347,6 +379,12 @@ function renderMatches() {
     const date = document.createElement("span");
     date.className = "m1-date";
     date.textContent = m.matchDate || "Datum offen";
+    if (m.isPlayed && m.matchTiming) {
+      const timing = document.createElement("span");
+      timing.className = "m1-timing";
+      timing.textContent = m.matchTiming;
+      date.append(" ", timing);
+    }
     meta.appendChild(date);
 
     if (m.fordDate) {

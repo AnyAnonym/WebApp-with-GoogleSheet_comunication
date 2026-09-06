@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { setTestEnvironment } = require("./helpers.js");
 
 setTestEnvironment();
-const { getRequestIp, normalizeIp } = require("../security.js");
+const { assertBearerToken, getRequestIp, normalizeIp } = require("../security.js");
 
 test("Request-IP vertraut Forwarded-For nur hinter dem lokalen Proxy", () => {
   assert.equal(getRequestIp({
@@ -22,4 +22,12 @@ test("Request-IP vertraut Forwarded-For nur hinter dem lokalen Proxy", () => {
   assert.equal(normalizeIp("2001:0db8:0000:0000:0000:0000:0000:0001"), "2001:db8::1");
   assert.equal(normalizeIp("2001:db8::1"), "2001:db8::1");
   assert.equal(normalizeIp("198.51.100.20%anything"), "unknown");
+});
+
+test("Reporting-Bearer-Token wird strikt und zeitkonstant verglichen", () => {
+  const token = "a".repeat(43);
+  assert.doesNotThrow(() => assertBearerToken({ headersDistinct: { authorization: [`Bearer ${token}`] } }, token));
+  for (const authorization of [[], [`bearer ${token}`], [`Bearer ${"b".repeat(43)}`], [`Bearer ${token}`, `Bearer ${token}`]]) {
+    assert.throws(() => assertBearerToken({ headersDistinct: { authorization } }, token), { code: "REPORTING_AUTH_REQUIRED" });
+  }
 });

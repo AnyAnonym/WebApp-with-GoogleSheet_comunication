@@ -224,7 +224,7 @@ body.modal-open {
 
 .profile-dialog {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   width: min(100%, 560px);
   max-width: 560px;
   max-height: 100%;
@@ -253,6 +253,15 @@ body.modal-open {
   -webkit-overflow-scrolling: touch;
 }
 
+.profile-tabs[hidden] {
+  display: none;
+}
+
+.profile-competition-tabs {
+  border-top: 0;
+  background: #fff;
+}
+
 .profile-tab {
   flex: 0 0 auto;
   min-height: 44px;
@@ -279,6 +288,7 @@ body.modal-open {
 }
 
 .profile-body {
+  grid-row: 4;
   min-height: 0;
   padding: 20px 24px 24px;
   overflow-y: auto;
@@ -287,6 +297,11 @@ body.modal-open {
 
 .profile-panel[hidden] {
   display: none;
+}
+
+.profile-competition-empty {
+  margin: 0;
+  color: #4a5568;
 }
 
 .profile-actions {
@@ -302,6 +317,292 @@ body.modal-open {
 
 .profile-actions .btn-login {
   margin-top: 0;
+}
+
+.modal-content .btn-login.admin-ranking-danger,
+.modal-content .btn-login.admin-danger {
+  background: #b42318;
+}
+
+.modal-content .btn-login.admin-ranking-danger:hover,
+.modal-content .btn-login.admin-ranking-danger:focus-visible,
+.modal-content .btn-login.admin-danger:hover,
+.modal-content .btn-login.admin-danger:focus-visible {
+  background: #8f1c13;
+}
+
+.profile-match-card {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #d6dbe3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.profile-match-card h3,
+.profile-match-card p {
+  margin: 0 0 4px;
+}
+
+.profile-match-date {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.profile-match-actions,
+.match-result-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-match-actions {
+  margin-top: 4px;
+}
+
+.profile-match-actions .btn-login,
+.match-result-suggestions .btn-login {
+  flex: 1 1 150px;
+  margin-top: 0;
+}
+
+.match-result-modal {
+  z-index: 1100;
+}
+
+.match-result-modal .modal-content {
+  width: min(100%, 680px);
+  max-width: 680px;
+}
+
+.match-result-target {
+  text-align: center;
+}
+
+.match-result-target > * {
+  display: block;
+}
+
+#matchResultForm,
+#matchResultCompletionFields,
+#matchResultValueFields,
+#matchResultLosingFields,
+#matchResultStartFields,
+#matchResultEndFields,
+#matchResultReasonFields {
+  display: grid;
+  gap: 8px;
+}
+
+#matchResultForm {
+  position: relative;
+}
+
+.match-result-field-row {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.match-result-field-row label,
+.match-result-field-row input,
+.match-result-field-row select {
+  margin-top: 0;
+}
+
+.match-result-score-editor {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.match-result-score-column {
+  flex: 0 0 96px;
+  padding: 6px;
+  border: 1px solid #d6dbe3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.match-result-score-column.tiebreak,
+.match-result-score-column.match-tiebreak {
+  border-color: #c28b27;
+  background: #fff4d6;
+}
+
+.match-result-score-column h3 {
+  margin: 0 0 5px;
+  color: #344054;
+  font-size: 0.75rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.match-result-score-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+
+.match-result-score-row + .match-result-score-row {
+  margin-top: 6px;
+}
+
+.modal-content .match-result-score-row input {
+  width: 100%;
+  height: 88px;
+  margin: 0;
+  padding: 4px;
+  border-radius: 6px 0 0 6px;
+  font-size: 1.65rem;
+  font-weight: 700;
+  text-align: center;
+  appearance: textfield;
+}
+
+.match-result-score-row input::-webkit-inner-spin-button,
+.match-result-score-row input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.match-result-score-controls {
+  display: grid;
+  grid-template-rows: 44px 44px;
+}
+
+.match-result-score-step {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #aab2bd;
+  background: #e9eef5;
+  color: #1d2939;
+  font: 700 1.25rem/1 sans-serif;
+  cursor: pointer;
+}
+
+.match-result-score-step:first-child {
+  border-radius: 0 6px 0 0;
+}
+
+.match-result-score-step:last-child {
+  border-radius: 0 0 6px 0;
+}
+
+.match-result-score-step:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid rgba(25, 103, 210, 0.35);
+}
+
+.match-result-suggestion[hidden] {
+  display: none;
+}
+
+.match-result-status {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #b42318;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.25);
+  text-align: center;
+}
+
+.match-result-status.info {
+  background: #344054;
+}
+
+.match-result-status.success {
+  background: #187244;
+}
+
+.match-result-status[hidden] {
+  display: none;
+}
+
+#matchResultRankPlanFields {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d6dbe3;
+  border-radius: 6px;
+}
+
+#matchResultRankPlanFields p {
+  margin: 0;
+}
+
+#matchResultRankPlan {
+  display: grid;
+  gap: 8px;
+  max-height: 36vh;
+  overflow-y: auto;
+}
+
+.match-result-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 10px;
+}
+
+.match-result-rank-row input {
+  width: 100%;
+}
+
+#matchResultForm textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+}
+
+#matchResultCompletionFields[hidden],
+#matchResultValueFields[hidden],
+#matchResultLosingFields[hidden],
+#matchResultStartFields[hidden],
+#matchResultEndFields[hidden],
+#matchResultReasonFields[hidden],
+#matchResultRankPlanFields[hidden] {
+  display: none;
+}
+
+.ranking-admin-modal {
+  z-index: 1100;
+}
+
+#adminRankingActionForm {
+  display: grid;
+  gap: 10px;
+}
+
+#adminRankingDateFields {
+  display: grid;
+  gap: 8px;
+}
+
+#adminRankingDateFields[hidden] {
+  display: none;
+}
+
+#adminRankingReason {
+  width: 100%;
+  min-height: 100px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
 }
 
 .message-count-badge {
@@ -367,6 +668,10 @@ body.modal-open {
 
 .message-row-subject {
   font-weight: 700;
+}
+
+.message-row-actor {
+  font-size: 0.8rem;
 }
 
 .message-row.unread {
@@ -1338,6 +1643,10 @@ nav a.active {
   font-weight: 400;
 }
 
+.competition-history-entry-detail {
+  white-space: pre-wrap;
+}
+
 .competition-history-more {
   justify-self: center;
   margin-top: 16px;
@@ -1776,7 +2085,7 @@ input[type="date"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: grab;
+  cursor: default;
   user-select: none;
   transition:
     background 0.2s ease,
@@ -1806,7 +2115,11 @@ input[type="date"] {
   line-height: 1.2;
 }
 
-.box:hover {
+.box.profile-openable {
+  cursor: pointer;
+}
+
+.box.profile-openable:hover {
   background: #eaf1fb;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
@@ -2549,7 +2862,23 @@ input[type="date"] {
 /* -------------------------------------------------- */
 
 body.bracket-page {
+  overflow-x: hidden;
+}
+
+#bracketSection {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#bracketContainer {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .bracket {
@@ -2670,6 +2999,39 @@ body.bracket-page {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.bracket-player .pname {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+button.bracket-player-name {
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.bracket-player-name:hover {
+  text-decoration: underline;
+}
+
+button.bracket-player-name:focus-visible {
+  outline: 2px solid #0b57d0;
+  outline-offset: 1px;
+}
+
+.bracket-player-separator {
+  white-space: pre;
 }
 
 .bracket-player .player-result {

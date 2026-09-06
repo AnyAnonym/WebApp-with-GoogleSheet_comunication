@@ -112,10 +112,10 @@ Scoreboard gelesenen Drehwerte fuer die Anzeige in `Frontend/scoreboard.html`
 interpretiert. Die laufende Anzeige liest diese Tabelle nicht erneut, sondern
 verwendet den bei der Zuweisung persistent gespeicherten Regelsnapshot.
 
-In einem spaeteren Schritt sollen dieselben Regeln auch als Grundlage fuer eine
-semantische Pruefung von Matchergebnissen dienen. Die Anzeigeinterpretation ist
-damit der erste Anwendungsfall; die Ergebnispruefung ist ein geplanter, aber noch
-nicht umgesetzter Folgeanwendungsfall.
+Dieselben Matchtypdaten bilden auch die Grundlage der umgesetzten semantischen
+Ergebnispruefung. Dafuer gelten alle sechs Felder strikt. Die Satzlaenge ist kein
+einzelner Zahlenwert, sondern der tatsaechliche Zielbereich `0-4` oder `0-6`;
+passend dazu gilt der Satz-Tie-Break bei `3-3` beziehungsweise `6-6`.
 
 ### Spalten der Tabelle Matchtyp
 
@@ -124,8 +124,8 @@ nicht umgesetzter Folgeanwendungsfall.
 | `ID` | Eindeutige ganzzahlige ID eines Matchtyps. Der vorgesehene Wertebereich beginnt bei 1 und ist nach oben offen (`1` bis `x`). |
 | `Bezeichnung` | Textuelle Bezeichnung des Matchtyps. |
 | `Gewinnsaetze` | Anzahl der zum Matchgewinn erforderlichen Saetze. Wert `2` bedeutet Best-of-3, Wert `3` bedeutet Best-of-5. |
-| `Satzlaenge` | Ganzzahliger Wert von `0` bis `6`. Normalerweise wird ein Satz bis 6 gespielt; kurze Saetze koennen beispielsweise bis 4 gespielt werden. Die fachliche Bedeutung des Werts `0` ist noch nicht beschrieben. |
-| `Satztiebreak` | Spielstand, bei dem im Satz ein Tie-Break gespielt wird. Aktuell sind `3-3` fuer einen kurzen Satz bis 4 und `6-6` fuer einen Satz bis 6 vorgesehen. |
+| `Satzlaenge` | Exakt `0-4` oder `0-6`; tatsaechlicher Zielbereich eines Satzes. |
+| `Satztiebreak` | Exakt `3-3` passend zu `0-4` oder `6-6` passend zu `0-6`. |
 | `Entscheidender Satz` | Form des erforderlichen Entscheidungssatzes, wenn noch kein Spieler beziehungsweise Team die notwendige Anzahl an Gewinnsaetzen erreicht hat. Die vorgesehenen Werte sind `vollstaendiger Satz`, `MT10` und `MT7`. |
 | `NoAd` | Kennzeichen fuer die No-Ad-Regel. `N` bedeutet, dass nicht nach No-Ad gespielt wird; `J` bedeutet, dass nach No-Ad gespielt wird. |
 
@@ -220,6 +220,23 @@ Die externen Rohdaten und der im SQLite-ScoreLog gespeicherte Rohscore bleiben
 unveraendert. Die Umdeutung findet
 ausschliesslich in der fuer das digitale Scoreboard ausgegebenen Anzeigeprojektion
 statt.
+
+## Ergebnisvorschlag im gemeinsamen Profilmodal
+
+Der gemeinsame Ergebnisdialog kann fuer Platz 1 oder Platz 2 einen editierbaren
+Vorschlag laden. Ist dem ausgewaehlten Court aktuell exakt das betreffende Match
+zugeordnet, werden dessen aktuelle sechs Satzwerte verwendet. Andernfalls sucht
+ePiber den neuesten ScoreLog-Eintrag fuer die exakte Kombination aus Instanz,
+Match-ID und Court. Der Court wird nicht in `Matches1` gespeichert; es gibt keinen
+Fallback auf einen anderen Court oder ein nur aehnlich zugeordnetes Match.
+
+Der dafuer verwendete SQLite-Index lautet
+`score_log_match_latest(instance, match_id, court, sequence DESC)`. Bis zu drei
+Satzpaare werden vorgeschlagen und abschliessende `0-0`-Saetze entfernt. Die
+Quelle ist transparent als aktueller `court`, historisches `scoreLog` oder `none`
+gekennzeichnet. Der Vorschlag ist keine automatische Ergebnisuebernahme: Er kann
+vor dem Speichern bearbeitet werden und wird erst danach gegen den aktuellen
+Matchtyp und Ergebnis-Fingerprint validiert.
 
 Die acht aktuellen Scorewerte liegen nur im Prozessspeicher. Nach einem
 Backendneustart wird der Stand eines laut SQLite aktiven Courts aus der externen

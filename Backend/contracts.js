@@ -34,6 +34,49 @@ const reconciliationWrite = (params) => {
 const empty = (params) => objectShape(params, {});
 const competitionFilter = (params) => objectShape(params, { bewerbId: optional(id("bewerbId")) });
 const competitionWrite = (params) => objectShape(params, { operationId: operation, bewerbId: id("bewerbId") });
+const adminRankingReason = text("reason", { min: 1, max: 500 });
+const fingerprint = text("expectedFingerprint", { min: 64, max: 64, pattern: /^[0-9a-f]{64}$/i });
+const completionKind = text("kind", { max: 16, pattern: /^(regular|walkover|retirement)$/ });
+const optionalMatchStart = optional(text("matchStart", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }));
+const optionalMatchEnd = optional(text("matchEnd", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }));
+const matchCompletionFields = {
+  operationId: operation,
+  matchId: id("matchId"),
+  kind: completionKind,
+  result: optional(text("result", { min: 0, max: 200 })),
+  losingSide: optional(integer("losingSide", { min: 1, max: 2 })),
+  matchStart: optionalMatchStart,
+  matchEnd: optionalMatchEnd,
+  expectedFingerprint: fingerprint,
+};
+const matchCorrectionFields = {
+  operationId: operation,
+  matchId: id("matchId"),
+  kind: completionKind,
+  result: optional(text("result", { min: 0, max: 200 })),
+  losingSide: optional(integer("losingSide", { min: 1, max: 2 })),
+  expectedFingerprint: fingerprint,
+};
+const rankPlan = (value) => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 10000) {
+    throw new AppError("VALIDATION_ERROR", "rankPlan muss ein nichtleeres Array sein");
+  }
+  const validated = value.map((entry) => objectShape(entry, {
+    personId: id("personId"),
+    expectedRank: integer("expectedRank", { min: 0, max: 10000 }),
+    newRank: integer("newRank", { min: 0, max: 10000 }),
+  }));
+  const positiveRanks = validated.map(({ newRank }) => newRank).filter((rank) => rank > 0);
+  if (validated.some(({ expectedRank, newRank }) => expectedRank > 0 && newRank === 0)) {
+    throw new AppError("RANK_PLAN_INVALID", "Aktive Ranglistenmitglieder koennen nicht auf Rang 0 gesetzt werden", 409);
+  }
+  if (new Set(positiveRanks).size !== positiveRanks.length) {
+    throw new AppError("VALIDATION_ERROR", "Positive Zielraenge muessen eindeutig sein");
+  }
+  return validated;
+};
+const rankingHour = (name) => text(name, { min: 11, max: 11, pattern: /^\d{6}-(?:[01]\d|2[0-3])00$/ });
+const rankingMinute = (name) => text(name, { min: 11, max: 11, pattern: /^\d{6}-(?:[01]\d|2[0-3])[0-5]\d$/ });
 const monitorWrite = (params) => objectShape(params, { operationId: operation, monitorId: id("monitorId") });
 const playerIds = (name) => (value) => {
   if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
@@ -110,10 +153,50 @@ const requestContracts = {
     bewerbId: id("bewerbId"),
     opponentId: id("opponentId"),
   }),
-  setRankingMatchDate: (params) => objectShape(params, {
+  setMatchAppointment: (params) => objectShape(params, {
     operationId: operation,
     matchId: id("matchId"),
-    matchDate: text("matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
+    matchDate: rankingHour("matchDate"),
+  }),
+  matchResultSuggestion: (params) => objectShape(params, {
+    matchId: id("matchId"),
+    court: text("court", { min: 1, max: 1, pattern: /^[12]$/ }),
+  }),
+  setMatchResult: (params) => objectShape(params, matchCompletionFields),
+  adminSetMatchEnd: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    matchEnd: text("matchEnd", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
+    expectedFingerprint: fingerprint,
+    reason: adminRankingReason,
+  }),
+  adminClearMatchResult: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    expectedFingerprint: fingerprint,
+    reason: adminRankingReason,
+  }),
+  adminCorrectRankingResult: (params) => objectShape(params, {
+    ...matchCorrectionFields,
+    reason: adminRankingReason,
+    rankPlan,
+  }),
+  adminDeleteRankingChallenge: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    reason: adminRankingReason,
+  }),
+  adminSetRankingChallengeDate: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    challengeDate: rankingMinute("challengeDate"),
+    reason: adminRankingReason,
+  }),
+  adminSetMatchAppointment: (params) => objectShape(params, {
+    operationId: operation,
+    matchId: id("matchId"),
+    matchDate: rankingHour("matchDate"),
+    reason: adminRankingReason,
   }),
   addEntryList: competitionWrite,
   removeEntryList: competitionWrite,

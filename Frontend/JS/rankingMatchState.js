@@ -22,7 +22,7 @@ export function isActiveRankingRank(raw) {
 
 export function rankingPlayerState(id, currentPlayerId, busyIds, protection, blocked) {
   const selected = Boolean(currentPlayerId && id === currentPlayerId);
-  if (busyIds.has(id) && !selected) return { selected, status: "busy" };
+  if (busyIds.has(id)) return { selected, status: "busy" };
   if (protection.has(id)) return { selected, status: "protection" };
   if (blocked.has(id)) return { selected, status: "blocked" };
   return { selected, status: null };

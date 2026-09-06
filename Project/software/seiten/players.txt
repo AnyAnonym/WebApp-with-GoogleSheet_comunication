@@ -26,7 +26,8 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   Person wird anhand der Session-ID vollstaendig fett dargestellt.
 
 -- Aktualisierung und Fehler --
-  Sessionaenderungen rendern anonymes Verzeichnis oder laden es neu; Generationen
+  Sessionaenderungen rendern die anonyme Login-CTA oder laden das Verzeichnis neu;
+  Generationen
   verhindern, dass alte Antworten einen neueren Login/Logout ueberholen.
   `players`-Invalidierungen aktualisieren die Liste. Lade-, Leer- und Fehlerstatus
   sind explizit; nach erfolgreichem Initialzustand wird Monitor-Ready, bei Fehlern
@@ -34,16 +35,139 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
 
 -- Profile und Sicherheit --
   Jede Zeile ist per Maus sowie Enter/Leertaste als Profilaktion bedienbar.
-  `publicProfile` liefert anonym nur ID/Name, angemeldeten Benutzern auch E-Mail,
-  Telefon und Geburtsdatum, jedoch keinen Login; `myProfile` liefert fuer das
+  Das gemeinsame Profilmodal ist ausschliesslich angemeldet verfuegbar;
+  `publicProfile` lehnt anonyme Requests ab, und ein veralteter oder direkter
+  anonymer Modalaufruf bleibt geschlossen. Angemeldeten Benutzern liefert es
+  E-Mail, Telefon und Geburtsdatum, jedoch keinen Login; `myProfile` liefert fuer das
   eigene Profil zusaetzlich Login und Passwortaenderung. Das gemeinsame Modal
-  trennt System, jede aktive oder rausgehaengte Ranglistenmitgliedschaft und
-  administrative Aktionen in horizontal scrollbare Reiter; aktive Reiter zeigen
-  Position und offene Forderung, rausgehaengte fuer angemeldete Benutzer Zeitpunkt
-  und Grund. Die Ranglistenreiter sind unabhaengig von der aufrufenden Seite. Nur
+  zeigt oben in dieser Reihenfolge `System`, beim Eigenprofil `Meldungen`,
+  `Aktuell`, `Archiv` und gegebenenfalls `Admin`. Nur `Aktuell` und `Archiv`
+  zeigen eine zweite horizontal scrollbare Bewerbsreiterzeile; leere Kategorien
+  zeigen `Keine Bewerbe enthalten`. Persoenliche Meldungskarten zeigen
+  nacheinander Datum, `Bewerb - Runde`, den allein fett gesetzten Meldungstext und
+  das kleinere `Eingetragen durch: <Akteur>`; ohne Runde entfallen Runde und
+  Trennstrich. Forderungsmeldungen enthalten fuer beide Parteien die beim Anlegen
+  fixierten Rangpositionen und werden nach spaeteren Namens- oder
+  Rangaenderungen nicht neu erzeugt. Ranglisten- und Matchdaten desselben Bewerbs
+  werden zusammengefuehrt; aktive Reiter zeigen Position und offene Forderung,
+  rausgehaengte fuer
+  angemeldete Benutzer Zeitpunkt und Grund. Alle offenen und abgeschlossenen
+  Matches der Profilperson werden angezeigt und auch nach Bewerbsende historisch
+  erhalten, darunter mehrere im
+  selben Bewerb und bei Beteiligung als einer der vier Spieler. Echte offene
+  Begegnungen ohne gueltiges `MatchDate` stehen fuer alle Bewerbsarten zuerst;
+  mehrere solche KO-Begegnungen werden von der spaetesten Runde rueckwaerts bis
+  zu den Vorrunden sortiert. Danach stehen in Ranglistenbewerben weitere echte
+  offene Begegnungen vor abgeschlossenen Matches; innerhalb der verbleibenden
+  Gruppen bleibt die Sortierung nach `MatchDate` absteigend; in anderen
+  Bewerbsarten bleibt sie nach dem undatierten Vorrangblock statusunabhaengig
+  absteigend. Freilose gehoeren nicht zum offenen Vorrangblock. Die Reiter sind
+  unabhaengig von der aufrufenden Seite. Nur
   Admins erhalten den Login einer fremden Person in der
   Adminprojektion und sehen im Adminreiter die vom aktuellen Profilstatus
   abhaengige Aktion `Passwortvergabe freigeben` oder
   `Passwortfreigabe aufheben` sowie `Reset-Code erstellen` und `Passwort direkt
   setzen`; direktes Setzen widerruft die Sitzungen der Zielperson. Alle Tabellen-
   und Profilwerte werden per textContent/Textknoten dargestellt.
+
+  `Aktuell` enthaelt nur nicht beendete Bewerbe, in denen die Profilperson eine
+  aktive Ranglistenmitgliedschaft oder ein offenes Match besitzt, und sortiert
+  das frueheste Bewerbsende nach links. Beendete Bewerbe sowie persoenlich nicht
+  mehr aktive Teilnahmen liegen im `Archiv`, dort steht das neueste Bewerbsende
+  links. Fehlende Enddaten stehen in beiden Kategorien rechts; bestehende
+  rollenabhaengige Aktionen bleiben auch im Archiv erhalten. Nach einer Aktion
+  werden Kategorie und Bewerbsreiter beim erneuten Oeffnen wiederhergestellt.
+
+  Matchkarten schreiben KO- und Gruppenrunden aus; `F` wird `Finale`, `HF-P1` und
+  `HF-P2` werden `Halbfinale`, interne Paarungsnummern bleiben unsichtbar. Neben
+  der groesseren fetten Rundenbezeichnung steht in Klammern das `MatchDate` oder
+  `(noch kein Termin festgelegt)` in normaler Schriftstaerke und der Schriftgroesse
+  der Paarungs- und Ergebniszeilen. Offene Karten besitzen keine redundante
+  Statuszeile, abgeschlossene behalten ihre Ergebniszeile; Zeilenabstaende und
+  Aktionsbereich bleiben kompakt. Das responsive vierzeilige Kartengrid verhindert
+  auch bei langen Listen und schmalen Viewports Ueberdeckungen.
+  Ein Freilos ist eine nicht priorisierte, nicht interaktive Karte, etwa `Erste
+  Runde (ohne Datum)` mit `Freilos für <Spieler/Team>`, und besitzt weder Ergebnis-
+  noch Termin- oder Adminaktion.
+  Abgeschlossene Ranglistenspiele zeigen beide beim ersten Ergebniseintrag
+  gespeicherten Hauptspielerraenge als `<Spieler1> (<Rang>) gegen <Spieler3>
+  (<Rang>)`. Rang `0` wird als `(0)` angezeigt; offene Spiele und historische
+  Spiele ohne Snapshot erhalten keinen Rangzusatz. Korrekturen behalten den beim
+  ersten Abschluss gespeicherten Snapshot; eine administrative Ergebnisloeschung
+  entfernt ihn, sodass ein spaeterer Neuabschluss die dann aktuellen Raenge neu
+  erfasst.
+
+-- Universelle Matchaktionen im gemeinsamen Profilmodal --
+  Jede offene, vollstaendig besetzte Nicht-BYE-Matchkarte zeigt fuer einen
+  beteiligten `player`, `player A` oder `player B` neben `Ergebnis eintragen` die
+  Aktion `Termin eintragen` beziehungsweise bei vorhandenem `MatchDate` `Termin
+  abändern`. Administratoren sehen beide Aktionen fuer jedes solche Match rot;
+  die Terminaktion verlangt bei ihnen einen Grund. Operatoren und fremde Spieler
+  besitzen keine Terminaktion. Abgeschlossene, unvollstaendige, `PRE`- und
+  BYE-Matches koennen nicht terminiert werden. Der Kalender bietet volle Stunden
+  von 06:00 bis 23:00 Uhr. Bei KO und Round Robin sind zukuenftige Termine ohne
+  Obergrenze erlaubt; bei Ranglisten gelten der Erstkorridor ab Forderungsdatum
+  und die dokumentierte Aenderungsregel.
+
+  Beteiligte mit Rolle `player`, `player A` oder `player B` sehen an jedem eigenen
+  offenen Match eine blaue Aktion zum Eintragen und an einem abgeschlossenen Match
+  nur bei serverseitigem `canSetResult: true` eine Aktion zum Korrigieren. Das gilt
+  bis einschliesslich 60 Minuten nach dem unveraenderlichen ersten
+  `ErgebnisErfasstAm`; eine Korrektur verlaengert das Fenster nicht, historische
+  Abschluesse ohne Erfassungszeit bleiben fuer Spieler geschlossen.
+  Administratoren sehen dieselbe Aktion fuer jedes nach den Fachguards
+  korrigierbare Match rot sowie
+  bei abgeschlossenen Matches rote Aktionen fuer Matchende, Ergebnisloeschung und
+  bei Ranglistenmatches eine Korrektur mit vollstaendigem Rangplan. Operatoren
+  besitzen keine Ergebnisaktion. Diese Bedienung gehoert ausschliesslich zum
+  gemeinsamen Profilmodal; die Spielerverzeichnisseite erhaelt keine eigene
+  Ergebnisoberflaeche.
+
+  Der explizit schliessbare Dialog waehlt in einer kompakten Zeile `Regulär`,
+  `WO` oder `RET`.
+  Unter dem Titel stehen zentriert zuerst nur der Bewerbsname und in einer zweiten
+  Zeile die vollstaendige Einzel- oder Doppelbegegnung.
+  Regulaer verlangt das Satzresultat. Das Ergebnis wird ohne Freitextfeld in den
+  vom Matchtyp bestimmten drei beziehungsweise fuenf Satzspalten erfasst. Pro
+  Satz stehen die Werte beider Seiten untereinander und koennen direkt oder ueber
+  je zwei vertikal angeordnete, quadratische Plus-/Minus-Schaltflaechen geaendert
+  werden. Ein Satz-Tie-Break erhaelt unmittelbar neben seinem Satz eine farblich
+  abgesetzte `TB`-Spalte mit beiden Punktstaenden; ein entscheidender MT7 oder
+  MT10 wird als Punktestand des Entscheidungssatzes bedient. Gespeichert bleibt
+  das kanonische Ergebnisformat mit `/`, `-` und dem Tie-Break-Verliererwert in
+  Klammern. Sonderabschluesse verlangen eine bewusste Auswahl der mit ihren Einzel-
+  oder Doppelnamen bezeichneten Verliererseite; bei Korrekturen ist die bestehende
+  Seite vorausgewaehlt. Retirement kann ein Teilergebnis behalten. Beim ersten
+  regulaeren Abschluss oder einer Aufgabe sind Matchstart und Matchende
+  erforderlich; ein vergangener vereinbarter Termin wird als Start vorgeschlagen,
+  ohne Termin gilt die editierbare Vorgabe `aktuelle Zeit minus 90 Minuten`.
+  Beschriftung und Datum-/Zeitfeld stehen fuer Start und Ende jeweils in einer
+  kompakten Zeile nebeneinander. Bei W.O. werden Start und Ende weder abgefragt
+  noch geschrieben; der Server setzt stattdessen `MatchDate` auf den aktuellen
+  Wiener W.O.-Zeitpunkt. Bei regulaerem Abschluss und Aufgabe liegt das Ende nach
+  dem Start, hoechstens sechs Stunden danach und nicht in der Zukunft. Bei
+  spaeterer Ergebniskorrektur bleiben Start und Ende ausgeblendet und unveraendert.
+  Die Schaltflaeche `Match vom Scoreboard übernehmen` fragt beide Plaetze ab und
+  uebernimmt nur genau einen verfuegbaren Vorschlag aus dem aktuellen exakt
+  zugeordneten Court oder dem neuesten exakten ScoreLog-Eintrag. Kein oder mehr
+  als ein Treffer wird gemeldet und veraendert die Eingabe nicht. Der Wert bleibt
+  bearbeitbar und wird beim Speichern nach dem Matchtyp validiert. Lade-, Erfolgs-,
+  Validierungs- und Fehlermeldungen liegen kurzzeitig als Overlay ueber dem Dialog
+  und reservieren keinen dauerhaften Platz.
+
+  Erfolg oeffnet dasselbe Profil und denselben Bewerbsreiter neu. Bei Eintrag und
+  Korrektur nennt die Historie Gewinner und Gegner neutral; private Meldungen
+  sprechen jeden Teilnehmer als Gewinner oder Verlierer an und nennen Gegner und
+  Ergebnis. Bei W.O. lautet die persoenliche Gewinnmeldung `Du gewinnst durch W.O.
+  von <Verliererseite>.`, fuer die selbst nicht angetretene Seite `Du verlierst
+  durch W.O.`. Aufgabe steht hinter dem Teilergebnis in Klammern, bei leerem
+  Teilergebnis als `Ergebnis: (Aufgabe)`. Profilkarten zeigen W.O. neutral als
+  `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.` und Aufgabe als
+  `Aufgabe durch <Verliererseite>: <Ergebnis>`, jeweils mit vollstaendigen
+  Doppelnamen. Der mit `Eingetragen durch:` bezeichnete Akteur bleibt fachlich vom
+  W.O.-Geber getrennt.
+  Es gibt keine Gegenbestaetigung. Fehler
+  bleiben mit Support-ID im Dialog und verwenden ausschliesslich
+  `match_result_action_failed` beziehungsweise
+  `match_result_suggestion_failed`; Ergebnis und freie Admin-Gruende werden nicht
+  in Browserdiagnose, Audit oder Betriebslog uebertragen.

@@ -30,10 +30,13 @@ Last-good-Cache. Ein fehlgeschlagener manueller Import veraendert keine Tabelle.
                   |                 | PasswdHash, Aktiv, Role
   bewerbe         | Bewerb          | ID, Bezeichnung, BewerbsartID
   bewerbsart      | Bewerbsart      | ID, Bezeichnung
-  matchtyp        | Matchtyp        | ID, Satztiebreak, Entscheidender Satz
+  matchtyp        | Matchtyp        | ID, Gewinnsaetze, Satzlaenge,
+                  |                 | Satztiebreak, Entscheidender Satz, NoAd
   matches1        | Matches1        | ID, MatchDate, ForderungDate, BewerbID,
                   |                 | BewerbRunde, Spieler1ID, Spieler3ID,
-                  |                 | Ergebnis
+                  |                 | Ergebnis, MatchStart, MatchEnde,
+                  |                 | ErgebnisErfasstAm, Spieler1RangBeiErgebnis,
+                  |                 | Spieler3RangBeiErgebnis
   rlPlatzierung   | RL-Platzierung  | BewerbID, PersonID, Rang
   navigator       | Navigator       | Name, Ziel
   entryList       | EntryList       | ID, BewerbID, PersonenID, Entrydate
@@ -61,13 +64,18 @@ Matches1 enthaelt offene und gespielte Matches.
   Ignore          | "1" blendet den Datensatz in fachlichen Anzeigen aus.
   ID              | Eindeutige Match-ID. Neue Forderungen erhalten eine aus
                   | Principal und operationId stabil abgeleitete ID `m-...`.
-  MatchDate       | Geplanter Termin im Format `YYMMDD-HHMM`. Bei einer offenen
-                  | Ranglistenforderung duerfen nur die beiden in Spieler1ID und
-                  | Spieler3ID gefuehrten Beteiligten das Feld schreiben. Der
-                  | Ersttermin liegt zwischen ForderungDate und exakt 14 Tage
-                  | danach; ein vorhandener Termin darf auf einen Zeitpunkt ab
-                  | der aktuellen Serverzeit ohne obere Datumsgrenze geaendert
-                  | werden. Zulaessig sind nur volle Stunden 06:00 bis 23:00.
+  MatchDate       | Geplanter Termin im Format `YYMMDD-HHMM`. Bei einem offenen,
+                  | vollstaendig besetzten Nicht-BYE-Match duerfen Beteiligte mit
+                  | Spielerrolle das Feld fuer eigene Matches schreiben; Admins
+                  | fuer jedes solche Match mit Pflichtgrund. Zulaessig sind volle
+                  | Stunden 06:00 bis 23:00. Fuer KO und Round Robin muss der
+                  | Termin in der Zukunft liegen. Bei Ranglisten gilt fuer den
+                  | Ersttermin der Korridor von ForderungDate bis exakt 14 Tage
+                  | danach; eine Aenderung muss in der Zukunft liegen. Bei einem
+                  | neuen Walkover ersetzt der Server den Plantermin atomar durch
+                  | den aktuellen Wiener W.O.-Zeitpunkt; beim administrativen
+                  | Leeren dieses Walkovers wird das ergebnisgebundene Datum
+                  | ebenfalls geleert.
   ForderungDate   | Serverzeit Europe/Vienna im Format `YYMMDD-HHMM`.
   Dauer           | Reservierte Matchdauer.
   BewerbID        | Referenz auf Bewerb.ID.
@@ -84,6 +92,28 @@ Matches1 enthaelt offene und gespielte Matches.
                   | temporaer `PRE` zulaessig.
   Spieler4ID      | Optionaler Doppelpartner von Spieler3ID.
   Ergebnis        | Saetze mit `/`, z.B. `6-3/6-4` oder `7-6(5)/6-4`.
+  Spieler1RangBeiErgebnis | Historischer Rang des ersten Hauptspielers beim
+                  | erstmaligen Ranglistenabschluss; leer bei Altbestand oder
+                  | nichtnegative sichere Ganzzahl. Fehlende beziehungsweise
+                  | Rang-0-Mitgliedschaft wird als `0` gespeichert.
+  Spieler3RangBeiErgebnis | Entsprechender Snapshot des zweiten Hauptspielers.
+                  | Korrekturen behalten beide Werte; Clear leert sie.
+  MatchStart      | Tatsaechlicher Spielbeginn `YYMMDD-HHMM`. Beim ersten
+                  | regulaeren Abschluss oder Retirement Pflicht und strikt vor
+                  | MatchEnde; bei Altbestand und Walkover leer. Korrekturen
+                  | behalten den Wert, Clear leert ihn.
+  MatchEnde       | Fachlicher Abschlusszeitpunkt `YYMMDD-HHMM`. Beim ersten
+                  | regulaeren Abschluss oder Retirement zwingend strikt nach
+                  | MatchStart, maximal sechs Stunden danach und nicht in der
+                  | Zukunft. Beim Walkover bleibt das Feld leer. Beteiligte behalten
+                  | ihn bei Korrekturen unveraendert; nur Admins korrigieren ihn
+                  | mit Grund. Historisch leer faellt fuer Abschlussregeln auf
+                  | MatchDate zurueck.
+  ErgebnisErfasstAm | Wiener Serverzeit `YYMMDD-HHMM` des ersten Abschlusses.
+                  | Sie bleibt bei Korrekturen unveraendert, ist alleinige Basis
+                  | des einschliesslichen 60-Minuten-Spielerkorrekturfensters und
+                  | wird bei Clear geleert. Historisch leer sperrt
+                  | Spielerkorrekturen.
   PTN-Wertung     | Reserviert.
   Bemerkung       | Freitext.
 
@@ -99,6 +129,36 @@ ersetzt werden. Fuer `Spieler2ID` und `Spieler4ID` ist keine `PRE`-Verwendung
 vorgesehen.
 Neue Ranglistenforderungen verwenden exakt `bewerbId` und `opponentId`; die
 Identitaet des Forderers und ForderungDate kommen aus Session und Serverzeit.
+Sie werden nicht per Tabellen-Append angelegt. Der Server bestimmt die Zeile
+unmittelbar nach dem letzten vorhandenen Datensatz und schreibt nur `ID`, `ForderungDate`, `BewerbID`,
+`Spieler1ID` und `Spieler3ID` positionsgenau. Dadurch bleiben Formeln in anderen
+Spalten sowie bestehende Leerzeilen erhalten und koennen den Datensatz nicht horizontal verschieben. Ein
+anschliessender Vollread muss die stabile ID und alle Forderungswerte bestaetigen.
+
+Der Ergebnis-Fingerprint ist SHA-256 ueber die getrimmten Werte von `Ergebnis`,
+`MatchStart`, `MatchEnde`, `ErgebnisErfasstAm`, `Spieler1ID` bis `Spieler4ID`
+sowie `Spieler1RangBeiErgebnis` und `Spieler3RangBeiErgebnis`. Ergebniswrites vergleichen ihn
+unmittelbar vor der Mutation. Sie schreiben ueber stabile `epiberRecord`-
+Metadaten nur die tatsaechlich geaenderten Zellen; die uebrige Zeile und Formeln
+werden weder ersetzt noch neu geschrieben. Ein gemeinsamer Google-Batch kann
+zusaetzlich Rangzeilen und genau einen KO-Nachfolgeslot enthalten.
+
+Die generischen Terminwrites `setMatchAppointment` und
+`adminSetMatchAppointment` ersetzen den entfallenen ranglistenspezifischen
+Matchterminwrite und verwenden fuer Rangliste, KO und Round Robin denselben
+stabilen `MatchDate`-Pfad. Die Adminvertraege zum Loeschen einer offenen
+Ranglistenforderung und zum Aendern von `ForderungDate` bleiben separat erhalten.
+Bei einem abgeschlossenen KO-Vorgaenger blockiert jedes nichtleere `MatchDate` des
+eindeutigen Folgematches dessen Ergebniskorrektur und Clear unabhaengig von der
+zeitlichen Lage; der Gesamtplan bleibt ohne Write bestehen.
+
+Beim ersten Ranglistenabschluss liest der Server die Rangliste frisch und schreibt
+beide Rang-Snapshots mit Ergebnis, Markern, Start/Ende beziehungsweise W.O.-Datum
+und `ErgebnisErfasstAm` im selben stabilen Gesamtplan. Der Plan bindet Vorher- und
+Nachher-Fingerprint, Match-, Rang- und KO-Zielzellen. Bestaetigungsreads erkennen
+vollstaendigen Vorher-, Nachher- oder gemischten Zustand; nur ein vollstaendiger
+Zielzustand wird ohne zweiten Sheetwrite fertiggestellt. Korrekturen verwenden die
+historischen Snapshots unveraendert, eine Ergebnisloeschung leert sie.
 
 
 ================================================================================
@@ -240,9 +300,9 @@ Passwort-Vertrag:
 
 Personenprojektionen:
   - `players` ist oeffentlich: ID, Vorname, Nachname, Aktiv.
-  - `publicProfile` ist anonym: ID, Vorname, Nachname.
-  - `publicProfile` ist bei angemeldeter Session ein Mitgliederprofil: zusaetzlich
-    E-Mail, Telefon und Geburtsdatum.
+  - `publicProfile` ist ausschliesslich mit aktiver Benutzersession erreichbar;
+    anonyme Requests enden vor jeder Projektion mit `AUTH_REQUIRED`. Das fremde
+    Mitgliederprofil enthaelt ID, Namen, E-Mail, Telefon und Geburtsdatum.
   - `memberDirectory` ist loginpflichtig: aktive Personen mit ID, Namen,
     TelefonMobil, E-Mail, GeburtsDatum und Aktiv.
   - `myProfile` und die HTTP-Sessionantwort sind privat: ID, Namen, Login,
@@ -260,10 +320,16 @@ Personenprojektionen:
     `canWithdraw` sowie eine etwaige offene Forderung mit Match-ID, Gegner,
     dessen aktuellem Rang, `challenger|challenged`-Richtung, Forderungszeit und
     optionalem Spieltermin projiziert. Bei Rang `0` erhalten angemeldete Benutzer
-    Raushaengezeitpunkt und Grund; anonym bleiben diese Werte ausgeschlossen.
+    Raushaengezeitpunkt und Grund.
     Nur das Eigenprofil erhaelt innerhalb der zwoelfmonatigen Rueckkehrfrist
     zusaetzlich den vorherigen Rang fuer die Rueckkehrforderung. Fremde Profile
     und Listen projizieren ihn nicht.
+  - Beide Profiltypen enthalten serverseitig kontrollierte Bewerbslebenszyklen
+    und alle gueltigen persoenlichen Matches auch nach Bewerbsende. Pro Match
+    werden Termin/Start/Ende, Abschluss, Matchtypregeln, Teams, optionale
+    Rang-Snapshots und principalbezogene Aktionsbooleans projiziert. `BYE` wird nur
+    als `bye:true` ohne Personen-ID, Namen oder Mutation zugelassen; `PRE`,
+    unbekannte Personen und ungueltige Teilnehmerzeilen bleiben ausgeschlossen.
 
 Beim eigenen Passwortwechsel, Reset, direkten Admin-Passwortsetzen und der
 erstmaligen Passwortvergabe werden alle Sessions der Zielperson vorsorglich vor
@@ -308,8 +374,10 @@ Matchtyp:
   ID                     | Eindeutige positive ganzzahlige Matchtyp-ID.
   Bezeichnung            | Textuelle Bezeichnung.
   Gewinnsaetze           | `2` fuer Best-of-3 oder `3` fuer Best-of-5.
-  Satzlaenge             | Ganzzahl von 0 bis 6; ueblich 6, kurze Saetze z.B. 4.
-  Satztiebreak           | Aktuell `3-3` oder `6-6`; Stand, an dem im Satz ein
+  Satzlaenge             | Exakt `0-4` oder `0-6`; tatsaechlicher Zielbereich
+                          | eines Satzes, nicht eine einzelne Ganzzahl.
+  Satztiebreak           | Exakt passend `3-3` zu `0-4` oder `6-6` zu `0-6`;
+                          | Stand, an dem im Satz ein
                          | Tie-Break beginnt.
   Entscheidender Satz    | `vollstaendiger Satz`, `MT10` oder `MT7`.
   NoAd                   | `N` ohne No-Ad-Regel, `J` mit No-Ad-Regel.
@@ -337,8 +405,15 @@ Individualzuweisungen speichern `matchtypId: ""` und `displayRules: null`.
 Die Scoreboard-Projektion verwendet nur diesen Snapshot und ignoriert ihn bei
 falscher `schemaVersion`, anderer `source` oder einer von `matchtypId`
 abweichenden Snapshot-ID. Spaetere Sheet-Aenderungen wirken erst nach einer
-Neuzuweisung. Die Regeln dienen aktuell der Scoreboard-Anzeigeprojektion; eine
-spaetere semantische Ergebnispruefung ist fachlich vorgesehen.
+Neuzuweisung. Fuer Ergebniswrites werden alle sechs oben genannten Matchtypfelder
+strikt validiert. Regulaere Ergebnisse verwenden die Satzgrammatik
+`A-B[/A-B...]` mit optionalem Tie-Break-Verliererwert `A-B(T)` und werden gegen
+Gewinnsaetze, Satzlaenge und entscheidenden Satz geprueft. Walkover bleibt ohne
+Ergebnis; Retirement erlaubt ein leeres Teilergebnis oder als letzten Satz einen
+gueltigen unvollstaendigen Stand. Jede numerische Ergebniskomponente liegt aus
+kanonischen Speicher- und Validierungsgruenden absichtlich zwischen 0 und 99.
+NoAd ist Bestandteil des strikten Vertrags,
+veraendert aber nicht die gespeicherte Satzgrammatik.
 
 RL-Platzierung:
   Optional ID; verpflichtend sind BewerbID, PersonID, Rang, RausgehangenAm,
@@ -418,7 +493,7 @@ und `synchronous=FULL`; es gibt keine automatische fachliche Bereinigung.
 
 `MESSAGING_FILE`, standardmaessig `messaging.sqlite` im Verzeichnis von
 `STATE_FILE`, produktiv `/var/lib/epiber-<system>/messaging.sqlite`, verwendet
-Schema 4:
+Schema 7:
 
 Tabelle `competition_events`:
   event_id PRIMARY KEY, competition_id, created_at, event_type, source,
@@ -454,8 +529,15 @@ Tabelle `messaging_revisions`:
 Stabile Ereignis-, Meldungs- und Operation-IDs verhindern Dubletten. Ein bereits
 vorhandenes Ereignis darf nur kompatibel um fehlende Teilnehmer oder eine zuvor
 fehlende Bewerbszuordnung ergaenzt werden; eine abweichende Wiederverwendung wird
-als Konflikt abgewiesen. Das fruehere Meldungsschema wird tabellenbasiert nach
-Schema 4 migriert, ohne Betreff oder Nachrichtentext auszuwerten. Eine einmalige
+als Konflikt abgewiesen. Das fruehere Meldungsschema wird tabellenbasiert
+migriert. Schema 5 ergaenzt den Zeitindex `competition_events_created`; Schema 6
+passt nur kontrolliert erkannte alte Ergebnisdetails an. Schema 7 migriert
+ausschliesslich kontrolliert erkannte Walkover-Ergebnisereignisse: Inboxtexte
+erhalten die Gewinnerperspektive `Du gewinnst durch W.O. von ...` beziehungsweise
+die Verliererperspektive `Du verlierst durch W.O.`, Historienzusammenfassung und
+-detail werden auf die neutrale W.O.-Formulierung und `Ergebnis: W.O.` gesetzt.
+Andere Ereignisse, Aufgabe, Quittierungen und Zustellstaende bleiben unveraendert.
+Eine einmalige
 Legacy-Zuordnung ergaenzt bei matchgebundenen Ereignissen fehlende Bewerb-IDs aus
 `Matches1`; beliebige manuelle Sheet-Aenderungen erzeugen dagegen keine
 Bewerbsereignisse.
@@ -466,9 +548,28 @@ Einteilnehmerereignis; der freie Grund steht nur im privaten Meldungstext und
 nicht in neutraler Historie, Audit oder Betriebslog. Eine erfolgreiche erste
 Terminsetzung erzeugt `appointment`, eine Aenderung `appointment_changed`; beide
 speichern den Akteur, neuen und bei Aenderung alten Termin und je eine private
-Projektion fuer Forderer und Geforderten. Scheitert diese recovery-sichere
+Projektion fuer alle zwei beziehungsweise vier Beteiligten. Scheitert diese recovery-sichere
 Ereignispersistenz nach dem Sheetwrite, wird der Fachwrite nicht als eindeutig
 erfolgreich bestaetigt.
+
+Administrative Korrekturen offener Ranglistenforderungen erzeugen die Typen
+`ranking_challenge_deleted` und `ranking_challenge_date_changed` mit
+Bewerbszuordnung, Adminakteur und je einer richtungsbezogenen Projektion fuer
+Forderer und Geforderten. Das Ereignisdetail enthaelt nur `Grund: <Text>`; bei der
+Datumsaktion stehen alter und neuer Zeitpunkt bereits in der Zusammenfassung.
+Fruehere Forderungsereignisse bleiben unveraendert. Der stabile Recovery-Plan
+enthaelt Match, Bewerb, beide Teilnehmer, Vorher-/Nachherdatum und urspruenglichen
+Ereigniszeitpunkt; nach bestaetigter Mutation wird eine fehlende Ereignispersistenz
+ohne erneuten Sheetwrite nachgeholt. Eine zwischenzeitlich abgeschlossene Partie
+verhindert diese reine Ereignisrecovery nicht.
+
+Jede bestaetigte Ergebniseintragung, -korrektur, -loeschung oder administrative
+MatchEnde-Korrektur erzeugt genau ein generisches matchbezogenes Ereignis mit
+kontrolliertem Gesamtergebnis und einer privaten Projektion fuer jeden eindeutigen
+Beteiligten aus allen vier Spielerpositionen. Die Historie unterscheidet nicht in
+separate Einzel-/Doppel- oder gewichtete Teilresultate. Akteur und damaliger Name
+werden als Snapshot gespeichert; ein freier Admin-Grund erscheint nur im
+fachlichen Ereignisdetail und in den privaten Meldungstexten.
 
 `SCORELOG_FILE`, standardmaessig
 `Backend/.state/<INSTANCE_ID>-scorelog.sqlite`, produktiv
@@ -484,6 +585,9 @@ Tabelle `score_log`:
   `(instance, court, sequence)` eindeutig. Eine wiederholte Event-ID ist nur mit
   identischem Inhalt idempotent; anderer Inhalt ergibt
   `SCORE_LOG_EVENT_CONFLICT`.
+  Der Index `score_log_match_latest(instance, match_id, court, sequence DESC)`
+  ermoeglicht die gezielte Suche nach dem neuesten ScoreLog-Eintrag fuer exakt
+  eine Match-ID und einen Court. Der Court wird nicht im Match gespeichert.
 
 Score hat das Format
 `S1Home-S1Gast/S2Home-S2Gast/S3Home-S3Gast/PunkteHome-PunkteGast`. Inaktive
@@ -573,11 +677,46 @@ und Match-ID aus; Kontaktwerte, freie Texte und sonstige Personendaten bleiben
 ausgeschlossen. `failed` bezeichnet dabei einen Versuch, bei dem keine
 Forderung angelegt wurde, niemals eine Ablehnung durch den Geforderten.
 
-Terminwrites verwenden die Auditaktion `setRankingMatchDate`. Bereits `started`
-enthaelt nur Match-ID und neuen kontrollierten Termin. `success`, `failed` oder
-`unknown` schliessen denselben Auditdatensatz; Erfolg speichert alten und neuen
-Termin. Der strukturierte Journalabschluss enthaelt ausschliesslich Match-,
-Bewerbs- und Akteur-ID, neuen Termin und Recoverykennzeichen, keine freien Texte.
+Terminwrites verwenden `setMatchAppointment` fuer Beteiligte und
+`adminSetMatchAppointment` fuer Administratoren. Bereits `started` enthaelt nur
+Match-ID und neuen kontrollierten Termin. `success`, `failed` oder `unknown`
+schliessen denselben Auditdatensatz; Erfolg speichert alten und neuen Termin,
+Bewerbs-ID, Recoverykennzeichen und bei Adminaktionen nur `reasonRecorded`. Der
+freie Grund steht ausschliesslich in Fachhistorie und Meldungen. Der strukturierte
+Journalabschluss enthaelt nur Match- und Bewerbs-ID sowie Aenderungs- und
+Recoverykennzeichen.
+
+Ergebnisoperationen verwenden die Auditaktionen `setMatchResult`,
+`adminSetMatchEnd`, `adminClearMatchResult` und `adminCorrectRankingResult`.
+Jeder Versuch besitzt `started` und endet als `success`, `failed` oder `unknown`.
+Audit und Journal spiegeln nur Match-/Bewerbs-ID, Aenderungs- und Abschlussart,
+Quelle, Anzahl Rangverschiebungen, KO-Zielmatch und das Vorhandensein eines
+Admin-Grundes. Der freie Grund steht ausschliesslich in der fachlichen Historie
+und in persoenlichen Meldungen, nie in Audit oder Betriebslog.
+
+Die Forderungskorrekturen verwenden die Auditaktionen
+`adminDeleteRankingChallenge` und `adminSetRankingChallengeDate`. Jeder Versuch
+beginnt mit `started` und endet mit `success`, `failed` oder `unknown`. Gespeichert
+werden nur kontrollierte Match-/Bewerbs-, Datums-, Loesch-, Recovery- und
+`reasonRecorded`-Felder; der freie Grund bleibt ausschliesslich im Fachereignis
+und in den beiden privaten Meldungen. Die Abschlusslogs
+`ranking_challenge_delete_completed` und
+`ranking_challenge_date_update_completed` sowie die Browserdiagnose
+`ranking_admin_action_failed` enthalten ebenfalls keinen Grundtext.
+
+Der interne Meldungsbericht liest die halb offen begrenzte Zeitspanne direkt ueber
+`competition_events.created_at` aus denselben Ereignis-, Teilnehmer-, Receipt-
+und Zustelltabellen. Das Backend aggregiert hoechstens 31 Tage nach Wiener
+Kalendertagen und reichert nur aktuelle Rollen/Empfaengerklassen und Bewerbsnamen
+aus dem Last-good-Snapshot an. Die geschlossene Projektion enthaelt kontrollierte
+Meldungsdetails, Zaehler und Zustellstatus; sie schreibt nichts und verwendet
+keine zweite Reporting-Datenbank.
+
+Automatische Rangfolgen speichern in `app_state` unter
+`match-result-ranking:<Match-ID>` die betroffenen Personen mit Stand vor und nach
+dem Ergebnis sowie die Kennzeichnung einer dadurch neu angelegten Mitgliedschaft.
+Korrektur und Loeschung verlangen den unveraenderten Nachher-Stand; eine
+erfolgreiche Loeschung oder vollstaendige Ruecknahme leert die Provenienz.
 
 
 ================================================================================
@@ -592,7 +731,8 @@ Foreign Keys, WAL und `synchronous=FULL`.
 Tabelle `app_state`:
   key TEXT PRIMARY KEY, value_json TEXT, revision INTEGER, updated_at INTEGER.
   Enthaelt revisionierte Court-Zustaende `court:1`/`court:2`, adressierte
-  Monitorziele `monitor-target:<id>`, Metadaten-Intents sowie die
+  Monitorziele `monitor-target:<id>`, Ergebnis-Rangprovenienz und persistente
+  Ergebnis-Recovery-Plaene, Metadaten-Intents sowie die
   Frontend-Logging-Schluessel `frontend-logging:settings` und
   `frontend-logging:targets`. Compare-and-set meldet bei falscher Revision
   `REVISION_CONFLICT`.
@@ -699,7 +839,10 @@ Tokens, Passwortwerte oder privaten Schluessel.
 ================================================================================
 
 Vor einer produktiven Bereitstellung sind ein Sheet-Backup, die explizite
-Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, Schreibrechte
+Role-Migration, alle oben genannten Pflichtspalten, `Entrydate`, `MatchStart`,
+`MatchEnde`, `ErgebnisErfasstAm`, `Spieler1RangBeiErgebnis`,
+`Spieler3RangBeiErgebnis`, die
+sechs strikten Matchtypfelder, Schreibrechte
 fuer Personen, Matches1 und EntryList sowie eindeutige IDs/Metadaten zu pruefen.
 Insbesondere muss `Personen.Login` vor dem Backendstart vorhanden sein; bestehende
 Anmeldekonten brauchen einen gueltigen, kanonischen und eindeutigen Login. Es gibt
@@ -712,6 +855,11 @@ bietet keine transaktionale Compare-and-set-Operation ueber Zielzeile, ID-,
 `CD-ID`- und Login-Eindeutigkeit. Fingerprints, die serialisierte `players`-Queue,
 Developer Metadata und Bestaetigungsreads sind Schutzschichten, aber kein
 atomarer Ersatz dafuer.
+Auch die A1-Einfuegung einer neuen Ranglistenmitgliedschaft liest die Rangliste
+unmittelbar vor dem Batch ein letztes Mal und verengt damit das Konfliktfenster.
+Google Sheets bietet dennoch kein transaktionales CAS; Ergebniswrites mit
+Neueinsteiger-Einfuegung unterliegen deshalb ebenfalls der betrieblichen
+Single-Writer-Vorgabe ohne parallele manuelle oder zweite Backendwrites.
 ScoreLog- und Auditlog-Dateien muessen getrennt vom State angelegt, gesichert und
 mit ihren WAL-/SHM-Dateien konsistent behandelt werden.
 Die vollstaendige verbindliche Liste steht in

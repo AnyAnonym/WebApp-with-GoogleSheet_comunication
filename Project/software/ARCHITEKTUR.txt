@@ -24,7 +24,8 @@
     |-- externes Court-Polling + persistentes SQLite-ScoreLog
     |-- strukturierte redigierte JSON-Betriebslogs fuer journald
     |-- adressierter MonitorBroker
-    `-- internes Prometheus-Textformat unter GET /metrics
+    |-- internes Prometheus-Textformat unter GET /metrics
+    `-- kontrollierter Meldungsbericht unter GET /internal/messaging-report
              |                         |
              v                         v
        Google Sheets             externe Court-Quelle (HTTPS)
@@ -115,7 +116,11 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   kontrollierte persoenliche Inboxtexte und neutrale Bewerbshistorien, reichert
   alte matchgebundene Eintraege einmalig ueber Match-ID mit der Bewerbszuordnung
   an und projiziert Runden nur fuer Nicht-Ranglisten. Ereignis-, Akteurs-, Namens-,
-  Ergebnis- und Textwerte bleiben Snapshots des Ereigniszeitpunkts.
+  Ergebnis- und Textwerte bleiben Snapshots des Ereigniszeitpunkts. Schema 7
+  migriert kontrolliert alte Walkover-Projektionen auf die eindeutige W.O.-
+  Gewinner-/Verliererperspektive und neutrale Historienformulierung. Der Service
+  erzeugt ausserdem direkt aus dieser SQLite-Datei die zeitlich begrenzte
+  Reportingprojektion; eine zweite Reporting-Datenbank existiert nicht.
 
 `emailMessagingAdapter.js`, `whatsappMessagingAdapter.js`
   Begrenzen die kuenftigen externen Zustellkanaele auf getrennte Adapter. Solange
@@ -184,9 +189,11 @@ Konfigurationsfile und keine externe Rollen- oder Tokenautoritaet im Browser.
   `matchtypId`, aber ohne `displayRules`, werden nach einem verwendbaren
   Matchtyp-Load migriert und mit exakten unresolved-Diagnosen im Status gefuehrt.
 
-`matchRules.js`
-  Berechnet Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
-  Sperrzeiten serverseitig. Der Browser ist nicht Autoritaet fuer Fachregeln.
+`matchRules.js`, `matchResultRules.js`
+  Berechnen Ranglisten-Forderbarkeit, offene Beteiligungen, Schutz- und
+  Sperrzeiten sowie Ergebnis-Fingerprint, strikte Matchtypauflosung,
+  Ergebnisgrammatik, Abschlusskodierung und KO-Nachfolger serverseitig. Der
+  Browser ist nicht Autoritaet fuer Fachregeln.
 
 `courtPoller.js`
   Pollt nur wenn mindestens ein Court aktiv ist. AbortController, Fetch-Timeout,
@@ -273,8 +280,10 @@ enthaelt hoechstens eine nicht geheime Browser-deviceId; keine Sessiontokens und
 keine Rollenautoritaet.
 
 Datenprojektionen:
-  - Anonymes Spielerprofil: ID, Name und kontrollierte Ranglistenmitgliedschaften.
-  - Angemeldetes fremdes Profil: zusaetzlich Kontakt-E-Mail, Telefon und
+  - Anonym gibt es keine Profilprojektion; `publicProfile` ist authentifiziert und
+    lehnt direkte Requests vor jeder Projektion mit `AUTH_REQUIRED` ab.
+  - Angemeldetes fremdes Profil: Name, kontrollierte Ranglisten-/Matchdaten sowie
+    Kontakt-E-Mail, Telefon und
     Geburtsdatum, aber kein Login.
   - Eigenprofil: zusaetzlich Login, Geschlecht und Rolle.
   - Das loginpflichtige Mitgliederverzeichnis enthaelt fuer aktive Personen auch
@@ -291,14 +300,38 @@ Datenprojektionen:
     anonyme Profile nicht. Der vorherige Rang bleibt grundsaetzlich im
     Persistenzlayer und wird nur dem berechtigten Eigenprofil innerhalb der
     zwoelfmonatigen Rueckkehrfrist kontrolliert projiziert.
+  - Profile enthalten zusaetzlich bewerbsbezogene Matchreiter. Ranglisten- und
+    Bewerbsprojektion werden im gemeinsamen Profilmodal nach Bewerb-ID vereinigt.
+    Sichtbar sind alle gueltigen offenen und historischen Matches der Profilperson
+    aus jeder der vier Spielerpositionen, auch nach `BewerbsEnde`; mehrere Matches
+    pro Bewerb bleiben getrennt. `competitionEndAt` und `competitionEnded` werden
+    serverseitig kontrolliert projiziert. BYE ist eine explizite, aus Team-IDs und
+    Namen entfernte Ausnahme mit `bye:true` und ohne Mutation; PRE und unbekannte
+    Personen werden verworfen. Rang-Snapshots, MatchStart/-Ende, Matchtypregeln,
+    Abschlussstatus und principalbezogene Aktionsbooleans stammen ebenfalls vom
+    Server. Nur dieses gemeinsame Modal stellt die Ergebnis- und
+    Terminaktionen bereit, nicht die einzelnen Fachseiten selbst. Pro Match
+    projiziert der Server principalbezogen `canSetMatchAppointment`; erlaubt sind
+    nur offene, vollstaendig besetzte Nicht-BYE-Matches fuer Beteiligte mit
+    Spielerrolle beziehungsweise fuer Administratoren.
   - Das Eigenprofil projiziert die administrativ gepflegten gueltigen
     Benachrichtigungskanaele sowie offene Forderungen mit Richtung, aktuellem
-    Gegnerrang, Forderungszeit und optionalem Spieltermin. Persoenliche Meldungen
+    Gegnerrang, Forderungszeit und optionalem Spieltermin. Im Ranglistenreiter
+    werden davon nur Ranglistenposition, Forderungsdatum und Terminfrist oberhalb
+    der Matchkarte gezeigt; Gegner und Termin stehen in der Karte. Persoenliche Meldungen
     sind nur fuer ihren Empfaenger les- und quittierbar. Listen sortieren
     ungelesene vor gelesenen Eintraegen und innerhalb beider Gruppen absteigend.
     Bewerbshistorien enthalten neutrale Ereignisfelder und Teilnehmernamen, aber
     keine privaten Inboxtexte, fremden Receipts oder Zustellstaende. Einzel- und
     Gesamtcursor sind an ihren jeweiligen Scope gebunden.
+
+Profile besitzen drei unabhaengige Schutzschichten: Fachansichten rendern bekannte
+Namen nur bei aktiver Anmeldung als Profilaktionen und wechseln bei Authaenderung
+ohne Seitenreload wieder zu reinem Text; `openProfileModal` prueft nach dem
+zentralen Auth-Lifecycle erneut eine vorhandene Session und verwirft ueberholte
+Requests; `publicProfile` erzwingt serverseitig `authenticated`. Beim Logout oder
+Identitaetswechsel wird ein offenes Modal geschlossen und sein Inhalt samt
+Aktionshandlern entfernt.
 
 Eigenwechsel, Reset und Admin-Direktsetzung laufen je Zielbenutzer geordnet.
 Sessions der Zielperson werden vor dem externen Passwortwrite widerrufen, damit
@@ -335,20 +368,125 @@ Schreibpfad:
   Sessionprincipal + geschlossene Parameter -> Fachregeln -> operationId-Lookup
   -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
 
-Ranglistentermin:
-  Eigenprofil eines Forderungsbeteiligten -> UUID-operationId, Match-ID und
-  `YYMMDD-HHMM` -> aktueller `Matches1`-Read und stabile Metadatenzeile -> offene
-  Ranglistenforderung, Teilnehmer, Erstkorridor beziehungsweise Aenderungszeit
-  und volle Stunde 06:00 bis 23:00 pruefen -> Audit `started` -> MatchDate-
-  Metadatenwrite -> bei Transportfehler zielgenaue Bestaetigung statt Blindretry
-  -> lokale Matchprojektion und Invalidierung -> zentrales `appointment`- oder
-  `appointment_changed`-Ereignis mit zwei privaten Meldungen -> Auditabschluss
-  und strukturiertes `ranking_match_date_update_completed`. Bei unbekanntem
-  Ausgang speichert die Operation alten und neuen Termin; derselbe Request liest
-  nur nach, erzeugt das stabile Ereignis idempotent und antwortet erst danach mit
-  `recovered`. Andere Benutzer, geschlossene Forderungen, unveraenderte Termine,
-  ungueltige Stunden oder ausserhalb des Erstkorridors liegende Ersttermine werden
-  ohne Sheetmutation abgewiesen.
+Matchtermin:
+  Profil-Matchkarte eines Beteiligten beziehungsweise Administrators ->
+  UUID-operationId, Match-ID, `YYMMDD-HHMM` und bei Admins Pflichtgrund ->
+  aktueller `Matches1`-Read und stabile Metadatenzeile -> offene vollstaendige
+  Teilnehmerstruktur, Rolle und volle Stunde 06:00 bis 23:00 pruefen. KO und
+  Round Robin verlangen einen zukuenftigen Termin ohne Obergrenze; Ranglisten
+  behalten Erstkorridor ab Forderungsdatum und zukuenftige Aenderung. Danach
+  folgen Audit `started`, MatchDate-Metadatenwrite, zielgenaue Bestaetigung bei
+  Transportfehler, lokale Projektion und Invalidierung sowie ein zentrales
+  `appointment`- oder `appointment_changed`-Ereignis mit privaten Meldungen fuer
+  alle zwei oder vier Beteiligten. Auditabschluss und strukturiertes
+  `match_appointment_update_completed` enthalten nur kontrollierte Felder. Bei
+  unbekanntem Ausgang bindet der interne Recovery-Checkpoint Bewerbs-ID,
+  Teilnehmer-IDs, Teamseiten und Ereigniszeit ohne Namen oder freien Grund. Der
+  gleiche Request liest nach und repariert das stabile Ereignis ohne zweiten
+  Sheetwrite und ohne zwischenzeitlich geaenderte Teilnehmer zu benachrichtigen.
+  Der ranglistenspezifische Matchtermin-RPC existiert nicht mehr; nur
+  `setMatchAppointment` und `adminSetMatchAppointment` bedienen Rangliste, KO und
+  Round Robin. `match_date_action_failed`, Audit und Abschlusslog verwenden nur
+  kontrollierte Felder und nie den Admin-Grund oder Matchpayload.
+
+Ranglistenforderung:
+  Nach dem frischen `Matches1`-Read bestimmt der Server die Zeile unmittelbar
+  nach dem letzten vorhandenen Datensatz und schreibt `ID`, `ForderungDate`, `BewerbID`, `Spieler1ID` und
+  `Spieler3ID` als positionsgenauen A1-Batch. Er verwendet bewusst kein
+  `values.append`, weil unsichtbare Formeln oder Vorbelegungen Google sonst zu
+  einem horizontal verschobenen Append veranlassen koennen. Ein vor dem Write
+  persistierter Recovery-Checkpoint bindet ID und Zielzeile; auch nach einem
+  scheinbar erfolgreichen Write ist der vollstaendige Bestaetigungsread Pflicht.
+  Nur ein exakt nachweisbarer Datensatz erzeugt Meldungen und den Auditabschluss.
+
+Administrative Forderungskorrektur:
+  Adminprofil -> UUID-operationId und Pflichtgrund -> frischer Matchread -> offene
+  Ranglistenforderung mit zwei verschiedenen Hauptspielern pruefen -> stabile
+  Metadatenmutation. `adminSetRankingChallengeDate` ersetzt ausschliesslich das
+  minutengenaue Forderungsdatum; `adminDeleteRankingChallenge` leert die gesamte
+  identifizierte Zeile. Der direkte Erfolg verlangt einen eindeutigen Clear;
+  bei unklarem Ausgang bestaetigt Recovery sowohl leere Metadatenzeile als auch
+  fehlende Match-ID. Danach folgen lokale Projektion/Invalidierung, ein
+  bewerbsbezogenes Korrekturereignis, zwei richtungsbezogene private Meldungen und
+  Auditabschluss.
+  Der vor dem Write persistierte Plan bindet Teilnehmer, Bewerb, alte/neue Werte
+  und urspruengliche Ereigniszeit. Ist die Sheetmutation bestaetigt, kann eine
+  fehlgeschlagene Ereignispersistenz spaeter auch nach Matchabschluss ohne zweiten
+  Sheetwrite fertiggestellt werden; eine nicht nachweisbare Mutation bleibt
+  konservativ `unknown`. Audit und Abschlusslogs erfassen nur kontrollierte
+  Aktion-, Match-, Bewerbs-, Datums-, Recovery- und Grundvorhandenheitsfelder.
+
+Universelles Matchergebnis:
+  Profilmatch -> optionaler bearbeitbarer Vorschlag aus exakt aktuellem
+  Match/Court oder neuestem ScoreLog fuer Match/Court -> UUID-operationId,
+  Match-ID, Abschlussart und Fingerprint -> frische Match-/Ranglistenreads ->
+  Teilnehmer- oder Adminrecht, strikten Matchtyp, Ergebnisgrammatik und beim
+  ersten regulaeren Abschluss beziehungsweise Retirement MatchStart und MatchEnde
+  pruefen -> bewerbsartbezogener Gesamtplan fuer Match, Rangfolge und
+  hoechstens einen KO-Nachfolger -> stabile Metadatenaufloesung -> zellensparsamer
+  `batchUpdateByDataFilter` -> Bestaetigung, lokale Projektion und Invalidierung ->
+  Rangprovenienz -> Bewerbsereignis und private Meldungen -> Auditabschluss und
+  strukturiertes Abschlusslog.
+
+  Fehlt bei einer berechneten KO-Fortschreibung exakt das Folgematch, bleibt der
+  Matchabschluss im Gesamtplan enthalten, waehrend der KO-Teil den kontrollierten
+  Status `missing` erhaelt. Nach dem Write erzeugt dieselbe idempotente
+  Recovery-Phase neben dem normalen Ergebnisereignis ein separates, keiner
+  Bewerbshistorie zugeordnetes Systemereignis mit je einer persoenlichen Meldung
+  fuer alle aktiven Administratoren. Ein Meldungsfehler wird ohne zweiten
+  Sheetwrite wiederaufgenommen. Mehrdeutige, abgeschlossene oder abweichend
+  belegte Ziele werden vor dem Write weiterhin abgelehnt.
+
+  Der Fingerprint umfasst Ergebnis, MatchStart, MatchEnde, ErgebnisErfasstAm, alle
+  vier Spielerfelder und beide Rang-Snapshots. Beim ersten Ranglistenabschluss
+  werden die unmittelbar zuvor frisch gelesenen Raenge der beiden Hauptspieler
+  (`0` bei fehlender oder Rang-0-Mitgliedschaft) im selben Batch gespeichert und
+  ueber Fingerprint, Plan und Bestaetigungsread geschuetzt. Korrekturen behalten
+  diese Historie, Clear leert sie; `rankAtResult` wird nur kontrolliert im Profil
+  projiziert und nicht als neues personenbezogenes Audit-/Logfeld ausgegeben.
+  Spieler in jeder dieser Positionen duerfen fuer beide Seiten ohne
+  Gegenbestaetigung eintragen und korrigieren; Admins duerfen jedes Match,
+  Operatoren keines. Beim ersten Walkover setzt der Server `MatchDate` auf den
+  aktuellen Wiener W.O.-Zeitpunkt und laesst MatchStart und MatchEnde leer. Bei
+  regulaerem Abschluss
+  und Retirement liegt MatchEnde strikt nach MatchStart, maximal sechs Stunden
+  danach und nicht zukuenftig; `MatchDate` bleibt nur der vereinbarte Plantermin.
+  Der erste Abschluss setzt `ErgebnisErfasstAm` auf die Wiener Serverzeit.
+  Beteiligte duerfen bis einschliesslich 60 Minuten danach korrigieren; die Frist
+  wird weder aus Messaging/Audit rekonstruiert noch durch Korrekturen verlaengert,
+  und ein historisch fehlender Wert sperrt sie. Start und Ende bleiben bei
+  Korrekturen unveraendert; `adminSetMatchEnd` aendert ein vorhandenes Ende mit
+  Pflichtgrund. Historische Abschluesse ohne MatchEnde verwenden nur fuer
+  Abschlussregeln MatchDate als
+  Fallback. Clear leert Start, Ende und Erfassungszeit; bei W.O. auch das
+  ergebnisgebundene MatchDate, sodass ein Neuabschluss ein neues Zeitfenster
+  beginnt.
+
+  Ranglistenplanung deckt gereihte Forderer, Neueinsteiger, Rueckkehr innerhalb
+  und nach Ablauf der Frist sowie die Einreihung am Listenende ab. Eine normale
+  Ergebniskorrektur setzt unveraenderten provenienzgebundenen Rangstand voraus;
+  `adminCorrectRankingResult` verlangt stattdessen einen vollstaendigen Plan fuer
+  alle Mitglieder. `adminClearMatchResult` stellt den Vorher-Stand her und leert
+  die Provenienz. Raushaengen und Ergebnis verwenden gemeinsame technische
+  Executor-/Recovery-Muster, aber getrennte fachliche Planer.
+
+  KO-Matches muessen vollstaendig vorangelegt sein. Gewinner werden automatisch
+  weitergereicht. Korrektur oder Clear eines abgeschlossenen Vorgaengers sind
+  bereits gesperrt, sobald das eindeutige Folgematch irgendein nichtleeres
+  MatchDate besitzt, unabhaengig davon, ob es vergangen oder zukuenftig ist; ein
+  Abschluss oder eine abweichende Belegung sperrt ebenfalls. Die Profilprojektion
+  entfernt dann Ergebnis- und Clearaktion. Admins loeschen noch ungesperrte
+  Abhaengigkeiten rueckwaerts. Round Robin bleibt ausserhalb
+  dieser Backendplanung: `buildStats` im Frontend ist die einzige
+  Tabellenberechnung und es gibt keine automatische Gruppen-zu-KO-Promotion.
+
+  Der vor der Mutation persistierte Recovery-Plan bindet alle Teilupdates. Nach
+  Transportverlust werden nur die sparse Zielzellen bestaetigt; ein gemischter
+  Zustand bleibt `unknown`, ein nachweislicher Zielzustand wird ohne zweiten
+  Fachwrite fertiggestellt. Formeln und sonstige Zeilenzellen werden nie als
+  Vollzeile zurueckgeschrieben. Eine A1-Neueinsteigerzeile erhaelt unmittelbar
+  vor dem Batch einen letzten Tabellenread, doch Google Sheets bietet kein CAS;
+  dafuer gilt die operative Single-Writer-Beschraenkung.
 
 Personennormalisierung:
   Adminprojektion -> dreizehn erlaubte Feldwerte + Problemcodes + SHA-256-
@@ -456,6 +594,13 @@ Fachhistorien und Betriebslogs:
     Transaktion; stabile IDs machen Wiederholungen idempotent. Erfolgreiche neue
     Projektionen publizieren danach private Zusammenfassungen. Externe Adapter
     aktualisieren ausschliesslich kontrollierte Zustellstatus.
+    Messaging-Schema 6 migriert bereits persistierte Ergebnisereignisse mit den
+    kontrollierten alten Detailpraefixen `Abschlussart: walkover|retirement`.
+    Schema 7 stellt kontrolliert erkannte Walkover-Inboxtexte auf
+    `Du gewinnst durch W.O. von ...` beziehungsweise `Du verlierst durch W.O.`
+    und Historie/Ergebnis auf die neutrale W.O.-Form um; andere Ereignisse,
+    Aufgabe, Quittierungen und Zustellstaende bleiben unveraendert. Akteur und
+    W.O.-Geber behalten getrennte Bedeutungen.
   - `scorelog.sqlite` und `audit.sqlite` sind getrennte SQLite-Systeme-of-Record
     mit WAL, `synchronous=FULL`, Event-IDs und unbegrenzter fachlicher Historie.
     Die frueheren Google-Sheets-Tabs `ScoreLog` und `Logging` werden nicht mehr
@@ -490,9 +635,26 @@ Fachhistorien und Betriebslogs:
     Match-ID; `failed` bedeutet ausschliesslich, dass keine Forderung angelegt
     wurde. Der Journalspiegel stellt diese erlaubten IDs fuer Grafana bereit,
     ohne sie zu Loki-Labels zu machen.
-    `setRankingMatchDate` verwendet denselben Auditvertrag mit Match-ID und
-    kontrolliertem alten/neuen Termin; sein Abschlusslog und das erlaubte
-    Browserereignis `ranking_match_date_failed` enthalten keine freien Payloads.
+    `setMatchAppointment` und `adminSetMatchAppointment` verwenden denselben
+    Auditvertrag mit Match-ID, Bewerbs-ID und kontrolliertem alten/neuen Termin;
+    nur die Adminaktion speichert `reasonRecorded`. Abschlusslog
+    `match_appointment_update_completed` und Browserereignis
+    `match_date_action_failed` enthalten keine freien Payloads. Der Admin-Grund
+    bleibt ausschliesslich in Fachhistorie und Meldungen.
+    `adminDeleteRankingChallenge` und `adminSetRankingChallengeDate` besitzen
+    dieselbe vierphasige Auditkette. Die Korrekturereignisse, Abschlusslogs
+    `ranking_challenge_delete_completed`/
+    `ranking_challenge_date_update_completed` und Browserdiagnose
+    `ranking_admin_action_failed` projizieren kontrollierte IDs, Zeitwerte,
+    Recoverystatus und `reasonRecorded`, aber nie den freien Grundtext.
+    Die Ergebnisaktionen `setMatchResult`, `adminSetMatchEnd`,
+    `adminClearMatchResult` und `adminCorrectRankingResult` besitzen jeweils
+    `started` und `success|failed|unknown`. Audit und die Abschlusslogs enthalten
+    nur kontrollierte Match-/Bewerbs-, Aenderungs-, Abschluss-, Ranganzahl-,
+    KO-Ziel- und Recoveryfelder sowie `reasonRecorded`; freie Admin-Gruende stehen
+    ausschliesslich in Fachhistorie und Meldungen. Abschlussereignisse sind
+    `match_result_update_completed`, `admin_match_end_update_completed` und
+    `admin_match_result_clear_completed`.
   - Der zentrale Logger schreibt einzeilige, redigierte JSON-Events mit UTC-Zeit,
     Level, Service, Instanz, Version und Eventname nach stdout/stderr. journald
     uebernimmt lokale Speicherung; optionale Score-/Audit-Spiegel dienen nur der
@@ -527,6 +689,12 @@ Fachhistorien und Betriebslogs:
     `failed` und `unknown` wie andere Fachwrites. Persistiert werden Akteur,
     Ziel-ID/-Namenssnapshot, Aktion und geaenderte Feldmarker; nur Aktiv- und
     Rollenwerte duerfen kontrolliert als Alt-/Neuwert erscheinen.
+  - Das gemeinsame Profilmodal verwendet den bekannten Seitentyp der jeweils
+    aufrufenden Seite und fuer Ergebnisfehler ausschliesslich die allowlist-
+    basierten Browserereignisse `match_result_action_failed` und
+    `match_result_suggestion_failed`. Erlaubt sind technische Fehlercodes,
+    Support-ID und kontrollierte Endpoint-/Dauerfelder; Ergebnis, Grund,
+    Matchpayload und Personendaten werden nicht als freie Diagnose uebertragen.
   - Fuer Loki bleiben `instance`, `event`, `frontendLevel`, der serverseitig auf
     bekannte Werte beziehungsweise `unknown` begrenzte `pageType`, Serverversion,
     `clientVersionMatch` und `diagnosticProfile` geeignete niedrig-kardinale
@@ -556,6 +724,15 @@ Fachhistorien und Betriebslogs:
     in `/var/lib/grafana/grafana.db` mit SQLite/WAL. Diese Datenbank ist kein
     ePiber-System-of-Record. SMTP und aktive Benachrichtigungen sind deaktiviert;
     Alarmzustaende werden manuell kontrolliert.
+  - Das Meldungsdashboard ruft je aktiver Instanz ausschliesslich
+    `/internal/messaging-report?from=<ms>&to=<ms>` ueber deren festen Loopbackhost
+    und einen lokal als root-only Credential bereitgestellten Bearer ab. Der
+    Endpunkt akzeptiert maximal 31 Tage, liest `messaging.sqlite` im halb offenen
+    Zeitraum und aggregiert nach Wiener Kalendertagen. Rollen und Bewerbsnamen
+    kommen aus dem aktuellen Last-good-Snapshot; Meldungsdetails bleiben in der
+    kontrollierten HTTP-Projektion und erreichen weder Loki noch Prometheus. Live
+    und PAJ verwenden getrennte Deploymentkennungen, PK ist ausgeschlossen. Es
+    gibt weder einen Browserpfad noch eine zweite Reporting-Datenbank.
 
 
 ================================================================================
@@ -756,7 +933,9 @@ die Datenbanken bleiben bis zum Ende aller angenommenen Arbeit geoeffnet.
                        mit Restzeit und revisionsgeschuetzten Aenderungen.
 `navbar.js`           Navigation und sessiongetriebene Login-/Profilanzeige.
 `modals.js`           Profil, Login, Passwort/Reset und Fachdialoge; sichere
-                      kontextabhaengige Profilprojektionen. Profilinhalt und
+                      kontextabhaengige Profilprojektionen sowie der gemeinsame
+                      Match-Ergebnisdialog mit blauen Teilnehmer- und roten
+                      Adminaktionen. Profilinhalt und
                       Aktionshandler werden beim Schliessen und Identitaetswechsel
                       vollstaendig entfernt.
 `loadingHelper.js`    Abschlussgarantien sowie fokussierbare, schliessbare

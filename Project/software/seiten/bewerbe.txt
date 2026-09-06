@@ -42,13 +42,17 @@ Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
   textContent, nicht als ungeprueftes HTML. Nach erfolgreichem Erstaufbau wird im
   Monitorbetrieb Ready gemeldet, bei Initialfehler Failed.
   Historieneintraege zeigen Datum, Bewerb, optionale Runde, Titel, Ergebnis und
-  Akteur in gleicher Schriftgroesse. Das Datum ist schwarz und regulaer, der Titel
-  schwarz und fett, alle anderen Zeilen sind regulaer. Runden werden ohne
+  `Eingetragen durch: <Akteur>` in gleicher Schriftgroesse. Das Datum ist schwarz
+  und regulaer, der Titel schwarz und fett, alle anderen Zeilen sind regulaer.
+  Runden werden ohne
   Paarungsnummer als etwa `Achtelfinale`, `Viertelfinale` oder `1. Gruppe`
   bezeichnet; Ranglisten zeigen grundsaetzlich keine Runde. Die Einzelhistorie
   laesst die bereits im Dialogkopf genannte Bewerbsbezeichnung aus und zeigt eine
-  vorhandene Runde direkt unter dem Datum; die globale Historie zeigt zuerst den
-  Bewerb und danach die optionale Runde.
+  vorhandene Runde direkt unter dem Datum. Die globale Historie ordnet `<Datum>`,
+  `<Bewerb> - <Runde>`, `<Meldungstext>` und weitere Metadaten an; ohne Runde
+  entfallen Runde und Trennstrich. Bei Walkover lautet die neutrale Zusammenfassung
+  `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.` und die Ergebniszeile
+  `Ergebnis: W.O.`. W.O.-Geber und eintragender Akteur bleiben getrennte Angaben.
   Der mobile Dialog besitzt sichtbare Lade-, Leer- und Fehlerzustaende; ein Fehler
   kann ueber `Erneut versuchen` wiederholt werden. Sein Grid bleibt innerhalb von
   Viewport und Safe Area, nur die Eintragsliste scrollt. Weitere Cursorseiten

@@ -20,6 +20,23 @@ Das Raster kann Vorrunden, Achtelfinale, Viertelfinale, Halbfinale und Finale
 abbilden. Welche Rastergroessen und Rundenfolgen fuer eine Bewerbsart zulaessig
 sind, ist noch nicht als vollstaendige sportliche Regel festgelegt. [Offen]
 
+Fuer die automatische Ergebnisfortschreibung sollen alle Matches des Rasters
+einschliesslich der spaeteren Runden bereits mit eindeutiger ID und eindeutigem
+Rundencode vorangelegt sein. Ein Abschluss uebernimmt die Gewinnerseite in den
+berechneten Slot des Folgematches. Fehlt dieses Match, bleibt der Abschluss
+trotzdem gueltig und alle aktiven Administratoren erhalten eine persoenliche
+Meldung zur manuellen Rasterreparatur. Ein mehrdeutiges Folgematch bleibt ein
+Konflikt. Eine Ergebniskorrektur ersetzt in einem vorhandenen Zielslot nur die
+zuvor aus genau diesem Match uebernommene Seite. [Bestaetigt]
+
+Ein Ergebnis darf nur korrigiert oder geloescht werden, solange kein abhaengiges
+Folgematch ein nichtleeres `MatchDate` besitzt und sein Zielslot nicht abweichend
+belegt ist. Jeder eingetragene Folgetermin sperrt die Aenderung fuer alle Rollen,
+unabhaengig davon, ob er in der Vergangenheit oder Zukunft liegt. Administratoren
+arbeiten bei einer rueckwaertigen Rasterkorrektur von den spaeteren abhaengigen
+Matches aus rueckwaerts; das Leeren eines Ergebnisses entfernt auch die von ihm
+propagierte Gewinnerseite. [Bestaetigt]
+
 
 3. FREILOS BYE
 ===============

@@ -154,3 +154,16 @@ Commit: 4.8.0-paj-1-4 | Matchergebnisse und Ranglistenprofile erweitert
     - Die kontrollierte BYE-Ausnahme der Profilprojektion von der normalen Personenvalidierung und ihre strikt nicht mutierbare Darstellung sowie die serverseitige MatchDate-Sortierung neu nach alt mit undatierten Eintraegen zuletzt aufnehmen.
     - Den Ablauf des Rang-Snapshots ergaenzen: frischer Ranglistenread unmittelbar vor dem ersten Ergebnis -> zwei Snapshotwerte im atomaren Match-/Rang-Batch -> Fingerprint und Bestaetigungsread -> optionale `rankAtResult`-Profilprojektion; Korrekturen lesen den historischen Wert nur, Clear entfernt ihn.
     - Den Abschlussablauf um eingegebenen `MatchStart`, serverseitiges `ErgebnisErfasstAm` und die serverseitig wie in `canSetResult` gepruefte 60-Minuten-Spielerkorrekturgrenze erweitern. Die Frist wird nicht aus Messaging/Audit rekonstruiert und durch keine Korrektur verlaengert; Adminpfade behalten ihre bestehenden Fachguards.
+
+[4.8.0-paj-1-5] - 2026-09-06
+Commit: 4.8.0-paj-1-5 | Turnierraster-Profile im Viewport verankert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.8.0-paj-1-4-x` gesetzt.
+  - [Turnierraster] Breite KO-Raster horizontal innerhalb des Rastercontainers scrollbar gemacht, damit Seite und Profilmodal beim Scrollen im sichtbaren Viewport verankert bleiben.
+  - [Tests] Die Position des Profilmodals und den Erhalt der Raster-Scrollposition nach horizontalem Scrollen auf mobilen und breiteren Viewports abgesichert.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/bewerbsRaster.txt
+    - Die Aussage, dass bei breiten Rastern das gesamte Dokument horizontal scrollt, durch den inneren Rastercontainer als alleinigen horizontalen Scrollbereich ersetzen; Seite, Ueberschrift und Profilmodal bleiben dadurch im sichtbaren Viewport verankert.

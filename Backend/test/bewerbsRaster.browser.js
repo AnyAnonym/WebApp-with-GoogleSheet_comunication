@@ -53,7 +53,7 @@ function startServer() {
     const pathname = new URL(request.url, "http://127.0.0.1").pathname;
     if (pathname === "/raster-test.html") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      response.end('<!doctype html><html lang="de"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/CSS/styles.css"></head><body class="bracket-page"><main><h2 id="bracketHeading"></h2><div id="bracketInfo"></div><div id="bracketContainer"></div></main><script>window.__profileCalls=[];window.openProfileModal=(options)=>window.__profileCalls.push(options);</script><script type="module" src="/JS/bewerbsRaster-under-test.js"></script></body></html>');
+      response.end('<!doctype html><html lang="de"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/CSS/styles.css"></head><body class="bracket-page"><main><section id="bracketSection" class="full-width-section"><h2 id="bracketHeading"></h2><div id="bracketInfo"></div><div id="bracketContainer"></div></section></main><div id="profileModal" class="modal profile-modal hidden"><div class="modal-content profile-dialog"><h2>Profil</h2></div></div><script>window.__profileCalls=[];window.openProfileModal=(options)=>{window.__profileCalls.push(options);if(new URLSearchParams(location.search).get("profileModal")==="1"){document.getElementById("profileModal").classList.remove("hidden");document.body.classList.add("modal-open");}};</script><script type="module" src="/JS/bewerbsRaster-under-test.js"></script></body></html>');
       return;
     }
     if (pathname === "/JS/bewerbsRaster-under-test.js") {
@@ -160,6 +160,80 @@ test("KO-Doppelnamen werden erst nach Login getrennt und zugaenglich anklickbar"
     await page.waitForFunction(() => document.querySelectorAll("button.bracket-player-name").length === 0, null, { timeout: 3000 });
     assert.equal(await page.locator("button.bracket-player-name").count(), 0);
     assert.equal(await page.locator('.bracket-player-name[data-player-id="p1"]').count(), 0);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("Turnierrasterprofil bleibt nach horizontalem Scrollen im sichtbaren Viewport", {
+  skip: !fs.existsSync(CHROMIUM_PATH) && `Chromium fehlt unter ${CHROMIUM_PATH}`,
+  timeout: 30000,
+}, async () => {
+  const server = await startServer();
+  const address = server.address();
+  const browser = await chromium.launch({ executablePath: CHROMIUM_PATH, headless: true });
+  try {
+    for (const viewport of [{ width: 390, height: 844 }, { width: 700, height: 700 }]) {
+      const page = await browser.newPage({ viewport });
+      await page.goto(`http://127.0.0.1:${address.port}/raster-test.html?id=cup&profileModal=1`, { waitUntil: "domcontentloaded" });
+      await page.evaluate(() => window.__setAuth("player"));
+      await page.locator('.bracket-match[data-round-index="2"] button.bracket-player-name').first().waitFor({ state: "visible" });
+
+      const raster = await page.locator("#bracketContainer").evaluate((scrollport) => {
+        scrollport.scrollLeft = scrollport.scrollWidth - scrollport.clientWidth;
+        return {
+          clientWidth: scrollport.clientWidth,
+          scrollWidth: scrollport.scrollWidth,
+          scrollLeft: scrollport.scrollLeft,
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: document.documentElement.clientWidth,
+          pageScrollX: window.scrollX,
+        };
+      });
+      assert.equal(raster.scrollWidth > raster.clientWidth, true);
+      assert.equal(raster.scrollLeft > 0, true);
+      assert.equal(raster.documentWidth, raster.viewportWidth);
+      assert.equal(raster.pageScrollX, 0);
+
+      await page.locator('.bracket-match[data-round-index="2"] button.bracket-player-name').first().click();
+      await page.locator("#profileModal").waitFor({ state: "visible" });
+      const overlay = await page.locator("#profileModal").evaluate((modal) => {
+        const modalRect = modal.getBoundingClientRect();
+        const dialogRect = modal.querySelector(".profile-dialog").getBoundingClientRect();
+        const viewportLeft = window.visualViewport?.offsetLeft || 0;
+        const viewportWidth = window.visualViewport?.width || window.innerWidth;
+        document.scrollingElement.scrollLeft = 100;
+        return {
+          modalLeft: modalRect.left,
+          modalRight: modalRect.right,
+          dialogLeft: dialogRect.left,
+          dialogRight: dialogRect.right,
+          dialogCenter: dialogRect.left + (dialogRect.width / 2),
+          viewportLeft,
+          viewportRight: viewportLeft + viewportWidth,
+          viewportCenter: viewportLeft + (viewportWidth / 2),
+          pageScrollX: window.scrollX,
+          rasterScrollLeft: document.getElementById("bracketContainer").scrollLeft,
+          pageLocked: getComputedStyle(document.body).overflow === "hidden",
+        };
+      });
+      assert.equal(overlay.modalLeft, overlay.viewportLeft);
+      assert.equal(overlay.modalRight, overlay.viewportRight);
+      assert.equal(overlay.dialogLeft >= overlay.viewportLeft + 11, true);
+      assert.equal(overlay.dialogRight <= overlay.viewportRight - 11, true);
+      assert.equal(Math.abs(overlay.dialogCenter - overlay.viewportCenter) <= 1, true);
+      assert.equal(overlay.pageScrollX, 0);
+      assert.equal(overlay.rasterScrollLeft, raster.scrollLeft);
+      assert.equal(overlay.pageLocked, true);
+
+      await page.evaluate(() => {
+        document.getElementById("profileModal").classList.add("hidden");
+        document.body.classList.remove("modal-open");
+      });
+      assert.equal(await page.locator("#bracketContainer").evaluate((scrollport) => scrollport.scrollLeft), raster.scrollLeft);
+      await page.close();
+    }
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

@@ -4,7 +4,7 @@ const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
 const { AppError } = require("./errors.js");
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 class MessagingRepository {
   constructor(filename, { now = Date.now } = {}) {
@@ -33,15 +33,21 @@ class MessagingRepository {
       this.migrateV3();
       this.migrateV4();
       this.migrateV5();
+      this.migrateV6();
     } else if (version === 3) {
       this.migrateV3();
       this.migrateV4();
       this.migrateV5();
+      this.migrateV6();
     } else if (version === 4) {
       this.migrateV4();
       this.migrateV5();
+      this.migrateV6();
     } else if (version === 5) {
       this.migrateV5();
+      this.migrateV6();
+    } else if (version === 6) {
+      this.migrateV6();
     } else if (version !== SCHEMA_VERSION) {
       throw new AppError("MESSAGING_SCHEMA_UNSUPPORTED", "Nachrichtenschema kann nicht migriert werden", 503);
     }
@@ -108,7 +114,7 @@ class MessagingRepository {
         user_id TEXT PRIMARY KEY,
         revision INTEGER NOT NULL
       );
-      PRAGMA user_version = 6;
+      PRAGMA user_version = 7;
     `);
   }
 
@@ -189,6 +195,34 @@ class MessagingRepository {
         updateEvent.run([`Ergebnis: ${displayResult}`, ...remainingDetails].join("; "), displayResult, event.event_id);
       }
       this.db.exec("PRAGMA user_version = 6; COMMIT");
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    }
+  }
+
+  migrateV6() {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const events = this.db.prepare(`
+        SELECT event_id, summary, detail
+        FROM competition_events
+        WHERE event_type IN ('result', 'result_corrected') AND result = 'Walkover'
+      `).all();
+      const participants = this.db.prepare("SELECT user_id, body FROM event_participants WHERE event_id = ?");
+      const updateParticipant = this.db.prepare("UPDATE event_participants SET body = ? WHERE event_id = ? AND user_id = ?");
+      const updateEvent = this.db.prepare("UPDATE competition_events SET summary = ?, detail = REPLACE(detail, 'Ergebnis: Walkover', 'Ergebnis: W.O.'), result = 'W.O.' WHERE event_id = ?");
+      for (const event of events) {
+        for (const participant of participants.all(event.event_id)) {
+          const body = participant.body.startsWith("Du gewinnst ")
+            ? participant.body.replace(/^Du gewinnst das Match gegen (.+) durch Walkover\./, "Du gewinnst durch W.O. von $1.")
+            : participant.body.replace(/^Du verlierst das Match gegen .+ durch Walkover\./, "Du verlierst durch W.O.");
+          updateParticipant.run(body, event.event_id, participant.user_id);
+        }
+        const summary = event.summary.replace(/^(.+) gewinnt gegen (.+)\.$/, "$1 gewinnt durch W.O. von $2.");
+        updateEvent.run(summary, event.event_id);
+      }
+      this.db.exec("PRAGMA user_version = 7; COMMIT");
     } catch (error) {
       try { this.db.exec("ROLLBACK"); } catch {}
       throw error;

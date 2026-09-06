@@ -71,6 +71,7 @@ const rankings = [
   { competitionId: "r6", competitionName: "Damen Herbst", competitionEndAt: 5, competitionEnded: false, rank: 5, status: "active", canChallenge: false, canWithdraw: false, openChallenge: { matchId: "match-r6", direction: "challenged", opponentName: "Herbst Gegnerin", opponentRank: 3, challengedAt: "260818-1200" } },
 ];
 const profileRole = new URLSearchParams(window.location.search).get("role");
+const defaultResultRules = { winningSets: 2, setTarget: 6, setTiebreak: "6-6", decidingSet: "vollstaendiger Satz" };
 const competitions = [{
   competitionId: "r1", competitionName: "Herren", ranking: true, rankingMembers: [
     { personId: "player-1", name: "Own Player", rank: 1 },
@@ -79,14 +80,15 @@ const competitions = [{
     { personId: "p4", name: "Withdrawn Two", rank: 0 },
   ], matches: [{
     matchId: "match-open", round: "G1", matchDate: "260903-1000", matchEnd: "", result: "",
-    completionType: "regular", teams: [{ ids: ["player-1", "partner-1"], names: ["Own Player", "Doubles Partner"] }, { ids: ["p2"], names: ["Foreign Player"] }],
+    completionType: "regular", resultRules: defaultResultRules, teams: [{ ids: ["player-1", "partner-1"], names: ["Own Player", "Doubles Partner"] }, { ids: ["p2"], names: ["Foreign Player"] }],
     status: "open", fingerprint: "a".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
     matchId: "match-completed", round: "G2", matchDate: "260902-1000", matchEnd: "260902-1200", result: "6-4/2-1",
-    completionType: "retirement", losingSide: 2, teams: [{ ids: ["p2"], names: ["Foreign Player"], rankAtResult: 2 }, { ids: ["player-1"], names: ["Own Player"], rankAtResult: 0 }],
+    completionType: "retirement", resultRules: defaultResultRules, losingSide: 2, teams: [{ ids: ["p2"], names: ["Foreign Player"], rankAtResult: 2 }, { ids: ["player-1"], names: ["Own Player"], rankAtResult: 0 }],
     status: "completed", fingerprint: "b".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
     matchId: "match-without-date", round: "", matchDate: "", matchEnd: "", result: "", completionType: "regular",
+    resultRules: { winningSets: 3, setTarget: 6, setTiebreak: "6-6", decidingSet: "MT10" },
     teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: ["p2"], names: ["Foreign Player"] }],
     status: "open", fingerprint: "e".repeat(64), canSetResult: profileRole === "player", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
@@ -94,15 +96,42 @@ const competitions = [{
     teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: [], names: [] }],
     status: "open", fingerprint: "9".repeat(64), canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false,
   }],
-}, {
+}, ...rankings.filter(({ openChallenge }) => openChallenge).map((ranking) => ({
+  competitionId: ranking.competitionId,
+  competitionName: ranking.competitionName,
+  competitionEndAt: ranking.competitionEndAt,
+  competitionEnded: false,
+  ranking: true,
+  matches: [{
+    matchId: ranking.openChallenge.matchId,
+    round: "F",
+    matchDate: ranking.openChallenge.matchDate || "",
+    challengeDate: ranking.openChallenge.challengedAt,
+    matchEnd: "",
+    result: "",
+    completionType: "regular",
+    resultRules: defaultResultRules,
+    teams: [{ ids: ["player-1"], names: ["Own Player"] }, { ids: ["p2"], names: [ranking.openChallenge.opponentName] }],
+    status: "open",
+    fingerprint: ranking.competitionId.repeat(32).slice(0, 64),
+    canSetResult: profileRole === "player" || profileRole === "admin",
+    canSetMatchAppointment: profileRole === "player" || profileRole === "admin",
+    canAdminSetMatchEnd: false,
+    canAdminClear: false,
+  }],
+})), {
   competitionId: "cup", competitionName: "Sommercup", competitionEndAt: null, competitionEnded: false, matches: [{
     matchId: "cup-open", round: "HF-P2", matchDate: "260903-1100", matchEnd: "", result: "", completionType: "regular",
     teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "open",
-    fingerprint: "c".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: false, canAdminClear: false,
+    fingerprint: "c".repeat(64), canSetResult: profileRole === "admin", canSetMatchAppointment: profileRole === "admin", canAdminSetMatchEnd: false, canAdminClear: false,
   }, {
     matchId: "cup-completed", round: "F", matchDate: "260901-1000", matchEnd: "260901-1200", result: "6-2/6-2", completionType: "regular",
     teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "completed",
     fingerprint: "d".repeat(64), canSetResult: profileRole === "admin", canAdminSetMatchEnd: profileRole === "admin", canAdminClear: profileRole === "admin",
+  }, {
+    matchId: "cup-walkover", round: "VF", matchDate: "260902-1000", matchEnd: "260902-1000", result: "", completionType: "walkover", losingSide: 2,
+    teams: [{ ids: ["p2"], names: ["Foreign Player"] }, { ids: ["other"], names: ["Other Player"] }], status: "completed",
+    fingerprint: "7".repeat(64), canSetResult: false, canAdminSetMatchEnd: false, canAdminClear: false,
   }],
 }, {
   competitionId: "archive-new", competitionName: "Archiv Neu", competitionEndAt: 30, competitionEnded: true, matches: [{
@@ -160,7 +189,7 @@ export function createEndpoint(name) {
     ] } };
     if (name === "myProfile") return { data: { success: true, profile: {
        id: role + "-1", firstName: "Own", lastName: "Player", login: role + "-login",
-        email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], competitions: emptyProfile ? [] : competitions.filter(({ competitionId }) => competitionId === "r1"), rankings: emptyProfile ? [] : withdrawn ? [{
+        email: "contact@example.test", phone: "", birthDate: "", notifications: noNotifications ? [] : ["Email", "Whatsapp"], competitions: emptyProfile ? [] : competitions.filter(({ competitionId }) => competitionId.startsWith("r")), rankings: emptyProfile ? [] : withdrawn ? [{
          competitionId: "2", competitionName: "Mobile Rangliste", rank: 0, status: "withdrawn",
          withdrawal: { withdrawnAt: "260829-1200", previousRank: 4, reason: "Pause" },
        }] : rankings,
@@ -206,17 +235,19 @@ export function createEndpoint(name) {
         revision: messageRevision,
       } };
     }
-    if (name === "setRankingMatchDate") {
-      window.__matchDateCalls.push({ ...params });
+    if (name === "setMatchAppointment" || name === "adminSetMatchAppointment") {
+      window.__matchDateCalls.push({ endpoint: name, ...params });
       return { data: { success: true, matchId: params.matchId, matchDate: params.matchDate } };
     }
-    if (["adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetRankingMatchDate"].includes(name)) {
+    if (["adminDeleteRankingChallenge", "adminSetRankingChallengeDate"].includes(name)) {
       window.__adminRankingCalls.push({ endpoint: name, ...params });
       return { data: { success: true, matchId: params.matchId } };
     }
     if (name === "matchResultSuggestion") {
       window.__suggestionCalls.push({ ...params });
       if (params.court === "2" && new URLSearchParams(window.location.search).get("badSource") === "1") return { data: { success: true, matchId: params.matchId, suggestion: { result: "6-0/6-0", sets: ["6-0", "6-0"] }, source: { type: "unknown", court: "2" }, expectedFingerprint: "a".repeat(64) } };
+      if (new URLSearchParams(window.location.search).get("noSuggestion") === "1") return { data: { success: true, matchId: params.matchId, suggestion: { result: "", sets: [] }, source: { type: "none", court: params.court }, expectedFingerprint: "a".repeat(64) } };
+      if (params.court === "2" && new URLSearchParams(window.location.search).get("ambiguousSuggestion") === "1") return { data: { success: true, matchId: params.matchId, suggestion: { result: "6-0/6-0", sets: ["6-0", "6-0"] }, source: { type: "scoreLog", court: "2" }, expectedFingerprint: "a".repeat(64) } };
       if (params.court === "2") return { data: { success: true, matchId: params.matchId, suggestion: { result: "", sets: [] }, source: { type: "none", court: "2" }, expectedFingerprint: "a".repeat(64) } };
       return { data: { success: true, matchId: params.matchId, suggestion: { result: "6-3/6-4", sets: ["6-3", "6-4"] }, source: { type: "scoreLog", court: "1" }, expectedFingerprint: "a".repeat(64) } };
     }
@@ -519,25 +550,15 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(await playerPage.getByRole("button", { name: "Verbindlich raushängen" }).isVisible(), true);
     await playerPage.locator("#withdrawModal .close").click();
     await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
-    const blockedWithdrawButton = playerPage.getByRole("button", { name: "Raushängen" });
-    assert.equal(await blockedWithdrawButton.isDisabled(), false);
-    await blockedWithdrawButton.click();
-    const blockedWithdrawalDialog = playerPage.getByRole("dialog", { name: "Raushängen nicht möglich" });
-    assert.equal(await blockedWithdrawalDialog.isVisible(), true);
-    assert.equal(
-      await blockedWithdrawalDialog.locator("p").textContent(),
-      "Raushängen ist nur möglich, wenn die offene Forderung gespielt wurde.",
-    );
-    assert.equal(await blockedWithdrawalDialog.getByRole("button").count(), 1);
-    assert.equal(await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).isVisible(), true);
-    assert.equal(await playerPage.locator("#withdrawModal").isVisible(), false);
-    await blockedWithdrawalDialog.getByRole("button", { name: "Hinweis schließen" }).click();
-    assert.equal(await blockedWithdrawalDialog.isVisible(), false);
-    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-actions > button").allTextContents(), [
-      "Termin abändern",
-      "Raushängen",
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-open-challenge > p").allTextContents(), [
+      "Forderung vom 29.08.2026, 12:00 Uhr",
     ]);
-    await playerPage.getByRole("button", { name: "Termin abändern" }).click();
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-actions > button").allTextContents(), []);
+    assert.equal(await playerPage.getByRole("button", { name: "Raushängen" }).count(), 0);
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-match-actions > button").allTextContents(), [
+      "Ergebnis eintragen", "Termin abändern",
+    ]);
+    await playerPage.locator("#profileRankingPanel1 .profile-match-actions").getByRole("button", { name: "Termin abändern" }).click();
     const changeDateDialog = playerPage.getByRole("dialog", { name: "Termin abändern" });
     assert.equal(await changeDateDialog.locator("#rankingMatchDay").inputValue(), "2026-09-05");
     assert.equal(await changeDateDialog.locator("select").inputValue(), "16");
@@ -551,12 +572,13 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.match(await greenCountdown.textContent(), /^Terminfrist: -\d+ Tage, \d+ Stunden, \d+ Minuten$/);
     assert.equal(await greenCountdown.evaluate((element) => element.classList.contains("warning") || element.classList.contains("overdue")), false);
     assert.equal(await greenCountdown.evaluate((element) => getComputedStyle(element).color), "rgb(24, 114, 68)");
-    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-actions > button").allTextContents(), [
-      "Spieltermin festlegen",
-      "Raushängen",
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-actions > button").allTextContents(), []);
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-match-actions > button").allTextContents(), [
+      "Ergebnis eintragen", "Termin eintragen",
     ]);
-    await playerPage.getByRole("button", { name: "Spieltermin festlegen" }).click();
-    const matchDateDialog = playerPage.getByRole("dialog", { name: "Spieltermin festlegen" });
+    await playerPage.locator("#profileRankingPanel2 .profile-match-actions").getByRole("button", { name: "Termin eintragen" }).click();
+    const matchDateDialog = playerPage.getByRole("dialog", { name: "Termin eintragen" });
+    assert.equal(await matchDateDialog.locator("#matchDateReasonFields").isHidden(), true);
     assert.equal(await matchDateDialog.isVisible(), true);
     assert.equal(await matchDateDialog.locator("#matchDateCalendarMonth").textContent(), "August 2026");
     const challengeDay = matchDateDialog.locator(".match-date-calendar-day.challenge-start");
@@ -577,16 +599,17 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     await matchDateDialog.getByRole("button", { name: "Übernehmen" }).click();
     await playerPage.waitForFunction(() => window.__matchDateCalls.length === 1);
     assert.deepEqual(await playerPage.evaluate(() => window.__matchDateCalls[0]), {
-      operationId: "operation-ranking:match-date:match-r3:260905-1800",
+      endpoint: "setMatchAppointment",
+      operationId: "operation-match:appointment:match-r3:260905-1800:",
       matchId: "match-r3",
       matchDate: "260905-1800",
     });
     assert.equal(await matchDateDialog.isVisible(), false);
     await playerPage.waitForFunction(() => document.querySelector("#profileName")?.textContent === "Own Player");
     await playerPage.getByRole("tab", { name: "Mixed Sommer", exact: true }).click();
-    assert.deepEqual(await playerPage.locator("#profileRankingPanel3 .profile-actions > button").allTextContents(), [
-      "Spieltermin festlegen",
-      "Raushängen",
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel3 .profile-actions > button").allTextContents(), []);
+    assert.deepEqual(await playerPage.locator("#profileRankingPanel3 .profile-match-actions > button").allTextContents(), [
+      "Ergebnis eintragen", "Termin eintragen",
     ]);
     const orangeCountdown = playerPage.locator("#profileRankingPanel3 .profile-match-date-countdown");
     assert.equal(await orangeCountdown.textContent(), "Terminfrist: -2 Tage, 0 Stunden, 0 Minuten");
@@ -630,15 +653,12 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(await playerPage.getByRole("button", { name: "Fordern" }).isVisible(), true);
     await playerPage.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
     assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-open-challenge > p").allTextContents(), [
-      "Offene Forderung gegen Test Gegner (5)",
       "Forderung vom 29.08.2026, 12:00 Uhr",
-      "Spieltermin fixiert: 05.09.2026, 16:00 Uhr",
     ]);
     assert.equal(await playerPage.locator("#profileRankingPanel1 .admin-ranking-danger").count(), 0);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel1").textContent(), /Keine Aktion verfügbar/i);
     await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
     assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-open-challenge > p").allTextContents(), [
-      "Offene Forderung von Andere Gegnerin (7)",
       "Forderung vom 30.08.2026, 09:00 Uhr",
     ]);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel2").textContent(), /Spieltermin/);
@@ -646,7 +666,9 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.deepEqual(await playerPage.locator('[data-competition-id="cup"] .profile-match-card h3').allTextContents(), [
       "Halbfinale (03.09.2026, 11:00 Uhr)",
       "Finale (01.09.2026, 10:00 Uhr)",
+      "Viertelfinale (02.09.2026, 10:00 Uhr)",
     ]);
+    assert.equal(await playerPage.locator('[data-match-id="cup-walkover"] .profile-match-status').textContent(), "Foreign Player gewinnt durch W.O. von Other Player.");
     await playerPage.getByRole("tab", { name: "Archiv", exact: true }).click();
     assert.deepEqual(await playerPage.locator("#profileArchiveCompetitionTabs [role=tab]").allTextContents(), ["Archiv Neu", "Wintercup", "Archiv Alt"]);
     await playerPage.getByRole("tab", { name: "Archiv Neu", exact: true }).click();
@@ -778,10 +800,27 @@ test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse i
     assert.equal(await dialog.locator("#matchResultStart").getAttribute("required"), "");
     assert.equal(await dialog.locator("#matchResultStart").inputValue(), "2026-09-03T10:00");
     assert.equal(await dialog.locator("#matchResultEnd").getAttribute("required"), "");
+    assert.deepEqual(await dialog.locator(".match-result-score-column > h3").allTextContents(), ["Set 1", "Set 2", "Set 3"]);
+    assert.equal(await dialog.locator('input[name="result"]').count(), 0);
+    assert.deepEqual(await dialog.locator(".match-result-field-row").evaluateAll((rows) => rows.slice(0, 3).map((row) => {
+      const label = row.querySelector("label").getBoundingClientRect();
+      const control = row.querySelector("input, select").getBoundingClientRect();
+      return Math.abs((label.top + label.height / 2) - (control.top + control.height / 2)) < 2;
+    })), [true, true, true]);
+    const stepSize = await dialog.locator(".match-result-score-step").first().evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+    assert.equal(stepSize.width, stepSize.height);
+    assert.equal(stepSize.width >= 44, true);
+    await dialog.getByRole("button", { name: "Ergebnis speichern", exact: true }).click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /vollständiges Ergebnis/);
+    assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
     await dialog.locator("#matchResultKind").selectOption("walkover");
-    assert.equal(await dialog.locator("#matchResultStart").inputValue(), await dialog.locator("#matchResultEnd").inputValue());
-    assert.equal(await dialog.locator("#matchResultStart").getAttribute("readonly"), "");
-    assert.equal(await dialog.locator("#matchResultEnd").getAttribute("readonly"), "");
+    assert.equal(await dialog.locator("#matchResultStartFields").isHidden(), true);
+    assert.equal(await dialog.locator("#matchResultEndFields").isHidden(), true);
+    assert.equal(await dialog.locator("#matchResultStart").isDisabled(), true);
+    assert.equal(await dialog.locator("#matchResultEnd").isDisabled(), true);
     assert.deepEqual(await dialog.locator("#matchResultLosingSide option").allTextContents(), [
       "Bitte Verliererseite auswählen", "Own Player / Doubles Partner", "Foreign Player",
     ]);
@@ -793,22 +832,43 @@ test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse i
     assert.equal(await dialog.locator("#matchResultStart").getAttribute("readonly"), null);
     await page.keyboard.press("Shift+Tab");
     assert.equal(await page.evaluate(() => document.activeElement?.closest("#matchResultModal")?.id), "matchResultModal");
-    await dialog.getByRole("button", { name: "Platz 1", exact: true }).click();
-    assert.equal(await dialog.locator("#matchResultValue").inputValue(), "6-3/6-4");
+    const scoreboardButton = dialog.getByRole("button", { name: "Match vom Scoreboard übernehmen", exact: true });
+    await scoreboardButton.click();
+    assert.deepEqual(await dialog.locator(".match-result-score-row > input").evaluateAll((inputs) => inputs.map((input) => Number(input.value))), [6, 3, 6, 4, 0, 0]);
+    assert.deepEqual(await page.evaluate(() => window.__suggestionCalls), [
+      { matchId: "match-open", court: "1" }, { matchId: "match-open", court: "2" },
+    ]);
     assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
-    await dialog.getByRole("button", { name: "Platz 2", exact: true }).click();
-    assert.match(await dialog.locator("#matchResultStatus").textContent(), /kein Ergebnisvorschlag/);
+    await page.evaluate(() => history.replaceState(null, "", `${location.pathname}?role=player&noSuggestion=1`));
+    await scoreboardButton.click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /kein Ergebnis verfügbar/);
+    assert.equal(await dialog.locator("#matchResultStatus").evaluate((status) => getComputedStyle(status).position), "absolute");
+    await page.waitForTimeout(3100);
+    assert.equal(await dialog.locator("#matchResultStatus").isHidden(), true);
+    await page.evaluate(() => history.replaceState(null, "", `${location.pathname}?role=player&ambiguousSuggestion=1`));
+    await scoreboardButton.click();
+    assert.match(await dialog.locator("#matchResultStatus").textContent(), /Platz 1 und Platz 2 gefunden/);
     await page.evaluate(() => history.replaceState(null, "", `${location.pathname}?role=player&badSource=1`));
-    await dialog.getByRole("button", { name: "Platz 2", exact: true }).click();
+    await scoreboardButton.click();
     assert.match(await dialog.locator("#matchResultStatus").textContent(), /unbekannten Quelle/);
-    assert.equal(await dialog.locator("#matchResultValue").inputValue(), "6-3/6-4");
+    const firstSetBottom = dialog.getByLabel("Set 1, Foreign Player", { exact: true });
+    await firstSetBottom.fill("6");
+    await firstSetBottom.blur();
+    await dialog.getByRole("button", { name: "Set 1, Own Player / Doubles Partner: Plus", exact: true }).click();
+    assert.deepEqual(await dialog.locator(".match-result-score-column > h3").allTextContents(), ["Set 1", "TB", "Set 2", "Set 3"]);
+    const tieBreakTop = dialog.getByLabel("Tie-Break in Set 1, Own Player / Doubles Partner", { exact: true });
+    await tieBreakTop.fill("7");
+    await tieBreakTop.blur();
+    const tieBreakBottom = dialog.getByLabel("Tie-Break in Set 1, Foreign Player", { exact: true });
+    await tieBreakBottom.fill("5");
+    await tieBreakBottom.blur();
     await dialog.locator("#matchResultEnd").fill("2026-09-03T12:00");
     await dialog.getByRole("button", { name: "Ergebnis speichern", exact: true }).click();
     await page.waitForFunction(() => window.__matchResultCalls.length === 1);
     const initial = await page.evaluate(() => window.__matchResultCalls[0]);
     assert.deepEqual(initial, {
       endpoint: "setMatchResult", matchId: "match-open", expectedFingerprint: "a".repeat(64), kind: "regular",
-      result: "6-3/6-4", matchStart: "260903-1000", matchEnd: "260903-1200",
+      result: "7-6(5)/6-4", matchStart: "260903-1000", matchEnd: "260903-1200",
       operationId: initial.operationId,
     });
     assert.match(initial.operationId, /^operation-match-result:result:match-open:/);
@@ -817,6 +877,8 @@ test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse i
     await page.getByRole("tab", { name: "Herren", exact: true }).click();
     const beforeUndatedDialog = Date.now();
     await page.locator('[data-match-id="match-without-date"]').getByRole("button", { name: "Ergebnis eintragen", exact: true }).click();
+    assert.deepEqual(await page.locator("#matchResultScoreEditor .match-result-score-column > h3").allTextContents(), ["Set 1", "Set 2", "Set 3", "Set 4", "Set 5"]);
+    assert.equal(await page.locator("#matchResultScoreEditor .match-result-score-column").nth(4).evaluate((column) => column.classList.contains("match-tiebreak")), true);
     const undatedStart = await page.locator("#matchResultStart").inputValue();
     const parsedUndatedStart = new Date(undatedStart).getTime();
     assert.equal(parsedUndatedStart >= beforeUndatedDialog - 91 * 60 * 1000 && parsedUndatedStart <= Date.now() - 89 * 60 * 1000, true);
@@ -832,12 +894,29 @@ test("Profilbewerbe werden zusammengefuehrt und Teilnehmer erfassen Ergebnisse i
       "Bitte Verliererseite auswählen", "Foreign Player", "Own Player",
     ]);
     await correction.locator("#matchResultKind").selectOption("regular");
-    await correction.locator("#matchResultValue").fill("6-3/6-3");
+    for (const [label, value] of [["Set 1, Foreign Player", "6"], ["Set 1, Own Player", "3"], ["Set 2, Foreign Player", "6"], ["Set 2, Own Player", "3"]]) {
+      const input = correction.getByLabel(label, { exact: true });
+      await input.fill(value);
+      await input.blur();
+    }
     await correction.getByRole("button", { name: "Ergebnis korrigieren" }).click();
     await page.waitForFunction(() => window.__matchResultCalls.length === 2);
     const corrected = await page.evaluate(() => window.__matchResultCalls[1]);
     assert.equal(Object.hasOwn(corrected, "matchEnd"), false);
     assert.equal(corrected.expectedFingerprint, "b".repeat(64));
+
+    await page.getByRole("tab", { name: "Herren", exact: true }).click();
+    await page.locator('[data-match-id="match-without-date"]').getByRole("button", { name: "Ergebnis eintragen", exact: true }).click();
+    const walkoverDialog = page.getByRole("dialog", { name: "Ergebnis erfassen" });
+    await walkoverDialog.locator("#matchResultKind").selectOption("walkover");
+    await walkoverDialog.locator("#matchResultLosingSide").selectOption("1");
+    await walkoverDialog.getByRole("button", { name: "Ergebnis speichern", exact: true }).click();
+    await page.waitForFunction(() => window.__matchResultCalls.length === 3);
+    const walkoverRequest = await page.evaluate(() => window.__matchResultCalls[2]);
+    assert.equal(walkoverRequest.kind, "walkover");
+    assert.equal(walkoverRequest.losingSide, 1);
+    assert.equal(Object.hasOwn(walkoverRequest, "matchStart"), false);
+    assert.equal(Object.hasOwn(walkoverRequest, "matchEnd"), false);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -858,8 +937,14 @@ test("Admins sehen statt Teilnehmeraktionen rote Ergebnis- und Korrekturaktionen
     await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await page.getByRole("tab", { name: "Sommercup", exact: true }).click();
     const openCard = page.locator('[data-match-id="cup-open"]');
-    assert.deepEqual(await openCard.locator(".profile-match-actions .btn-login").allTextContents(), ["Ergebnis eintragen"]);
-    assert.equal(await openCard.locator(".admin-danger").count(), 1);
+    assert.deepEqual(await openCard.locator(".profile-match-actions .btn-login").allTextContents(), ["Ergebnis eintragen", "Termin abändern"]);
+    assert.equal(await openCard.locator(".admin-danger").count(), 2);
+    await openCard.getByRole("button", { name: "Termin abändern" }).click();
+    const appointmentDialog = page.getByRole("dialog", { name: "Termin abändern" });
+    assert.equal(await appointmentDialog.locator("#matchDateReasonFields").isVisible(), true);
+    await appointmentDialog.getByRole("button", { name: "Nächster Monat" }).click();
+    assert.equal(await appointmentDialog.locator(".match-date-calendar-day").filter({ hasText: /^1$/ }).isDisabled(), false);
+    await appointmentDialog.getByRole("button", { name: "Terminauswahl schließen" }).click();
     const completedCard = page.locator('[data-match-id="cup-completed"]');
     assert.deepEqual(await completedCard.locator(".profile-match-actions .btn-login").allTextContents(), [
       "Ergebnis korrigieren", "Matchende setzen", "Ergebnis löschen",
@@ -900,7 +985,11 @@ test("Admin-Rangplankorrektur setzt dynamische Mindestwerte und laesst Rang 0 fu
     assert.equal(await page.evaluate(() => window.__matchResultCalls.length), 0);
     await dialog.locator('[data-person-id="p2"]').fill("1");
     await dialog.locator("#matchResultKind").selectOption("regular");
-    await dialog.locator("#matchResultValue").fill("6-3/6-3");
+    for (const [label, value] of [["Set 1, Foreign Player", "6"], ["Set 1, Own Player", "3"], ["Set 2, Foreign Player", "6"], ["Set 2, Own Player", "3"]]) {
+      const input = dialog.getByLabel(label, { exact: true });
+      await input.fill(value);
+      await input.blur();
+    }
     await dialog.getByRole("button", { name: "Mit Rangplan korrigieren", exact: true }).click();
     await page.waitForFunction(() => window.__matchResultCalls.length === 1);
     const request = await page.evaluate(() => window.__matchResultCalls[0]);
@@ -941,8 +1030,8 @@ test("Admins bearbeiten offene Forderungen mit roten begruendungspflichtigen Dat
     await page.evaluate(() => window.openProfileModal({ playerId: "p2" }));
     await page.getByRole("tab", { name: "Aktuell", exact: true }).click();
     await page.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).click();
-    const actions = page.locator("#profileRankingPanel1 .admin-ranking-danger");
-    assert.deepEqual(await actions.allTextContents(), ["Forderung löschen", "Forderungsdatum ändern", "Spieldatum ändern"]);
+    const actions = page.locator("#profileRankingPanel1 .profile-actions .admin-ranking-danger");
+    assert.deepEqual(await actions.allTextContents(), ["Forderung löschen", "Forderungsdatum ändern"]);
     assert.equal(await actions.first().evaluate((button) => getComputedStyle(button).backgroundColor), "rgb(180, 35, 24)");
 
     await page.getByRole("button", { name: "Forderungsdatum ändern", exact: true }).click();
@@ -972,24 +1061,30 @@ test("Admins bearbeiten offene Forderungen mit roten begruendungspflichtigen Dat
     assert.equal(await page.getByRole("tab", { name: "Damen Doppel Lang", exact: true }).getAttribute("aria-selected"), "true");
 
     await page.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
-    await page.getByRole("button", { name: "Spieldatum ändern", exact: true }).click();
-    dialog = page.getByRole("dialog", { name: "Spieldatum ändern" });
-    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("step"), "3600");
-    assert.equal(await dialog.locator("#adminRankingTime").getAttribute("max"), "23:00");
-    await dialog.locator("#adminRankingDay").fill("2025-01-01");
-    await dialog.locator("#adminRankingTime").fill("23:00");
-    await dialog.locator("#adminRankingReason").fill("Korrektur");
-    await dialog.getByRole("button", { name: "Spieldatum ändern", exact: true }).click();
-    await page.waitForFunction(() => window.__adminRankingCalls.length === 2);
-    assert.equal((await page.evaluate(() => window.__adminRankingCalls[1])).matchDate, "250101-2300");
+    await page.locator("#profileRankingPanel2 .profile-match-actions").getByRole("button", { name: "Termin eintragen" }).click();
+    dialog = page.getByRole("dialog", { name: "Termin eintragen" });
+    assert.equal(await dialog.locator("#matchDateReasonFields").isVisible(), true);
+    await dialog.locator("#matchDateReason").fill("Korrektur");
+    await dialog.getByRole("button", { name: "Nächster Monat" }).click();
+    await dialog.locator(".match-date-calendar-day").filter({ hasText: /^5$/ }).click();
+    await dialog.locator("#rankingMatchHour").selectOption("18");
+    await dialog.getByRole("button", { name: "Übernehmen" }).click();
+    await page.waitForFunction(() => window.__matchDateCalls.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__matchDateCalls[0]), {
+      endpoint: "adminSetMatchAppointment",
+      operationId: "operation-match:appointment:match-r3:260905-1800:Korrektur",
+      matchId: "match-r3",
+      matchDate: "260905-1800",
+      reason: "Korrektur",
+    });
 
     await page.getByRole("button", { name: "Forderung löschen", exact: true }).click();
     dialog = page.getByRole("dialog", { name: "Forderung löschen" });
     assert.equal(await dialog.locator("#adminRankingDateFields").isHidden(), true);
     await dialog.locator("#adminRankingReason").fill("x");
     await dialog.getByRole("button", { name: "Forderung löschen", exact: true }).click();
-    await page.waitForFunction(() => window.__adminRankingCalls.length === 3);
-    assert.equal((await page.evaluate(() => window.__adminRankingCalls[2])).endpoint, "adminDeleteRankingChallenge");
+    await page.waitForFunction(() => window.__adminRankingCalls.length === 2);
+    assert.equal((await page.evaluate(() => window.__adminRankingCalls[1])).endpoint, "adminDeleteRankingChallenge");
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
@@ -1020,19 +1115,19 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
         { className: "message-row-date", text: "30.08.2026, 12:00 Uhr" },
         { className: "message-row-competition", text: "Sommercup - Viertelfinale" },
         { className: "message-row-subject", text: "Neue Platzinformation" },
-        { className: "message-row-actor", text: "Durch: Ergebnis Erfasser" },
+        { className: "message-row-actor", text: "Eingetragen durch: Ergebnis Erfasser" },
       ],
       [
         { className: "message-row-date", text: "29.08.2026, 10:30 Uhr" },
         { className: "message-row-competition", text: "Wintercup - 1. Gruppe" },
         { className: "message-row-subject", text: "Turnierhinweis" },
-        { className: "message-row-actor", text: "Durch: Turnierleitung" },
+        { className: "message-row-actor", text: "Eingetragen durch: Turnierleitung" },
       ],
       [
         { className: "message-row-date", text: "31.08.2026, 13:00 Uhr" },
         { className: "message-row-competition", text: "Allgemeine Meldung" },
         { className: "message-row-subject", text: "Bereits bestätigt" },
-        { className: "message-row-actor", text: "Durch: System" },
+        { className: "message-row-actor", text: "Eingetragen durch: System" },
       ],
     ]);
     assert.deepEqual(await rows.first().locator(":scope > *").evaluateAll((lines) => lines.map((line) => {
@@ -1063,7 +1158,7 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
     ]);
     assert.equal(await page.locator("#messageDetailDate").evaluate((line) => getComputedStyle(line).color), "rgb(0, 0, 0)");
     assert.equal(await page.locator("#messageDetailCompetition").textContent(), "Sommercup");
-    assert.equal(await page.locator("#messageDetailActor").textContent(), "Durch: Ergebnis Erfasser");
+    assert.equal(await page.locator("#messageDetailActor").textContent(), "Eingetragen durch: Ergebnis Erfasser");
     assert.equal(await page.locator("#messageDetailActor").isVisible(), true);
     assert.equal(await page.locator("#messageDetailActor").evaluate((line) => (
       line.previousElementSibling?.id === "messageDetailCompetition" && line.nextElementSibling?.id === "messageDetailBody"
@@ -1086,7 +1181,7 @@ test("Persoenliche Meldungen bleiben privat, geordnet und werden explizit bestae
 
     await rows.nth(1).click();
     assert.equal(await page.locator("#messageDetailSubject").textContent(), "Turnierhinweis");
-    assert.equal(await page.locator("#messageDetailActor").textContent(), "Durch: Turnierleitung");
+    assert.equal(await page.locator("#messageDetailActor").textContent(), "Eingetragen durch: Turnierleitung");
     assert.equal(await page.locator("#messageDetailActor").isVisible(), true);
     await page.locator("#messageDetailModal .close").click();
 

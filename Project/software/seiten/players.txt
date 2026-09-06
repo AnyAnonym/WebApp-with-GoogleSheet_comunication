@@ -43,10 +43,13 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   aktive Reiter zeigen Position und offene Forderung, rausgehaengte fuer
   angemeldete Benutzer Zeitpunkt und Grund. Alle offenen und bis Bewerbsende alle
   abgeschlossenen Matches der Profilperson werden angezeigt, auch mehrere im
-  selben Bewerb und bei Beteiligung als einer der vier Spieler. In Ranglisten-
-  bewerben stehen echte offene Begegnungen vor abgeschlossenen Matches; innerhalb
-  beider Gruppen bleibt die Sortierung nach `MatchDate` absteigend. Freilose
-  gehoeren nicht zum offenen Vorrangblock. Die Reiter sind
+  selben Bewerb und bei Beteiligung als einer der vier Spieler. Echte offene
+  Begegnungen ohne gueltiges `MatchDate` stehen fuer alle Bewerbsarten zuerst;
+  mehrere solche KO-Begegnungen werden von der spaetesten Runde rueckwaerts bis
+  zu den Vorrunden sortiert. Danach stehen in Ranglistenbewerben weitere echte
+  offene Begegnungen vor abgeschlossenen Matches; innerhalb der verbleibenden
+  Gruppen bleibt die Sortierung nach `MatchDate` absteigend. Freilose gehoeren
+  nicht zum offenen Vorrangblock. Die Reiter sind
   unabhaengig von der aufrufenden Seite. Nur
   Admins erhalten den Login einer fremden Person in der
   Adminprojektion und sehen im Adminreiter die vom aktuellen Profilstatus
@@ -55,7 +58,18 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   setzen`; direktes Setzen widerruft die Sitzungen der Zielperson. Alle Tabellen-
   und Profilwerte werden per textContent/Textknoten dargestellt.
 
--- Universelle Ergebniseingabe im gemeinsamen Profilmodal --
+-- Universelle Matchaktionen im gemeinsamen Profilmodal --
+  Jede offene, vollstaendig besetzte Nicht-BYE-Matchkarte zeigt fuer einen
+  beteiligten `player`, `player A` oder `player B` neben `Ergebnis eintragen` die
+  Aktion `Termin eintragen` beziehungsweise bei vorhandenem `MatchDate` `Termin
+  abändern`. Administratoren sehen beide Aktionen fuer jedes solche Match rot;
+  die Terminaktion verlangt bei ihnen einen Grund. Operatoren und fremde Spieler
+  besitzen keine Terminaktion. Abgeschlossene, unvollstaendige, `PRE`- und
+  BYE-Matches koennen nicht terminiert werden. Der Kalender bietet volle Stunden
+  von 06:00 bis 23:00 Uhr. Bei KO und Round Robin sind zukuenftige Termine ohne
+  Obergrenze erlaubt; bei Ranglisten gelten der Erstkorridor ab Forderungsdatum
+  und die dokumentierte Aenderungsregel.
+
   Beteiligte mit Rolle `player`, `player A` oder `player B` sehen an jedem eigenen
   offenen oder abgeschlossenen Match eine blaue Aktion zum Eintragen oder
   Korrigieren. Administratoren sehen dieselbe Aktion fuer jedes Match rot sowie
@@ -65,22 +79,37 @@ Spielerverzeichnis - Aktive Mitglieder und Profile
   gemeinsamen Profilmodal; die Spielerverzeichnisseite erhaelt keine eigene
   Ergebnisoberflaeche.
 
-  Der explizit schliessbare Dialog waehlt `Regulär`, `Walkover` oder `Aufgabe`.
+  Der explizit schliessbare Dialog waehlt in einer kompakten Zeile `Regulär`,
+  `WO` oder `RET`.
   Unter dem Titel stehen zentriert zuerst nur der Bewerbsname und in einer zweiten
   Zeile die vollstaendige Einzel- oder Doppelbegegnung.
-  Regulaer verlangt das Satzresultat. Sonderabschluesse verlangen eine bewusste
+  Regulaer verlangt das Satzresultat. Das Ergebnis wird ohne Freitextfeld in den
+  vom Matchtyp bestimmten drei beziehungsweise fuenf Satzspalten erfasst. Pro
+  Satz stehen die Werte beider Seiten untereinander und koennen direkt oder ueber
+  je zwei vertikal angeordnete, quadratische Plus-/Minus-Schaltflaechen geaendert
+  werden. Ein Satz-Tie-Break erhaelt unmittelbar neben seinem Satz eine farblich
+  abgesetzte `TB`-Spalte mit beiden Punktstaenden; ein entscheidender MT7 oder
+  MT10 wird als Punktestand des Entscheidungssatzes bedient. Gespeichert bleibt
+  das kanonische Ergebnisformat mit `/`, `-` und dem Tie-Break-Verliererwert in
+  Klammern. Sonderabschluesse verlangen eine bewusste
   Auswahl der mit ihren Einzel- oder Doppelnamen bezeichneten Verliererseite;
   bei Korrekturen ist die bestehende Seite vorausgewaehlt. Retirement kann ein
   Teilergebnis behalten. Beim ersten Abschluss sind Matchstart und Matchende
   erforderlich; ein vergangener vereinbarter Termin wird als Start vorgeschlagen,
   ohne Termin gilt die editierbare Vorgabe `aktuelle Zeit minus 90 Minuten`.
+  Beschriftung und Datum-/Zeitfeld stehen fuer Start und Ende jeweils in einer
+  kompakten Zeile nebeneinander.
   Bei Walkover setzt die Auswahl beide schreibgeschuetzten Werte auf denselben
   aktuellen Zeitpunkt; der Server bestimmt diesen Wert beim Speichern erneut.
   Bei regulaerem Abschluss und Aufgabe liegt das Ende nach dem Start, hoechstens
   sechs Stunden danach und nicht in der Zukunft. Bei spaeterer Teilnehmerkorrektur bleiben beide Zeiten unveraendert.
-  Schaltflaechen `Platz 1` und `Platz 2` laden einen Vorschlag aus dem aktuellen
-  exakt zugeordneten Court oder dem neuesten exakten ScoreLog-Eintrag; der Wert
-  bleibt bearbeitbar und wird beim Speichern nach dem Matchtyp validiert.
+  Die Schaltflaeche `Match vom Scoreboard übernehmen` fragt beide Plaetze ab und
+  uebernimmt nur genau einen verfuegbaren Vorschlag aus dem aktuellen exakt
+  zugeordneten Court oder dem neuesten exakten ScoreLog-Eintrag. Kein oder mehr
+  als ein Treffer wird gemeldet und veraendert die Eingabe nicht. Der Wert bleibt
+  bearbeitbar und wird beim Speichern nach dem Matchtyp validiert. Lade-, Erfolgs-,
+  Validierungs- und Fehlermeldungen liegen kurzzeitig als Overlay ueber dem Dialog
+  und reservieren keinen dauerhaften Platz.
 
   Erfolg oeffnet dasselbe Profil und denselben Bewerbsreiter neu. Bei Eintrag und
   Korrektur nennt die Historie Gewinner und Gegner neutral; private Meldungen

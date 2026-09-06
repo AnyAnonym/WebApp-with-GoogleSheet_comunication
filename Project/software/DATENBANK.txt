@@ -62,13 +62,14 @@ Matches1 enthaelt offene und gespielte Matches.
   Ignore          | "1" blendet den Datensatz in fachlichen Anzeigen aus.
   ID              | Eindeutige Match-ID. Neue Forderungen erhalten eine aus
                   | Principal und operationId stabil abgeleitete ID `m-...`.
-  MatchDate       | Geplanter Termin im Format `YYMMDD-HHMM`. Bei einer offenen
-                  | Ranglistenforderung duerfen nur die beiden in Spieler1ID und
-                  | Spieler3ID gefuehrten Beteiligten das Feld schreiben. Der
-                  | Ersttermin liegt zwischen ForderungDate und exakt 14 Tage
-                  | danach; ein vorhandener Termin darf auf einen Zeitpunkt ab
-                  | der aktuellen Serverzeit ohne obere Datumsgrenze geaendert
-                  | werden. Zulaessig sind nur volle Stunden 06:00 bis 23:00.
+  MatchDate       | Geplanter Termin im Format `YYMMDD-HHMM`. Bei einem offenen,
+                  | vollstaendig besetzten Nicht-BYE-Match duerfen Beteiligte mit
+                  | Spielerrolle das Feld fuer eigene Matches schreiben; Admins
+                  | fuer jedes solche Match mit Pflichtgrund. Zulaessig sind volle
+                  | Stunden 06:00 bis 23:00. Fuer KO und Round Robin muss der
+                  | Termin in der Zukunft liegen. Bei Ranglisten gilt fuer den
+                  | Ersttermin der Korridor von ForderungDate bis exakt 14 Tage
+                  | danach; eine Aenderung muss in der Zukunft liegen.
   ForderungDate   | Serverzeit Europe/Vienna im Format `YYMMDD-HHMM`.
   Dauer           | Reservierte Matchdauer.
   BewerbID        | Referenz auf Bewerb.ID.
@@ -614,11 +615,14 @@ und Match-ID aus; Kontaktwerte, freie Texte und sonstige Personendaten bleiben
 ausgeschlossen. `failed` bezeichnet dabei einen Versuch, bei dem keine
 Forderung angelegt wurde, niemals eine Ablehnung durch den Geforderten.
 
-Terminwrites verwenden die Auditaktion `setRankingMatchDate`. Bereits `started`
-enthaelt nur Match-ID und neuen kontrollierten Termin. `success`, `failed` oder
-`unknown` schliessen denselben Auditdatensatz; Erfolg speichert alten und neuen
-Termin. Der strukturierte Journalabschluss enthaelt ausschliesslich Match-,
-Bewerbs- und Akteur-ID, neuen Termin und Recoverykennzeichen, keine freien Texte.
+Terminwrites verwenden `setMatchAppointment` fuer Beteiligte und
+`adminSetMatchAppointment` fuer Administratoren. Bereits `started` enthaelt nur
+Match-ID und neuen kontrollierten Termin. `success`, `failed` oder `unknown`
+schliessen denselben Auditdatensatz; Erfolg speichert alten und neuen Termin,
+Bewerbs-ID, Recoverykennzeichen und bei Adminaktionen nur `reasonRecorded`. Der
+freie Grund steht ausschliesslich in Fachhistorie und Meldungen. Der strukturierte
+Journalabschluss enthaelt nur Match- und Bewerbs-ID sowie Aenderungs- und
+Recoverykennzeichen.
 
 Ergebnisoperationen verwenden die Auditaktionen `setMatchResult`,
 `adminSetMatchEnd`, `adminClearMatchResult` und `adminCorrectRankingResult`.

@@ -16,14 +16,16 @@ Eintragungsfristen verbindlich festlegt, ist organisatorisch noch genauer zu
 bestimmen. [Offen]
 
 
-2. RANGLISTENFORDERUNGEN UND TERMINE
-====================================
+2. SPIELTERMINE UND RANGLISTENFORDERUNGEN
+=========================================
 
 Die beteiligten Spieler sind fuer die Vereinbarung ihres Spieltermins
-verantwortlich. Einer der beiden haelt den gemeinsam vereinbarten Termin im
-System fest. Die sportliche Leitung vermittelt erst, wenn innerhalb der
-sportlichen Frist keine Einigung erreicht wird oder eine Seite die Terminfindung
-behindert. [Bestaetigt]
+verantwortlich. Eine der in den vier Spielerpositionen gefuehrten Personen haelt
+den gemeinsam vereinbarten Termin im System fest, sobald beide Einzel- oder
+Doppelseiten vollstaendig feststehen. Bei Ranglistenforderungen vermittelt die
+sportliche Leitung erst, wenn innerhalb der sportlichen Frist keine Einigung
+erreicht wird oder eine Seite die Terminfindung behindert. Administratoren duerfen
+Termine aller offenen vollstaendigen Matches mit Pflichtgrund pflegen. [Bestaetigt]
 
 
 3. AUSLOSUNG

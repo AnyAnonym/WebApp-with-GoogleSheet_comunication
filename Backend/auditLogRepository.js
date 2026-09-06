@@ -192,6 +192,12 @@ class AuditLogRepository {
           koTargetMatchId: String(persisted.after?.koTargetMatchId || ""),
           koTargetStatus: String(persisted.after?.koTargetStatus || ""),
         } : {};
+        const appointmentFields = ["setMatchAppointment", "adminSetMatchAppointment"].includes(persisted.action) ? {
+          matchId: String(persisted.after?.matchId || persisted.before?.matchId || persisted.targetId || ""),
+          competitionId: String(persisted.after?.competitionId || persisted.before?.competitionId || ""),
+          changed: Boolean(persisted.before?.matchDate),
+          recovered: Boolean(persisted.after?.recovered),
+        } : {};
         this.log(persisted.result === "failed" ? "warn" : "info", "audit_recorded", {
           eventId: persisted.eventId,
           action: persisted.action,
@@ -214,6 +220,7 @@ class AuditLogRepository {
             : "",
           ...challengeFields,
           ...resultFields,
+          ...appointmentFields,
         });
       }
       return persisted;

@@ -153,10 +153,10 @@ const requestContracts = {
     bewerbId: id("bewerbId"),
     opponentId: id("opponentId"),
   }),
-  setRankingMatchDate: (params) => objectShape(params, {
+  setMatchAppointment: (params) => objectShape(params, {
     operationId: operation,
     matchId: id("matchId"),
-    matchDate: text("matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
+    matchDate: rankingHour("matchDate"),
   }),
   matchResultSuggestion: (params) => objectShape(params, {
     matchId: id("matchId"),
@@ -192,7 +192,7 @@ const requestContracts = {
     challengeDate: rankingMinute("challengeDate"),
     reason: adminRankingReason,
   }),
-  adminSetRankingMatchDate: (params) => objectShape(params, {
+  adminSetMatchAppointment: (params) => objectShape(params, {
     operationId: operation,
     matchId: id("matchId"),
     matchDate: rankingHour("matchDate"),

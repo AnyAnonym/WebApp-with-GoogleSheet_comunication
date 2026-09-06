@@ -297,11 +297,16 @@ Datenprojektionen:
     Bewerbsprojektion werden im gemeinsamen Profilmodal nach Bewerb-ID vereinigt.
     Sichtbar sind alle offenen und bis `Bewerbsende` alle abgeschlossenen Matches
     der Profilperson aus jeder der vier Spielerpositionen; mehrere Matches pro
-    Bewerb bleiben getrennt. Nur dieses gemeinsame Modal stellt die neuen
-    Ergebnisaktionen bereit, nicht die einzelnen Fachseiten selbst.
+    Bewerb bleiben getrennt. Nur dieses gemeinsame Modal stellt die Ergebnis- und
+    Terminaktionen bereit, nicht die einzelnen Fachseiten selbst. Pro Match
+    projiziert der Server principalbezogen `canSetMatchAppointment`; erlaubt sind
+    nur offene, vollstaendig besetzte Nicht-BYE-Matches fuer Beteiligte mit
+    Spielerrolle beziehungsweise fuer Administratoren.
   - Das Eigenprofil projiziert die administrativ gepflegten gueltigen
     Benachrichtigungskanaele sowie offene Forderungen mit Richtung, aktuellem
-    Gegnerrang, Forderungszeit und optionalem Spieltermin. Persoenliche Meldungen
+    Gegnerrang, Forderungszeit und optionalem Spieltermin. Im Ranglistenreiter
+    werden davon nur Ranglistenposition, Forderungsdatum und Terminfrist oberhalb
+    der Matchkarte gezeigt; Gegner und Termin stehen in der Karte. Persoenliche Meldungen
     sind nur fuer ihren Empfaenger les- und quittierbar. Listen sortieren
     ungelesene vor gelesenen Eintraegen und innerhalb beider Gruppen absteigend.
     Bewerbshistorien enthalten neutrale Ereignisfelder und Teilnehmernamen, aber
@@ -343,20 +348,22 @@ Schreibpfad:
   Sessionprincipal + geschlossene Parameter -> Fachregeln -> operationId-Lookup
   -> serialisierte Sheetoperation -> Bestaetigung -> Cache-Refresh -> Topic
 
-Ranglistentermin:
-  Eigenprofil eines Forderungsbeteiligten -> UUID-operationId, Match-ID und
-  `YYMMDD-HHMM` -> aktueller `Matches1`-Read und stabile Metadatenzeile -> offene
-  Ranglistenforderung, Teilnehmer, Erstkorridor beziehungsweise Aenderungszeit
-  und volle Stunde 06:00 bis 23:00 pruefen -> Audit `started` -> MatchDate-
-  Metadatenwrite -> bei Transportfehler zielgenaue Bestaetigung statt Blindretry
-  -> lokale Matchprojektion und Invalidierung -> zentrales `appointment`- oder
-  `appointment_changed`-Ereignis mit zwei privaten Meldungen -> Auditabschluss
-  und strukturiertes `ranking_match_date_update_completed`. Bei unbekanntem
-  Ausgang speichert die Operation alten und neuen Termin; derselbe Request liest
-  nur nach, erzeugt das stabile Ereignis idempotent und antwortet erst danach mit
-  `recovered`. Andere Benutzer, geschlossene Forderungen, unveraenderte Termine,
-  ungueltige Stunden oder ausserhalb des Erstkorridors liegende Ersttermine werden
-  ohne Sheetmutation abgewiesen.
+Matchtermin:
+  Profil-Matchkarte eines Beteiligten beziehungsweise Administrators ->
+  UUID-operationId, Match-ID, `YYMMDD-HHMM` und bei Admins Pflichtgrund ->
+  aktueller `Matches1`-Read und stabile Metadatenzeile -> offene vollstaendige
+  Teilnehmerstruktur, Rolle und volle Stunde 06:00 bis 23:00 pruefen. KO und
+  Round Robin verlangen einen zukuenftigen Termin ohne Obergrenze; Ranglisten
+  behalten Erstkorridor ab Forderungsdatum und zukuenftige Aenderung. Danach
+  folgen Audit `started`, MatchDate-Metadatenwrite, zielgenaue Bestaetigung bei
+  Transportfehler, lokale Projektion und Invalidierung sowie ein zentrales
+  `appointment`- oder `appointment_changed`-Ereignis mit privaten Meldungen fuer
+  alle zwei oder vier Beteiligten. Auditabschluss und strukturiertes
+  `match_appointment_update_completed` enthalten nur kontrollierte Felder. Bei
+  unbekanntem Ausgang bindet der interne Recovery-Checkpoint Bewerbs-ID,
+  Teilnehmer-IDs, Teamseiten und Ereigniszeit ohne Namen oder freien Grund. Der
+  gleiche Request liest nach und repariert das stabile Ereignis ohne zweiten
+  Sheetwrite und ohne zwischenzeitlich geaenderte Teilnehmer zu benachrichtigen.
 
 Ranglistenforderung:
   Nach dem frischen `Matches1`-Read bestimmt der Server die Zeile unmittelbar
@@ -565,9 +572,12 @@ Fachhistorien und Betriebslogs:
     Match-ID; `failed` bedeutet ausschliesslich, dass keine Forderung angelegt
     wurde. Der Journalspiegel stellt diese erlaubten IDs fuer Grafana bereit,
     ohne sie zu Loki-Labels zu machen.
-    `setRankingMatchDate` verwendet denselben Auditvertrag mit Match-ID und
-    kontrolliertem alten/neuen Termin; sein Abschlusslog und das erlaubte
-    Browserereignis `ranking_match_date_failed` enthalten keine freien Payloads.
+    `setMatchAppointment` und `adminSetMatchAppointment` verwenden denselben
+    Auditvertrag mit Match-ID, Bewerbs-ID und kontrolliertem alten/neuen Termin;
+    nur die Adminaktion speichert `reasonRecorded`. Abschlusslog
+    `match_appointment_update_completed` und Browserereignis
+    `match_date_action_failed` enthalten keine freien Payloads. Der Admin-Grund
+    bleibt ausschliesslich in Fachhistorie und Meldungen.
     Die Ergebnisaktionen `setMatchResult`, `adminSetMatchEnd`,
     `adminClearMatchResult` und `adminCorrectRankingResult` besitzen jeweils
     `started` und `success|failed|unknown`. Audit und die Abschlusslogs enthalten

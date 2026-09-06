@@ -167,7 +167,7 @@ test("Bewerbshistorienfehler akzeptiert nur kontrollierte Browserdiagnosefelder"
   }), { code: "VALIDATION_ERROR" });
 });
 
-test("Termin- und Adminfehler im Ranglistenprofil sind als kontrollierte Browserdiagnosen bekannt", () => {
+test("Termin- und Adminfehler im Profil sind als kontrollierte Browserdiagnosen bekannt", () => {
   const now = { value: 2350000 };
   const { logs, service } = fixture(now);
   service.updateSettings(settings(0));
@@ -179,7 +179,7 @@ test("Termin- und Adminfehler im Ranglistenprofil sind als kontrollierte Browser
       clientSessionId: "00000000-0000-4000-8000-000000000022",
       pageType: "rangliste",
       events: [{
-        event: "ranking_match_date_failed",
+        event: "match_date_action_failed",
         level: "error",
         timestamp: "2026-09-02T10:00:00.000Z",
         code: "MATCH_DATE_UNCHANGED",
@@ -195,7 +195,7 @@ test("Termin- und Adminfehler im Ranglistenprofil sind als kontrollierte Browser
   });
   assert.deepEqual(result, { success: true, accepted: 2, dropped: 0 });
   assert.equal(logs[0].fields.pageType, "rangliste");
-  assert.equal(logs[0].fields.frontendEvent, "ranking_match_date_failed");
+  assert.equal(logs[0].fields.frontendEvent, "match_date_action_failed");
   assert.equal(logs[0].fields.code, "MATCH_DATE_UNCHANGED");
   assert.equal(logs[1].fields.frontendEvent, "ranking_admin_action_failed");
 });

@@ -167,3 +167,114 @@ Commit: 4.8.0-paj-1-5 | Turnierraster-Profile im Viewport verankert
 
     Project/software/seiten/bewerbsRaster.txt
     - Die Aussage, dass bei breiten Rastern das gesamte Dokument horizontal scrollt, durch den inneren Rastercontainer als alleinigen horizontalen Scrollbereich ersetzen; Seite, Ueberschrift und Profilmodal bleiben dadurch im sichtbaren Viewport verankert.
+
+[4.8.0-paj-1-6] - 2026-09-06
+Commit: 4.8.0-paj-1-6 | Matchtermine und Ergebnisbedienung erweitert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.8.0-paj-1-5-x` gesetzt.
+  - [Repository] Die allgemeine Arbeitsregel verlangt vor Funktionsaenderungen eine Bewertung und Vorabkommunikation erkennbarer sichtbarer oder bedienrelevanter Auswirkungen, bei unklarem Auftragsumfang eine Bestaetigung sowie eine Verifikation gegen unbeabsichtigte Aenderungen bestehender Darstellung und Bedienung.
+  - [Backend] Persoenliche Walkover-Meldungen unterscheiden die Empfaengerperspektive eindeutig: Die Gewinnerseite liest `Du gewinnst durch W.O. von <Verliererseite>.`, die selbst nicht angetretene Seite `Du verlierst durch W.O.`. Doppel werden als vollstaendige Seite mit ` / ` bezeichnet; Aufgabe behaelt die bestehende Ergebnisdarstellung mit `(Aufgabe)`.
+  - [Backend] Walkover-Ereignisse formulieren die neutrale Bewerbshistorie als `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.` und projizieren `W.O.` als sichtbares Ergebnis.
+  - [Frontend] Profilkarten und Round-Robin-Paarungen verwenden fuer Walkover `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.`; Matchliste, KO-Raster und letzte Scoreboardspiele bleiben bei der kompakten Badge-/Satzergebnisdarstellung.
+  - [Frontend] Die Akteurszeile in persoenlicher Meldungsliste, Meldungsdetail sowie einzelner und globaler Bewerbshistorie lautet einheitlich `Eingetragen durch: <Name>` statt `Durch: <Name>`; der Akteur bleibt fachlich vom W.O.-Geber getrennt.
+  - [Persistenz] Messaging-Schema 7 migriert kontrolliert bereits gespeicherte Walkover-Inboxtexte, Historienzusammenfassungen, Details und Ergebniswerte von `Walkover` auf die neue W.O.-Formulierung. Andere Ereignisse, Aufgabe, Quittierungen und Zustellstaende bleiben unveraendert.
+  - [Tests] Service-, Repository-, Formatter- und Browsertests sichern Gewinner- und Verliererperspektive, Einzel- und Doppelnamen, Bestandsmigration, die jeweiligen Walkover-Anzeigetexte und `Eingetragen durch:` in Inbox und Bewerbshistorie.
+  - [Backend] Offene Profilmatches ohne Termin stehen bewerbsartuebergreifend vor datierten Begegnungen; mehrere undatierte KO-Matches werden von der spaetesten Runde bis zu den Vorrunden sortiert. Freilose und der bestehende Vorrang offener Ranglistenspiele bleiben unveraendert behandelt.
+  - [Frontend] Der eigene Ranglistenreiter zeigt `Raushängen` nur noch bei serverseitigem `canWithdraw: true`; bei offenen Forderungen entfallen der unzulaessige Button und der bisherige Sperrhinweis, waehrend die Terminaktion bestehen bleibt.
+  - [Tests] Die Profilprojektion sichert ein undatiertes Finale vor einem undatierten Viertelfinale, danach die datierten Begegnungen und zuletzt ein undatiertes Freilos ab.
+  - [Tests] Der Profil-Browsertest sichert sichtbares Raushängen bei erteilter Berechtigung sowie fehlende Buttons bei offenen Forderungen ab.
+  - [Backend] Profil-Matches projizieren die kontrollierten Matchtypregeln fuer Gewinnsatzanzahl, Satzlaenge, Satz-Tie-Break und Entscheidungssatz an die universelle Ergebniserfassung.
+  - [Frontend] Das freie Ergebnisfeld ist durch drei beziehungsweise fuenf fingerbedienbare Satzspalten mit direkt editierbaren Zahlen, quadratischen Plus-/Minus-Schaltflaechen und farblich abgesetzten Tie-Break-Spalten ersetzt. Abschlussart, Matchstart und Matchende verwenden platzsparende Beschriftungs-/Auswahlzeilen.
+  - [Frontend] Ein einzelner Button fragt Ergebnisvorschlaege fuer beide Scoreboardplaetze ab und uebernimmt nur einen eindeutigen Treffer; keine oder mehrdeutige Treffer sowie alle weiteren Dialogmeldungen erscheinen kurzzeitig ohne reservierten Layoutplatz als Overlay.
+  - [Observability] Die bestehende Allowlist-Diagnose `match_result_suggestion_failed` deckt weiterhin ungueltige Scoreboardantworten ab und `match_result_action_failed` weiterhin fehlgeschlagene Writes; Satzwerte und freie Gruende werden nicht in Browserdiagnosen, Audit oder Betriebslogs aufgenommen.
+  - [Tests] Integration und Browser sichern Matchtyp-Projektion, Satz- und Tie-Break-Bedienung, Touchgroessen, kompaktes Layout, kanonische Serialisierung, eindeutige Scoreboarduebernahme und kurzlebige Overlaymeldungen ab.
+  - [Tests] Ein eigener Matches-Browsertest sichert die unveraenderten Namensbadges und die auf reine Satzergebnisse begrenzte rechte Spalte fuer regulaere Abschluesse, Walkover sowie Aufgabe mit und ohne Teilergebnis ab.
+  - [Backend] Die ranglistenspezifischen Terminwrites wurden durch `setMatchAppointment` fuer beteiligte Spieler und `adminSetMatchAppointment` mit Pflichtgrund ersetzt. Offene vollstaendige Einzel und Doppel koennen dadurch in Rangliste, KO und Round Robin auf volle Stunden von 06:00 bis 23:00 Uhr terminiert werden; KO und Gruppen verwenden die Zukunft ohne Obergrenze, Ranglisten behalten ihren Erstkorridor.
+  - [Frontend] `Termin eintragen` beziehungsweise `Termin abändern` steht principalbezogen direkt neben der Ergebnisaktion in jeder berechtigten Profil-Matchkarte. Der Ranglisten-Zusatzblock zeigt nur noch Forderungsdatum und Terminfrist statt Gegner, Spieltermin und separater Terminaktionen.
+  - [Messaging] Terminereignisse informieren bei Einzel und Doppel alle zwei beziehungsweise vier Beteiligten mit der vollstaendigen Gegnerseite; begruendungspflichtige Adminaenderungen fuehren den Grund nur in Fachhistorie und Meldungen.
+  - [Observability] Generische Terminwrites besitzen Audit fuer Start, Erfolg, Ablehnung und unklaren Ausgang, das kontrollierte Abschlusslog `match_appointment_update_completed`, den Messaging-Fehlerpfad `match_appointment_event_persistence_failed` und die Browserdiagnose `match_date_action_failed` ohne freie Gruende oder Matchpayloads.
+  - [Tests] Vertrags-, Service-, Messaging-, Audit-, Integrations- und Browsertests sichern Rollen, Einzel/Doppel, Ranglistenfristen, KO-/Round-Robin-Zukunftstermine, unvollstaendige Paarungen, Recovery sowie die gemeinsame Matchkartenbedienung ab.
+  - [Tests] Ein lokaler Scoreboard-Browsertest sichert fuer `Letzte Spiele` die unveraenderten Namensbadges und die auf reine Satzergebnisse begrenzte rechte Spalte fuer regulaere Abschluesse, Walkover sowie Aufgabe mit und ohne Teilergebnis ab.
+  - [Tests] Der KO-Raster-Browsertest sichert fehlende Abschlusszeilen, weiterhin sichtbare `ret`-Badges und Satzergebnisse sowie kompakte Matchbox- und Rasterzeilenhoehen ab; der bestehende Scroll-/Overlaytest bleibt unveraendert erfolgreich.
+  - [Backend] Der oeffentliche `matches1`-Read projiziert neben `MatchEnde` auch den kontrollierten tatsaechlichen `MatchStart` fuer die Matchuebersicht.
+  - [Frontend] Gespielte Matches mit gueltigem Start und Ende zeigen direkt neben dem vereinbarten Termin die tatsaechlichen Uhrzeiten und ihre berechnete Dauer, beispielsweise `(18:07 - 19:42 Uhr = 1 Stunde 35 Minuten)`. Unvollstaendige oder chronologisch ungueltige Zeitwerte erzeugen keinen Zusatz.
+  - [Tests] Integration und Matches-Browsertest sichern die kontrollierte Startzeitprojektion, regulaere Dauer, Walkover mit null Minuten, einen Lauf ueber Mitternacht, fehlende Endzeit und umbrechbare Mobildarstellung ab.
+  - [Messaging] Persoenliche Forderungsmeldungen zeigen bei Forderer und Gefordertem die beim Anlegen fixierten Rangpositionen in Klammern. Die SQLite-Texte bleiben Snapshots und werden bei spaeteren Namens- oder Rangaenderungen nicht neu berechnet.
+  - [Frontend] Das Forderungsdatum besitzt in der Desktop-Metazeile der Match-Uebersicht eine feste mittlere Gridspalte und bleibt trotz unterschiedlich langer Matchzeit-/Dauerangaben kartenuebergreifend zentriert. Mobil bleibt die bisherige Stapelung mit Matchdatum vor Forderungsdatum erhalten.
+  - [Backend] Ein neuer Walkover schreibt den aktuellen Wiener WO-Zeitpunkt in `MatchDate` und laesst `MatchStart` sowie `MatchEnde` leer. Das Leeren eines Walkovers entfernt auch dieses ergebnisgebundene Datum; regulaere Abschluesse und Aufgabe behalten ihre tatsaechlichen Start-/Endzeiten. Die administrative Matchende-Korrektur wird bei leerem Ende nicht angeboten.
+  - [Tests] Service-, Integrations- und Browsertests sichern beide Forderungsperspektiven mit unveraenderlichen Rang-Snapshots, die responsive mittlere Forderungsspalte sowie WO-Persistenz und -Request ohne Start-/Endzeit ab.
+
+  Fixed
+  - [Frontend] Die Matches-Uebersicht zeigt `wo` und `ret` wieder ausschliesslich als Badge beim markierten Namen. Die rechte Ergebnisspalte enthaelt nur ein gespeichertes Satzergebnis: bei Walkover bleibt sie leer, bei Aufgabe erscheint optional das Teilergebnis ohne beschreibenden Zusatztext.
+  - [Frontend] Die Scoreboard-Liste `Letzte Spiele` zeigt `wo` und `ret` wieder ausschliesslich als Badge beim markierten Namen. Rechts steht nur ein gespeichertes Satzergebnis; Walkover und Aufgabe ohne Teilergebnis bleiben dort leer.
+  - [Frontend] Zusaetzliche Walkover- und Aufgabe-Textzeilen aus KO-Matchboxen entfernt. Sonderabschluesse bleiben durch das Badge am betroffenen Namen und vorhandene Satzergebnisse in den Spielerzeilen erkennbar; dadurch verwendet das Raster wieder die kompakte Geometrie vor `4.8.0-paj-1-4`.
+
+  Dokumentationsuebernahme beim Main-Versionssprung
+
+    Project/software/seiten/matches1.txt
+    - Die fuer Walkover vorgemerkte neutrale Ergebniszeile nicht uebernehmen. Stattdessen festhalten, dass `wo` und `ret` ausschliesslich als Badge beim markierten Namen erscheinen und die rechte Spalte nur das gespeicherte Satzergebnis enthaelt; bei Walkover bleibt sie leer, bei Aufgabe erscheint optional das Teilergebnis ohne Zusatztext.
+    - Bei gespielten Matches mit gueltigem `MatchStart` und `MatchEnde` den Zusatz `(<Startzeit> - <Endzeit> Uhr = <Dauer>)` direkt neben dem vereinbarten Matchdatum dokumentieren; bei fehlenden oder ungueltigen Zeitwerten entfaellt er.
+    - Die am Desktop feste mittlere Forderungsdatumsspalte und die mobile Stapelung Matchdatum vor Forderungsdatum beschreiben.
+
+    Project/software/seiten/players.txt
+    - Persoenliche Forderungsmeldungen fuer beide Seiten mit den beim Forderungszeitpunkt fixierten Rangpositionen in Klammern dokumentieren; die Meldungstexte werden spaeter nicht aus aktuellen Rangdaten neu erzeugt.
+
+    Project/Regelwerk/Spielbetrieb/ALLGEMEINE-MATCHREGELN.txt
+    - Fuer Walkover `MatchDate` als aktuellen Wiener WO-Zeitpunkt festlegen; `MatchStart` und `MatchEnde` bleiben leer, weil das Spiel nicht begonnen wurde. Regulaerer Abschluss und Aufgabe behalten tatsaechlichen Start und Ende.
+
+    Project/software/ENDPOINTS.txt
+    - In der oeffentlichen `matches1`-Projektion das kontrollierte Feld `MatchStart` ergaenzen.
+    - Beim ersten Walkover keine Start-/Endzeiten verlangen und das serverseitige Setzen von `MatchDate` auf den WO-Zeitpunkt dokumentieren.
+
+    Project/software/DATENBANK.txt und Project/software/ARCHITEKTUR.txt
+    - Die atomare WO-Persistenz mit aktuellem `MatchDate`, leeren `MatchStart`/`MatchEnde`, Recovery sowie dem Leeren des ergebnisgebundenen Datums bei administrativer Ergebnisloeschung aufnehmen.
+
+    Project/software/seiten/scoreboard.txt
+    - Die fuer letzte Walkoverspiele vorgemerkte neutrale Ergebniszeile nicht uebernehmen. Stattdessen festhalten, dass `wo` und `ret` in `Letzte Spiele` ausschliesslich als Badge beim markierten Namen erscheinen und rechts nur das gespeicherte Satzergebnis steht; Walkover und Aufgabe ohne Teilergebnis bleiben dort leer.
+
+    Project/software/seiten/bewerbsRaster.txt
+    - Die zuvor vorgemerkte neutrale Walkover-Ergebniszeile nicht uebernehmen. Festhalten, dass das KO-Raster fuer Walkover und Aufgabe keine zusaetzliche Abschlusszeile zeigt; `wo` und `ret` bleiben als Badge beim betroffenen Namen sichtbar und vorhandene Satzergebnisse stehen ausschliesslich in den beiden Spielerzeilen.
+
+    Project/software/seiten/players.txt
+    - Die Profil-Matchsortierung mit offenen undatierten Nicht-Freilosen zuerst, KO-Runden innerhalb dieses Blocks von spaet nach frueh und anschliessender bestehender Datums-/Ranglistensortierung festhalten.
+    - Die matchtypabhaengige Satz-/Tie-Break-Bedienung, kompakten Abschluss-/Zeitzeilen, eindeutige Uebernahme ueber einen Scoreboardbutton und kurzlebige Overlaymeldungen festhalten.
+
+    Project/software/seiten/rangliste.txt
+    - `Raushängen` im eigenen Profil nur bei serverseitigem `canWithdraw` anzeigen und bei offenen Forderungen weder Button noch Sperrhinweis darstellen.
+    - Terminpflege in die Matchkarte verschieben; oberhalb nur Ranglistenposition, Forderungsdatum und Terminfrist behalten.
+
+    Project/Regelwerk/Organisation/BEWERBSORGANISATION.txt
+    - Beteiligte als Terminverantwortliche fuer alle vollstaendigen eigenen Matches und Adminpflege mit Pflichtgrund festhalten.
+
+    Project/Regelwerk/Organisation/ROLLEN-UND-VERANTWORTUNGEN.txt
+    - Terminrechte fuer alle vier Spielerpositionen sowie Administratoren ergaenzen; Operatoren bleiben ausgeschlossen.
+
+    Project/software/ENDPOINTS.txt, Project/software/DATENBANK.txt und Project/software/ARCHITEKTUR.txt
+    - Generische Teilnehmer-/Admin-Terminwrites, Zeitregeln, Matchkartenprojektion, Recovery, Messaging, Audit, Logs und Browserdiagnose dokumentieren.
+
+    Project/software/seiten/players.txt, Project/software/seiten/bewerbsRaster.txt und Project/software/seiten/roundRobin.txt
+    - Gemeinsame Terminaktionen im Profilmodal fuer Rangliste, KO und Round Robin samt Rollen-, Vollstaendigkeits- und Zeitregeln aufnehmen.
+
+    Project/software/seiten/players.txt
+    - Die Walkover-Zeile neutraler Profilmatches als `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.` dokumentieren; Aufgabe bleibt `Aufgabe durch <Verliererseite>: <Ergebnis>`.
+    - Persoenliche Walkover-Meldungen als `Du gewinnst durch W.O. von <Verliererseite>.` beziehungsweise fuer die selbst nicht angetretene Seite als `Du verlierst durch W.O.` festhalten.
+    - Das Akteurslabel in Meldungsliste und Meldungsdetail von `Durch:` auf `Eingetragen durch:` ersetzen und klar vom W.O.-Geber abgrenzen.
+
+    Project/software/seiten/rangliste.txt
+    - Die empfaengerbezogene Walkover-Meldung auf Gewinner- und Verliererwortlaut mit `W.O.` umstellen und das Akteurslabel in der persoenlichen Meldungshistorie als `Eingetragen durch:` beschreiben.
+
+    Project/software/seiten/roundRobin.txt
+    - Fuer Walkover-Paarungen die neutrale Ergebniszeile `<Gewinnerseite> gewinnt durch W.O. von <Verliererseite>.` mit vollstaendigen Einzel- oder Doppelnamen dokumentieren.
+
+    Project/software/seiten/bewerbe.txt
+    - Das Akteurslabel der einzelnen und globalen Bewerbshistorie von `Durch:` auf `Eingetragen durch:` ersetzen und die W.O.-Historienzusammenfassung samt `Ergebnis: W.O.` beschreiben.
+
+    Project/software/ENDPOINTS.txt
+    - Fuer persoenliche Ergebnisprojektionen den empfaengerbezogenen W.O.-Wortlaut und fuer `competitionHistory` die neutrale Gewinner-/W.O.-Geber-Zusammenfassung, `W.O.` als sichtbares Ergebnis sowie `Eingetragen durch:` als Akteurslabel dokumentieren.
+
+    Project/software/DATENBANK.txt
+    - Messaging-Schema 7 und die kontrollierte Migration bestehender Walkover-Inboxtexte, Zusammenfassungen, Details und Ergebniswerte dokumentieren; Aufgabe, andere Ereignisse, Quittierungen und Zustellstaende bleiben unveraendert.
+
+    Project/software/ARCHITEKTUR.txt
+    - Die zentrale Walkover-Textprojektion fuer persoenliche Gewinner-/Verlierermeldungen und neutrale Matchansichten sowie die Schema-7-Bestandsmigration beschreiben; Akteur und W.O.-Geber bleiben getrennte Bedeutungen.

@@ -1422,25 +1422,25 @@ test("beide Beteiligten koennen Ranglistenspieltermine festlegen und spaeter ohn
     now: () => new Date(2026, 8, 2, 12, 0).getTime(),
   });
 
-  await assert.rejects(service.setRankingMatchDate(
-    { type: "user", id: "p1", name: "Ada Admin" },
+  await assert.rejects(service.setMatchAppointment(
+    { type: "user", id: "p1", role: "player", name: "Ada Admin" },
     { operationId: "00000000-0000-4000-8000-000000000127", matchId: "match-date-challenger", matchDate: "260905-1830" },
   ), { code: "MATCH_DATE_TIME_INVALID" });
-  await assert.rejects(service.setRankingMatchDate(
-    { type: "user", id: "p1", name: "Ada Admin" },
+  await assert.rejects(service.setMatchAppointment(
+    { type: "user", id: "p1", role: "player", name: "Ada Admin" },
     { operationId: "00000000-0000-4000-8000-000000000128", matchId: "match-date-challenger", matchDate: "260917-1800" },
   ), { code: "MATCH_DATE_AFTER_DEADLINE" });
 
-  const challengerResult = await service.setRankingMatchDate(
-    { type: "user", id: "p1", name: "Ada Admin" },
+  const challengerResult = await service.setMatchAppointment(
+    { type: "user", id: "p1", role: "player", name: "Ada Admin" },
     { operationId: "00000000-0000-4000-8000-000000000129", matchId: "match-date-challenger", matchDate: "260905-1800" },
   );
-  const opponentResult = await service.setRankingMatchDate(
-    { type: "user", id: "p2", name: "Peter Player" },
+  const opponentResult = await service.setMatchAppointment(
+    { type: "user", id: "p2", role: "player", name: "Peter Player" },
     { operationId: "00000000-0000-4000-8000-000000000130", matchId: "match-date-opponent", matchDate: "260906-1800" },
   );
-  const overdueResult = await service.setRankingMatchDate(
-    { type: "user", id: "p1", name: "Ada Admin" },
+  const overdueResult = await service.setMatchAppointment(
+    { type: "user", id: "p1", role: "player", name: "Ada Admin" },
     { operationId: "00000000-0000-4000-8000-000000000135", matchId: "match-date-overdue", matchDate: "260805-1800" },
   );
 
@@ -1448,36 +1448,90 @@ test("beide Beteiligten koennen Ranglistenspieltermine festlegen und spaeter ohn
   assert.equal(opponentResult.success, true);
   assert.equal(overdueResult.success, true);
   assert.deepEqual(challengerResult._audit, {
-    before: { matchId: "match-date-challenger", matchDate: "" },
-    after: { matchId: "match-date-challenger", matchDate: "260905-1800" },
+    before: { matchId: "match-date-challenger", competitionId: "cup-1", matchDate: "" },
+    after: { matchId: "match-date-challenger", competitionId: "cup-1", matchDate: "260905-1800", recovered: false },
   });
   assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-challenger")[2], "260905-1800");
   assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-opponent")[2], "260906-1800");
-  assert.deepEqual(events.map(({ matchId, actorId, challengerId, opponentId }) => ({ matchId, actorId, challengerId, opponentId })), [
-    { matchId: "match-date-challenger", actorId: "p1", challengerId: "p1", opponentId: "p2" },
-    { matchId: "match-date-opponent", actorId: "p2", challengerId: "p1", opponentId: "p2" },
-    { matchId: "match-date-overdue", actorId: "p1", challengerId: "p1", opponentId: "p2" },
+  assert.deepEqual(events.map(({ matchId, actorId, participantIds }) => ({ matchId, actorId, participantIds })), [
+    { matchId: "match-date-challenger", actorId: "p1", participantIds: ["p1", "p2"] },
+    { matchId: "match-date-opponent", actorId: "p2", participantIds: ["p1", "p2"] },
+    { matchId: "match-date-overdue", actorId: "p1", participantIds: ["p1", "p2"] },
   ]);
-  const changed = await service.setRankingMatchDate(
-    { type: "user", id: "p2", name: "Peter Player" },
+  const changed = await service.setMatchAppointment(
+    { type: "user", id: "p2", role: "player", name: "Peter Player" },
     { operationId: "00000000-0000-4000-8000-000000000131", matchId: "match-date-challenger", matchDate: "261020-2000" },
   );
   assert.equal(changed.success, true);
   assert.deepEqual(changed._audit, {
-    before: { matchId: "match-date-challenger", matchDate: "260905-1800" },
-    after: { matchId: "match-date-challenger", matchDate: "261020-2000" },
+    before: { matchId: "match-date-challenger", competitionId: "cup-1", matchDate: "260905-1800" },
+    after: { matchId: "match-date-challenger", competitionId: "cup-1", matchDate: "261020-2000", recovered: false },
   });
   assert.equal(fake.tables.Matches1.find((row) => row[1] === "match-date-challenger")[2], "261020-2000");
   assert.equal(events[3].previousDate, "260905-1800");
   assert.equal(events[3].actorId, "p2");
-  await assert.rejects(service.setRankingMatchDate(
-    { type: "user", id: "p1", name: "Ada Admin" },
+  await assert.rejects(service.setMatchAppointment(
+    { type: "user", id: "p1", role: "player", name: "Ada Admin" },
     { operationId: "00000000-0000-4000-8000-000000000134", matchId: "match-date-challenger", matchDate: "261020-2000" },
   ), { code: "MATCH_DATE_UNCHANGED" });
-  await assert.rejects(service.setRankingMatchDate(
-    { type: "user", id: "p3", name: "Chris Challenger" },
+  await assert.rejects(service.setMatchAppointment(
+    { type: "user", id: "p3", role: "player", name: "Chris Challenger" },
     { operationId: "00000000-0000-4000-8000-000000000132", matchId: "match-date-challenger", matchDate: "260907-1900" },
   ), { code: "MATCH_PARTICIPANT_REQUIRED" });
+  await service.stop();
+  repository.close();
+});
+
+test("Beteiligte terminieren vollstaendige KO- und Round-Robin-Matches ohne Ranglistenfrist", async () => {
+  const repository = new StateRepository(":memory:");
+  repository.init();
+  const tables = fixtures();
+  tables.Bewerb.push(
+    ["ko-1", "KO Cup", "ko", "1"],
+    ["rr-1", "Gruppen Cup", "rr", "1"],
+  );
+  tables.Bewerbsart.push(
+    ["ko", "KO", "8", ""],
+    ["rr", "Round Robin", "", "1"],
+  );
+  tables.Matches1.push(
+    ["", "ko-date", "", "", "ko-1", "F", "p1", "", "p2", "", ""],
+    ["", "rr-date", "", "", "rr-1", "G1", "p1", "p3", "p2", "p4", ""],
+    ["", "rr-incomplete", "", "", "rr-1", "G1", "p1", "p3", "p2", "", ""],
+  );
+  const fake = fakeSheets(tables);
+  seedStore(fake.tables);
+  const events = [];
+  const service = new SheetService({
+    repository,
+    messagingService: { async ensureMatchAppointmentEvent(params) { events.push(params); } },
+    clientFactory: async () => fake.client,
+    now: () => new Date(2026, 8, 2, 12, 0).getTime(),
+  });
+  const player = (id) => ({ type: "user", id, role: "player", name: id });
+
+  await assert.rejects(service.setMatchAppointment(player("p1"), {
+    operationId: "00000000-0000-4000-8000-000000000504", matchId: "ko-date", matchDate: "260902-1200",
+  }), { code: "MATCH_DATE_PAST" });
+  await service.setMatchAppointment(player("p1"), {
+    operationId: "00000000-0000-4000-8000-000000000500", matchId: "ko-date", matchDate: "261020-1800",
+  });
+  await service.setMatchAppointment(player("p4"), {
+    operationId: "00000000-0000-4000-8000-000000000501", matchId: "rr-date", matchDate: "261021-1900",
+  });
+  await assert.rejects(service.setMatchAppointment(player("p1"), {
+    operationId: "00000000-0000-4000-8000-000000000502", matchId: "rr-incomplete", matchDate: "261021-1900",
+  }), { code: "MATCH_PARTICIPANTS_INVALID" });
+  await assert.rejects(service.setMatchAppointment({ ...player("p1"), role: "operator" }, {
+    operationId: "00000000-0000-4000-8000-000000000503", matchId: "ko-date", matchDate: "261022-1800",
+  }), { code: "MATCH_PARTICIPANT_REQUIRED" });
+
+  assert.deepEqual(events.map(({ matchId, participantIds, teams }) => ({ matchId, participantIds, teams })), [
+    { matchId: "ko-date", participantIds: ["p1", "p2"], teams: [["p1"], ["p2"]] },
+    { matchId: "rr-date", participantIds: ["p1", "p3", "p2", "p4"], teams: [["p1", "p3"], ["p2", "p4"]] },
+  ]);
+  assert.equal(fake.tables.Matches1.find((row) => row[1] === "ko-date")[2], "261020-1800");
+  assert.equal(fake.tables.Matches1.find((row) => row[1] === "rr-date")[2], "261021-1900");
   await service.stop();
   repository.close();
 });
@@ -1490,27 +1544,45 @@ test("Spieltermin repariert nach bestaetigtem Sheet-Write eine fehlgeschlagene M
   const fake = fakeSheets(tables);
   seedStore(fake.tables);
   let messageAttempts = 0;
+  let now = new Date(2026, 8, 2, 12, 0).getTime();
+  const eventCalls = [];
   const service = new SheetService({
     repository,
     messagingService: {
       async ensureChallengeMessages() {},
       async ensureRankingWithdrawalEvent() {},
-      async ensureMatchAppointmentEvent() {
+      async ensureMatchAppointmentEvent(params) {
         messageAttempts++;
+        eventCalls.push({ participantIds: params.participantIds, teams: params.teams, createdAt: params.createdAt });
         if (messageAttempts === 1) throw Object.assign(new Error("sqlite unavailable"), { code: "MESSAGING_WRITE_FAILED" });
       },
     },
     clientFactory: async () => fake.client,
-    now: () => new Date(2026, 8, 2, 12, 0).getTime(),
+    now: () => now,
   });
-  const principal = { type: "user", id: "p1", name: "Ada Admin" };
+  const principal = { type: "user", id: "p1", role: "player", name: "Ada Admin" };
   const params = { operationId: "00000000-0000-4000-8000-000000000133", matchId: "match-date-recovery", matchDate: "260905-1800" };
 
-  await assert.rejects(service.setRankingMatchDate(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
-  const recovered = await service.setRankingMatchDate(principal, params);
+  const publicError = await service.setMatchAppointment(principal, params).catch((error) => error);
+  assert.equal(publicError.code, "WRITE_OUTCOME_UNKNOWN");
+  assert.deepEqual(publicError.details, {
+    operationId: params.operationId,
+    matchId: params.matchId,
+    phase: "match-appointment",
+  });
+  assert.equal(JSON.stringify(publicError.details).includes("p2"), false);
+  const changedRow = fake.tables.Matches1.find((row) => row[1] === params.matchId);
+  changedRow[6] = "p3";
+  changedRow[8] = "p4";
+  now += 60_000;
+  const recovered = await service.setMatchAppointment(principal, params);
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.repeated, true);
   assert.equal(messageAttempts, 2);
+  assert.deepEqual(eventCalls, [
+    { participantIds: ["p1", "p2"], teams: [["p1"], ["p2"]], createdAt: new Date(2026, 8, 2, 12, 0).getTime() },
+    { participantIds: ["p1", "p2"], teams: [["p1"], ["p2"]], createdAt: new Date(2026, 8, 2, 12, 0).getTime() },
+  ]);
   assert.deepEqual(fake.calls.valueUpdates.filter(({ value }) => value === "260905-1800").length, 1);
   await service.stop();
   repository.close();
@@ -1524,24 +1596,26 @@ test("Admin korrigiert Forderungsminuten und volle Spielstunden und loescht die 
   const fake = fakeSheets(tables);
   seedStore(fake.tables);
   const events = [];
+  const appointmentEvents = [];
   const service = new SheetService({
     repository,
     messagingService: {
       async ensureAdminRankingChallengeEvent(params) { events.push(params); },
+      async ensureMatchAppointmentEvent(params) { appointmentEvents.push(params); },
     },
     clientFactory: async () => fake.client,
     now: () => new Date(2026, 8, 3, 12, 0).getTime(),
   });
   const principal = { type: "user", id: "p1", role: "admin", name: "Ada Admin" };
 
-  await assert.rejects(service.adminSetRankingMatchDate(principal, {
+  await assert.rejects(service.adminSetMatchAppointment(principal, {
     operationId: "00000000-0000-4000-8000-000000000400", matchId: "match-admin", matchDate: "260905-1837", reason: "x",
   }), { code: "MATCH_DATE_TIME_INVALID" });
+  const appointment = await service.adminSetMatchAppointment(principal, {
+    operationId: "00000000-0000-4000-8000-000000000402", matchId: "match-admin", matchDate: "260905-2300", reason: "Korrektur",
+  });
   const challenge = await service.adminSetRankingChallengeDate(principal, {
     operationId: "00000000-0000-4000-8000-000000000401", matchId: "match-admin", challengeDate: "270328-0237", reason: "x",
-  });
-  const appointment = await service.adminSetRankingMatchDate(principal, {
-    operationId: "00000000-0000-4000-8000-000000000402", matchId: "match-admin", matchDate: "250101-2300", reason: "Historische Korrektur",
   });
   const deleted = await service.adminDeleteRankingChallenge(principal, {
     operationId: "00000000-0000-4000-8000-000000000403", matchId: "match-admin", reason: "Doppelt",
@@ -1551,15 +1625,17 @@ test("Admin korrigiert Forderungsminuten und volle Spielstunden und loescht die 
     before: { matchId: "match-admin", challengeDate: "260902-1000" },
     after: { matchId: "match-admin", challengeDate: "270328-0237", reasonRecorded: true },
   });
-  assert.equal(appointment.matchDate, "250101-2300");
+  assert.equal(appointment.matchDate, "260905-2300");
   assert.equal(deleted.deleted, true);
   assert.equal(JSON.stringify([challenge._audit, appointment._audit, deleted._audit]).includes("Historische Korrektur"), false);
   assert.equal(JSON.stringify([challenge._audit, appointment._audit, deleted._audit]).includes("Doppelt"), false);
   assert.equal(fake.tables.Matches1.some((row) => row[1] === "match-admin"), false);
   assert.deepEqual(events.map(({ action, reason, previousDate, nextDate }) => ({ action, reason, previousDate, nextDate })), [
     { action: "challenge_date_changed", reason: "x", previousDate: "260902-1000", nextDate: "270328-0237" },
-    { action: "match_date_changed", reason: "Historische Korrektur", previousDate: "", nextDate: "250101-2300" },
     { action: "deleted", reason: "Doppelt", previousDate: "", nextDate: "" },
+  ]);
+  assert.deepEqual(appointmentEvents.map(({ matchId, matchDate, reason }) => ({ matchId, matchDate, reason })), [
+    { matchId: "match-admin", matchDate: "260905-2300", reason: "Korrektur" },
   ]);
   await service.stop();
   repository.close();
@@ -1613,7 +1689,7 @@ test("Admin-Datumsrecovery erzeugt die Meldung auch nach zwischenzeitlichem Matc
   const service = new SheetService({
     repository,
     messagingService: {
-      async ensureAdminRankingChallengeEvent() {
+      async ensureMatchAppointmentEvent() {
         eventAttempts++;
         if (eventAttempts === 1) throw Object.assign(new Error("sqlite unavailable"), { code: "MESSAGING_WRITE_FAILED" });
       },
@@ -1629,9 +1705,9 @@ test("Admin-Datumsrecovery erzeugt die Meldung auch nach zwischenzeitlichem Matc
     reason: "x",
   };
 
-  await assert.rejects(service.adminSetRankingMatchDate(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
+  await assert.rejects(service.adminSetMatchAppointment(principal, params), { code: "WRITE_OUTCOME_UNKNOWN" });
   fake.tables.Matches1.find((row) => row[1] === params.matchId)[10] = "6-0/6-0";
-  const recovered = await service.adminSetRankingMatchDate(principal, params);
+  const recovered = await service.adminSetMatchAppointment(principal, params);
   assert.equal(recovered.recovered, true);
   assert.equal(recovered.repeated, true);
   assert.equal(fake.calls.valueUpdates.filter(({ value }) => value === params.matchDate).length, 1);
@@ -2744,7 +2820,7 @@ test("Walkover und Aufgabe kodieren nur den exakten Verlierermarker", async () =
   const principal = { type: "user", id: "p1", role: "player", name: "Ada Admin" };
   await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000506", matchId: "result-wo", kind: "walkover", losingSide: 2,
-    matchStart: "260904-0900", matchEnd: "260904-0910", expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
+    expectedFingerprint: matchCompletionFingerprint(initial.Matches1[1], initial.Matches1[0]),
   });
   await service.setMatchResult(principal, {
     operationId: "00000000-0000-4000-8000-000000000507", matchId: "result-ret", kind: "retirement", losingSide: 2,
@@ -2752,10 +2828,16 @@ test("Walkover und Aufgabe kodieren nur den exakten Verlierermarker", async () =
   });
   assert.equal(fake.tables.Matches1[1][8], "p2 [wo]");
   assert.equal(fake.tables.Matches1[1][10], "");
-  assert.equal(fake.tables.Matches1[1][14], "260904-1200");
-  assert.equal(fake.tables.Matches1[1][11], "260904-1200");
+  assert.equal(fake.tables.Matches1[1][2], "260904-1200");
+  assert.equal(String(fake.tables.Matches1[1][14] || ""), "");
+  assert.equal(String(fake.tables.Matches1[1][11] || ""), "");
   assert.equal(fake.tables.Matches1[2][8], "p2 [ret]");
   assert.equal(fake.tables.Matches1[2][10], "6-4/2-1");
+  await service.adminClearMatchResult({ type: "user", id: "p1", role: "admin", name: "Ada Admin" }, {
+    operationId: "00000000-0000-4000-8000-000000000508", matchId: "result-wo", reason: "Fehleingabe",
+    expectedFingerprint: matchCompletionFingerprint(fake.tables.Matches1[1], fake.tables.Matches1[0]),
+  });
+  assert.equal(fake.tables.Matches1[1][2], "");
   await service.stop();
   repository.close();
 });

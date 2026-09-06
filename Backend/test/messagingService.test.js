@@ -99,7 +99,14 @@ test("Forderung erzeugt fuer Gegner und Forderer getrennte Meldungen samt extern
   };
   const first = await service.ensureChallengeMessages(input);
   const repeated = await service.ensureChallengeMessages(input);
-  const renamed = await service.ensureChallengeMessages({ ...input, competitionName: "Herren neu", challengerName: "Ada Neu", opponentName: "Peter Neu" });
+  const renamed = await service.ensureChallengeMessages({
+    ...input,
+    competitionName: "Herren neu",
+    challengerName: "Ada Neu",
+    challengerRank: 9,
+    opponentName: "Peter Neu",
+    opponentRank: 8,
+  });
 
   assert.equal(first.recipient.id, repeated.recipient.id);
   assert.equal(first.challenger.id, repeated.challenger.id);
@@ -110,7 +117,10 @@ test("Forderung erzeugt fuer Gegner und Forderer getrennte Meldungen samt extern
   assert.equal(first.event.summary, "Ada Admin (4) hat Peter Player (2) gefordert.");
   assert.equal(renamed.event.summary, first.event.summary);
   assert.equal(first.challenger.subject, "Forderung ausgesprochen in Herren");
-  assert.equal(first.challenger.body, "Du hast Peter Player in Herren gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.");
+  assert.equal(first.challenger.body, "Du (4) hast Peter Player (2) in Herren gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.");
+  assert.equal(first.recipient.body, "Ada Admin (4) hat dich (2) gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.");
+  assert.equal(renamed.challenger.body, first.challenger.body);
+  assert.equal(renamed.recipient.body, first.recipient.body);
   assert.deepEqual(repository.summary("p1"), { revision: 1, totalCount: 1, unreadCount: 1 });
   assert.deepEqual(repository.summary("p2"), { revision: 1, totalCount: 1, unreadCount: 1 });
   assert.deepEqual(sends.map(({ channel, recipientId }) => ({ channel, recipientId })), [
@@ -147,10 +157,9 @@ test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche 
     matchDate: "260905-1800",
     competitionId: "ranking-1",
     competitionName: "Herren",
-    challengerId: "p1",
-    challengerName: "Ada Admin",
-    opponentId: "p2",
-    opponentName: "Peter Player",
+    participantIds: ["p1", "p2"],
+    participantNames: { p1: "Ada Admin", p2: "Peter Player" },
+    teams: [["p1"], ["p2"]],
     actorId: "p2",
     actorName: "Peter Player",
   };
@@ -172,7 +181,7 @@ test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche 
     detail: "Spieltermin: 05.09.2026, 18:00 Uhr",
     result: "",
     actorName: "Peter Player",
-    participants: [{ role: "challenger", name: "Ada Admin" }, { role: "opponent", name: "Peter Player" }],
+    participants: [{ role: "participant", name: "Ada Admin" }, { role: "participant", name: "Peter Player" }],
   });
   assert.equal(service.messages({ id: "p1" }, { limit: 10 }).messages[0].subject, "Spieltermin festgelegt mit Peter Player");
   assert.equal(service.message({ id: "p1" }, first.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Dein Match gegen Peter Player ist für den 05.09.2026, 18:00 Uhr geplant.");
@@ -190,6 +199,36 @@ test("Spieltermin erzeugt ein gemeinsames Bewerbsereignis und zwei persoenliche 
   assert.equal(changed.participants[0].subject, "Spieltermin geändert mit Peter Player");
   assert.equal(changed.participants[0].body, "Der Termin für dein Match gegen Peter Player wurde von 05.09.2026, 18:00 Uhr auf 10.09.2026, 19:00 Uhr geändert.");
   assert.deepEqual(published.map(({ topic }) => topic), ["messages:p1", "messages:p2", "messages:p1", "messages:p2"]);
+  repository.close();
+});
+
+test("Doppeltermin informiert alle vier Beteiligten mit der gegnerischen Seite", async () => {
+  dataStore.resetForTests();
+  dataStore.set("players", [["ID", "Notification"], ["p1", ""], ["p2", ""], ["p3", ""], ["p4", ""]], { source: "test" });
+  dataStore.set("bewerbe", [["ID", "Bezeichnung", "BewerbsartID"], ["cup-1", "Doppelcup", "ko"]], { source: "test" });
+  dataStore.set("matches1", [["ID", "BewerbID", "BewerbRunde"], ["m-double", "cup-1", "F"]], { source: "test" });
+  const repository = new MessagingRepository(":memory:");
+  repository.init();
+  const service = new MessagingService({ repository, emailAdapter: new EmailMessagingAdapter(), whatsappAdapter: new WhatsappMessagingAdapter() });
+  const names = { p1: "Ada A", p2: "Peter B", p3: "Chris C", p4: "Olivia D" };
+
+  const result = await service.ensureMatchAppointmentEvent({
+    operationId: "00000000-0000-4000-8000-000000000399",
+    matchId: "m-double",
+    matchDate: "260905-1800",
+    competitionId: "cup-1",
+    competitionName: "Doppelcup",
+    participantIds: ["p1", "p3", "p2", "p4"],
+    participantNames: names,
+    teams: [["p1", "p3"], ["p2", "p4"]],
+    actorId: "p4",
+    actorName: names.p4,
+  });
+
+  assert.equal(result.participants.length, 4);
+  assert.equal(result.event.summary, "Ada A / Chris C und Peter B / Olivia D haben den Spieltermin für den 05.09.2026, 18:00 Uhr vereinbart.");
+  assert.equal(result.participants.find(({ recipient }) => recipient === "p1").subject, "Spieltermin festgelegt mit Peter B / Olivia D");
+  assert.equal(result.participants.find(({ recipient }) => recipient === "p4").subject, "Spieltermin festgelegt mit Ada A / Chris C");
   repository.close();
 });
 
@@ -247,14 +286,22 @@ test("Admin-Korrekturen nennen Grund und Administrator in Bewerbshistorie und be
     opponentName: "Entfernter Spieler",
   });
   assert.equal(missing.participants.length, 2);
-  const historic = await service.ensureAdminRankingChallengeEvent({
-    ...base,
+  const historic = await service.ensureMatchAppointmentEvent({
     operationId: "00000000-0000-4000-8000-000000000306",
-    action: "match_date_changed",
-    nextDate: "550101-2300",
+    matchId: "m-admin",
+    matchDate: "550101-2300",
+    competitionId: "ranking-1",
+    competitionName: "Herren",
+    participantIds: ["p1", "p2"],
+    participantNames: { p1: "Ada Aufschlag", p2: "Peter Player" },
+    teams: [["p1"], ["p2"]],
+    actorId: "admin",
+    actorName: "Anna Admin",
+    reason: "x",
   });
   assert.match(historic.event.summary, /01\.01\.1955, 23:00 Uhr/);
-  assert.equal(historic.event.detail, "Grund: x");
+  assert.equal(historic.event.detail, "Spieltermin: 01.01.1955, 23:00 Uhr; Grund: x");
+  assert.match(historic.participants[0].body, /Administrator Anna Admin.*Grund angegeben: x/);
   repository.close();
 });
 
@@ -308,14 +355,14 @@ test("Ergebnisereignisse informieren jeden eindeutigen Teilnehmer ohne Bestaetig
     changeType: "result",
     completionType: "walkover",
   });
-  assert.equal(walkover.event.summary, "Peter Player / Paula Passierball gewinnt gegen Ada Aufschlag / Alfred Ass.");
-  assert.equal(walkover.event.result, "Walkover");
-  assert.equal(walkover.event.detail, "Ergebnis: Walkover");
+  assert.equal(walkover.event.summary, "Peter Player / Paula Passierball gewinnt durch W.O. von Ada Aufschlag / Alfred Ass.");
+  assert.equal(walkover.event.result, "W.O.");
+  assert.equal(walkover.event.detail, "Ergebnis: W.O.");
   const historyEntry = service.competitionHistory({ id: "p1" }, { bewerbId: "cup-1" }).entries.find(({ id }) => id === walkover.event.id);
-  assert.equal(historyEntry.summary, "Peter Player / Paula Passierball gewinnt gegen Ada Aufschlag / Alfred Ass.");
-  assert.equal(historyEntry.result, "Walkover");
-  assert.equal(service.message({ id: "p1" }, walkover.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Du verlierst das Match gegen Peter Player / Paula Passierball durch Walkover.");
-  assert.equal(service.message({ id: "p3" }, walkover.participants.find(({ recipient }) => recipient === "p3").id).message.body, "Du gewinnst das Match gegen Ada Aufschlag / Alfred Ass durch Walkover.");
+  assert.equal(historyEntry.summary, "Peter Player / Paula Passierball gewinnt durch W.O. von Ada Aufschlag / Alfred Ass.");
+  assert.equal(historyEntry.result, "W.O.");
+  assert.equal(service.message({ id: "p1" }, walkover.participants.find(({ recipient }) => recipient === "p1").id).message.body, "Du verlierst durch W.O.");
+  assert.equal(service.message({ id: "p3" }, walkover.participants.find(({ recipient }) => recipient === "p3").id).message.body, "Du gewinnst durch W.O. von Ada Aufschlag / Alfred Ass.");
   const retirementWithoutResult = await service.ensureMatchResultEvent({
     operationId: "00000000-0000-4000-8000-000000000503",
     matchId: "m-retirement-without-result",

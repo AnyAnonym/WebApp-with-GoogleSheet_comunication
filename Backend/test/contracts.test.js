@@ -4,26 +4,29 @@ const { requestContracts, validateEndpointRequest, validateEndpointResponse } = 
 
 test("jeder RPC-Endpoint besitzt einen zentralen Requestvertrag", () => {
   assert.deepEqual(Object.keys(requestContracts).sort(), [
-    "acknowledgeMessage", "addEntryList", "addMatch", "adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchEnd", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "bewerbe", "bewerbsart", "competitionHistory", "courtAssign", "courtScores",
+    "acknowledgeMessage", "addEntryList", "addMatch", "adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchAppointment", "adminSetMatchEnd", "adminSetRankingChallengeDate", "bewerbe", "bewerbsart", "competitionHistory", "courtAssign", "courtScores",
     "courtSetActive", "entryList", "getScoreboardCourts", "matchResultSuggestion", "matches", "matches1",
     "memberDirectory", "monitorAck", "monitorList", "monitorNavigate", "monitorProvision",
     "monitorRevoke", "monitorRotate", "monitorScroll", "monitorTarget", "myMessage", "myMessageSummary", "myMessages", "myProfile", "navigator", "normalizePerson", "operationStatus",
     "players", "preMatches", "publicProfile", "rankingChallengeState", "readMatchRestrictions", "reconcilePerson", "refreshSheetData", "removeEntryList", "rlPlatzierung",
-    "scoreboardSnapshot", "setMatchResult", "setRankingMatchDate", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
+    "scoreboardSnapshot", "setMatchAppointment", "setMatchResult", "sheetDataStatus", "withdrawFromRanking", "withdrawnRankingPlayers",
   ]);
 });
 
-test("Ranglistenspieltermin akzeptiert nur operationId, Match-ID und kompaktes Datum", () => {
+test("Spieltermin akzeptiert nur operationId, Match-ID und kompaktes Datum", () => {
   const operationId = "00000000-0000-4000-8000-000000000020";
-  assert.deepEqual(validateEndpointRequest("setRankingMatchDate", {
+  assert.deepEqual(validateEndpointRequest("setMatchAppointment", {
     operationId,
     matchId: "match-1",
-    matchDate: "260905-1830",
-  }), { operationId, matchId: "match-1", matchDate: "260905-1830" });
-  assert.throws(() => validateEndpointRequest("setRankingMatchDate", {
+    matchDate: "260905-1800",
+  }), { operationId, matchId: "match-1", matchDate: "260905-1800" });
+  assert.throws(() => validateEndpointRequest("setMatchAppointment", {
     operationId,
     matchId: "match-1",
     matchDate: "2026-09-05T18:30",
+  }), { code: "VALIDATION_ERROR" });
+  assert.throws(() => validateEndpointRequest("setMatchAppointment", {
+    operationId, matchId: "match-1", matchDate: "260905-1830",
   }), { code: "VALIDATION_ERROR" });
 });
 
@@ -74,14 +77,14 @@ test("Admin-Korrekturen verlangen einen Grund und trennen Forderungsminuten von 
   assert.deepEqual(validateEndpointRequest("adminSetRankingChallengeDate", {
     operationId, matchId: "match-1", challengeDate: "260905-1437", reason: "Korrektur",
   }), { operationId, matchId: "match-1", challengeDate: "260905-1437", reason: "Korrektur" });
-  assert.deepEqual(validateEndpointRequest("adminSetRankingMatchDate", {
+  assert.deepEqual(validateEndpointRequest("adminSetMatchAppointment", {
     operationId, matchId: "match-1", matchDate: "260905-2300", reason: "Korrektur",
   }), { operationId, matchId: "match-1", matchDate: "260905-2300", reason: "Korrektur" });
   for (const params of [
     { operationId, matchId: "match-1", reason: "   " },
     { operationId, matchId: "match-1", matchDate: "260905-2337", reason: "x" },
   ]) {
-    const endpoint = params.matchDate ? "adminSetRankingMatchDate" : "adminDeleteRankingChallenge";
+    const endpoint = params.matchDate ? "adminSetMatchAppointment" : "adminDeleteRankingChallenge";
     assert.throws(() => validateEndpointRequest(endpoint, params), { code: "VALIDATION_ERROR" });
   }
 });

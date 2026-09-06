@@ -26,7 +26,7 @@ const { AppError, errorData } = require("./errors.js");
 const { validateEndpointRequest, validateEndpointResponse } = require("./contracts.js");
 const { TokenBucketLimiter, assertAllowedOrigin, getRequestIp, parseCookies } = require("./security.js");
 const { analyzeMatchRules, matchCompletionFingerprint, parseMatchDate, parseParticipant } = require("./matchRules.js");
-const { koRoundSuccessor, parseParticipantId } = require("./matchResultRules.js");
+const { koRoundSuccessor, parseMatchTypeTable, parseParticipantId } = require("./matchResultRules.js");
 const { projectPeopleNormalization } = require("./peopleNormalization.js");
 const { projectPeopleReconciliation } = require("./memberReconciliation.js");
 const { inspectMatchtypDisplayRules, projectScoreboardScores } = require("./scoreboardDisplay.js");
@@ -58,7 +58,7 @@ const PUBLIC_TOPICS = new Set(["scores", "scoreboard-state", "matches", "players
 const PUBLIC_COLUMNS = {
   bewerbe: ["id", "bezeichnung", "bewerbsartid", "geschlecht", "entrystart", "entrydeadline", "bewerbsbeginn", "bewerbsende", "sortorder"],
   bewerbsart: ["id", "bezeichnung", "entrylistavailable", "roundrobin", "rasterfunktion", "spezifikum"],
-  matches1: ["ignore", "id", "matchdate", "matchende", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler2id", "spieler3id", "spieler4id", "ergebnis"],
+  matches1: ["ignore", "id", "matchdate", "matchstart", "matchende", "forderungdate", "bewerbid", "bewerbrunde", "spieler1id", "spieler2id", "spieler3id", "spieler4id", "ergebnis"],
   rlPlatzierung: ["id", "bewerbid", "personid", "rang"],
   entryList: ["id", "bewerbid", "personenid", "entrydate"],
 };
@@ -90,7 +90,8 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         before: { bewerbId: params.bewerbId, opponentId: params.opponentId },
         after: { matchId: result.newMatchId || "", bewerbId: params.bewerbId, opponentId: params.opponentId },
       };
-    case "setRankingMatchDate":
+    case "setMatchAppointment":
+    case "adminSetMatchAppointment":
       return {
         targetType: "match",
         targetId: params.matchId,
@@ -110,13 +111,6 @@ function auditProjection(endpoint, params, result = {}, internal = null) {
         targetId: params.matchId,
         before: internal?.before || { matchId: params.matchId, reasonRecorded: true },
         after: internal?.after || { matchId: params.matchId, challengeDate: params.challengeDate, reasonRecorded: true },
-      };
-    case "adminSetRankingMatchDate":
-      return {
-        targetType: "match",
-        targetId: params.matchId,
-        before: internal?.before || { matchId: params.matchId, reasonRecorded: true },
-        after: internal?.after || { matchId: params.matchId, matchDate: params.matchDate, reasonRecorded: true },
       };
     case "setMatchResult":
       return {
@@ -457,14 +451,25 @@ function koCorrectionBlockedMatchIds(competitions, types, matches) {
   return blocked;
 }
 
+function profileRoundOrder(value) {
+  const match = String(value || "").trim().toUpperCase().match(/^(R([1-9]\d*)|AF|VF|HF|F)(?:-P[1-9]\d*)?$/);
+  if (!match) return [0, 0];
+  if (match[1] === "F") return [5, 0];
+  if (match[1] === "HF") return [4, 0];
+  if (match[1] === "VF") return [3, 0];
+  if (match[1] === "AF") return [2, 0];
+  return [1, Number(match[2])];
+}
+
 function profileCompetitions(personId, principal = null) {
-  requireCurrentTables("bewerbe", "bewerbsart", "matches1", "players", "rlPlatzierung");
+  requireCurrentTables("bewerbe", "bewerbsart", "matches1", "matchtyp", "players", "rlPlatzierung");
   const competitions = dataStore.get("bewerbe");
   const competitionHeader = headerOf(competitions);
   const competitionIndexes = {
     id: headerIndex(competitionHeader, "id"),
     name: headerIndex(competitionHeader, "bezeichnung"),
     type: headerIndex(competitionHeader, "bewerbsartid"),
+    matchType: headerIndex(competitionHeader, "matchtypid standard"),
     end: headerIndex(competitionHeader, "bewerbsende"),
     sortOrder: headerIndex(competitionHeader, "sortorder"),
   };
@@ -482,6 +487,7 @@ function profileCompetitions(personId, principal = null) {
       competitionName: String(row[competitionIndexes.name] || "").trim() || competitionId,
       ...profileCompetitionLifecycle(competitionIndexes.end < 0 ? "" : row[competitionIndexes.end], now),
       ranking: typeId === "2",
+      matchTypeId: competitionIndexes.matchType < 0 ? "" : String(row[competitionIndexes.matchType] || "").trim(),
       sortOrder: rawSortOrder === "" || !Number.isFinite(Number(rawSortOrder)) ? Number.POSITIVE_INFINITY : Number(rawSortOrder),
       matches: [],
     }]];
@@ -515,6 +521,12 @@ function profileCompetitions(personId, principal = null) {
   }
   const matches = dataStore.get("matches1");
   const matchHeader = headerOf(matches);
+  let matchTypes;
+  try {
+    matchTypes = parseMatchTypeTable(dataStore.get("matchtyp"));
+  } catch {
+    throw new AppError("SHEET_SCHEMA", "Matchtyp-Tabelle ist ungueltig", 503);
+  }
   const indexes = {
     ignore: headerIndex(matchHeader, "ignore", "ignorieren"),
     id: headerIndex(matchHeader, "id"),
@@ -524,7 +536,9 @@ function profileCompetitions(personId, principal = null) {
     matchStart: headerIndex(matchHeader, "matchstart"),
     matchEnd: headerIndex(matchHeader, "matchende"),
     resultCaptured: headerIndex(matchHeader, "ergebniserfasstam"),
+    challengeDate: headerIndex(matchHeader, "forderungdate"),
     result: headerIndex(matchHeader, "ergebnis"),
+    matchType: headerIndex(matchHeader, "matchtypid"),
     ranksAtResult: [headerIndex(matchHeader, "spieler1rangbeiergebnis"), headerIndex(matchHeader, "spieler3rangbeiergebnis")],
     participants: ["spieler1id", "spieler2id", "spieler3id", "spieler4id"].map((name) => headerIndex(matchHeader, name)),
   };
@@ -546,18 +560,32 @@ function profileCompetitions(personId, principal = null) {
     const participantCorrectionOpen = !completed || Boolean(resultCapturedAt && now.getTime() <= resultCapturedAt.getTime() + 60 * 60 * 1000);
     const correctionBlocked = completed && koCorrectionBlocked.has(String(row[indexes.id] || "").trim());
     const cleanIds = participants.map(({ id }) => id).filter(Boolean);
+    const completeParticipants = participants[0].id && participants[2].id
+      && Boolean(participants[1].id) === Boolean(participants[3].id)
+      && !marker
+      && new Set(cleanIds).size === cleanIds.length;
     const defenderRank = rankByCompetitionAndPerson.get(`${competition.competitionId}\0${participants[2].id}`);
     const correctionBlockReason = competition.ranking && (!Number.isInteger(defenderRank) || defenderRank <= 0)
       ? "RANKING_REPAIR_REQUIRED"
       : null;
+    const matchTypeId = indexes.matchType < 0 ? competition.matchTypeId : String(row[indexes.matchType] || "").trim() || competition.matchTypeId;
+    const resultRules = matchTypes.get(matchTypeId);
+    if (!resultRules) throw new AppError("SHEET_SCHEMA", "Zugeordneter Matchtyp fehlt", 503);
     competition.matches.push({
       matchId: String(row[indexes.id] || "").trim(),
       round: String(row[indexes.round] || "").trim(),
       matchDate: String(row[indexes.matchDate] || "").trim(),
+      challengeDate: indexes.challengeDate < 0 ? "" : String(row[indexes.challengeDate] || "").trim(),
       matchStart: String(row[indexes.matchStart] || "").trim(),
       matchEnd: String(row[indexes.matchEnd] || "").trim(),
       result,
       completionType: marker === "wo" ? "walkover" : marker === "ret" ? "retirement" : "regular",
+      resultRules: {
+        winningSets: resultRules.winningSets,
+        setTarget: resultRules.setTarget,
+        setTiebreak: resultRules.setTiebreak,
+        decidingSet: resultRules.decidingSet,
+      },
       ...(marker ? { losingSide: Math.floor(markedParticipantIndex / 2) + 1 } : {}),
       teams: [participants.slice(0, 2), participants.slice(2, 4)].map((team, teamIndex) => {
         const rawRank = indexes.ranksAtResult[teamIndex] < 0 ? "" : String(row[indexes.ranksAtResult[teamIndex]] ?? "").trim();
@@ -572,7 +600,9 @@ function profileCompetitions(personId, principal = null) {
       status: completed ? "completed" : "open",
       fingerprint: matchCompletionFingerprint(row, matchHeader),
       canSetResult: !bye && !correctionBlocked && (admin || participantRole && cleanIds.includes(actorId) && participantCorrectionOpen),
-      canAdminSetMatchEnd: !bye && admin && completed,
+      canSetMatchAppointment: !completed && !bye && Boolean(completeParticipants)
+        && (admin || participantRole && cleanIds.includes(actorId)),
+      canAdminSetMatchEnd: !bye && admin && completed && Boolean(String(row[indexes.matchEnd] || "").trim()),
       canAdminClear: !bye && admin && completed && !correctionBlocked,
       ...(correctionBlockReason ? { correctionBlockReason } : {}),
     });
@@ -581,11 +611,20 @@ function profileCompetitions(personId, principal = null) {
   return [...competitionById.values()].flatMap((competition) => {
     if (!competition.matches.length) return [];
     competition.matches.sort((left, right) => {
+      const leftDate = parseMatchDate(left.matchDate)?.getTime() ?? null;
+      const rightDate = parseMatchDate(right.matchDate)?.getTime() ?? null;
+      const leftUndatedOpenMatch = left.status === "open" && !left.bye && leftDate === null ? 0 : 1;
+      const rightUndatedOpenMatch = right.status === "open" && !right.bye && rightDate === null ? 0 : 1;
+      if (leftUndatedOpenMatch !== rightUndatedOpenMatch) return leftUndatedOpenMatch - rightUndatedOpenMatch;
+      if (leftUndatedOpenMatch === 0) {
+        const [leftStage, leftPreliminaryRound] = profileRoundOrder(left.round);
+        const [rightStage, rightPreliminaryRound] = profileRoundOrder(right.round);
+        const roundDifference = rightStage - leftStage || rightPreliminaryRound - leftPreliminaryRound;
+        if (roundDifference) return roundDifference;
+      }
       const leftOpenRankingMatch = competition.ranking && left.status === "open" && !left.bye ? 0 : 1;
       const rightOpenRankingMatch = competition.ranking && right.status === "open" && !right.bye ? 0 : 1;
       if (leftOpenRankingMatch !== rightOpenRankingMatch) return leftOpenRankingMatch - rightOpenRankingMatch;
-      const leftDate = parseMatchDate(left.matchDate)?.getTime() ?? null;
-      const rightDate = parseMatchDate(right.matchDate)?.getTime() ?? null;
       if (leftDate === null && rightDate !== null) return 1;
       if (leftDate !== null && rightDate === null) return -1;
       return (rightDate ?? 0) - (leftDate ?? 0)
@@ -606,7 +645,7 @@ function profileCompetitions(personId, principal = null) {
     left.sortOrder - right.sortOrder
     || left.competitionName.localeCompare(right.competitionName, "de")
     || left.competitionId.localeCompare(right.competitionId, "de")
-  )).map(({ sortOrder, ...competition }) => competition);
+  )).map(({ sortOrder, matchTypeId, ...competition }) => competition);
 }
 
 function withdrawnRankingPlayers(competitionId) {
@@ -1199,10 +1238,10 @@ const endpoints = {
       opponentId: idValue(params?.opponentId, "opponentId"),
     }),
   },
-  setRankingMatchDate: {
-    access: "authenticated",
+  setMatchAppointment: {
+    access: ["player", "player a", "player b"],
     write: true,
-    handler: (params, context) => dependencies.sheetService.setRankingMatchDate(context.principal, {
+    handler: (params, context) => dependencies.sheetService.setMatchAppointment(context.principal, {
       operationId: operationId(params?.operationId),
       matchId: idValue(params?.matchId, "matchId"),
       matchDate: stringValue(params?.matchDate, "matchDate", { min: 11, max: 11, pattern: /^\d{6}-\d{4}$/ }),
@@ -1242,10 +1281,10 @@ const endpoints = {
     write: true,
     handler: (params, context) => dependencies.sheetService.adminSetRankingChallengeDate(context.principal, params),
   },
-  adminSetRankingMatchDate: {
+  adminSetMatchAppointment: {
     access: ["admin"],
     write: true,
-    handler: (params, context) => dependencies.sheetService.adminSetRankingMatchDate(context.principal, params),
+    handler: (params, context) => dependencies.sheetService.adminSetMatchAppointment(context.principal, params),
   },
   addEntryList: {
     access: "authenticated",

@@ -166,9 +166,6 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
       top: { id: pid1.cleanId, partnerId: pid2.cleanId, name: null, partnerName: null, special: pid1.special || pid2.special, pre: pid1.pre, gesetzt: pid1.gesetzt },
       bottom: { id: pid3.cleanId, partnerId: pid4.cleanId, name: null, partnerName: null, special: pid3.special || pid4.special, pre: pid3.pre, gesetzt: pid3.gesetzt },
       result: null,
-      rawResult,
-      completionType: pid1.special || pid2.special || pid3.special || pid4.special,
-      losingSide: pid1.special || pid2.special ? "top" : pid3.special || pid4.special ? "bottom" : null,
       winner: null,
       matchDate: formatMatchDate(matchDateIdx >= 0 ? row[matchDateIdx] : ""),
     };
@@ -276,9 +273,6 @@ function buildRounds(matchData, matchHeader, playerMap, r1CountConfigPlayers) {
         top: sm ? sm.top : { id: "", name: null },
         bottom: sm ? sm.bottom : { id: "", name: null },
         result: sm ? sm.result : null,
-        rawResult: sm ? sm.rawResult : "",
-        completionType: sm ? sm.completionType : null,
-        losingSide: sm ? sm.losingSide : null,
         winner: sm ? sm.winner : null,
         matchDate: sm ? sm.matchDate : "",
       });
@@ -474,19 +468,6 @@ function renderBracket(rounds) {
 
         matchBox.appendChild(el);
       });
-
-      if (match.completionType && match.losingSide) {
-        const losingSlot = match[match.losingSide];
-        const losingTeam = [losingSlot.name, losingSlot.partnerName].filter(Boolean).join(" / ");
-        if (losingTeam) {
-          const completion = document.createElement("div");
-          completion.className = "bracket-completion";
-          completion.textContent = match.completionType === "wo"
-            ? `Walkover durch ${losingTeam}`
-            : `Aufgabe durch ${losingTeam}${match.rawResult ? `: ${match.rawResult}` : ""}`;
-          matchBox.appendChild(completion);
-        }
-      }
 
       md.appendChild(matchBox);
       grid.appendChild(md);

@@ -205,7 +205,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
       "Zweite Änderung",
       "Grund: Doppelte Forderung",
       "Ergebnis: 6-3/6-4",
-      "Durch: Neu Spieler",
+      "Eingetragen durch: Neu Spieler",
     ]);
     const expectedHistoryStyles = [
       { color: "rgb(0, 0, 0)", fontSize: "14.4px", fontWeight: "400" },
@@ -284,13 +284,13 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
       "Zweite Änderung",
       "Grund: Doppelte Forderung",
       "Ergebnis: 6-3/6-4",
-      "Durch: Neu Spieler",
+      "Eingetragen durch: Neu Spieler",
     ]);
     assert.deepEqual(await modal.locator(".competition-history-entry").nth(1).locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").nth(1).locator("time").innerText(),
       "1. Gruppe",
       "<img src=x onerror=alert(1)>",
-      "Durch: Alt Spieler",
+      "Eingetragen durch: Alt Spieler",
     ]);
     assert.equal((await modal.textContent()).includes("Grund: Doppelte Forderung"), true);
     assert.equal((await modal.textContent()).includes("Ebenfalls nicht anzeigen"), false);

@@ -147,7 +147,7 @@ function renderCompetitionHistory() {
     }
     appendHistoryText(item, entry?.result ? `Ergebnis: ${entry.result}` : "", "competition-history-entry-result");
     const actor = entry?.actorName ?? entry?.actor;
-    appendHistoryText(item, actor ? `Durch: ${actor}` : "", "competition-history-entry-meta");
+    appendHistoryText(item, actor ? `Eingetragen durch: ${actor}` : "", "competition-history-entry-meta");
     list.appendChild(item);
   }
 

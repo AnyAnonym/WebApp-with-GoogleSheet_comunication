@@ -96,6 +96,11 @@ function startServer() {
       response.end("export const signalMonitorReady = () => {}; export const signalMonitorFailed = () => {};\n");
       return;
     }
+    if (pathname === "/JS/matchCompletionText.js") {
+      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+      response.end(fs.readFileSync(path.join(FRONTEND_ROOT, "JS/matchCompletionText.js")));
+      return;
+    }
     const filePath = path.resolve(FRONTEND_ROOT, pathname.replace(/^\/+/, ""));
     if (!filePath.startsWith(`${FRONTEND_ROOT}${path.sep}`) || !fs.existsSync(filePath)) {
       response.writeHead(404);
@@ -125,11 +130,20 @@ test("KO-Doppelnamen werden erst nach Login getrennt und zugaenglich anklickbar"
     assert.deepEqual(await page.locator(".bracket-round-header").allTextContents(), ["Viertelfinale", "Halbfinale", "Finale"]);
     assert.equal(await page.locator("button.bracket-player-name").count(), 0);
     assert.match(await page.locator('.bracket-match[data-round-index="0"] .bracket-player').first().innerText(), /Anna Links\s*\/\s*Berta Rechts/);
-    assert.equal(await page.locator('.bracket-match[data-round-index="0"] .bracket-completion').textContent({ timeout: 2000 }), "Aufgabe durch Clara Oben / Dora Unten: 6-4/2-1");
+    const completedMatch = page.locator('.bracket-match[data-round-index="0"]').first();
+    assert.equal(await page.locator(".bracket-completion").count(), 0);
+    assert.equal(await completedMatch.locator(".bracket-player").nth(1).locator(".badge").textContent(), "ret");
+    assert.deepEqual(await completedMatch.locator(".player-result").allTextContents(), ["6|2", "4|1"]);
+    const compactLayout = await page.locator(".bracket-match-box").evaluateAll((boxes) => ({
+      heights: boxes.map((box) => box.getBoundingClientRect().height),
+      rowHeight: parseFloat(getComputedStyle(document.querySelector(".bracket-grid")).getPropertyValue("--row-height")),
+    }));
+    assert.equal(Math.max(...compactLayout.heights) < 70, true, JSON.stringify(compactLayout));
+    assert.equal(compactLayout.rowHeight < 60, true, JSON.stringify(compactLayout));
 
     await page.getByRole("button", { name: "Gruppe" }).click();
     await page.locator(".rr-player-name").first().waitFor({ timeout: 3000 });
-    assert.equal(await page.locator(".rr-pairing-result").textContent({ timeout: 2000 }), "Walkover durch Clara Oben / Dora Unten");
+    assert.equal(await page.locator(".rr-pairing-result").textContent({ timeout: 2000 }), "Anna Links / Berta Rechts gewinnt durch W.O. von Clara Oben / Dora Unten.");
     assert.equal(await page.locator("button.rr-player").count(), 0);
     await page.evaluate(() => window.__setAuth("player"));
     await page.locator("button.rr-player").first().waitFor({ timeout: 3000 });

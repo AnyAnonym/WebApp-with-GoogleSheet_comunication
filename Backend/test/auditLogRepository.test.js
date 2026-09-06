@@ -239,6 +239,33 @@ test("Ergebnisaudit spiegelt nur kontrollierte Abschlussfelder auf Top-Level", (
   repository.close();
 });
 
+test("Terminaudit spiegelt nur kontrollierte Matchfelder ohne Admin-Grund", () => {
+  const events = [];
+  const repository = new AuditLogRepository(":memory:", {
+    instanceId: "test", journal: true, now: () => 1000,
+    log: (level, event, fields) => events.push({ level, event, fields }),
+  });
+  repository.init();
+  const common = {
+    eventId: "appointment-audit-1", actorType: "user", actorId: "admin", actorName: "Ada", role: "admin",
+    action: "adminSetMatchAppointment", targetType: "match", targetId: "m1", requestId: "appointment-audit-1", operationId: "op-1",
+  };
+  repository.record({ ...common, result: "started", before: { matchId: "m1", competitionId: "cup-1", matchDate: "" } });
+  repository.record({
+    ...common,
+    result: "success",
+    after: { matchId: "m1", competitionId: "cup-1", matchDate: "260905-1800", recovered: true, reasonRecorded: true },
+  });
+  assert.deepEqual({
+    matchId: events[0].fields.matchId,
+    competitionId: events[0].fields.competitionId,
+    changed: events[0].fields.changed,
+    recovered: events[0].fields.recovered,
+    reason: events[0].fields.reason,
+  }, { matchId: "m1", competitionId: "cup-1", changed: false, recovered: true, reason: undefined });
+  repository.close();
+});
+
 test("Normalisierungsjournal zeigt Zielname und kontrollierte Aenderungen ohne Kontaktwerte", () => {
   const events = [];
   const repository = new AuditLogRepository(":memory:", {

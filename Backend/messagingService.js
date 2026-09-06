@@ -163,8 +163,8 @@ class MessagingService {
     const challengerDisplay = rankedName(challengerName || challengerId, challengerRank);
     const opponentDisplay = rankedName(opponentName || opponentId, opponentRank);
     const participants = [
-      this.participant({ identity: `challenge:${matchId}`, userId: recipientId, role: "opponent", displayName: opponentName || opponentId, type: "challenge", subject: `Neue Forderung in ${competitionName}`, body: `${challengerName || challengerId} hat dich gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.` }),
-      this.participant({ identity: `challenge-confirmation:${matchId}`, userId: challengerId, role: "challenger", displayName: challengerName || challengerId, type: "challenge_confirmation", subject: `Forderung ausgesprochen in ${competitionName}`, body: `Du hast ${opponentName || opponentId} in ${competitionName} gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.` }),
+      this.participant({ identity: `challenge:${matchId}`, userId: recipientId, role: "opponent", displayName: opponentName || opponentId, type: "challenge", subject: `Neue Forderung in ${competitionName}`, body: `${challengerDisplay} hat dich${Number.isInteger(opponentRank) && opponentRank >= 0 ? ` (${opponentRank})` : ""} gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.` }),
+      this.participant({ identity: `challenge-confirmation:${matchId}`, userId: challengerId, role: "challenger", displayName: challengerName || challengerId, type: "challenge_confirmation", subject: `Forderung ausgesprochen in ${competitionName}`, body: `Du${Number.isInteger(challengerRank) && challengerRank >= 0 ? ` (${challengerRank})` : ""} hast ${opponentDisplay} in ${competitionName} gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.` }),
     ];
     const event = await this.ensureEvent({
       id: stableId("evt", `challenge:${matchId}`),
@@ -185,15 +185,36 @@ class MessagingService {
     return this.ensureChallengeEvent(params);
   }
 
-  async ensureMatchAppointmentEvent({ operationId, matchId, matchDate, previousDate = "", competitionId, competitionName, challengerId, challengerName, opponentId, opponentName, actorId, actorName, createdAt = this.now() }) {
+  async ensureMatchAppointmentEvent({ operationId, matchId, matchDate, previousDate = "", competitionId, competitionName, participantIds, participantNames = {}, teams = [], actorId, actorName, reason = "", createdAt = this.now() }) {
     const identity = `appointment:${matchId}:${operationId}`;
     const dateText = appointmentText(matchDate);
     const previousDateText = previousDate ? appointmentText(previousDate) : "";
     const changed = Boolean(previousDateText);
-    const participants = [
-      this.participant({ identity: `${identity}:${challengerId}`, userId: challengerId, role: "challenger", displayName: challengerName, type: changed ? "appointment_changed" : "appointment", subject: `${changed ? "Spieltermin geändert" : "Spieltermin festgelegt"} mit ${opponentName}`, body: changed ? `Der Termin für dein Match gegen ${opponentName} wurde von ${previousDateText} auf ${dateText} geändert.` : `Dein Match gegen ${opponentName} ist für den ${dateText} geplant.` }),
-      this.participant({ identity: `${identity}:${opponentId}`, userId: opponentId, role: "opponent", displayName: opponentName, type: changed ? "appointment_changed" : "appointment", subject: `${changed ? "Spieltermin geändert" : "Spieltermin festgelegt"} mit ${challengerName}`, body: changed ? `Der Termin für dein Match gegen ${challengerName} wurde von ${previousDateText} auf ${dateText} geändert.` : `Dein Match gegen ${challengerName} ist für den ${dateText} geplant.` }),
-    ];
+    const uniqueIds = [...new Set((participantIds || []).map(String).filter(Boolean))];
+    if (!uniqueIds.length) throw new AppError("MESSAGING_EVENT_INVALID", "Terminereignis besitzt keine Teilnehmer", 500);
+    const namedTeams = teams.slice(0, 2).map((team) => (team || []).map(String).filter(Boolean).map((id) => participantNames[id] || id));
+    if (namedTeams.length !== 2 || namedTeams.some((team) => !team.length)) {
+      throw new AppError("MESSAGING_EVENT_INVALID", "Terminereignis besitzt keine vollstaendigen Seiten", 500);
+    }
+    const participants = uniqueIds.map((userId) => {
+      const ownTeam = teams.findIndex((team) => (team || []).map(String).includes(userId));
+      const opponentName = ownTeam >= 0 ? namedTeams[1 - ownTeam].join(" / ") : "Unbekannt";
+      const changeText = changed
+        ? `Der Termin für dein Match gegen ${opponentName} wurde von ${previousDateText} auf ${dateText} geändert.`
+        : `Dein Match gegen ${opponentName} ist für den ${dateText} geplant.`;
+      return this.participant({
+        identity: `${identity}:${userId}`,
+        userId,
+        role: "participant",
+        displayName: participantNames[userId] || userId,
+        type: changed ? "appointment_changed" : "appointment",
+        subject: `${changed ? "Spieltermin geändert" : "Spieltermin festgelegt"} mit ${opponentName}`,
+        body: `${changeText}${reason ? ` Administrator ${actorName || actorId} hat als Grund angegeben: ${reason}` : ""}`,
+        allowMissingPerson: true,
+      });
+    });
+    const firstTeamName = namedTeams[0].join(" / ");
+    const secondTeamName = namedTeams[1].join(" / ");
     const event = await this.ensureEvent({
       id: stableId("evt", identity),
       competitionId,
@@ -204,9 +225,9 @@ class MessagingService {
       actorId,
       actorName,
       summary: changed
-        ? `Spieltermin für ${challengerName} gegen ${opponentName} von ${previousDateText} auf ${dateText} geändert.`
-        : `${challengerName} und ${opponentName} haben den Spieltermin für den ${dateText} vereinbart.`,
-      detail: changed ? `Alter Spieltermin: ${previousDateText}; neuer Spieltermin: ${dateText}` : `Spieltermin: ${dateText}`,
+        ? `Spieltermin für ${firstTeamName} gegen ${secondTeamName} von ${previousDateText} auf ${dateText} geändert.`
+        : `${firstTeamName} und ${secondTeamName} haben den Spieltermin für den ${dateText} vereinbart.`,
+      detail: [changed ? `Alter Spieltermin: ${previousDateText}; neuer Spieltermin: ${dateText}` : `Spieltermin: ${dateText}`, reason ? `Grund: ${reason}` : ""].filter(Boolean).join("; "),
     }, participants);
     return { event, participants: event.participants };
   }
@@ -232,7 +253,7 @@ class MessagingService {
     const controlledResult = changeType === "result_cleared" ? "" : String(result || "");
     const outcomeChange = ["result", "result_corrected"].includes(changeType);
     const displayResult = outcomeChange && completionType === "walkover"
-      ? "Walkover"
+      ? "W.O."
       : outcomeChange && completionType === "retirement"
         ? `${controlledResult ? `${controlledResult} ` : ""}(Aufgabe)`
         : controlledResult;
@@ -256,7 +277,7 @@ class MessagingService {
           ? `Match ${recipientWon ? "gewonnen" : "verloren"}: ${competitionName}`
           : `${labels[changeType]}: ${competitionName}`,
         body: hasOutcome
-          ? `${outcomeText}${completionType === "walkover" ? " durch Walkover." : `.${displayResult ? ` Ergebnis: ${displayResult}.` : ""}`}${reason ? ` Grund: ${reason}` : ""}`
+          ? `${completionType === "walkover" ? recipientWon ? `Du gewinnst durch W.O. von ${namedTeams[2 - winnerSide].join(" / ")}.` : "Du verlierst durch W.O." : `${outcomeText}.${displayResult ? ` Ergebnis: ${displayResult}.` : ""}`}${reason ? ` Grund: ${reason}` : ""}`
           : `${actorName || actorId} hat das Matchergebnis ${changeType === "result" ? "eingetragen" : changeType === "result_cleared" ? "zurückgenommen" : "korrigiert"}.${displayResult ? ` Ergebnis: ${displayResult}.` : ""}${reason ? ` Grund: ${reason}` : ""}`,
         allowMissingPerson: true,
       });
@@ -271,7 +292,9 @@ class MessagingService {
       actorId,
       actorName,
       summary: hasOutcome
-        ? `${namedTeams[winnerSide - 1].join(" / ")} gewinnt gegen ${namedTeams[2 - winnerSide].join(" / ")}.`
+        ? completionType === "walkover"
+          ? `${namedTeams[winnerSide - 1].join(" / ")} gewinnt durch W.O. von ${namedTeams[2 - winnerSide].join(" / ")}.`
+          : `${namedTeams[winnerSide - 1].join(" / ")} gewinnt gegen ${namedTeams[2 - winnerSide].join(" / ")}.`
         : `${labels[changeType]} für ${uniqueIds.map((id) => participantNames[id] || id).join(" / ")}.`,
       detail: detailParts.join("; "),
       result: displayResult,
@@ -335,24 +358,13 @@ class MessagingService {
         subject: "Forderungsdatum geändert",
         summary: `Forderungsdatum für ${challengerName} gegen ${opponentName} von ${previousText} auf ${nextText} geändert.`,
       },
-      match_date_changed: {
-        type: "ranking_match_date_admin_changed",
-        subject: previousText ? "Spieldatum geändert" : "Spieldatum festgelegt",
-        summary: previousText
-          ? `Spieldatum für ${challengerName} gegen ${opponentName} von ${previousText} auf ${nextText} geändert.`
-          : `Spieldatum für ${challengerName} gegen ${opponentName} auf ${nextText} festgelegt.`,
-      },
     };
     const label = labels[action];
     if (!label) throw new AppError("MESSAGING_EVENT_INVALID", "Adminaktion fuer Ranglistenforderung ist ungueltig", 500);
     const body = (otherName, role) => {
       const change = action === "deleted"
         ? `die Forderung ${role === "challenger" ? "gegen" : "von"} ${otherName} gelöscht`
-        : action === "challenge_date_changed"
-          ? `das Forderungsdatum der Forderung mit ${otherName} von ${previousText} auf ${nextText} geändert`
-          : previousText
-            ? `das Spieldatum der Forderung mit ${otherName} von ${previousText} auf ${nextText} geändert`
-            : `für die Forderung mit ${otherName} das Spieldatum ${nextText} festgelegt`;
+        : `das Forderungsdatum der Forderung mit ${otherName} von ${previousText} auf ${nextText} geändert`;
       return `Administrator ${actorName} hat ${change}. Grund: ${reason}`;
     };
     const subject = (otherName, role) => action === "deleted"

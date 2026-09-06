@@ -2,6 +2,7 @@ import { createEndpoint, subscribeInvalidations } from "./dataClient.js";
 import { getUser, ready, subscribeAuth } from "./authClient.js";
 import { callWithRetry, showLoadingOverlay, hideLoadingOverlay, showErrorOverlay } from "./loadingHelper.js";
 import { signalMonitorReady, signalMonitorFailed } from "./monitorReady.js";
+import { formatWalkoverResult } from "./matchCompletionText.js";
 
 // preMatches endpoint beibehalten für Kompatibilität, wird aber nicht mehr verwendet
 // const readPreMatches  = createEndpoint("preMatches");
@@ -359,9 +360,12 @@ function collectPairings(data, header, bewerbId, playerMap) {
 
     const team1Html = formatTeamHtml(id1, id2, playerMap);
     const team2Html = formatTeamHtml(id3, id4, playerMap);
+    const team1Text = formatTeamText(id1, id2, playerMap);
+    const team2Text = formatTeamText(id3, id4, playerMap);
     const losingTeam = firstTeamRetired ? formatTeamText(id1, id2, playerMap) : secondTeamRetired ? formatTeamText(id3, id4, playerMap) : "";
+    const winningTeam = firstTeamRetired ? team2Text : secondTeamRetired ? team1Text : "";
     const displayResult = losingMarker === "wo" && losingTeam
-      ? `Walkover durch ${losingTeam}`
+      ? formatWalkoverResult(winningTeam, losingTeam)
       : losingMarker === "ret" && losingTeam
         ? `Aufgabe durch ${losingTeam}${ergebnis ? `: ${ergebnis}` : ""}`
         : ergebnis;

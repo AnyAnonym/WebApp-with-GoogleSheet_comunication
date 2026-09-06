@@ -6,11 +6,13 @@ ROLLEN UND VERANTWORTUNGEN
 ===========
 
 Spieler fuehren ihre eigenen sportlichen Handlungen aus. Dazu gehoeren eigene
-Bewerbsanmeldungen, eigene Ranglistenforderungen, die Terminvereinbarung bei
-eigenen Forderungen und das eigene temporaere Raushaengen. Ist ein Spieler in
+  Bewerbsanmeldungen, eigene Ranglistenforderungen, die Terminvereinbarung bei
+  eigenen vollstaendig besetzten Matches und das eigene temporaere Raushaengen.
+  Ist ein Spieler in
 `Spieler1ID`, `Spieler2ID`, `Spieler3ID` oder `Spieler4ID` eines Matches beteiligt,
-darf er fuer beide Seiten ein regulaeres Ergebnis, Walkover oder Retirement sofort
-eintragen und spaeter korrigieren. Eine Bestaetigung der anderen Seite ist nicht
+  darf er den gemeinsam vereinbarten Spieltermin festhalten und fuer
+  beide Seiten ein regulaeres Ergebnis, Walkover oder Retirement sofort eintragen
+  und spaeter korrigieren. Eine Bestaetigung der anderen Seite ist nicht
 erforderlich; der Akteur bleibt in Historie und Meldungen sichtbar. Andere
 Handlungen darf er nicht im Namen einer fremden Person ausfuehren. [Bestaetigt]
 
@@ -40,6 +42,9 @@ Administratoren duerfen Ergebnisse jedes Matches eintragen und korrigieren. Nur
 sie duerfen mit Pflichtgrund ein Matchende korrigieren, ein Ergebnis samt
 automatischer Folgen loeschen oder eine Ranglistenkorrektur mit vollstaendigem
 Rangplan ausfuehren. [Bestaetigt]
+
+Administratoren duerfen den Termin jedes offenen, vollstaendig besetzten Matches
+mit Pflichtgrund festlegen oder aendern. [Bestaetigt]
 
 Eigene aktive Adminrechte und der letzte aktive Administrator muessen vor
 unbeabsichtigter Deaktivierung oder Rollenentfernung geschuetzt bleiben.

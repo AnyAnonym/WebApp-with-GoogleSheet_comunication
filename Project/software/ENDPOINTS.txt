@@ -476,10 +476,11 @@ PUBLIC:
       `competitions` enthaelt alle offenen und bis `Bewerbsende` auch alle
       abgeschlossenen Matches, an denen die Profilperson in einer der vier
       Spielerpositionen beteiligt ist. Mehrere Matches je Bewerb bleiben
-      erhalten. Jeder Matcheintrag enthaelt Teams, Runde, MatchDate, MatchEnde,
-      Ergebnis, Abschlussart, Status, Ergebnis-Fingerprint sowie serverseitige
-      Aktionsbooleans; unvollstaendige oder ungueltige Teilnehmerzeilen werden
-      nicht projiziert. Ranglisten- und Bewerbsdaten werden im gemeinsamen
+      erhalten. Jeder Matcheintrag enthaelt Teams, Runde, MatchDate, bei
+      Ranglisten gegebenenfalls `challengeDate`, MatchEnde, Ergebnis,
+      Abschlussart, Status, Ergebnis-Fingerprint sowie serverseitige
+      Aktionsbooleans einschliesslich `canSetMatchAppointment`; unvollstaendige
+      oder ungueltige Teilnehmerzeilen werden nicht projiziert. Ranglisten- und Bewerbsdaten werden im gemeinsamen
       Profilmodal nach Bewerb zusammengefuehrt.
 
   `bewerbe {}`
@@ -620,25 +621,34 @@ AUTHENTICATED (player, operator oder admin):
       Rueckkehrfrist darf jeden aktiven Rang fordern. Der Write legt nur das Match
       an; Einreihung und Rangverschiebung erfolgen beim spaeteren Ergebniswrite.
 
-  `setRankingMatchDate { operationId, matchId, matchDate }`
-      Idempotenter Write fuer eine offene Ranglistenforderung. `matchDate` hat
-      exakt das Format `YYMMDD-HHMM`; nur Forderer oder Geforderter duerfen
-      schreiben. Der erste Termin muss zwischen Forderungszeitpunkt und exakt
-      vierzehn Tagen danach liegen. Ein vorhandener Termin darf von beiden
-      Beteiligten auf einen Zeitpunkt ab der aktuellen Serverzeit ohne obere
-      Datumsgrenze geaendert werden. Erlaubt sind ausschliesslich volle Stunden
-      von 06:00 bis 23:00 Uhr. Ignore-Zeilen, Matches ohne Forderungszeitpunkt,
-      Ergebnisse und `[wo]`-/`[ret]`-Abschluesse sind geschlossen.
-      Erfolg liefert `{ success:true, matchId, matchDate, recovered? }`, projiziert
-      den Write lokal, invalidiert `matches` und erzeugt recovery-sicher ein
-      `appointment`- beziehungsweise `appointment_changed`-Ereignis mit Akteur,
-      neuem und gegebenenfalls altem Termin sowie je einer persoenlichen Meldung
-      fuer beide Beteiligte. Der Betreff nennt den jeweiligen Mitspieler und
-      wiederholt den separat sichtbaren Bewerbsnamen nicht. Audit umfasst
-      `started` und `success|failed|unknown`; das strukturierte Abschlusslog
-      enthaelt nur kontrollierte IDs, Termin und Recoverystatus.
-      Relevante Fehler: `MATCH_NOT_FOUND`, `RANKING_MATCH_REQUIRED`,
-      `MATCH_PARTICIPANT_REQUIRED`, `RANKING_CHALLENGE_CLOSED`,
+  `setMatchAppointment { operationId, matchId, matchDate }`
+      Idempotenter Terminwrite fuer `player`, `player A` und `player B`. Die
+      angemeldete Person muss in einer der vier Spielerpositionen des offenen,
+      vollstaendig besetzten Nicht-BYE-Matches stehen. Beide Hauptspieler sind
+      erforderlich; Doppelpartner muessen auf beiden Seiten vorhanden sein.
+      `PRE`, unbekannte oder doppelte Personen, Ignore-Zeilen, Ergebnisse sowie
+      `[wo]`-/`[ret]`-Abschluesse sind geschlossen.
+
+  `adminSetMatchAppointment { operationId, matchId, matchDate, reason }`
+      Gleicher Terminwrite fuer Administratoren und jedes zulaessige Match; der
+      getrimmte Grund umfasst 1 bis 500 Zeichen und steht nur in Fachhistorie und
+      persoenlichen Meldungen, nicht in Audit oder Betriebslog.
+
+      Fuer beide Endpunkte hat `matchDate` exakt das Format `YYMMDD-HHMM`; erlaubt
+      sind volle Stunden von 06:00 bis 23:00 Uhr. Bei KO und Round Robin muss der
+      neue Termin in der Zukunft liegen und besitzt keine obere Grenze. Bei einer
+      Ranglistenforderung liegt der Ersttermin zwischen Forderungszeitpunkt und
+      exakt vierzehn Tagen danach; ein vorhandener Termin darf auf einen
+      zukuenftigen Zeitpunkt ohne obere Grenze geaendert werden. Erfolg liefert
+      `{ success:true, matchId, matchDate, recovered? }`, projiziert den Write
+      lokal, invalidiert `matches` und erzeugt recovery-sicher ein `appointment`-
+      beziehungsweise `appointment_changed`-Ereignis mit Akteur, altem/neuem
+      Termin und je einer persoenlichen Meldung fuer alle zwei oder vier
+      Beteiligten. Audit umfasst `started` und `success|failed|unknown`; das
+      Abschlusslog enthaelt nur kontrollierte IDs, Bewerbsart, Termin und
+      Recoverystatus.
+      Relevante Fehler: `MATCH_NOT_FOUND`, `MATCH_PARTICIPANT_REQUIRED`,
+      `MATCH_PARTICIPANTS_INVALID`, `MATCH_APPOINTMENT_CLOSED`,
       `MATCH_DATE_INVALID`, `MATCH_DATA_INVALID`, `MATCH_DATE_TIME_INVALID`,
       `MATCH_DATE_PAST`, `MATCH_DATE_AFTER_DEADLINE`, `MATCH_DATE_UNCHANGED`,
       `OPERATION_ID_CONFLICT`, `SHEET_SCHEMA` und `WRITE_OUTCOME_UNKNOWN`.

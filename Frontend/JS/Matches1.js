@@ -33,6 +33,35 @@ function dateToTs(raw) {
   return new Date(yyyy, parseInt(mm) - 1, parseInt(dd), parseInt(hh), parseInt(mi)).getTime();
 }
 
+function parseCompactTimestamp(raw) {
+  const match = String(raw || "").trim().match(/^(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  if (!match) return null;
+  const [, yy, month, day, hour, minute] = match;
+  const year = Number(yy) >= 50 ? 1900 + Number(yy) : 2000 + Number(yy);
+  const timestamp = Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute));
+  const date = new Date(timestamp);
+  if (date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== Number(month) - 1
+    || date.getUTCDate() !== Number(day)
+    || date.getUTCHours() !== Number(hour)
+    || date.getUTCMinutes() !== Number(minute)) return null;
+  return { timestamp, time: `${hour}:${minute}` };
+}
+
+function formatMatchTiming(startRaw, endRaw) {
+  const start = parseCompactTimestamp(startRaw);
+  const end = parseCompactTimestamp(endRaw);
+  if (!start || !end || end.timestamp < start.timestamp) return "";
+  const totalMinutes = Math.floor((end.timestamp - start.timestamp) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const duration = [
+    hours ? `${hours} ${hours === 1 ? "Stunde" : "Stunden"}` : "",
+    minutes || !hours ? `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}` : "",
+  ].filter(Boolean).join(" ");
+  return `(${start.time} - ${end.time} Uhr = ${duration})`;
+}
+
 function parsePlayerId(raw) {
   const s = String(raw || "").trim();
   const wo = s.endsWith("[wo]");
@@ -162,6 +191,8 @@ async function loadData() {
       const h = matchValues[0].map((c) => String(c).trim().toLowerCase());
       const iId = h.indexOf("id");
       const iDate = h.indexOf("matchdate");
+      const iStart = h.indexOf("matchstart");
+      const iEnd = h.indexOf("matchende");
       const iFord = h.indexOf("forderungdate");
       const iBewerb = h.indexOf("bewerbid");
       const iRunde = h.indexOf("bewerbrunde");
@@ -177,8 +208,6 @@ async function loadData() {
         const pid3 = iP3 >= 0 ? parsePlayerId(row[iP3]) : {cleanId: "", special: null};
         const pid4 = iP4 >= 0 ? parsePlayerId(row[iP4]) : {cleanId: "", special: null};
         const ergebnis = iErg >= 0 ? String(row[iErg] || "").trim() : "";
-        const firstTeamSpecial = pid1.special || pid2.special;
-        const secondTeamSpecial = pid3.special || pid4.special;
         const matchDateRaw = iDate >= 0 ? String(row[iDate] || "").trim() : "";
         const fordDateRaw = iFord >= 0 ? String(row[iFord] || "").trim() : "";
         const bewerbId = iBewerb >= 0 ? String(row[iBewerb] || "").trim() : "";
@@ -190,6 +219,7 @@ async function loadData() {
           matchDateRaw,
           matchDate: parseSheetDate(matchDateRaw),
           matchTs: dateToTs(matchDateRaw),
+          matchTiming: formatMatchTiming(iStart >= 0 ? row[iStart] : "", iEnd >= 0 ? row[iEnd] : ""),
           fordDateRaw,
           fordDate: parseSheetDate(fordDateRaw),
           bewerbId,
@@ -199,10 +229,8 @@ async function loadData() {
           p2: {name: pid2.cleanId ? (playerMap.get(pid2.cleanId) || pid2.cleanId) : "", id: pid2.cleanId, special: pid2.special},
           p3: {name: pid3.cleanId ? (playerMap.get(pid3.cleanId) || pid3.cleanId) : "", id: pid3.cleanId, special: pid3.special},
           p4: {name: pid4.cleanId ? (playerMap.get(pid4.cleanId) || pid4.cleanId) : "", id: pid4.cleanId, special: pid4.special},
-           ergebnis,
-           ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
-           completionType: firstTeamSpecial || secondTeamSpecial,
-           losingSide: firstTeamSpecial ? 1 : secondTeamSpecial ? 2 : 0,
+          ergebnis,
+          ergebnisFormatted: ergebnis.split("/").map((s) => formatSetResult(s)).join("/"),
           winner: determineWinnerWithWo(ergebnis, [pid1.special, pid2.special], [pid3.special, pid4.special]),
           hasWo: !!(pid1.special === "wo" || pid2.special === "wo" || pid3.special === "wo" || pid4.special === "wo"),
           isPlayed: !!ergebnis || !!pid1.special || !!pid2.special || !!pid3.special || !!pid4.special,
@@ -351,6 +379,12 @@ function renderMatches() {
     const date = document.createElement("span");
     date.className = "m1-date";
     date.textContent = m.matchDate || "Datum offen";
+    if (m.isPlayed && m.matchTiming) {
+      const timing = document.createElement("span");
+      timing.className = "m1-timing";
+      timing.textContent = m.matchTiming;
+      date.append(" ", timing);
+    }
     meta.appendChild(date);
 
     if (m.fordDate) {
@@ -401,12 +435,7 @@ function renderMatches() {
 
     const result = document.createElement("div");
     result.className = "m1-result";
-    const losingTeam = m.losingSide === 1 ? team1Name : m.losingSide === 2 ? team2Name : "";
-    result.textContent = m.completionType === "wo" && losingTeam
-      ? `Walkover durch ${losingTeam}`
-      : m.completionType === "ret" && losingTeam
-        ? `Aufgabe durch ${losingTeam}${m.ergebnisFormatted ? `: ${m.ergebnisFormatted}` : ""}`
-        : m.ergebnisFormatted || "";
+    result.textContent = m.ergebnisFormatted || "";
 
     content.append(players, result);
     card.append(meta, content);

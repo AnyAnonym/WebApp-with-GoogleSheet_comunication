@@ -135,7 +135,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     "Spieler1ID", "Spieler2ID", "Spieler3ID", "Spieler4ID", "Ergebnis", "MatchtypID", "InternalNote", "MatchEnde",
     "Spieler1RangBeiErgebnis", "Spieler3RangBeiErgebnis", "MatchStart", "ErgebnisErfasstAm",
   ],
-  ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note", "260101-1400"],
+  ["", "m1", "260101-1200", "", "cup-1", "F", "p1", "", "p2", "", "6-4/6-4", "2", "secret-note", "260101-1400", "", "", "260101-1210", "260101-1405"],
   ["", "m-open", "260904-0800", "", "cup-1", "HF", "p1", "p3", "p2", "", "", "1", "", ""],
   ["1", "m-ignored", "260904-0900", "", "cup-1", "VF", "p1", "", "p2", "", "", "1", "", ""],
   ["", "m-pre", "260904-1000", "", "cup-1", "VF", "p1", "", "PRE", "", "", "1", "", ""],
@@ -156,7 +156,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     async addMatch(_principal, { operationId }) {
       return { success: true, newMatchId: `m-${operationId.slice(-8)}` };
     },
-    async setRankingMatchDate(_principal, { matchId, matchDate }) {
+    async setMatchAppointment(_principal, { matchId, matchDate }) {
       return { success: true, matchId, matchDate };
     },
     async setMatchResult(_principal, { matchId }) { return { success: true, matchId, fingerprint: "a".repeat(64) }; },
@@ -169,7 +169,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     async adminSetRankingChallengeDate(_principal, { matchId, challengeDate }) {
       return { success: true, matchId, challengeDate };
     },
-    async adminSetRankingMatchDate(_principal, { matchId, matchDate }) {
+    async adminSetMatchAppointment(_principal, { matchId, matchDate }) {
       return { success: true, matchId, matchDate };
     },
     challengeEligibility() {
@@ -567,8 +567,11 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(anonymousProfile.data.error.code, "AUTH_REQUIRED");
   assert.equal(anonymousProfile.data.profile, undefined);
   const projectedMatches = await publicClient.request("matches1", {});
+  assert.equal(projectedMatches.data.values[0].includes("MatchStart"), true);
   assert.equal(projectedMatches.data.values[0].includes("InternalNote"), false);
   assert.equal(JSON.stringify(projectedMatches.data).includes("secret-note"), false);
+  const projectedMatchStartIndex = projectedMatches.data.values[0].indexOf("MatchStart");
+  assert.equal(projectedMatches.data.values.find((row) => row.includes("m1"))[projectedMatchStartIndex], "260101-1210");
   const projectedEntries = await publicClient.request("entryList", {});
   assert.equal(projectedEntries.data.values[0].includes("Entrydate"), true);
   assert.equal(projectedEntries.data.values[0].includes("PaymentStatus"), false);
@@ -576,8 +579,8 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(seniorRestrictions.data.schonzeit, []);
 
   const protectedEndpoints = [
-    "memberDirectory", "myProfile", "publicProfile", "addMatch", "setRankingMatchDate", "addEntryList", "removeEntryList",
-    "withdrawFromRanking", "matchResultSuggestion", "setMatchResult", "adminClearMatchResult", "adminCorrectRankingResult", "adminSetMatchEnd", "adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
+    "memberDirectory", "myProfile", "publicProfile", "addMatch", "setMatchAppointment", "addEntryList", "removeEntryList",
+    "withdrawFromRanking", "matchResultSuggestion", "setMatchResult", "adminClearMatchResult", "adminCorrectRankingResult", "adminSetMatchEnd", "adminDeleteRankingChallenge", "adminSetRankingChallengeDate", "adminSetMatchAppointment", "operationStatus", "navigator", "courtAssign", "courtSetActive", "monitorList",
     "monitorNavigate", "monitorScroll", "monitorProvision", "monitorRotate", "monitorRevoke",
     "monitorTarget", "monitorAck",
   ];
@@ -728,6 +731,18 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.deepEqual(memberProfile.data.profile.rankings[1].withdrawal, { withdrawnAt: "260829-1200", reason: "Verletzt" });
   assert.equal(memberProfile.data.profile.competitions.every((competition) => !Object.hasOwn(competition, "rankingMembers")), true);
   assert.equal(memberProfile.data.profile.competitions[0].matches[0].canSetResult, true);
+  assert.deepEqual(memberProfile.data.profile.competitions[0].matches[0].resultRules, {
+    winningSets: 2,
+    setTarget: 6,
+    setTiebreak: "6-6",
+    decidingSet: "vollstaendiger Satz",
+  });
+  assert.deepEqual(memberProfile.data.profile.competitions[0].matches.find(({ matchId }) => matchId === "m1").resultRules, {
+    winningSets: 2,
+    setTarget: 4,
+    setTiebreak: "3-3",
+    decidingSet: "MT10",
+  });
   const historicalRankingMatch = memberProfile.data.profile.competitions
     .find(({ competitionId }) => competitionId === "ranking-seniors").matches.find(({ matchId }) => matchId === "m2");
   assert.equal(historicalRankingMatch.canSetResult, false);
@@ -783,24 +798,37 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   dataStore.set("matches1", currentMatches, { source: "test-profile-restore" });
   const matchesWithBye = [
     ...currentMatches,
+    ["", "m-undated-final", "", "", "cup-1", "F", "p2", "", "p3", "", "", "1", "", ""],
+    ["", "m-undated-quarterfinal", "", "", "cup-1", "VF-P1", "p2", "", "p3", "", "", "1", "", ""],
     ["", "m-newest", "260905-1000", "", "cup-1", "HF-P1", "p2", "", "p1", "", "6-1/6-1", "1", "", "260905-1200"],
     ["", "m-bye", "", "", "cup-1", "R1-P1", "p2", "", "BYE", "", "", "1", "", ""],
     ["", "m-ranking-undated", "", "", "ranking-seniors", "", "p1", "", "p2", "", "", "1", "", ""],
     ["", "m-ranking-retirement", "260904-0700", "", "ranking-seniors", "", "p1", "", "p2 [ret]", "", "6-4/2-1", "1", "", "260904-0830", "", "", "260904-0700", "260904-0835"],
+    ["", "m-ranking-walkover", "260903-0700", "", "ranking-seniors", "", "p1", "", "p2 [wo]", "", "", "1", "", "", "", "", "", "260903-0710"],
   ];
   dataStore.set("matches1", matchesWithBye, { source: "test-profile-bye" });
   const byeProfile = await playerClient.request("publicProfile", { id: "p2" });
   const byeCup = byeProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "cup-1");
-  assert.deepEqual(byeCup.matches.map(({ matchId }) => matchId), ["m-newest", "m-open", "m1", "m-bye"]);
+  assert.deepEqual(byeCup.matches.map(({ matchId }) => matchId), [
+    "m-undated-final", "m-undated-quarterfinal", "m-newest", "m-open", "m1", "m-bye",
+  ]);
+  assert.equal(byeCup.matches.find(({ matchId }) => matchId === "m-undated-final").canSetMatchAppointment, true);
+  assert.equal(byeCup.matches.find(({ matchId }) => matchId === "m-undated-final").challengeDate, "");
   const byeMatch = byeCup.matches.at(-1);
   assert.equal(byeMatch.bye, true);
   assert.deepEqual(byeMatch.teams, [{ ids: ["p2"], names: ["Peter Player"] }, { ids: [], names: [] }]);
   assert.equal(byeMatch.canSetResult, false);
   assert.equal(byeMatch.canAdminSetMatchEnd, false);
   assert.equal(byeMatch.canAdminClear, false);
+  assert.equal(byeMatch.canSetMatchAppointment, false);
   const seniorMatches = byeProfile.data.profile.competitions.find(({ competitionId }) => competitionId === "ranking-seniors").matches;
-  assert.deepEqual(seniorMatches.map(({ matchId }) => matchId), ["m-ranking-undated", "m-ranking-retirement", "m2"]);
+  assert.deepEqual(seniorMatches.map(({ matchId }) => matchId), ["m-ranking-undated", "m-ranking-retirement", "m-ranking-walkover", "m2"]);
   assert.equal(seniorMatches[1].losingSide, 2);
+  const adminWalkoverProfile = await adminClient.request("publicProfile", { id: "p2" });
+  const adminWalkover = adminWalkoverProfile.data.profile.competitions
+    .find(({ competitionId }) => competitionId === "ranking-seniors").matches.find(({ matchId }) => matchId === "m-ranking-walkover");
+  assert.equal(adminWalkover.canAdminSetMatchEnd, false);
+  assert.equal(adminWalkover.canAdminClear, true);
   dataStore.set("matches1", currentMatches, { source: "test-profile-bye-restore" });
   const matchesBeforeNewcomerProfile = structuredClone(dataStore.get("matches1"));
   const newcomerChallengeMatches = structuredClone(matchesBeforeNewcomerProfile);
@@ -901,12 +929,13 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(operatorGrafanaAuth.headers.get("x-webauth-user"), null);
 
   const authenticatedEndpoints = [
-    "memberDirectory", "myProfile", "operationStatus", "addMatch", "setRankingMatchDate", "addEntryList",
+    "memberDirectory", "myProfile", "operationStatus", "addMatch", "addEntryList",
     "removeEntryList", "withdrawFromRanking",
   ];
   const resultPlayerEndpoints = ["matchResultSuggestion", "setMatchResult"];
+  const playerOnlyEndpoints = ["setMatchAppointment"];
   const operatorEndpoints = ["navigator", "courtAssign", "courtSetActive", "monitorList", "monitorNavigate", "monitorScroll"];
-  const adminEndpoints = ["adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchEnd", "adminSetRankingChallengeDate", "adminSetRankingMatchDate", "sheetDataStatus", "refreshSheetData", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
+  const adminEndpoints = ["adminClearMatchResult", "adminCorrectRankingResult", "adminDeleteRankingChallenge", "adminMemberReconciliation", "adminPeopleNormalization", "adminSetMatchAppointment", "adminSetMatchEnd", "adminSetRankingChallengeDate", "sheetDataStatus", "refreshSheetData", "normalizePerson", "reconcilePerson", "monitorProvision", "monitorRotate", "monitorRevoke"];
   const deviceEndpoints = ["monitorTarget", "monitorAck"];
   const assertAllowedByPolicy = async (client, endpoint) => {
     const response = await client.request(endpoint, {});
@@ -918,11 +947,12 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   };
   for (const endpoint of authenticatedEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
   for (const endpoint of resultPlayerEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
+  for (const endpoint of playerOnlyEndpoints) await assertAllowedByPolicy(playerClient, endpoint);
   for (const endpoint of [...operatorEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(playerClient, endpoint);
   for (const endpoint of [...authenticatedEndpoints, ...operatorEndpoints]) await assertAllowedByPolicy(operatorClient, endpoint);
-  for (const endpoint of [...resultPlayerEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
+  for (const endpoint of [...resultPlayerEndpoints, ...playerOnlyEndpoints, ...adminEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(operatorClient, endpoint);
   for (const endpoint of [...authenticatedEndpoints, ...resultPlayerEndpoints, ...operatorEndpoints, ...adminEndpoints]) await assertAllowedByPolicy(adminClient, endpoint);
-  for (const endpoint of deviceEndpoints) await assertForbiddenByPolicy(adminClient, endpoint);
+  for (const endpoint of [...playerOnlyEndpoints, ...deviceEndpoints]) await assertForbiddenByPolicy(adminClient, endpoint);
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
   const ownProfile = await adminClient.request("myProfile");
@@ -1164,7 +1194,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     opponentId: "p1",
   });
   assert.equal(challenge.data.newMatchId, "m-00000201");
-  const appointment = await playerClient.request("setRankingMatchDate", {
+  const appointment = await playerClient.request("setMatchAppointment", {
     operationId: "00000000-0000-4000-8000-000000000205",
     matchId: challenge.data.newMatchId,
     matchDate: "260905-1800",
@@ -1177,12 +1207,14 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     competitionName: "Cup",
     challengerId: "p2",
     challengerName: "Peter Player",
+    challengerRank: 4,
     opponentId: "p1",
     opponentName: "Ada Admin",
+    opponentRank: 2,
   });
   const competitionHistory = await playerClient.request("competitionHistory", { bewerbId: "cup-1", limit: 10 });
   assert.equal(competitionHistory.data.competition.name, "Cup");
-  assert.equal(competitionHistory.data.entries[0].summary, "Peter Player hat Ada Admin gefordert.");
+  assert.equal(competitionHistory.data.entries[0].summary, "Peter Player (4) hat Ada Admin (2) gefordert.");
   assert.equal(competitionHistory.data.entries[0].roundName, "");
   assert.deepEqual(competitionHistory.data.entries[0].participants, [
     { role: "opponent", name: "Ada Admin" },
@@ -1204,7 +1236,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(challengerMessage.data.message.competitionName, "Cup");
   assert.equal(
     challengerMessage.data.message.body,
-    "Du hast Ada Admin in Cup gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.",
+    "Du (4) hast Ada Admin (2) in Cup gefordert. Bitte vereinbart einen Spieltermin in den kommenden sieben Tagen.",
   );
   const seededMessage = seededMessages.recipient;
   adminClient.socket.send(JSON.stringify({ v: 2, type: "unsubscribe", topics: statusTopics.slice(0, 20) }));
@@ -1286,7 +1318,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
     before: { bewerbId: "cup-1", opponentId: "p1" },
     after: { matchId: "m-00000201", bewerbId: "cup-1", opponentId: "p1" },
   });
-  const appointmentAudit = auditRows.find((row) => row.action === "setRankingMatchDate" && row.result === "success");
+  const appointmentAudit = auditRows.find((row) => row.action === "setMatchAppointment" && row.result === "success");
   assert.deepEqual({
     actorId: appointmentAudit.actorId,
     targetType: appointmentAudit.targetType,
@@ -1305,7 +1337,7 @@ test("HTTP-Session und WebSocket-Rollen funktionieren zusammen", async (t) => {
   assert.equal(auditRows.some((row) => row.action === "acknowledgeMessage" && row.result === "unknown" && row.errorCode === "WRITE_OUTCOME_UNKNOWN"), true);
   for (const action of [
     "login", "adminPasswordSet", "adminPasswordSetup", "passwordSetup", "adminPasswordResetProof",
-    "passwordReset", "addMatch", "setRankingMatchDate", "acknowledgeMessage", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
+    "passwordReset", "addMatch", "setMatchAppointment", "acknowledgeMessage", "refreshSheetData", "monitorProvision", "monitorEnroll", "monitorNavigate", "courtAssign", "monitorRotate", "monitorRevoke",
     "frontendLoggingSettings", "frontendLoggingTargetSet", "frontendLoggingTargetRemove",
   ]) {
     assert.equal(successfulActions.has(action), true, `Audit fehlt fuer ${action}`);

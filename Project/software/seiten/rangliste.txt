@@ -112,11 +112,12 @@ Ranglisten-Pyramide - Interaktive Forderungsrangliste
   samt Support-ID und erzeugen nur das allowlist-basierte Browserereignis
   `match_date_action_failed`.
 
-  Solange kein Termin gesetzt ist, zeigt nur der eigene Ranglistenreiter einen
-  minuetlich aktualisierten Countdown bis sieben Tage nach Forderung. Vor der
-  Frist steht `-`, nachher `+`; bis zwei Tage Restzeit ist er gruen, ab zwei Tagen
-  orange und nach Ueberschreitung rot. Terminsetzung oder Schliessen der
-  Forderung beendet diesen temporaeren Zustand.
+  Solange kein Termin gesetzt ist, zeigt der eigene Ranglistenreiter sowie bei
+  Administratoren der fremde Ranglistenreiter einen minuetlich aktualisierten
+  Countdown bis sieben Tage nach Forderung. Vor der Frist steht `-`, nachher `+`;
+  bis zwei Tage Restzeit ist er gruen, ab zwei Tagen orange und nach
+  Ueberschreitung rot. Terminsetzung oder Schliessen der Forderung beendet
+  diesen temporaeren Zustand.
 
 -- Fachlogik --
   Blau: eigene Position; gruen: forderbar; gelb: offene Forderung; rosa: Schonzeit;

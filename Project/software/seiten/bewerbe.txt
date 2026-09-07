@@ -15,9 +15,12 @@ Bewerbe-Uebersicht - Auflistung aller Bewerbe als Karten
   Oeffentliche Endpoints `bewerbe` und `bewerbsart`. Die Seite abonniert die
   Invalidierungstopics `bewerbe` und `bewerbsart` und laedt danach beide Tabellen
   neu. Ein Timer aktualisiert exakt an EntryStart-, EntryDeadline-, Bewerbsbeginn-
-  und Bewerbsende-Grenzen; bei erneut sichtbarer Seite wird ebenfalls neu geladen.
-  Ladeoverlay, begrenzte Read-Retries und ein dauerhaftes Fehleroverlay mit Retry
-  garantieren einen sichtbaren Ladeabschluss.
+  und Bewerbsende-Grenzen; bei erneut sichtbarer Seite wird im Hintergrund
+  nachgeladen. Nach dem ersten erfolgreichen Aufbau bleiben bestehende Karten und
+  ein geoeffnetes Historienmodal waehrend spaeterer Refreshes sichtbar; das
+  Ladeoverlay erscheint nur fuer den Erstaufbau, nicht fuer Resume-Refreshs.
+  Im Historienmodal sitzt `Weitere Einträge laden` am Ende der scrollbaren Liste,
+  damit es erst nach dem Herunterscrollen sichtbar wird.
   Angemeldete Benutzer koennen zusaetzlich die cursorpaginierte
   `competitionHistory` eines einzelnen Bewerbs oder aller Bewerbe laden.
 

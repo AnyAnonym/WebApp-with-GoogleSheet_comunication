@@ -1271,6 +1271,7 @@ function appendProfileTab(container, label, panel, selected, signal, onActivate 
   tab.setAttribute("role", "tab");
   tab.setAttribute("aria-controls", panel.id);
   tab.setAttribute("aria-selected", String(selected));
+  panel.hidden = !selected;
   tab.textContent = label;
   panel.setAttribute("aria-labelledby", `${panel.id}Tab`);
   tab.id = `${panel.id}Tab`;
@@ -1625,7 +1626,7 @@ window.openProfileModal = async (options = {}) => {
         const challengedAtLine = document.createElement("p");
         challengedAtLine.textContent = `Forderung vom ${formatCompactDate(challenge.challengedAt)}`;
         challengeBlock.append(challengedAtLine);
-        if (ownProfile) appendMatchDateCountdown(challengeBlock, challenge, actionSignal);
+        if (ownProfile || sessionUser?.role === "admin") appendMatchDateCountdown(challengeBlock, challenge, actionSignal);
         panel.appendChild(challengeBlock);
       }
       if (ranking.status === "withdrawn" && ranking.withdrawal) {

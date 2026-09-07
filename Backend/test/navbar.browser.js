@@ -538,6 +538,8 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.deepEqual(await playerPage.locator("#profileCurrentCompetitionTabs [role=tab]").allTextContents(), [
       "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Damen Herbst",
     ]);
+    assert.equal(await playerPage.locator("#profileRankingPanel0").isVisible(), true);
+    assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     await playerPage.getByRole("tab", { name: "Meldungen (2)", exact: true }).click();
     assert.equal(await playerPage.locator("#profileCurrentCompetitionTabs").isHidden(), true);
     await playerPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
@@ -648,6 +650,8 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.deepEqual(await playerPage.locator("#profileCurrentCompetitionTabs [role=tab]").allTextContents(), [
       "Herren", "Damen Doppel Lang", "Senioren 45 Plus", "Mixed Sommer", "Damen Herbst", "Sommercup",
     ]);
+    assert.equal(await playerPage.locator("#profileRankingPanel0").isVisible(), true);
+    assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     await playerPage.getByRole("tab", { name: "Herren", exact: true }).click();
     assert.match(await playerPage.locator("#profileRankingPanel0").textContent(), /Ranglistenposition:\s*1/);
     assert.equal(await playerPage.getByRole("button", { name: "Fordern" }).isVisible(), true);
@@ -655,12 +659,14 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.deepEqual(await playerPage.locator("#profileRankingPanel1 .profile-open-challenge > p").allTextContents(), [
       "Forderung vom 29.08.2026, 12:00 Uhr",
     ]);
+    assert.equal(await playerPage.locator("#profileRankingPanel1 .profile-match-date-countdown").count(), 0);
     assert.equal(await playerPage.locator("#profileRankingPanel1 .admin-ranking-danger").count(), 0);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel1").textContent(), /Keine Aktion verfügbar/i);
     await playerPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
     assert.deepEqual(await playerPage.locator("#profileRankingPanel2 .profile-open-challenge > p").allTextContents(), [
       "Forderung vom 30.08.2026, 09:00 Uhr",
     ]);
+    assert.equal(await playerPage.locator("#profileRankingPanel2 .profile-match-date-countdown").count(), 0);
     assert.doesNotMatch(await playerPage.locator("#profileRankingPanel2").textContent(), /Spieltermin/);
     await playerPage.getByRole("tab", { name: "Sommercup", exact: true }).click();
     assert.deepEqual(await playerPage.locator('[data-competition-id="cup"] .profile-match-card h3').allTextContents(), [
@@ -710,6 +716,13 @@ test("Login- und Profilmodale trennen Login von Kontakt-E-Mail", {
     assert.equal(await adminPage.getByRole("tab", { name: "Admin" }).isVisible(), true);
     await adminPage.getByRole("tab", { name: "Admin" }).click();
     assert.equal(await adminPage.getByRole("button", { name: "Reset-Code erstellen" }).isVisible(), true);
+    await adminPage.getByRole("tab", { name: "Aktuell", exact: true }).click();
+    await adminPage.getByRole("tab", { name: "Senioren 45 Plus", exact: true }).click();
+    const adminCountdown = adminPage.locator("#profileRankingPanel2 .profile-match-date-countdown");
+    assert.equal(await adminCountdown.count(), 1);
+    assert.match(await adminCountdown.textContent(), /^Terminfrist: [+-]\d+ Tage, \d+ Stunden, \d+ Minuten$/);
+    await adminPage.getByRole("tab", { name: "Damen Herbst", exact: true }).click();
+    assert.equal(await adminPage.locator("#profileRankingPanel4 .profile-match-date-countdown").count(), 1);
     const layout = await adminPage.locator("#profileModal .profile-dialog").evaluate((dialog) => {
       const rect = dialog.getBoundingClientRect();
       const body = dialog.querySelector(".profile-body");

@@ -1,12 +1,28 @@
 ================================================================================
 CHANGELOG - ePiber Gesamtprojekt
 ================================================================================
-Stand: 4.9.0
+Stand: 4.9.1
 
 Dieses Changelog dokumentiert gemeinsam die ueberlieferte Historie ab 1.24.0
 und alle kuenftigen bestaetigten Main-Versionen fuer Software, Infrastruktur,
 Dokumentation, Datenbank und Repository-Struktur. Format und Workflow stehen in
 Project/DokuVersGit.txt.
+
+[4.9.1] - 2026-09-07
+Commit: 4.9.1 | Bewerbe- und Ranglistenbedienung verbessert
+Quelle: 4.9.0-paj-1
+
+  Added
+  - [Software] Bewerbe-Refreshs behalten beim Resume den sichtbaren Inhalt und
+    das geoeffnete Historienmodal bei.
+
+  Changed
+  - [Software] Der Button `Weitere Einträge laden` sitzt am Ende der scrollbaren
+    Historienliste statt fest am Dialogrand.
+  - [Software] Der Terminfrist-Countdown in Ranglistenprofilen ist fuer
+    Administratoren auch im fremden Profil sichtbar.
+  - [Dokumentation] Bewerbe- und Ranglisten-Seite beschreiben die neuen Resume-
+    und Sichtbarkeitsregeln.
 
 [4.9.0] - 2026-09-06
 Commit: 4.9.0 | Matchergebnisse und Terminverwaltung erweitert

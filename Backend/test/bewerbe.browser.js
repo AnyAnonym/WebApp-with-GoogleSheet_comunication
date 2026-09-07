@@ -38,14 +38,10 @@ window.__loseSession = () => {
 
 const dataClientStub = `
 window.__historyCalls = [];
+window.__bewerbeCalls = [];
 export const subscribeInvalidations = () => () => {};
 export function createEndpoint(name) {
   return async (params = {}) => {
-    if (name === "bewerbe") return { data: { success: true, values: [
-      ["ID", "BewerbsartID", "Bezeichnung", "EntryStart", "EntryDeadline", "Bewerbsbeginn", "Bewerbsende", "SortOrder"],
-      ["2", "2", "Rangliste <img src=x onerror=alert(1)>", "", "", "20250101", "", "1"],
-      ["3", "3", "Sommercup", "", "", "20250101", "", "2"],
-    ] } };
     if (name === "bewerbsart") return { data: { success: true, values: [
       ["ID", "EntryListAvailable", "Bezeichnung", "RoundRobin"],
       ["2", "0", "Rangliste", "0"],
@@ -81,6 +77,21 @@ export function createEndpoint(name) {
         ],
         nextCursor: "page-2",
       } };
+    }
+    if (name === "bewerbe") {
+      window.__bewerbeCalls.push({ ...params });
+      if (new URLSearchParams(location.search).get("slowVisibilityRefresh") === "1" && window.__bewerbeCalls.length > 1) {
+        return new Promise((resolve) => setTimeout(() => resolve({ data: { success: true, values: [
+          ["ID", "BewerbsartID", "Bezeichnung", "EntryStart", "EntryDeadline", "Bewerbsbeginn", "Bewerbsende", "SortOrder"],
+          ["2", "2", "Rangliste <img src=x onerror=alert(1)>", "", "", "20250101", "", "1"],
+          ["3", "3", "Sommercup", "", "", "20250101", "", "2"],
+        ] } }), 500));
+      }
+      return { data: { success: true, values: [
+        ["ID", "BewerbsartID", "Bezeichnung", "EntryStart", "EntryDeadline", "Bewerbsbeginn", "Bewerbsende", "SortOrder"],
+        ["2", "2", "Rangliste <img src=x onerror=alert(1)>", "", "", "20250101", "", "1"],
+        ["3", "3", "Sommercup", "", "", "20250101", "", "2"],
+      ] } };
     }
     return { data: { success: true } };
   };
@@ -198,6 +209,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(await modal.locator("#competition-history-title").innerText(), "Historie");
     assert.equal(await modal.locator("#competition-history-competition-name").innerText(), "Alle Bewerbe");
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}]);
+    await page.waitForTimeout(250);
     assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste"]);
     assert.deepEqual(await modal.locator(".competition-history-entry").first().locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").first().locator("time").innerText(),
@@ -223,23 +235,39 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     await page.setViewportSize({ width: 1024, height: 720 });
     assert.deepEqual(await historyStyles(), expectedHistoryStyles);
     await page.setViewportSize({ width: 390, height: 640 });
-    const scrollMetrics = await modal.locator("#competition-history-list").evaluate((list) => {
+    const body = modal.locator("#competition-history-body");
+    const scrollMetrics = await body.evaluate((bodyElement) => {
+      const list = bodyElement.querySelector("#competition-history-list");
       const template = list.firstElementChild;
-      for (let index = 0; index < 20; index++) list.appendChild(template.cloneNode(true));
-      list.scrollTop = list.scrollHeight;
-      const dialog = list.closest(".competition-history-dialog").getBoundingClientRect();
+      for (let index = 0; index < 100; index++) list.appendChild(template.cloneNode(true));
+      bodyElement.scrollTop = 0;
+      const dialog = bodyElement.closest(".competition-history-dialog").getBoundingClientRect();
       return {
-        clientHeight: list.clientHeight,
-        scrollHeight: list.scrollHeight,
-        scrollTop: list.scrollTop,
+        clientHeight: bodyElement.clientHeight,
+        scrollHeight: bodyElement.scrollHeight,
+        scrollTop: bodyElement.scrollTop,
         dialogBottom: dialog.bottom,
         viewportHeight: innerHeight,
       };
     });
     assert.equal(scrollMetrics.scrollHeight > scrollMetrics.clientHeight, true);
-    assert.equal(scrollMetrics.scrollTop > 0, true);
     assert.equal(scrollMetrics.dialogBottom <= scrollMetrics.viewportHeight, true);
-    await page.getByRole("button", { name: "Weitere Einträge laden" }).click();
+    const moreButton = modal.getByRole("button", { name: "Weitere Einträge laden" });
+    const initialButtonPosition = await moreButton.evaluate((button) => {
+      const bodyElement = button.closest(".competition-history-body");
+      return {
+        buttonOffsetTop: button.offsetTop,
+        bodyClientHeight: bodyElement.clientHeight,
+      };
+    });
+    assert.equal(initialButtonPosition.buttonOffsetTop > initialButtonPosition.bodyClientHeight, true);
+    await body.evaluate((bodyElement) => { bodyElement.scrollTop = bodyElement.scrollHeight; });
+    const buttonVisibleAfterScroll = await moreButton.evaluate((button) => {
+      const bodyElement = button.closest(".competition-history-body");
+      return button.offsetTop < bodyElement.scrollTop + bodyElement.clientHeight;
+    });
+    assert.equal(buttonVisibleAfterScroll, true);
+    await moreButton.click();
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [{}, { cursor: "global-page-2" }]);
     assert.deepEqual(await modal.locator(".competition-history-entry-competition").allTextContents(), ["Sommercup - Viertelfinale", "Rangliste", "Wintercup - Achtelfinale"]);
     await page.keyboard.press("Escape");
@@ -276,7 +304,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.deepEqual(await modal.locator("#competition-history-list").evaluate((list) => ({ tag: list.tagName, style: getComputedStyle(list).listStyleType, overflow: getComputedStyle(list).overflowY })), {
       tag: "UL",
       style: "none",
-      overflow: "auto",
+      overflow: "visible",
     });
     assert.deepEqual(await modal.locator(".competition-history-entry").first().locator(":scope > *").allTextContents(), [
       await modal.locator(".competition-history-entry").first().locator("time").innerText(),
@@ -296,7 +324,7 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal((await modal.textContent()).includes("Ebenfalls nicht anzeigen"), false);
     assert.equal(await page.locator("#competition-history-close").evaluate((button) => document.activeElement === button), true);
 
-    await page.getByRole("button", { name: "Weitere Einträge laden" }).click();
+    await moreButton.click();
     assert.deepEqual(await page.evaluate(() => window.__historyCalls), [
       {},
       { cursor: "global-page-2" },
@@ -315,9 +343,15 @@ test("Bewerbshistorie bleibt authentifiziert, sicher, paginiert und zugaenglich"
     assert.equal(bounds.left >= 0 && bounds.right <= bounds.width, true);
     assert.equal(bounds.top >= 0 && bounds.bottom <= bounds.height, true);
 
+    const cardCount = await page.locator(".bewerb-card").count();
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    assert.equal(await modal.isVisible(), true);
+    assert.equal(await page.locator(".bewerb-card").count(), cardCount);
     await page.keyboard.press("Escape");
     assert.equal(await modal.isHidden(), true);
-    assert.equal(await historyButton.evaluate((button) => document.activeElement === button), true);
+    assert.equal(await page.locator(".bewerb-card .competition-history-button").first().isVisible(), true);
+    await page.waitForFunction(() => window.__bewerbeCalls.length === 2);
+    assert.equal(await page.locator(".bewerb-card").count(), cardCount);
 
     await globalHistoryButton.click();
     await modal.waitFor({ state: "visible" });

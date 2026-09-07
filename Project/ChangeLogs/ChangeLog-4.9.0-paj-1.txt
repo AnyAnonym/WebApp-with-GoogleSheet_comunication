@@ -6,3 +6,17 @@ Commit: 4.9.0-paj-1-1 | Branch-Stand nummeriert initialisiert
 
   Changed
   - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.9.0-paj-1-1` gesetzt.
+
+[4.9.0-paj-1-2] - 2026-09-07
+Commit: 4.9.0-paj-1-2 | Bewerbe- und Ranglistenbedienung verbessert
+
+  Changed
+  - [Repository] Paketversion in `Backend/package.json` und `Backend/package-lock.json` auf `4.9.0-paj-1-1-x` gesetzt.
+  - [Frontend] Countdown bei offenen Ranglistenforderungen ist fuer Administratoren auch im fremden Profil sichtbar.
+  - [Tests] Ranglisten-Browsertest um Admin-Countdown-Pruefung erweitert.
+  - [Dokumentation] Ranglisten-Seite beschreibt die Admin-Sichtbarkeit des Countdowns.
+  - [Frontend] Bewerbe-Refreshs behalten nach dem Erstaufbau den sichtbaren Inhalt und das geoeffnete Historienmodal bei.
+  - [Tests] Bewerbe-Browsertest prueft den Resume-Refresh mit offenem Historienmodal.
+  - [Dokumentation] Bewerbe-Seite beschreibt das Hintergrund-Nachladen ohne blockierendes Overlay.
+  - [Frontend] Button `Weitere Einträge laden` erscheint erst am Ende der scrollbaren Historienliste.
+  - [Tests] Historienmodal testet den Load-More-Button erst nach dem Scrollen.

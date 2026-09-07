@@ -13,6 +13,8 @@ const ADMIN_RANKING_HISTORY_TYPES = new Set([
   "ranking_match_date_admin_changed",
 ]);
 let competitionBoundaryTimer = null;
+let bewerbeLoadPromise = null;
+let bewerbeLoadedOnce = false;
 let historyButtonsVisible = false;
 let historyAuthIdentity = null;
 let historyRequestGeneration = 0;
@@ -153,8 +155,8 @@ function renderCompetitionHistory() {
 
   status.textContent = historyState.entries.length ? "" : "Keine Historieneinträge vorhanden.";
   more.textContent = "Weitere Einträge laden";
-  more.hidden = !historyState.nextCursor;
   more.disabled = historyState.loading;
+  more.hidden = !historyState.nextCursor;
 }
 
 async function loadCompetitionHistory({ append = false } = {}) {
@@ -475,6 +477,10 @@ function classifyBewerb(b, today) {
 }
 
 async function loadBewerbe() {
+  const preserveContent = bewerbeLoadedOnce;
+  if (bewerbeLoadPromise) return bewerbeLoadPromise;
+
+  bewerbeLoadPromise = (async () => {
   const container = document.getElementById("bewerbe-container");
   if (!container) {
     const error = new Error("Bewerbe-Container fehlt.");
@@ -482,8 +488,10 @@ async function loadBewerbe() {
     throw error;
   }
 
-  container.replaceChildren();
-  showLoadingOverlay("Lade Bewerbe...");
+  if (!preserveContent) {
+    container.replaceChildren();
+    showLoadingOverlay("Lade Bewerbe...");
+  }
 
   try {
     const [bewerbRes, bewerbsartRes] = await Promise.all([
@@ -500,10 +508,12 @@ async function loadBewerbe() {
     const bewerbsartValues = bewerbsartRes.data?.values || [];
 
     if (bewerbValues.length < 2) {
+      if (preserveContent) return true;
       const message = document.createElement("p");
       message.textContent = "Keine Bewerbe gefunden.";
       container.appendChild(message);
       hideLoadingOverlay();
+      bewerbeLoadedOnce = true;
       return;
     }
 
@@ -621,21 +631,29 @@ async function loadBewerbe() {
       message.textContent = "Keine Bewerbe gefunden.";
       container.appendChild(message);
     }
-    hideLoadingOverlay();
+    bewerbeLoadedOnce = true;
+    if (!preserveContent) hideLoadingOverlay();
   } catch (err) {
     diagnostic.error("competitions_load_failed", err);
-    showErrorOverlay("Fehler beim Laden der Bewerbe", () => {
-      loadBewerbe().catch(() => {});
-    });
+    if (!preserveContent) {
+      showErrorOverlay("Fehler beim Laden der Bewerbe", () => {
+        loadBewerbe().catch(() => {});
+      });
+    }
     throw err;
+  } finally {
+    bewerbeLoadPromise = null;
   }
+  })();
+
+  return bewerbeLoadPromise;
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   initializeCompetitionHistory();
   try {
     await loadBewerbe();
-    subscribeInvalidations(["bewerbe", "bewerbsart"], loadBewerbe);
+    subscribeInvalidations(["bewerbe", "bewerbsart"], () => loadBewerbe());
     signalMonitorReady();
   } catch (error) {
     signalMonitorFailed(error.code || "COMPETITIONS_LOAD_FAILED");
